@@ -57,14 +57,30 @@ rejected, and that search and plot terms behave.
 
 ## Deploy
 
+Both apps live in one Rigbox workspace and share a single copy of the model.
+The root `rig.yaml` declares them; `app/rig.yaml` is only for running this app
+on its own.
+
 ```sh
 python3 app/build.py
-rig deploy --from-dir app --no-env-file
+rig deploy --app next-watch -w tv-taste-research --no-env-file
 ```
 
-`app/rig.yaml` runs `server.py` on port 8080 and probes `/healthz`. Only
-`app/public/` is served as files; `app/model/` stays outside the document root
-and is never exposed.
+The model never travels in the release. Rigbox caps a release at roughly 16 MB,
+well under the 46 MB model, so `model/` sits outside every app directory and is
+copied to the workspace once:
+
+```sh
+rsync -av model/ tv-taste-research-<id>@<region>.rigbox.dev:~/model/
+```
+
+Both apps then read it through `MODEL_DIR=/home/developer/model`. A git-source
+deploy clones the whole repo, finds `model/` beside the apps, and needs no
+`MODEL_DIR`. Two engines need about 1 GB between them, so the workspace runs
+with 3 GB.
+
+Only `app/public/` is served as files. The model and the Python sources sit
+outside the document root and return 404.
 
 ## How it is put together
 

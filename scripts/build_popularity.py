@@ -14,7 +14,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-MODEL = ROOT / 'site' / 'model'
+MODEL = ROOT / 'model'
 RAW = sorted(glob.glob(str(ROOT / 'data' / 'raw' / 'page-*.json')))
 
 if not RAW:

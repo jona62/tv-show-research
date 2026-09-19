@@ -7,7 +7,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 PUBLIC = HERE / 'public'
 MODEL = HERE / 'model'
-SHARED = HERE.parent / 'site' / 'model'
+SHARED = HERE.parent / 'model'
 ASSETS = ('style.css', 'main.js', 'fit.js')
 BUDGET = 512_000
 
@@ -22,13 +22,14 @@ FAVICON = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">'
 def ensure_model():
     """The app ships its own model copy so it can deploy on its own."""
     MODEL.mkdir(exist_ok=True)
-    for name in ('catalog.json.gz', 'vectors.bin.gz', 'popularity.bin.gz'):
-        target, source = MODEL / name, SHARED / name
+    sources = sorted(SHARED.glob('*.gz')) + sorted(SHARED.glob('*.part*'))
+    if not sources:
+        sys.exit(f'No model files in {SHARED}. Build the research model first.')
+    for source in sources:
+        target = MODEL / source.name
         if target.exists():
             continue
-        if not source.exists():
-            sys.exit(f'Missing {source}. Build the research model first.')
-        print(f'linking {name} from site/model')
+        print(f'linking {source.name} from model/')
         try:
             target.hardlink_to(source)
         except OSError:

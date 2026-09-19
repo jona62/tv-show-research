@@ -15,5 +15,6 @@ output/site-qa/
 output/qa/
 *.log
 
-# app model files are hard-linked from site/model by app/build.py
+# Hard links made by app/build.py. The tracked copy lives in model/, which sits
+# outside every app directory so the Rigbox release uploader never carries it.
 app/model/

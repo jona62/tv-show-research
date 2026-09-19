@@ -15,11 +15,12 @@ SLOTS = threading.BoundedSemaphore(3)
 
 
 def model_dir():
-    """The model ships beside the app; a local checkout can share the research copy."""
-    for candidate in (os.environ.get('MODEL_DIR'), HERE / 'model', HERE.parent / 'site' / 'model'):
+    """One model copy serves both apps. Deployed, MODEL_DIR points at the sibling
+    app's directory; locally the research copy or a build of our own is used."""
+    for candidate in (os.environ.get('MODEL_DIR'), HERE / 'model', HERE.parent / 'model'):
         if candidate and (Path(candidate) / 'catalog.json.gz').exists():
             return Path(candidate)
-    raise SystemExit('No model found. Run python3 app/build.py first.')
+    raise SystemExit('No model found. Set MODEL_DIR, or run python3 app/build.py locally.')
 
 
 ENGINE = Engine(model_dir())

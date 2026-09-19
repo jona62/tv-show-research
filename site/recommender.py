@@ -6,6 +6,7 @@ from functools import lru_cache
 import gzip
 import json
 import math
+import os
 from pathlib import Path
 import unicodedata
 
@@ -13,18 +14,28 @@ DEFAULT_PROFILE=[{'id':i,'weight':w} for i,w in [(13417,1),(169,1),(618,1),(4206
 DEFAULT_SETTINGS={'text':40,'themes':35,'genres':25,'closest':.3,'dislike':.35,
                   'language':'English','type':'Scripted','status':'all','year_min':1990,'runtime_min':25,'rating_min':0,'axis_x':'all','axis_y':42062}
 
+def model_dir():
+    """One model copy serves both apps. It is too large for the release uploader,
+    so deployments keep it outside the synced tree and name it in MODEL_DIR; a
+    checkout or a git-source deploy finds it in place."""
+    here=Path(__file__).resolve().parent
+    for candidate in (os.environ.get('MODEL_DIR'), here/'model', here.parent/'model'):
+        if candidate and (Path(candidate)/'catalog.json.gz').exists():return Path(candidate)
+    raise SystemExit('No model found. Set MODEL_DIR, or build the model into model/.')
+
 def folded(s):
     return ''.join(c for c in unicodedata.normalize('NFKD',s.casefold()) if not unicodedata.combining(c))
 
 class Engine:
     def __init__(self,path=None):
-        with gzip.open(path or Path(__file__).parent/'model/catalog.json.gz','rt') as f:data=json.load(f)
+        model=Path(path) if path else model_dir()
+        with gzip.open(model/'catalog.json.gz','rt') as f:data=json.load(f)
         self.shows=data['shows'];self.by_id={s['id']:i for i,s in enumerate(self.shows)}
         self.genres=data['genres'];self.themes=data['themes'];self.version=data['version'];self.date=data['date']
         self.n=len(self.shows)
         self.names=[folded(s['name']) for s in self.shows]
         self.metadata=data['metadata']
-        with gzip.open(Path(path).with_name('vectors.bin.gz') if path else Path(__file__).parent/'model/vectors.bin.gz','rb') as f:
+        with gzip.open(model/'vectors.bin.gz','rb') as f:
             rows,cols,nnz=struct.unpack('<III',f.read(12))
             if rows!=self.n or cols!=data['text_features']:raise ValueError('Model vector dimensions do not match catalog.')
             def read_array(code,count):

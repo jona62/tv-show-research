@@ -1,13 +1,37 @@
+# Both apps in one workspace, sharing one copy of the 46MB model.
+#
+# model/ sits outside every app directory on purpose: the release uploader caps
+# a release at about 16MB, so the model is copied to /home/developer/model once
+# over SSH and named in MODEL_DIR (see app/README.md). A git-source deploy,
+# which clones the whole repo, finds model/ beside the apps and ignores it.
 name: tv-taste
-port: 8080
 visibility: public
-workspace:
-  resources: { ramMb: 1024, vcpuCount: 1, diskSizeMb: 3072 }
 source:
   kind: git
   repo: https://github.com/jona62/tv-show-research.git
   branch: main
-start: python3 site/server.py
-health:
-  path: /healthz
-  timeoutSeconds: 30
+workspace:
+  resources: { ramMb: 3072, vcpuCount: 2, diskSizeMb: 5120 }
+apps:
+  tv-taste:
+    path: ./site
+    port: 8080
+    visibility: public
+    start: python3 server.py
+    env:
+      MODEL_DIR: /home/developer/model
+    health:
+      path: /healthz
+      timeoutSeconds: 60
+
+  next-watch:
+    path: ./app
+    port: 8081
+    visibility: public
+    start: python3 server.py
+    env:
+      PORT: "8081"
+      MODEL_DIR: /home/developer/model
+    health:
+      path: /healthz
+      timeoutSeconds: 90

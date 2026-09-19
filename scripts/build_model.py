@@ -11,7 +11,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer, ENGLISH_STOP_WORDS
 
 ROOT=Path(__file__).resolve().parents[1]
 OUT=ROOT/'output'
-TARGET=ROOT/'site/model'
+TARGET=ROOT/'model'
 TARGET.mkdir(exist_ok=True)
 rules=json.loads((OUT/'theme_rules.json').read_text())
 rules.update({
