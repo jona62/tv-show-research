@@ -255,6 +255,14 @@ footer p{margin:6px 0}
   .sheet{border-radius:14px;max-height:84vh}
   .key{columns:3}
 }
+/* iOS zooms the page in when a focused control's text is under 16px, and it does
+   not zoom back out afterwards. Every control that can take focus is 16px on a
+   touch device, which fixes it without a viewport tag that would also take
+   pinch-zoom away from anyone who needs it. */
+@media(max-width:1024px),(pointer:coarse){
+  select{font-size:16px}
+  #move input,#move textarea{font-size:16px}
+}
 @media(prefers-reduced-motion:no-preference){
   .card,.chip,.seg button{transition:border-color .12s,background .12s,color .12s}
 }
