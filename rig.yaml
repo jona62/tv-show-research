@@ -1,8 +1,8 @@
 # Both apps in one workspace, sharing one copy of the 46MB model.
 #
-# model/ sits outside every app directory on purpose: the release uploader caps
-# a release at about 16MB, so the model is copied to /home/developer/model once
-# over SSH and named in MODEL_DIR (see app/README.md). A git-source deploy,
+# model/ sits outside every app directory on purpose: the release uploader
+# refuses a blob over about 2MB, so the model is copied to /home/developer/model
+# once over SSH and named in MODEL_DIR (see app/README.md). A git-source deploy,
 # which clones the whole repo, finds model/ beside the apps and ignores it.
 name: tv-taste
 visibility: public
@@ -11,7 +11,11 @@ source:
   repo: https://github.com/jona62/tv-show-research.git
   branch: main
 workspace:
-  resources: { ramMb: 3072, vcpuCount: 2, diskSizeMb: 5120 }
+  image: base
+  # Two engines hold about 500MB resident each.
+  resources: { ramMb: 3072, vcpuCount: 2, diskSizeMb: 8192 }
+  deployment:
+    strategy: incremental
 apps:
   tv-taste:
     path: ./site
