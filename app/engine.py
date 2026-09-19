@@ -34,7 +34,7 @@ DEFAULT_SETTINGS = {
     'text': 40, 'themes': 35, 'genres': 25,
     'closest': .3, 'dislike': .35,
     'language': 'all', 'type': 'all', 'status': 'all',
-    'year_min': 1990, 'runtime_min': 0, 'rating_min': 6.5,
+    'year_min': 1990, 'runtime_min': 0, 'rating_min': 0, 'known_min': 85,
 }
 
 # Recognisable starting points so a first visit is two taps from a result.
@@ -89,6 +89,12 @@ class Engine:
                 if show[field] & (1 << value):
                     mask[i // 8] |= 1 << (i % 8)
             self.feature_masks.append(int.from_bytes(mask, 'little'))
+        # TVmaze's 0-100 popularity, one byte per show in catalog order. It covers the
+        # whole catalog, unlike the public rating, which only 13% of shows carry.
+        with gzip.open(model / 'popularity.bin.gz', 'rb') as f:
+            self.popularity = array('B', f.read())
+        if len(self.popularity) != self.n:
+            raise ValueError('Popularity track does not match the catalog.')
         self.theme_counts = [s['theme_bits'].bit_count() for s in self.shows]
         self.genre_counts = [s['genre_bits'].bit_count() for s in self.shows]
         self.quick_picks = [self.card(self.by_id[i]) for i in QUICK_PICKS if i in self.by_id]
@@ -106,7 +112,8 @@ class Engine:
     def card(self, i):
         """The short form used in search results and the watched list."""
         s = self.shows[i]
-        return {k: s[k] for k in ('id', 'name', 'year', 'channel', 'rating', 'language', 'type')}
+        return {**{k: s[k] for k in ('id', 'name', 'year', 'channel', 'rating', 'language', 'type')},
+                'known': self.popularity[i]}
 
     def full(self, i):
         s = self.shows[i]
@@ -157,7 +164,8 @@ class Engine:
             raise ValueError('Settings must be an object.')
         result = dict(DEFAULT_SETTINGS)
         ranges = {'text': (0, 100), 'themes': (0, 100), 'genres': (0, 100), 'closest': (0, 1),
-                  'dislike': (0, 1), 'year_min': (1900, 2100), 'runtime_min': (0, 240), 'rating_min': (0, 10)}
+                  'dislike': (0, 1), 'year_min': (1900, 2100), 'runtime_min': (0, 240),
+                  'rating_min': (0, 10), 'known_min': (0, 100)}
         for k, (lo, hi) in ranges.items():
             value = settings.get(k, result[k])
             if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not lo <= value <= hi:
@@ -178,8 +186,11 @@ class Engine:
     def text_items(self, index):
         return ((self.terms[k], self.values[k]) for k in range(self.row_ptr[index], self.row_ptr[index + 1]))
 
-    def eligible(self, show, settings, formats=None):
+    def eligible(self, index, settings, formats=None):
+        show = self.shows[index]
         if not show['recommendable'] or show['year'] < settings['year_min']:
+            return False
+        if self.popularity[index] < settings['known_min']:
             return False
         if formats is not None and (show['type'] or 'unknown') not in formats:
             return False
@@ -230,7 +241,7 @@ class Engine:
         kind = settings['type']
         formats = None if kind == 'all' else set(FORMAT_GROUPS.get(kind, (kind,)))
         candidates = [i for i, s in enumerate(self.shows)
-                      if s['id'] not in watched_ids and self.eligible(s, settings, formats)]
+                      if s['id'] not in watched_ids and self.eligible(i, settings, formats)]
         base['candidate_count'] = len(candidates)
         if any(self.shows[self.by_id[p['id']]]['summary_words'] < 15 for p in positives):
             base['warning'] = 'Some of your shows have very little plot text, so their matches lean on genres alone.'
@@ -284,6 +295,7 @@ class Engine:
                 'keywords': self.plot_words(s),
                 'penalised': round(penalty * 100, 1) if penalty > 0 else 0,
                 'links': [round(affinities[pid][i] * 100, 1) for pid in liked_order],
+                'known': self.popularity[i],
             }
         base['picks'] = [pick(i, rank + 1) for rank, i in enumerate(ordered[:TOP_PICKS])]
 

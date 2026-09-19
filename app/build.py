@@ -22,7 +22,7 @@ FAVICON = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">'
 def ensure_model():
     """The app ships its own model copy so it can deploy on its own."""
     MODEL.mkdir(exist_ok=True)
-    for name in ('catalog.json.gz', 'vectors.bin.gz'):
+    for name in ('catalog.json.gz', 'vectors.bin.gz', 'popularity.bin.gz'):
         target, source = MODEL / name, SHARED / name
         if target.exists():
             continue

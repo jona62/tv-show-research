@@ -4,7 +4,7 @@ A small web app over the frozen TVmaze catalog. Rate what you have watched, get
 what to watch next, see what your taste is made of, and see how each pick lines
 up against it.
 
-Three screens and nothing else:
+Four screens and nothing else:
 
 - **Watch next** shows ranked picks as cards. Each one carries a match score,
   the liked show it sits closest to, the signals they share, and *Why this?* for
@@ -15,6 +15,8 @@ Three screens and nothing else:
   holds a pick against your weighted profile and, optionally, against any single
   show you rated, on 6 to 16 spokes you choose from themes, genres or both. A bar
   per rated show then shows how close the pick sits to each of them individually.
+- **Saved** is the watchlist. Anything you save waits there until you watch it;
+  rating it then moves it into your shows, where it starts shaping the picks.
 - **Your shows** is the rated list, five ratings per row.
 
 Light by default, dark on request, one layout that works at 375px and on a desktop.
@@ -26,6 +28,12 @@ the build.
 TVmaze indexes **television only**. There are no films, so the format filter
 groups the 11 raw types into scripted, animation, documentary, and reality and
 unscripted, rather than pretending a show-versus-film distinction exists.
+
+Barely 13% of the catalogue carries a public rating, so a rating floor throws
+away good titles for the crime of being new. *How well known* filters on
+TVmaze's own 0 to 100 popularity instead, which covers every title.
+`scripts/build_popularity.py` writes those weights in catalog order as one byte
+each, about 69 KB gzipped, so the 18 MB catalog never has to be rebuilt for it.
 
 ## Run it
 

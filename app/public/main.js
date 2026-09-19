@@ -14,8 +14,10 @@ const FOCUS = {
 const FORMATS = ['all', 'scripted', 'animation', 'documentary', 'unscripted'];
 const DEFAULTS = {
   text: 40, themes: 35, genres: 25, closest: .3, dislike: .35,
-  language: 'all', type: 'all', status: 'all', year_min: 1990, runtime_min: 0, rating_min: 6.5,
+  language: 'all', type: 'all', status: 'all', year_min: 1990, runtime_min: 0,
+  rating_min: 0, known_min: 85,
 };
+const KNOWN = [0, 60, 85, 95];
 const el = (tag, text = '', cls = '') => {
   const n = document.createElement(tag);
   if (text) n.textContent = text;
@@ -30,7 +32,7 @@ const button = (text, cls, onClick) => {
 };
 const meta = s => [s.year ?? 'Year unknown', s.channel, s.rating ? '★ ' + s.rating : null].filter(Boolean).join(' · ');
 
-let state = { profile: [], settings: { ...DEFAULTS } };
+let state = { profile: [], saved: [], settings: { ...DEFAULTS } };
 let data = null, tab = 'next', reqId = 0, reqAbort = null, timer = null;
 let searchId = 0, searchAbort = null, searchTimer = null, fitPick = null;
 let allSignals = false, allRelated = false;
@@ -41,8 +43,12 @@ try {
   if (saved && Array.isArray(saved.profile)) {
     state = {
       profile: saved.profile.filter(p => Number.isInteger(p.id) && RATINGS.some(([w]) => w === p.weight)).slice(0, 60),
+      saved: (Array.isArray(saved.saved) ? saved.saved : []).filter(s => Number.isInteger(s.id)).slice(0, 200),
       settings: { ...DEFAULTS, ...(saved.settings || {}) },
     };
+    // A lists saved before the popularity control existed keeps its old rating floor otherwise.
+    if (!KNOWN.includes(state.settings.known_min)) state.settings.known_min = 85;
+    state.settings.rating_min = 0;
     // Format used to be a raw catalog type; anything the new grouping cannot show falls back.
     if (!FORMATS.includes(state.settings.type)) state.settings.type = 'all';
   }
@@ -67,9 +73,10 @@ function show(name) {
   for (const section of TABS) $(section).hidden = section !== name;
   for (const t of document.querySelectorAll('.tab')) t.setAttribute('aria-selected', String(t.dataset.tab === name));
   if (name === 'taste') renderFit();
+  if (name === 'saved') renderSaved();
   document.documentElement.scrollTop = document.body.scrollTop = 0;
 }
-const TABS = ['next', 'taste', 'shows'];
+const TABS = ['next', 'saved', 'taste', 'shows'];
 for (const t of document.querySelectorAll('.tab')) {
   t.addEventListener('click', () => show(t.dataset.tab));
   t.addEventListener('keydown', e => {
@@ -95,6 +102,7 @@ function has(id) { return state.profile.some(p => p.id === id); }
 
 function add(showRow, weight = .7) {
   if (has(showRow.id)) return;
+  state.saved = state.saved.filter(s => s.id !== showRow.id);
   if (state.profile.length >= 60) { note('Your list is full at 60 shows. Remove one first.'); return; }
   state.profile.push({ id: showRow.id, name: showRow.name, year: showRow.year, channel: showRow.channel, weight });
   save(); renderList(); renderPicks(); run(0);
@@ -224,7 +232,50 @@ function renderCount() {
   const n = state.profile.length;
   $('tab-count').textContent = n || '';
   $('tab-count').hidden = !n;
+  $('saved-count').textContent = state.saved.length || '';
+  $('saved-count').hidden = !state.saved.length;
 }
+
+function isSaved(id) { return state.saved.some(s => s.id === id); }
+
+function toggleSave(pick) {
+  state.saved = isSaved(pick.id)
+    ? state.saved.filter(s => s.id !== pick.id)
+    : [...state.saved, { id: pick.id, name: pick.name, year: pick.year, channel: pick.channel,
+                         rating: pick.rating, url: pick.url }];
+  save();
+  renderCount();
+  if (data) renderCards();
+  renderSaved();
+}
+
+function renderSaved() {
+  const holder = $('saved-list');
+  holder.replaceChildren();
+  $('clear-saved').hidden = !state.saved.length;
+  $('saved-meta').textContent = state.saved.length
+    ? `${state.saved.length} to watch. Rating one moves it into your shows, where it starts shaping the picks.`
+    : 'Nothing saved yet. Hit Save on any pick and it waits for you here.';
+  for (const s of state.saved) {
+    const card = el('article', '', 'card');
+    const top = el('div', '', 'card-top');
+    const title = el('div', '', 'card-title');
+    const heading = el('h3');
+    const out = el('a', s.name);
+    out.href = s.url; out.target = '_blank'; out.rel = 'noopener noreferrer';
+    out.setAttribute('aria-label', `${s.name} on TVmaze, opens in a new tab`);
+    heading.append(out);
+    title.append(heading, el('p', meta(s)));
+    top.append(title);
+    const acts = el('div', '', 'acts');
+    const watched = button('I watched it', 'why', () => { toggleSave(s); add(s, .7); show('shows'); });
+    watched.setAttribute('aria-label', `Move ${s.name} into your shows as liked`);
+    acts.append(watched, button('Remove', '', () => toggleSave(s)));
+    card.append(top, acts);
+    holder.append(card);
+  }
+}
+$('clear-saved').addEventListener('click', () => { state.saved = []; save(); renderCount(); renderSaved(); if (data) renderCards(); });
 
 // Theme and genre names overlap ("Crime / illicit enterprise" and the Crime tag): show each once.
 function sharedLabels(pick) {
@@ -271,8 +322,12 @@ function renderCards() {
     if (!tags.childElementCount) tags.append(el('span', 'a close match on plot wording', 'tag plain'));
 
     const acts = el('div', '', 'acts');
+    const keep = button(isSaved(pick.id) ? 'Saved ✓' : 'Save', '', () => toggleSave(pick));
+    keep.classList.toggle('on', isSaved(pick.id));
+    keep.setAttribute('aria-pressed', String(isSaved(pick.id)));
     acts.append(
       button('Why this?', 'why', () => openWhy(pick)),
+      keep,
       button('Seen it', '', () => add(pick, 0)),
       button('Not for me', '', () => add(pick, -1)),
     );
@@ -534,7 +589,7 @@ for (const [id, key] of [['lang', 'language'], ['kind', 'type'], ['stat', 'statu
   $(id).addEventListener('change', () => { state.settings[key] = $(id).value; save(); run(); });
 }
 $('year').addEventListener('change', () => { state.settings.year_min = Number($('year').value); save(); run(); });
-$('quality').addEventListener('change', () => { state.settings.rating_min = $('quality').checked ? 6.5 : 0; save(); run(); });
+$('known').addEventListener('change', () => { state.settings.known_min = Number($('known').value); save(); run(); });
 $('avoid').addEventListener('input', () => {
   state.settings.dislike = Number($('avoid').value);
   $('avoid-out').value = Math.round(state.settings.dislike * 100) + '%';
@@ -552,7 +607,7 @@ function syncTune() {
   const s = state.settings;
   const focus = Object.entries(FOCUS).find(([, v]) => v.text === s.text && v.themes === s.themes && v.genres === s.genres)?.[0];
   for (const b of document.querySelectorAll('[data-focus]')) b.setAttribute('aria-pressed', String(b.dataset.focus === focus));
-  $('quality').checked = s.rating_min > 0;
+  $('known').value = s.known_min;
   $('year').value = [1900, 1990, 2000, 2010, 2018].includes(s.year_min) ? s.year_min : 1900;
   $('lang').value = s.language; $('kind').value = s.type; $('stat').value = s.status;
   $('avoid').value = s.dislike;
@@ -563,6 +618,7 @@ function syncTune() {
 /* ---------------------------------------------------------------- start */
 renderPicks();
 renderList();
+renderSaved();
 syncTune();
 show('next');
 run(0);
