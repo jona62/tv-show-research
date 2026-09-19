@@ -17,7 +17,8 @@ Four screens and nothing else:
   per rated show then shows how close the pick sits to each of them individually.
 - **Saved** is the watchlist. Anything you save waits there until you watch it;
   rating it then moves it into your shows, where it starts shaping the picks.
-- **Your shows** is the rated list, five ratings per row.
+- **Your shows** is the rated list, five ratings per row, and the place to move
+  a list between devices.
 
 Light by default, dark on request, one layout that works at 375px and on a desktop.
 First load is under 50 KB of HTML, CSS and JS; the 512 KB ceiling is enforced by
@@ -35,6 +36,20 @@ TVmaze's own 0 to 100 popularity instead, which covers every title.
 `scripts/build_popularity.py` writes those weights in catalog order as one byte
 each, about 69 KB gzipped, so the 18 MB catalog never has to be rebuilt for it.
 
+## Moving a list between devices
+
+There are no accounts, so *Move to another device* packs your ratings, your
+watchlist and your settings into a link. Only catalog ids and ratings go in and
+titles are looked up again on arrival, which keeps a typical list near 140
+characters and the largest possible one under 1,200.
+
+The payload rides in the URL fragment, which browsers never send to a server, so
+a shared link keeps the same promise as the rest of the app: nothing about you
+reaches us. Opening the link on a device with no list imports it; on a device
+that already has one it asks whether to add or replace. Adding keeps your own
+ratings where the two lists disagree, so merging twice changes nothing. A bare
+code can be pasted instead, for when a messaging app mangles long links.
+
 ## Run it
 
 ```sh
@@ -49,11 +64,14 @@ crosses 512 KB.
 
 ```sh
 .venv/bin/python app/test_engine.py
+node app/test_transfer.mjs
 ```
 
-Verifies the app engine ranks identically to the research recommender under
+The first verifies the app engine ranks identically to the research recommender under
 matched settings, that rated shows never come back as picks, that bad input is
-rejected, and that search and plot terms behave.
+rejected, and that search and plot terms behave. The second round-trips transfer
+codes, including a full 60-plus-200 list, and checks that damaged, truncated and
+wrong-version codes are refused rather than half-applied.
 
 ## Deploy
 

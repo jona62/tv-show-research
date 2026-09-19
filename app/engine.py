@@ -140,6 +140,12 @@ class Engine:
         ))
         return [self.card(i) for i in matches[:12]]
 
+    def cards(self, ids):
+        """Short records for ids, in the order asked. Unknown ids are dropped, which
+        is what an imported list needs: a show cut from a later snapshot should not
+        make the whole transfer fail."""
+        return [self.card(self.by_id[i]) for i in ids if i in self.by_id]
+
     # ------------------------------------------------------------ validation
 
     def validate(self, body):

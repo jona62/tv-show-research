@@ -26,6 +26,18 @@ def model_dir():
 ENGINE = Engine(model_dir())
 
 
+def read_ids(payload):
+    """The id list an imported transfer code resolves to titles."""
+    if not isinstance(payload, dict):
+        raise ValueError('Send a list of show ids.')
+    ids = payload.get('ids', [])
+    if not isinstance(ids, list) or len(ids) > 300:
+        raise ValueError('Ask for up to 300 shows at a time.')
+    if any(type(i) is not int for i in ids):
+        raise ValueError('Show ids must be whole numbers.')
+    return ids
+
+
 class Handler(SimpleHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
 
@@ -64,7 +76,8 @@ class Handler(SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self):
-        if urlsplit(self.path).path != '/api/recommend':
+        route = urlsplit(self.path).path
+        if route not in ('/api/recommend', '/api/shows'):
             self.send_json({'error': 'Not found.'}, 404)
             return
         try:
@@ -82,7 +95,11 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json({'error': 'Busy right now. Try again in a moment.'}, 503)
             return
         try:
-            self.send_json(ENGINE.calculate(json.loads(body)))
+            payload = json.loads(body)
+            if route == '/api/shows':
+                self.send_json({'shows': ENGINE.cards(read_ids(payload))})
+            else:
+                self.send_json(ENGINE.calculate(payload))
         except (json.JSONDecodeError, UnicodeDecodeError):
             self.send_json({'error': 'Send a valid JSON list.'}, 400)
         except ValueError as exc:

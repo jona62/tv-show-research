@@ -195,6 +195,16 @@ dialog[open]{display:flex;align-items:flex-end;justify-content:center}
 .slider output{float:right;font-variant-numeric:tabular-nums}
 .slider input{display:block;width:100%;margin-top:8px;accent-color:var(--accent)}
 #reset{margin-top:22px}
+.head-acts{display:flex;gap:8px;flex-wrap:wrap}
+.move-h{margin:26px 0 0;font:600 15px/1.3 "Iowan Old Style",Georgia,serif;
+  padding-top:20px;border-top:1px solid var(--line)}
+#move .field{margin-top:16px}
+#move input,#move textarea{width:100%;margin-top:6px;padding:9px 10px;border:1px solid var(--line);
+  border-radius:7px;background:var(--raised);color:var(--ink);font:12.5px/1.5 ui-monospace,Menlo,monospace;
+  overflow-wrap:anywhere;resize:vertical}
+#move input:focus,#move textarea:focus{border-color:var(--accent);background:var(--paper)}
+.move-acts{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}
+.said{font-size:12.5px;color:var(--good)}
 .why-head{margin:0 0 2px;font:600 20px/1.25 "Iowan Old Style",Georgia,serif;padding-right:30px}
 .why-sub{margin:0 0 14px;font-size:13px;color:var(--muted)}
 .why-block{margin:18px 0 0}

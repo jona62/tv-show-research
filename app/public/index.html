@@ -114,7 +114,10 @@
   <section id="shows" class="panel" role="tabpanel" aria-labelledby="tab-shows" tabindex="0" hidden>
     <div class="head">
       <h1>Your shows</h1>
-      <button id="clear-all" class="ghost" type="button">Clear</button>
+      <div class="head-acts">
+        <button id="open-move" class="ghost" type="button">Move to another device</button>
+        <button id="clear-all" class="ghost" type="button">Clear</button>
+      </div>
     </div>
     <p id="shows-meta" class="hint"></p>
     <div id="list" class="list"></div>
@@ -125,8 +128,8 @@
 <footer>
   <p><button id="open-about" class="link" type="button">How this works</button></p>
   <p>Data from <a href="https://www.tvmaze.com/">TVmaze</a> · <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> · <span class="nb">snapshot 2026-09-07</span></p>
-  <a class="club" href="https://512kb.club/" aria-label="512KB Club, green team: this page loads 59.9 KB of uncompressed resources">
-    <span>512KB CLUB</span><span>59.9 KB</span>
+  <a class="club" href="https://512kb.club/" aria-label="512KB Club, green team: this page loads 72.0 KB of uncompressed resources">
+    <span>512KB CLUB</span><span>72.0 KB</span>
   </a>
 </footer>
 
@@ -181,6 +184,31 @@
     <input id="avoid" type="range" min="0" max="1" step="0.05" value="0.35">
   </label>
   <button id="reset" class="ghost" type="button">Reset to defaults</button>
+</div></dialog>
+
+<dialog id="move"><div class="sheet">
+  <button class="icon close" type="button" data-close aria-label="Close">✕</button>
+  <h2 class="sheet-h">Move to another device</h2>
+  <p id="move-count" class="hint"></p>
+  <label class="field" for="move-link">Open this on the other device
+    <input id="move-link" type="text" readonly spellcheck="false">
+  </label>
+  <div class="move-acts">
+    <button id="copy-link" class="ghost" type="button">Copy link</button>
+    <button id="copy-code" class="ghost" type="button">Copy code only</button>
+    <span id="copy-said" class="said" role="status" aria-live="polite"></span>
+  </div>
+  <p class="hint">The list rides in the part of the address after the #, which browsers never send anywhere. Nothing about you reaches a server, here or there.</p>
+
+  <h3 class="move-h">Bring a list in</h3>
+  <label class="field" for="move-paste">Paste a link or code from your other device
+    <textarea id="move-paste" rows="3" spellcheck="false" autocomplete="off"></textarea>
+  </label>
+  <p id="move-status" class="hint" role="status" aria-live="polite"></p>
+  <div class="move-acts">
+    <button id="do-merge" class="ghost" type="button">Add to my list</button>
+    <button id="do-replace" class="ghost" type="button">Replace my list</button>
+  </div>
 </div></dialog>
 
 <dialog id="about"><div class="sheet">

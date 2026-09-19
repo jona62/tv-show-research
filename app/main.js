@@ -1,4 +1,5 @@
 import { fitRows, chooseSpokes, drawFit, short } from './fit.js';
+import { encode, decode, LIMITS } from './transfer.js';
 
 const boot = JSON.parse(document.getElementById('boot').textContent);
 const $ = id => document.getElementById(id);
@@ -570,6 +571,115 @@ $('clear-all').addEventListener('click', () => {
   save(); renderList(); renderPicks(); run(0);
 });
 
+/* ------------------------------------------------------- moving devices */
+function moveLink() { return `${location.origin}/#t=${encode(state)}`; }
+
+function openMove() {
+  const code = state.profile.length || state.saved.length ? moveLink() : '';
+  $('move-link').value = code;
+  $('move-count').textContent = code
+    ? `${state.profile.length} rated and ${state.saved.length} saved, packed into ${code.length} characters.`
+    : 'Nothing to move yet. Rate or save a show first.';
+  for (const id of ['copy-link', 'copy-code']) $(id).disabled = !code;
+  $('copy-said').textContent = '';
+  $('move-status').textContent = '';
+  $('move-paste').value = '';
+  $('move').showModal();
+}
+$('open-move').addEventListener('click', openMove);
+
+async function copy(text, said) {
+  try {
+    await navigator.clipboard.writeText(text);
+    $('copy-said').textContent = said;
+  } catch {
+    $('move-link').select();
+    $('copy-said').textContent = 'Copy it by hand: the link is selected.';
+  }
+  setTimeout(() => { $('copy-said').textContent = ''; }, 4000);
+}
+$('copy-link').addEventListener('click', () => copy(moveLink(), 'Link copied.'));
+$('copy-code').addEventListener('click', () => copy(encode(state), 'Code copied.'));
+
+// A pasted link or a bare code both carry the same payload.
+const codeFrom = text => (text.trim().split('#t=').pop() || '').trim();
+
+async function bringIn(replace) {
+  const raw = codeFrom($('move-paste').value);
+  if (!raw) { $('move-status').textContent = 'Paste the link or code first.'; return; }
+  $('move-status').textContent = 'Reading it\u2026';
+  try {
+    await apply(decode(raw), replace);
+    $('move').close();
+    show('next');
+  } catch (e) {
+    $('move-status').textContent = e.message || 'That code could not be read.';
+  }
+}
+$('do-merge').addEventListener('click', () => bringIn(false));
+$('do-replace').addEventListener('click', () => bringIn(true));
+
+// Titles are not in the code, so the catalog fills them back in on arrival.
+async function apply(incoming, replace) {
+  const ids = [...incoming.profile.map(s => s.id), ...incoming.saved.map(s => s.id)];
+  const res = await fetch('/api/shows', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error || 'Could not look those shows up.');
+  const known = new Map(body.shows.map(s => [s.id, s]));
+  const rated = incoming.profile.filter(s => known.has(s.id))
+    .map(s => ({ ...known.get(s.id), weight: s.weight }));
+  const kept = incoming.saved.filter(s => known.has(s.id)).map(s => known.get(s.id));
+  if (!rated.length && !kept.length) throw new Error('None of those shows are in this catalog.');
+
+  if (replace) {
+    state = { profile: rated, saved: kept, settings: { ...DEFAULTS, ...incoming.settings } };
+  } else {
+    const mine = new Set(state.profile.map(s => s.id));
+    // Your own ratings win, so merging twice never rewrites what you decided here.
+    state.profile = [...state.profile, ...rated.filter(s => !mine.has(s.id))].slice(0, LIMITS.rated);
+    const held = new Set([...state.profile.map(s => s.id), ...state.saved.map(s => s.id)]);
+    state.saved = [...state.saved, ...kept.filter(s => !held.has(s.id))].slice(0, LIMITS.saved);
+  }
+  save(); renderList(); renderSaved(); renderPicks(); syncTune(); run(0);
+  const dropped = ids.length - known.size;
+  note(`Brought in ${rated.length} rated and ${kept.length} saved`
+    + `${dropped ? `, and skipped ${dropped} no longer in the catalog` : ''}.`);
+}
+
+// A shared link lands here. Pasting one while the app is already open changes the
+// fragment without reloading, so the same read runs on hashchange too.
+window.addEventListener('hashchange', () => readLink());
+
+async function readLink() {
+  const raw = location.hash.startsWith('#t=') ? location.hash.slice(3) : '';
+  if (!raw) return;
+  history.replaceState(null, '', location.pathname);
+  let incoming;
+  try {
+    incoming = decode(raw);
+  } catch (e) {
+    note(e.message || 'That shared link could not be read.', true);
+    return;
+  }
+  if (!state.profile.length && !state.saved.length) {
+    try {
+      await apply(incoming, true);
+    } catch (e) {
+      $('move-status').textContent = e.message || 'That shared link could not be read.';
+      $('move').showModal();
+    }
+    return;
+  }
+  $('move-paste').value = raw;
+  $('move-status').textContent = `This link holds ${incoming.profile.length} rated and `
+    + `${incoming.saved.length} saved. You already have a list here, so choose what to do with it.`;
+  $('move-link').value = moveLink();
+  $('move-count').textContent = `${state.profile.length} rated and ${state.saved.length} saved on this device.`;
+  $('move').showModal();
+}
+
 /* ---------------------------------------------------------------- tune */
 // Format is a fixed grouping of the catalogue's 11 television types; the rest are
 // filled from the snapshot.
@@ -622,3 +732,4 @@ renderSaved();
 syncTune();
 show('next');
 run(0);
+readLink();

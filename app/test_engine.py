@@ -96,6 +96,14 @@ for label, body in [
     except ValueError:
         check(f'rejects {label}', True)
 
+# 8b. Id resolution, which an imported transfer code relies on.
+cards = app.cards([13417, 169, 999_999_999, 527])
+check('cards resolve ids in order', [c['id'] for c in cards] == [13417, 169, 527])
+check('cards drop ids the catalog no longer has', len(cards) == 3)
+check('cards carry what a list row shows',
+      all({'name', 'year', 'channel', 'known'} <= set(c) for c in cards))
+check('cards of nothing is nothing', app.cards([]) == [])
+
 # 9a. Format groups are television formats, and each one narrows the pool.
 for group, expect in [('scripted', 'Scripted'), ('animation', 'Animation'), ('documentary', 'Documentary')]:
     picks = app.calculate({'profile': PROFILE, 'settings': {'type': group}})['picks']
