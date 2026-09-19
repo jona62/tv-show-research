@@ -48,7 +48,17 @@ a shared link keeps the same promise as the rest of the app: nothing about you
 reaches us. Opening the link on a device with no list imports it; on a device
 that already has one it asks whether to add or replace. Adding keeps your own
 ratings where the two lists disagree, so merging twice changes nothing. A bare
-code can be pasted instead, for when a messaging app mangles long links.
+code can be pasted instead, for when a messaging app mangles long links, and a
+QR code sits above it so a phone can pick the list up by camera with no copying
+at all.
+
+`qr.js` is a byte-mode encoder at error-correction level M, written here because
+the page loads no third-party script. Supporting one correction level keeps the
+block table to forty rows and the whole encoder near 11 KB. It was verified by
+generating all forty versions at three payload sizes each and reading every one
+back with ZBar; `app/qr-golden.json` records four of those matrices so a
+regression shows up as a byte difference. Regenerate the fixtures only after
+re-checking with a real scanner.
 
 ## Run it
 
@@ -65,13 +75,16 @@ crosses 512 KB.
 ```sh
 .venv/bin/python app/test_engine.py
 node app/test_transfer.mjs
+node app/test_qr.mjs
 ```
 
 The first verifies the app engine ranks identically to the research recommender under
 matched settings, that rated shows never come back as picks, that bad input is
 rejected, and that search and plot terms behave. The second round-trips transfer
 codes, including a full 60-plus-200 list, and checks that damaged, truncated and
-wrong-version codes are refused rather than half-applied.
+wrong-version codes are refused rather than half-applied. The third holds the QR
+encoder to its recorded matrices, its version boundaries, and the structure a
+scanner depends on.
 
 ## Deploy
 

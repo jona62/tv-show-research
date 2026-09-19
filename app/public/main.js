@@ -1,5 +1,6 @@
 import { fitRows, chooseSpokes, drawFit, short } from './fit.js';
 import { encode, decode, LIMITS } from './transfer.js';
+import { matrix, svgPath } from './qr.js';
 
 const boot = JSON.parse(document.getElementById('boot').textContent);
 const $ = id => document.getElementById(id);
@@ -574,8 +575,33 @@ $('clear-all').addEventListener('click', () => {
 /* ------------------------------------------------------- moving devices */
 function moveLink() { return `${location.origin}/#t=${encode(state)}`; }
 
+// The QR always carries dark modules on white, whatever the page theme, because a
+// camera needs the contrast the spec assumes.
+function drawCode(link) {
+  const svg = $('qr');
+  svg.replaceChildren();
+  const grid = link ? matrix(link) : null;
+  $('qr-wrap').hidden = !grid;
+  if (!grid) return;
+  const { path, size } = svgPath(grid);
+  svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
+  const shape = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  shape.setAttribute('d', path);
+  shape.setAttribute('fill', '#16181d');
+  const ground = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  ground.setAttribute('width', size);
+  ground.setAttribute('height', size);
+  ground.setAttribute('fill', '#fff');
+  svg.append(ground, shape);
+  const version = (grid.length - 17) / 4;
+  $('qr-note').textContent = version > 20
+    ? 'Point a camera at this. A list this long makes a dense code, so fill the screen with it or send the link instead.'
+    : 'Point the other phone\u2019s camera at this.';
+}
+
 function openMove() {
   const code = state.profile.length || state.saved.length ? moveLink() : '';
+  drawCode(code);
   $('move-link').value = code;
   $('move-count').textContent = code
     ? `${state.profile.length} rated and ${state.saved.length} saved, packed into ${code.length} characters.`
