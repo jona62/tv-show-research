@@ -1,4 +1,5 @@
-// The "how it relates" chart: your weighted taste profile against one pick.
+// The "how it relates" chart: your weighted taste profile, one pick, and
+// optionally one show from your own list, on the same spokes.
 const NS = 'http://www.w3.org/2000/svg';
 const node = (tag, attrs = {}) => {
   const el = document.createElementNS(NS, tag);
@@ -7,8 +8,17 @@ const node = (tag, attrs = {}) => {
 };
 const short = name => name.split(' / ')[0];
 
-// Weighted share of your liked shows carrying each signal, next to the pick's own signals.
-export function fitRows(liked, pick, kind, themes, genres) {
+// `vs` draws a hair inside `them` so two shows with identical signals do not
+// hide each other. Both are presence-only, so the offset changes no reading.
+export const SERIES = [
+  { key: 'you', cls: 'shape-you', label: 'Your taste', scale: 1 },
+  { key: 'vs', cls: 'shape-vs', label: 'Your show', scale: .93 },
+  { key: 'them', cls: 'shape-pick', label: 'Pick', scale: 1 },
+];
+
+// Weighted share of your liked shows carrying each signal, beside what the pick
+// records and, when chosen, what one show from your list records.
+export function fitRows(liked, pick, other, kind, themes, genres) {
   const families = kind === 'both' ? ['themes', 'genres'] : [kind];
   const rows = [];
   for (const group of families) {
@@ -20,20 +30,25 @@ export function fitRows(liked, pick, kind, themes, genres) {
         name, group,
         you: total ? Math.round(hit / total * 100) : 0,
         them: pick && pick[group].includes(name) ? 100 : 0,
+        vs: other ? (other[group].includes(name) ? 100 : 0) : null,
       });
     }
   }
   return rows;
 }
 
-// Eight spokes that actually say something: shared ground first, then each side's strongest.
+// Spokes that say something: shared ground first, then whatever any series records
+// strongly. One spoke per distinct label, since a theme and a genre can both read "Crime".
 export function chooseSpokes(rows, count = 8) {
-  const rank = r => (r.them && r.you >= 25 ? 400 : 0) + (r.them ? 200 : 0) + r.you;
-  const ordered = [...rows].filter(r => r.you || r.them).sort((a, b) => rank(b) - rank(a) || a.name.localeCompare(b.name));
+  const rank = r => (r.them && r.you >= 25 ? 400 : 0) + (r.them ? 200 : 0)
+    + (r.vs === 100 ? 150 : 0) + r.you;
+  const ordered = [...rows]
+    .filter(r => r.you || r.them || r.vs)
+    .sort((a, b) => rank(b) - rank(a) || a.name.localeCompare(b.name));
   const seen = new Set(), spokes = [];
   for (const row of ordered) {
     const label = short(row.name).toLowerCase();
-    if (seen.has(label)) continue;   // a theme and a genre can share a short name
+    if (seen.has(label)) continue;
     seen.add(label);
     spokes.push(row);
     if (spokes.length === count) break;
@@ -41,13 +56,15 @@ export function chooseSpokes(rows, count = 8) {
   return spokes;
 }
 
-export function drawFit(svg, frame, keyList, spokes) {
+export function drawFit(svg, frame, keyList, spokes, names) {
   const w = frame.clientWidth;
   if (!w || spokes.length < 3) { svg.replaceChildren(); keyList.replaceChildren(); return; }
   const tight = w < 520;
-  const h = tight ? 300 : 380;
+  // More spokes need more room for their labels, and more height to stay readable.
+  const h = tight ? (spokes.length > 10 ? 340 : 300) : (spokes.length > 10 ? 430 : 380);
   const cx = w / 2, cy = h / 2;
-  const r = tight ? Math.min(w / 2 - 30, 112) : 140;
+  const r = tight ? Math.min(w / 2 - 30, h / 2 - 34) : Math.min(140, h / 2 - 48);
+  const active = SERIES.filter(s => spokes.some(row => row[s.key] !== null));
   svg.replaceChildren();
   svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
   svg.setAttribute('height', h);
@@ -64,14 +81,14 @@ export function drawFit(svg, frame, keyList, spokes) {
     svg.append(node('line', { x1: cx, y1: cy, x2: x, y2: y, class: 'radar-spoke' }));
   });
 
-  for (const [key, cls] of [['you', 'shape-you'], ['them', 'shape-pick']]) {
+  for (const s of active) {
     svg.append(node('polygon', {
-      points: spokes.map((s, i) => at(i, s[key]).join(',')).join(' '),
-      class: `shape ${cls}`,
+      points: spokes.map((row, i) => at(i, row[s.key] * s.scale).join(',')).join(' '),
+      class: `shape ${s.cls}`,
     }));
-    spokes.forEach((s, i) => {
-      const [x, y] = at(i, s[key]);
-      svg.append(node('circle', { cx: x, cy: y, r: 3.2, class: `dot ${cls}` }));
+    spokes.forEach((row, i) => {
+      const [x, y] = at(i, row[s.key] * s.scale);
+      svg.append(node('circle', { cx: x, cy: y, r: 3.2, class: `dot ${s.cls}` }));
     });
   }
 
@@ -105,7 +122,8 @@ export function drawFit(svg, frame, keyList, spokes) {
   });
 
   const caption = node('title');
-  caption.textContent = spokes.map(s => `${short(s.name)}: you ${s.you}%, pick ${s.them ? 'yes' : 'no'}`).join('. ');
+  caption.textContent = spokes.map(s => `${short(s.name)}: `
+    + active.map(a => `${names[a.key]} ${a.key === 'you' ? s.you + '%' : s[a.key] ? 'yes' : 'no'}`).join(', ')).join('. ');
   svg.prepend(caption);
 }
 

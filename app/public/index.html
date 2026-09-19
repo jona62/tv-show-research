@@ -63,22 +63,42 @@
 
     <h2>What your shows have in common</h2>
     <div id="signals" class="signals"></div>
+    <button id="more-signals" class="link" type="button" hidden></button>
 
     <h2>How a pick fits</h2>
-    <div class="row">
-      <label for="fit-pick" class="sr">Compare a recommendation</label>
+    <div class="row pickrow">
+      <label class="sr" for="fit-pick">Recommendation to examine</label>
       <select id="fit-pick"></select>
-      <label for="fit-kind" class="sr">Dimensions</label>
-      <select id="fit-kind">
+      <span id="fit-score" class="badge"></span>
+    </div>
+    <div class="row fields">
+      <label class="field" for="fit-vs">Also plot<select id="fit-vs"></select></label>
+      <label class="field" for="fit-kind">Dimensions<select id="fit-kind">
         <option value="both">Themes &amp; genres</option>
-        <option value="themes">Themes</option>
-        <option value="genres">Genres</option>
-      </select>
+        <option value="themes">Themes only</option>
+        <option value="genres">Genres only</option>
+      </select></label>
+      <label class="field" for="fit-count">Spokes<select id="fit-count">
+        <option value="6">6</option>
+        <option value="8" selected>8</option>
+        <option value="10">10</option>
+        <option value="12">12</option>
+        <option value="16">16</option>
+      </select></label>
     </div>
     <div id="fit-frame" class="frame"><svg id="fit" role="img" aria-label="Your taste compared with a recommendation"></svg></div>
     <ol id="fit-key" class="key"></ol>
-    <div class="legend"><span class="you"><i></i>Your taste</span><span class="pick"><i></i><span id="fit-name">Pick</span></span></div>
+    <div class="legend">
+      <span class="you"><i></i>Your taste</span>
+      <span class="pick"><i></i><span id="fit-name">Pick</span></span>
+      <span class="vs" id="fit-vs-legend" hidden><i></i><span id="fit-vs-name"></span></span>
+    </div>
     <p id="fit-note" class="hint"></p>
+
+    <h2>How it relates to each of your shows</h2>
+    <p id="relate-note" class="hint"></p>
+    <div id="relate" class="relate"></div>
+    <button id="more-relate" class="link" type="button" hidden></button>
   </section>
 
   <section id="shows" class="panel" role="tabpanel" aria-labelledby="tab-shows" tabindex="0" hidden>
@@ -95,8 +115,8 @@
 <footer>
   <p><button id="open-about" class="link" type="button">How this works</button></p>
   <p>Data from <a href="https://www.tvmaze.com/">TVmaze</a> · <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> · <span class="nb">snapshot 2026-09-07</span></p>
-  <a class="club" href="https://512kb.club/" aria-label="512KB Club, green team: this page loads 49.0 KB of uncompressed resources">
-    <span>512KB CLUB</span><span>49.0 KB</span>
+  <a class="club" href="https://512kb.club/" aria-label="512KB Club, green team: this page loads 56.2 KB of uncompressed resources">
+    <span>512KB CLUB</span><span>56.2 KB</span>
   </a>
 </footer>
 
@@ -119,6 +139,7 @@
   </fieldset>
   <label class="check"><input id="quality" type="checkbox" checked> Well-rated shows only</label>
   <p class="hint">Turn off to include unrated and obscure titles.</p>
+  <p class="hint">Everything here is television. The catalogue holds no films, so format means the kind of programme.</p>
   <div class="grid">
     <label for="year">From year
       <select id="year">
@@ -130,7 +151,13 @@
       </select>
     </label>
     <label for="lang">Language<select id="lang"></select></label>
-    <label for="kind">Format<select id="kind"></select></label>
+    <label for="kind">Format<select id="kind">
+      <option value="all">Every format</option>
+      <option value="scripted">Scripted</option>
+      <option value="animation">Animation</option>
+      <option value="documentary">Documentary</option>
+      <option value="unscripted">Reality and unscripted</option>
+    </select></label>
     <label for="stat">Status<select id="stat"></select></label>
   </div>
   <label id="avoid-row" class="slider" hidden>Avoid what I disliked <output id="avoid-out">35%</output>
@@ -144,7 +171,8 @@
   <h2 class="sheet-h">How this works</h2>
   <p>Every pick is scored against the shows you rated: plot wording, theme signals read from summaries, and genre tags. Your closest match pulls harder than the rest, and anything close to what you disliked is pushed down.</p>
   <p>A match score is similarity, not a promise you’ll enjoy it. Themes come from English summary text, so titles with thin descriptions match on genre alone.</p>
-  <p>89,594 shows in this snapshot. Your list stays in this browser. No account, nothing stored on a server.</p>
+  <p>89,594 television series in this snapshot, from scripted drama to animation, documentary and reality. There are no films: the catalogue does not carry them.</p>
+  <p> Your list stays in this browser. No account, nothing stored on a server.</p>
 </div></dialog>
 
 <script type="application/json" id="boot">{"catalog_count":89594,"date":"2026-09-07","meta":{"language":["Afrikaans","Albanian","Arabic","Armenian","Azerbaijani","Basque","Belarusian","Bengali","Bosnian","Bulgarian","Burmese","Catalan","Central Khmer","Chechen","Chinese","Croatian","Czech","Danish","Divehi","Dutch","English","Estonian","Fijian","Finnish","French","Galician","Georgian","German","Greek","Gujarati","Hebrew","Hindi","Hungarian","Icelandic","Indonesian","Irish","Italian","Japanese","Javanese","Kannada","Kazakh","Kongo","Korean","Kyrgyz","Lao","Latin","Latvian","Lithuanian","Luxembourgish","Malagasy","Malay","Malayalam","Marathi","Mongolian","Norwegian","Panjabi","Pashto","Persian","Polish","Portuguese","Romanian","Russian","Scottish Gaelic","Serbian","Sinhalese","Slovak","Slovenian","Spanish","Swahili","Swedish","Tagalog","Tamil","Telugu","Thai","Turkish","Ukrainian","Urdu","Uzbek","Vietnamese","Welsh","Wolof","Yoruba","Zulu"],"type":["Animation","Award Show","Documentary","Game Show","News","Panel Show","Reality","Scripted","Sports","Talk Show","Variety"],"status":["Ended","In Development","Running","To Be Determined"]},"themes":["Crime / illicit enterprise","Money / class","Family ties","Power / ambition","Deception / secrets","Danger / survival","Adventure / quest","Law / investigation","Friendship / youth","Romance","Supernatural / fantasy","Humor","Science / technology","Space / other worlds","Medicine / health","War / military","History / period setting","Work / business","School / education","Identity / self-discovery","Revenge / redemption","Psychology / mental health","Competition / achievement","Sport / athletics","Music / performance","Food / cooking","Nature / wildlife","Travel / cultures","Relationships / dating","Home / design","Belief / spirituality","Mystery / puzzles"],"genres":["Action","Adult","Adventure","Anime","Children","Comedy","Crime","DIY","Drama","Espionage","Family","Fantasy","Food","History","Horror","Legal","Medical","Music","Mystery","Nature","Romance","Science-Fiction","Sports","Supernatural","Thriller","Travel","War","Western"],"picks":[{"id":169,"name":"Breaking Bad","year":2008,"channel":"AMC","rating":9.2,"language":"English","type":"Scripted"},{"id":82,"name":"Game of Thrones","year":2011,"channel":"HBO","rating":8.9,"language":"English","type":"Scripted"},{"id":526,"name":"The Office","year":2005,"channel":"NBC","rating":8.5,"language":"English","type":"Scripted"},{"id":2993,"name":"Stranger Things","year":2016,"channel":"Netflix","rating":8.4,"language":"English","type":"Scripted"},{"id":44933,"name":"Severance","year":2022,"channel":"Apple TV","rating":7.6,"language":"English","type":"Scripted"},{"id":23470,"name":"Succession","year":2018,"channel":"HBO","rating":7.5,"language":"English","type":"Scripted"},{"id":431,"name":"Friends","year":1994,"channel":"NBC","rating":8.5,"language":"English","type":"Scripted"},{"id":44458,"name":"Ted Lasso","year":2020,"channel":"Apple TV","rating":8.1,"language":"English","type":"Scripted"},{"id":54198,"name":"The Bear","year":2022,"channel":"Hulu","rating":7.4,"language":"English","type":"Scripted"},{"id":919,"name":"Attack on Titan","year":2013,"channel":"NHK","rating":8.9,"language":"Japanese","type":"Animation"},{"id":43687,"name":"Squid Game","year":2021,"channel":"Netflix","rating":7.9,"language":"Korean","type":"Scripted"},{"id":46562,"name":"The Last of Us","year":2023,"channel":"HBO","rating":7.9,"language":"English","type":"Scripted"},{"id":269,"name":"Peaky Blinders","year":2013,"channel":"BBC One","rating":8.5,"language":"English","type":"Scripted"},{"id":16149,"name":"Fleabag","year":2016,"channel":"BBC Three","rating":8.1,"language":"English","type":"Scripted"},{"id":305,"name":"Black Mirror","year":2011,"channel":"Netflix","rating":8.4,"language":"English","type":"Scripted"},{"id":216,"name":"Rick and Morty","year":2013,"channel":"Adult Swim","rating":8.7,"language":"English","type":"Animation"}]}</script>

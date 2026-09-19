@@ -11,6 +11,7 @@ const FOCUS = {
   themes: { text: 15, themes: 70, genres: 15 },
   genres: { text: 15, themes: 20, genres: 65 },
 };
+const FORMATS = ['all', 'scripted', 'animation', 'documentary', 'unscripted'];
 const DEFAULTS = {
   text: 40, themes: 35, genres: 25, closest: .3, dislike: .35,
   language: 'all', type: 'all', status: 'all', year_min: 1990, runtime_min: 0, rating_min: 6.5,
@@ -32,6 +33,7 @@ const meta = s => [s.year ?? 'Year unknown', s.channel, s.rating ? '★ ' + s.ra
 let state = { profile: [], settings: { ...DEFAULTS } };
 let data = null, tab = 'next', reqId = 0, reqAbort = null, timer = null;
 let searchId = 0, searchAbort = null, searchTimer = null, fitPick = null;
+let allSignals = false, allRelated = false;
 
 /* ------------------------------------------------------------- storage */
 try {
@@ -41,6 +43,8 @@ try {
       profile: saved.profile.filter(p => Number.isInteger(p.id) && RATINGS.some(([w]) => w === p.weight)).slice(0, 60),
       settings: { ...DEFAULTS, ...(saved.settings || {}) },
     };
+    // Format used to be a raw catalog type; anything the new grouping cannot show falls back.
+    if (!FORMATS.includes(state.settings.type)) state.settings.type = 'all';
   }
 } catch { /* first visit, or storage is off */ }
 
@@ -338,18 +342,52 @@ function renderTaste() {
   $('verdict').textContent = words.length
     ? `Your shows keep coming back to ${phrase}${genre ? `, mostly ${genre.name.toLowerCase()}` : ''}.`
     : 'Rate a few more shows and a pattern will show up here.';
-  $('context').textContent = data.context
-    .map(c => `${c.count} of ${c.of} ${c.label === 'format' ? '' : 'in '}${c.value}`.replace('  ', ' '))
-    .join(' · ');
+  const [tn, tt] = data.breadth.themes, [gn, gt] = data.breadth.genres;
+  $('context').textContent = [
+    ...data.context.map(c => `${c.count} of ${c.of} ${c.label === 'format' ? '' : 'in '}${c.value}`.replace('  ', ' ')),
+    `spanning ${tn} of ${tt} themes and ${gn} of ${gt} genres`,
+  ].join(' · ');
+  renderSignals();
 
+  const select = $('fit-pick');
+  select.replaceChildren();
+  for (const p of data.picks) {
+    const option = el('option', `${p.name}${p.year ? ` (${p.year})` : ''}`);
+    option.value = p.id;
+    select.append(option);
+  }
+  if (!data.picks.some(p => p.id === fitPick)) fitPick = data.picks[0]?.id ?? null;
+  if (fitPick) select.value = fitPick;
+
+  // "Also plot" lets you hold the pick against one show you already rated.
+  const against = $('fit-vs');
+  const previous = against.value;
+  against.replaceChildren();
+  const auto = el('option', 'Closest show in your list');
+  auto.value = 'closest';
+  const none = el('option', 'Nothing');
+  none.value = 'none';
+  against.append(auto, none);
+  for (const s of data.liked) {
+    const option = el('option', `${s.name}${s.year ? ` (${s.year})` : ''}`);
+    option.value = s.id;
+    against.append(option);
+  }
+  against.value = [...against.options].some(o => o.value === previous) ? previous : 'closest';
+
+  if (tab === 'taste') renderFit();
+}
+
+function renderSignals() {
   const holder = $('signals');
   holder.replaceChildren();
   const shown = new Set();
-  const top = data.features.filter(f => {
+  const unique = data.features.filter(f => {
     const label = short(f.name).toLowerCase();
     return shown.has(label) ? false : shown.add(label);
-  }).slice(0, 8);
-  for (const f of top) {
+  });
+  const rows = allSignals ? unique : unique.slice(0, 8);
+  for (const f of rows) {
     const row = el('div', '', 'sig');
     row.append(el('span', short(f.name), 'sig-name'),
       el('span', f.lift ? `${f.lift}× typical` : '', 'sig-lift'));
@@ -362,39 +400,83 @@ function renderTaste() {
     row.setAttribute('aria-label', `${short(f.name)}: in ${f.count} of your ${data.positive_count} liked shows${f.lift ? `, ${f.lift} times the catalog average` : ''}`);
     holder.append(row);
   }
-
-  const select = $('fit-pick');
-  select.replaceChildren();
-  for (const p of data.picks) {
-    const option = el('option', `${p.name}${p.year ? ` (${p.year})` : ''}`);
-    option.value = p.id;
-    select.append(option);
-  }
-  if (!data.picks.some(p => p.id === fitPick)) fitPick = data.picks[0]?.id ?? null;
-  if (fitPick) select.value = fitPick;
-  if (tab === 'taste') renderFit();
+  const more = $('more-signals');
+  more.hidden = unique.length <= 8;
+  more.textContent = allSignals ? 'Show the strongest 8' : `Show all ${unique.length} signals`;
+  more.setAttribute('aria-expanded', String(allSignals));
 }
+$('more-signals').addEventListener('click', () => { allSignals = !allSignals; renderSignals(); });
 
 function renderFit() {
   if (!data || !data.picks.length) return;
   const pick = data.picks.find(p => p.id === Number($('fit-pick').value)) || data.picks[0];
   fitPick = pick.id;
-  const rows = fitRows(data.liked, pick, $('fit-kind').value, boot.themes, boot.genres);
-  const spokes = chooseSpokes(rows);
-  drawFit($('fit'), $('fit-frame'), $('fit-key'), spokes);
+  $('fit-score').textContent = `${matchOf(pick)} match · rank ${pick.rank}`;
+
+  const choice = $('fit-vs').value;
+  const other = choice === 'none' ? null
+    : choice === 'closest' ? data.liked.find(s => s.id === pick.because_id)
+      : data.liked.find(s => s.id === Number(choice));
+
+  const rows = fitRows(data.liked, pick, other, $('fit-kind').value, boot.themes, boot.genres);
+  const spokes = chooseSpokes(rows, Number($('fit-count').value));
+  drawFit($('fit'), $('fit-frame'), $('fit-key'), spokes,
+    { you: 'your taste', them: pick.name, vs: other ? other.name : '' });
+
   $('fit-name').textContent = pick.name;
+  $('fit-vs-legend').hidden = !other;
+  $('fit-vs-name').textContent = other ? other.name : '';
+
   const names = list => list.map(s => short(s.name).toLowerCase()).join(', ');
   const strong = spokes.filter(s => s.them && s.you >= 45);
   const fresh = spokes.filter(s => s.them && s.you < 45);
   const absent = spokes.filter(s => !s.them && s.you >= 50);
+  const withOther = other ? spokes.filter(s => s.them && s.vs === 100) : [];
   $('fit-note').textContent = [
     strong.length ? `Familiar ground: ${names(strong)}.` : '',
     fresh.length ? `New for you: ${names(fresh)}.` : '',
     absent.length ? `Missing your usual ${names(absent)}.` : '',
+    other ? (withOther.length
+      ? `Shares ${names(withOther)} with ${other.name}.`
+      : `Shares no plotted signal with ${other.name}.`) : '',
   ].filter(Boolean).join(' ') || 'This pick matches on plot wording rather than on recorded themes or genres.';
+
+  renderRelate(pick);
 }
+
+// One bar per show you rated: how close the pick sits to each of them.
+function renderRelate(pick) {
+  const pairs = data.liked
+    .map((s, i) => ({ ...s, score: pick.links[i] }))
+    .sort((a, b) => b.score - a.score);
+  const top = pairs[0]?.score || 1;
+  $('relate-note').textContent = pairs.length > 1
+    ? `${pick.name} is closest to ${pairs[0].name} and furthest from ${pairs.at(-1).name}.`
+    : `${pick.name} against the one show you have rated.`;
+  const holder = $('relate');
+  holder.replaceChildren();
+  const rows = allRelated ? pairs : pairs.slice(0, 10);
+  for (const s of rows) {
+    const row = el('div', '', 'sig rel');
+    row.append(el('span', s.name, 'sig-name'), el('span', s.score.toFixed(0), 'sig-lift'));
+    const track = el('div', '', 'track');
+    const fill = el('i');
+    fill.style.setProperty('--w', Math.max(2, s.score / top * 100) + '%');
+    if (s.id === pick.because_id) fill.classList.add('lead');
+    track.append(fill);
+    row.append(track);
+    row.setAttribute('role', 'img');
+    row.setAttribute('aria-label', `${s.name}: similarity ${s.score.toFixed(0)} out of 100`);
+    holder.append(row);
+  }
+  const more = $('more-relate');
+  more.hidden = pairs.length <= 10;
+  more.textContent = allRelated ? 'Show the closest 10' : `Show all ${pairs.length} shows`;
+  more.setAttribute('aria-expanded', String(allRelated));
+}
+$('more-relate').addEventListener('click', () => { allRelated = !allRelated; renderFit(); });
 $('fit-pick').addEventListener('change', renderFit);
-$('fit-kind').addEventListener('change', renderFit);
+for (const id of ['fit-kind', 'fit-count', 'fit-vs']) $(id).addEventListener('change', renderFit);
 let fitWidth = 0;
 new ResizeObserver(() => {
   const w = $('fit-frame').clientWidth;
@@ -434,18 +516,22 @@ $('clear-all').addEventListener('click', () => {
 });
 
 /* ---------------------------------------------------------------- tune */
-for (const [id, key, values] of [['lang', 'language', boot.meta.language], ['kind', 'type', boot.meta.type], ['stat', 'status', boot.meta.status]]) {
+// Format is a fixed grouping of the catalogue's 11 television types; the rest are
+// filled from the snapshot.
+for (const [id, key, values, any] of [['lang', 'language', boot.meta.language, 'Any language'],
+                                      ['stat', 'status', boot.meta.status, 'Any status']]) {
   const select = $(id);
-  const labels = { language: 'Any language', type: 'Any format', status: 'Any status' };
-  const any = el('option', labels[key]);
-  any.value = 'all';
-  select.append(any);
+  const option = el('option', any);
+  option.value = 'all';
+  select.append(option);
   for (const value of values) {
-    const option = el('option', value);
-    option.value = value;
-    select.append(option);
+    const item = el('option', value);
+    item.value = value;
+    select.append(item);
   }
-  select.addEventListener('change', () => { state.settings[key] = select.value; save(); run(); });
+}
+for (const [id, key] of [['lang', 'language'], ['kind', 'type'], ['stat', 'status']]) {
+  $(id).addEventListener('change', () => { state.settings[key] = $(id).value; save(); run(); });
 }
 $('year').addEventListener('change', () => { state.settings.year_min = Number($('year').value); save(); run(); });
 $('quality').addEventListener('change', () => { state.settings.rating_min = $('quality').checked ? 6.5 : 0; save(); run(); });

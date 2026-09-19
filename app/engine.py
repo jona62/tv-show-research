@@ -19,6 +19,17 @@ RATINGS = (-1, 0, .35, .7, 1)
 MAX_LIST = 60
 TOP_PICKS = 24
 
+# TVmaze is a television catalogue: there are no films in it, so the only real
+# distinction is the kind of programme. These group the 11 raw types into the
+# four buckets worth filtering on.
+FORMAT_GROUPS = {
+    'scripted': ('Scripted',),
+    'animation': ('Animation',),
+    'documentary': ('Documentary',),
+    'unscripted': ('Reality', 'Variety', 'Talk Show', 'Game Show', 'Panel Show',
+                   'Award Show', 'Sports', 'News'),
+}
+
 DEFAULT_SETTINGS = {
     'text': 40, 'themes': 35, 'genres': 25,
     'closest': .3, 'dislike': .35,
@@ -156,7 +167,8 @@ class Engine:
             raise ValueError('Give story, themes, or genres a weight above zero.')
         for key in ('language', 'type', 'status'):
             value = settings.get(key, result[key])
-            if not isinstance(value, str) or value not in ['all', 'unknown'] + self.metadata[key]:
+            allowed = ['all', 'unknown'] + self.metadata[key] + (list(FORMAT_GROUPS) if key == 'type' else [])
+            if not isinstance(value, str) or value not in allowed:
                 raise ValueError(f'Choose a valid {key} filter.')
             result[key] = value
         return parsed, result
@@ -166,10 +178,12 @@ class Engine:
     def text_items(self, index):
         return ((self.terms[k], self.values[k]) for k in range(self.row_ptr[index], self.row_ptr[index + 1]))
 
-    def eligible(self, show, settings):
+    def eligible(self, show, settings, formats=None):
         if not show['recommendable'] or show['year'] < settings['year_min']:
             return False
-        for key in ('language', 'type', 'status'):
+        if formats is not None and (show['type'] or 'unknown') not in formats:
+            return False
+        for key in ('language', 'status'):
             value = settings[key]
             if value != 'all' and (show[key] or 'unknown') != value:
                 return False
@@ -207,12 +221,16 @@ class Engine:
             'date': self.date, 'catalog_count': self.n, 'candidate_count': 0,
             'settings': settings, 'positive_count': len(positives), 'negative_count': len(negatives),
             'picks': [], 'liked': [], 'features': [], 'context': [], 'message': '', 'warning': '',
+            'breadth': {'themes': [0, len(self.themes)], 'genres': [0, len(self.genres)]},
         }
         if not positives:
             base['message'] = 'Rate one show as liked or loved to get recommendations.'
             return base
 
-        candidates = [i for i, s in enumerate(self.shows) if s['id'] not in watched_ids and self.eligible(s, settings)]
+        kind = settings['type']
+        formats = None if kind == 'all' else set(FORMAT_GROUPS.get(kind, (kind,)))
+        candidates = [i for i, s in enumerate(self.shows)
+                      if s['id'] not in watched_ids and self.eligible(s, settings, formats)]
         base['candidate_count'] = len(candidates)
         if any(self.shows[self.by_id[p['id']]]['summary_words'] < 15 for p in positives):
             base['warning'] = 'Some of your shows have very little plot text, so their matches lean on genres alone.'
@@ -238,6 +256,7 @@ class Engine:
         ordered = sorted((i for i in candidates if scores[i] > 0), key=lambda i: (-scores[i], self.shows[i]['id']))
 
         liked_indices = [self.by_id[p['id']] for p in positives]
+        liked_order = [p['id'] for p in positives]
         liked_signals = {}
         for p in positives:
             index = self.by_id[p['id']]
@@ -264,6 +283,7 @@ class Engine:
                 'shared_genres': [g for g in genres if g in source_genres],
                 'keywords': self.plot_words(s),
                 'penalised': round(penalty * 100, 1) if penalty > 0 else 0,
+                'links': [round(affinities[pid][i] * 100, 1) for pid in liked_order],
             }
         base['picks'] = [pick(i, rank + 1) for rank, i in enumerate(ordered[:TOP_PICKS])]
 
@@ -287,6 +307,11 @@ class Engine:
                 'lift': round(count / len(positives) / prevalence, 1) if prevalence else None,
             })
         base['features'].sort(key=lambda f: (-f['count'], -(f['lift'] or 0), f['name']))
+
+        base['breadth'] = {
+            'themes': [len({t for s in base['liked'] for t in s['themes']}), len(self.themes)],
+            'genres': [len({g for s in base['liked'] for g in s['genres']}), len(self.genres)],
+        }
 
         # One plain line of context: where your shows come from and what form they take.
         for key, label in [('language', 'language'), ('type', 'format'), ('country', 'country')]:

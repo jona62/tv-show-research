@@ -63,22 +63,42 @@
 
     <h2>What your shows have in common</h2>
     <div id="signals" class="signals"></div>
+    <button id="more-signals" class="link" type="button" hidden></button>
 
     <h2>How a pick fits</h2>
-    <div class="row">
-      <label for="fit-pick" class="sr">Compare a recommendation</label>
+    <div class="row pickrow">
+      <label class="sr" for="fit-pick">Recommendation to examine</label>
       <select id="fit-pick"></select>
-      <label for="fit-kind" class="sr">Dimensions</label>
-      <select id="fit-kind">
+      <span id="fit-score" class="badge"></span>
+    </div>
+    <div class="row fields">
+      <label class="field" for="fit-vs">Also plot<select id="fit-vs"></select></label>
+      <label class="field" for="fit-kind">Dimensions<select id="fit-kind">
         <option value="both">Themes &amp; genres</option>
-        <option value="themes">Themes</option>
-        <option value="genres">Genres</option>
-      </select>
+        <option value="themes">Themes only</option>
+        <option value="genres">Genres only</option>
+      </select></label>
+      <label class="field" for="fit-count">Spokes<select id="fit-count">
+        <option value="6">6</option>
+        <option value="8" selected>8</option>
+        <option value="10">10</option>
+        <option value="12">12</option>
+        <option value="16">16</option>
+      </select></label>
     </div>
     <div id="fit-frame" class="frame"><svg id="fit" role="img" aria-label="Your taste compared with a recommendation"></svg></div>
     <ol id="fit-key" class="key"></ol>
-    <div class="legend"><span class="you"><i></i>Your taste</span><span class="pick"><i></i><span id="fit-name">Pick</span></span></div>
+    <div class="legend">
+      <span class="you"><i></i>Your taste</span>
+      <span class="pick"><i></i><span id="fit-name">Pick</span></span>
+      <span class="vs" id="fit-vs-legend" hidden><i></i><span id="fit-vs-name"></span></span>
+    </div>
     <p id="fit-note" class="hint"></p>
+
+    <h2>How it relates to each of your shows</h2>
+    <p id="relate-note" class="hint"></p>
+    <div id="relate" class="relate"></div>
+    <button id="more-relate" class="link" type="button" hidden></button>
   </section>
 
   <section id="shows" class="panel" role="tabpanel" aria-labelledby="tab-shows" tabindex="0" hidden>
@@ -119,6 +139,7 @@
   </fieldset>
   <label class="check"><input id="quality" type="checkbox" checked> Well-rated shows only</label>
   <p class="hint">Turn off to include unrated and obscure titles.</p>
+  <p class="hint">Everything here is television. The catalogue holds no films, so format means the kind of programme.</p>
   <div class="grid">
     <label for="year">From year
       <select id="year">
@@ -130,7 +151,13 @@
       </select>
     </label>
     <label for="lang">Language<select id="lang"></select></label>
-    <label for="kind">Format<select id="kind"></select></label>
+    <label for="kind">Format<select id="kind">
+      <option value="all">Every format</option>
+      <option value="scripted">Scripted</option>
+      <option value="animation">Animation</option>
+      <option value="documentary">Documentary</option>
+      <option value="unscripted">Reality and unscripted</option>
+    </select></label>
     <label for="stat">Status<select id="stat"></select></label>
   </div>
   <label id="avoid-row" class="slider" hidden>Avoid what I disliked <output id="avoid-out">35%</output>
@@ -144,7 +171,8 @@
   <h2 class="sheet-h">How this works</h2>
   <p>Every pick is scored against the shows you rated: plot wording, theme signals read from summaries, and genre tags. Your closest match pulls harder than the rest, and anything close to what you disliked is pushed down.</p>
   <p>A match score is similarity, not a promise you’ll enjoy it. Themes come from English summary text, so titles with thin descriptions match on genre alone.</p>
-  <p>__CATALOG_COUNT__ shows in this snapshot. Your list stays in this browser. No account, nothing stored on a server.</p>
+  <p>__CATALOG_COUNT__ television series in this snapshot, from scripted drama to animation, documentary and reality. There are no films: the catalogue does not carry them.</p>
+  <p> Your list stays in this browser. No account, nothing stored on a server.</p>
 </div></dialog>
 
 <script type="application/json" id="boot">__BOOTSTRAP__</script>

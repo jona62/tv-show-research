@@ -9,14 +9,23 @@ Three screens and nothing else:
 - **Watch next** shows ranked picks as cards. Each one carries a match score,
   the liked show it sits closest to, the signals they share, and *Why this?* for
   the full reasoning. *Seen it* and *Not for me* feed straight back into the ranking.
-- **Your taste** states the pattern in a sentence, lists the signals your shows
-  keep repeating with how far above catalog average each one runs, and draws one
-  pick against your weighted profile so the overlap and the gaps are visible.
+- **Your taste** states the pattern in a sentence, says how much of the
+  catalogue's vocabulary your list covers, and lists every signal your shows
+  repeat with how far above catalogue average each one runs. Below that, a radar
+  holds a pick against your weighted profile and, optionally, against any single
+  show you rated, on 6 to 16 spokes you choose from themes, genres or both. A bar
+  per rated show then shows how close the pick sits to each of them individually.
 - **Your shows** is the rated list, five ratings per row.
 
 Light by default, dark on request, one layout that works at 375px and on a desktop.
 First load is under 50 KB of HTML, CSS and JS; the 512 KB ceiling is enforced by
 the build.
+
+## What is in the catalogue
+
+TVmaze indexes **television only**. There are no films, so the format filter
+groups the 11 raw types into scripted, animation, documentary, and reality and
+unscripted, rather than pretending a show-versus-film distinction exists.
 
 ## Run it
 
