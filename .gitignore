@@ -14,3 +14,6 @@ data/model-backup/
 output/site-qa/
 output/qa/
 *.log
+
+# app model files are hard-linked from site/model by app/build.py
+app/model/

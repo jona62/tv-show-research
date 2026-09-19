@@ -1,17 +1,28 @@
-# TV Taste Notes
+# TV Taste
 
-Explore 89,594 TV shows, build a watched list, and find recommendations with adjustable similarities and multidimensional radar charts.
+Two things over one frozen TVmaze snapshot of 89,594 shows.
 
-[![Deploy to Rigbox](https://rigbox.dev/deploy.svg)](https://rigbox.dev/deploy?repo=jona62%2Ftv-show-research&ref=main&path=rig.yaml)
+**[app/](app/) is Next Watch**, the web app: rate what you have watched, get
+ranked picks with the reason each one surfaced, and see your taste drawn against
+them. Three screens, light by default, under 50 KB on first load, works on a
+phone. [Read more](app/README.md).
 
-[Live demo](https://tv-taste-jlvf21do.rigbox.dev/) · [Research](output/research-report.md) · [Development & dataset updates](site/README.md)
+```sh
+python3 app/build.py && python3 app/server.py
+```
 
-Run locally with Python 3.10+ (no runtime dependencies):
+**[site/](site/) is the original research write-up** and its interactive
+recommender, kept as published. [Live](https://tv-taste-jlvf21do.rigbox.dev/) ·
+[Report](output/research-report.md) · [Notes](site/README.md).
 
 ```sh
 python3 site/server.py
 ```
 
-Open <http://localhost:8080>. The prebuilt model is included; watched lists stay in your browser. The deploy button forks the public repository and configures a Rigbox workspace.
+`scripts/` holds the pipeline that downloads the catalog, derives theme and genre
+features, and builds the shared model both apps read. Python 3.10+; neither app
+needs packages at runtime.
 
-Data: [TVmaze](https://www.tvmaze.com/) ([CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)). Theme signals are inferred from summaries; similarity is not a guarantee of enjoyment.
+Data from [TVmaze](https://www.tvmaze.com/),
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Similarity is
+not a guarantee of enjoyment.

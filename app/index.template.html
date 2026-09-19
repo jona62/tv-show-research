@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#ffffff">
+<meta name="description" content="Rate the shows you have watched and see what to watch next, what your taste is made of, and why each pick fits.">
+<title>Next Watch · find your next show</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/style.css">
+<script type="module" src="/main.js"></script>
+</head>
+<body>
+<a class="skip" href="#panel">Skip to content</a>
+
+<header class="top">
+  <div class="bar">
+    <a class="mark" href="/">Next&nbsp;Watch</a>
+    <div class="find">
+      <input id="q" type="search" placeholder="Add a show you've watched…" autocomplete="off" maxlength="100"
+             role="combobox" aria-expanded="false" aria-controls="hits" aria-label="Search TV shows to add">
+      <button id="clear-q" class="icon" type="button" aria-label="Clear search" hidden><span aria-hidden="true">✕</span></button>
+    </div>
+    <button id="theme" class="icon" type="button" aria-label="Switch to dark mode"><span aria-hidden="true">◐</span></button>
+  </div>
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <button data-tab="next" id="tab-next" role="tab" aria-controls="next" class="tab" type="button" aria-selected="true">Watch next</button>
+    <button data-tab="taste" id="tab-taste" role="tab" aria-controls="taste" class="tab" type="button" aria-selected="false">Your taste</button>
+    <button data-tab="shows" id="tab-shows" role="tab" aria-controls="shows" class="tab" type="button" aria-selected="false">Your shows <span id="tab-count" class="pill"></span></button>
+  </nav>
+  <div id="drop" class="drop" hidden>
+    <p id="hint" class="hint" role="status" aria-live="polite"></p>
+    <ul id="hits" class="hits" role="listbox" aria-label="Search results"></ul>
+  </div>
+</header>
+
+<main id="panel">
+
+  <section id="next" class="panel" role="tabpanel" aria-labelledby="tab-next" tabindex="0">
+    <div id="onboard" class="onboard" hidden>
+      <h1>What have you watched?</h1>
+      <p class="lede">Rate a few shows you loved. You'll get what to watch next, what your taste is made of, and why each pick fits.</p>
+      <p class="hint">Tap to add, or search above.</p>
+      <div id="picks" class="chips"></div>
+    </div>
+    <div id="next-body" hidden>
+      <div class="head">
+        <h1>Watch next</h1>
+        <button id="open-tune" class="ghost" type="button">Tune</button>
+      </div>
+      <p id="next-meta" class="hint" role="status" aria-live="polite"></p>
+      <p id="warn" class="warn" hidden></p>
+      <div id="cards" class="cards"></div>
+      <p id="none" class="warn" hidden></p>
+    </div>
+  </section>
+
+  <section id="taste" class="panel" role="tabpanel" aria-labelledby="tab-taste" tabindex="0" hidden>
+    <h1>Your taste</h1>
+    <p id="verdict" class="lede"></p>
+    <p id="context" class="hint"></p>
+
+    <h2>What your shows have in common</h2>
+    <div id="signals" class="signals"></div>
+
+    <h2>How a pick fits</h2>
+    <div class="row">
+      <label for="fit-pick" class="sr">Compare a recommendation</label>
+      <select id="fit-pick"></select>
+      <label for="fit-kind" class="sr">Dimensions</label>
+      <select id="fit-kind">
+        <option value="both">Themes &amp; genres</option>
+        <option value="themes">Themes</option>
+        <option value="genres">Genres</option>
+      </select>
+    </div>
+    <div id="fit-frame" class="frame"><svg id="fit" role="img" aria-label="Your taste compared with a recommendation"></svg></div>
+    <ol id="fit-key" class="key"></ol>
+    <div class="legend"><span class="you"><i></i>Your taste</span><span class="pick"><i></i><span id="fit-name">Pick</span></span></div>
+    <p id="fit-note" class="hint"></p>
+  </section>
+
+  <section id="shows" class="panel" role="tabpanel" aria-labelledby="tab-shows" tabindex="0" hidden>
+    <div class="head">
+      <h1>Your shows</h1>
+      <button id="clear-all" class="ghost" type="button">Clear</button>
+    </div>
+    <p id="shows-meta" class="hint"></p>
+    <div id="list" class="list"></div>
+  </section>
+
+</main>
+
+<footer>
+  <p><button id="open-about" class="link" type="button">How this works</button></p>
+  <p>Data from <a href="https://www.tvmaze.com/">TVmaze</a> · <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> · <span class="nb">snapshot __DATASET_DATE__</span></p>
+</footer>
+
+<dialog id="why"><div class="sheet">
+  <button class="icon close" type="button" data-close aria-label="Close">✕</button>
+  <div id="why-body"></div>
+</div></dialog>
+
+<dialog id="tune"><div class="sheet">
+  <button class="icon close" type="button" data-close aria-label="Close">✕</button>
+  <h2 class="sheet-h">Tune</h2>
+  <fieldset>
+    <legend>What should count most</legend>
+    <div id="focus" class="seg seg-4" role="group">
+      <button data-focus="balanced" type="button" aria-pressed="true">Balanced</button>
+      <button data-focus="story" type="button" aria-pressed="false">Story</button>
+      <button data-focus="themes" type="button" aria-pressed="false">Themes</button>
+      <button data-focus="genres" type="button" aria-pressed="false">Genres</button>
+    </div>
+  </fieldset>
+  <label class="check"><input id="quality" type="checkbox" checked> Well-rated shows only</label>
+  <p class="hint">Turn off to include unrated and obscure titles.</p>
+  <div class="grid">
+    <label for="year">From year
+      <select id="year">
+        <option value="1900">Any year</option>
+        <option value="1990">1990</option>
+        <option value="2000">2000</option>
+        <option value="2010">2010</option>
+        <option value="2018">2018</option>
+      </select>
+    </label>
+    <label for="lang">Language<select id="lang"></select></label>
+    <label for="kind">Format<select id="kind"></select></label>
+    <label for="stat">Status<select id="stat"></select></label>
+  </div>
+  <label id="avoid-row" class="slider" hidden>Avoid what I disliked <output id="avoid-out">35%</output>
+    <input id="avoid" type="range" min="0" max="1" step="0.05" value="0.35">
+  </label>
+  <button id="reset" class="ghost" type="button">Reset to defaults</button>
+</div></dialog>
+
+<dialog id="about"><div class="sheet">
+  <button class="icon close" type="button" data-close aria-label="Close">✕</button>
+  <h2 class="sheet-h">How this works</h2>
+  <p>Every pick is scored against the shows you rated: plot wording, theme signals read from summaries, and genre tags. Your closest match pulls harder than the rest, and anything close to what you disliked is pushed down.</p>
+  <p>A match score is similarity, not a promise you’ll enjoy it. Themes come from English summary text, so titles with thin descriptions match on genre alone.</p>
+  <p>__CATALOG_COUNT__ shows in this snapshot. Your list stays in this browser. No account, nothing stored on a server.</p>
+</div></dialog>
+
+<script type="application/json" id="boot">__BOOTSTRAP__</script>
+</body>
+</html>
