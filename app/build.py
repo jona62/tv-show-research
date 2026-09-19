@@ -55,10 +55,18 @@ def main():
         'picks': engine.quick_picks,
     }
     payload = json.dumps(boot, ensure_ascii=False, separators=(',', ':')).replace('</', '<\\/')
-    page = (HERE / 'index.template.html').read_text() \
+    template = (HERE / 'index.template.html').read_text() \
         .replace('__BOOTSTRAP__', payload) \
         .replace('__CATALOG_COUNT__', f'{engine.n:,}') \
         .replace('__DATASET_DATE__', engine.date)
+
+    # The badge states the page's own size, so settle on a figure that includes itself.
+    others = sum((PUBLIC / name).stat().st_size for name in (*ASSETS, 'favicon.svg'))
+    label, total = '00.0 KB', 0
+    for _ in range(4):
+        page = template.replace('__PAGE_SIZE__', label)
+        total = len(page.encode()) + others
+        label = f'{total / 1000:.1f} KB'
     (PUBLIC / 'index.html').write_text(page)
 
     sizes = {name: (PUBLIC / name).stat().st_size for name in ('index.html', *ASSETS, 'favicon.svg')}
