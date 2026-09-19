@@ -1,0 +1,9 @@
+name: next-watch
+port: 8080
+visibility: public
+workspace:
+  resources: { ramMb: 1024, vcpuCount: 1, diskSizeMb: 3072 }
+start: python3 server.py
+health:
+  path: /healthz
+  timeoutSeconds: 60

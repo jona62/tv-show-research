@@ -14,3 +14,7 @@ data/model-backup/
 output/site-qa/
 output/qa/
 *.log
+
+# Hard links made by app/build.py. The tracked copy lives in model/, which sits
+# outside every app directory so the Rigbox release uploader never carries it.
+app/model/
