@@ -6,10 +6,7 @@
 # which clones the whole repo, finds model/ beside the apps and ignores it.
 name: tv-taste
 visibility: public
-source:
-  kind: git
-  repo: https://github.com/jona62/tv-show-research.git
-  branch: main
+
 workspace:
   image: base
   # Two engines hold about 500MB resident each.
@@ -27,6 +24,10 @@ apps:
     health:
       path: /healthz
       timeoutSeconds: 60
+    source:
+      kind: git
+      repo: https://github.com/jona62/tv-show-research.git
+      branch: main
 
   next-watch:
     path: ./app
@@ -39,3 +40,7 @@ apps:
     health:
       path: /healthz
       timeoutSeconds: 90
+    source:
+      kind: git
+      repo: https://github.com/jona62/tv-show-research.git
+      branch: main
