@@ -42,11 +42,13 @@ a Python object each, which keeps them to tens of megabytes:
 from array import array
 from bisect import bisect_left, bisect_right
 from collections import defaultdict
+from functools import partial
 from itertools import accumulate, chain
 from operator import itemgetter
 import gzip
 import json
 import math
+import os
 import re
 import sys
 import unicodedata
@@ -57,8 +59,8 @@ STRONG = 3              # the loosest tier that answers a search by itself: ever
 MOST_ALIASES = 100      # other titles kept per show
 LONGEST = 150           # characters in the longest other title worth keeping
 MOST_WORDS = 16         # words of a query that count
-WIDE = 5000             # lines a tier weighs to find a year's show before settling
-BROAD = 3000            # lines weighed for part matches, best-known first
+WIDE = 5000             # lines a tier reads or weighs before settling on the best-known
+BROAD = 1000            # lines a word may bring to be weighed as part of the query
 YEAR = re.compile(r'(?:19|20)\d\d')
 ARTICLES = frozenset(w.encode() for w in 'the a an la le les l el los las il lo der die das'.split())
 UNITS = {w.encode(): n for n, w in enumerate(
@@ -212,6 +214,11 @@ class Titles:
     """Every show's titles, indexed once; find() answers a search."""
 
     def __init__(self, shows, popularity, aliases=None):
+        """aliases maps show ids to their other titles. Given as the path of a
+        search.json.gz instead, they are read here and let go of once indexed, so the
+        memory they took is not left pinned behind the index."""
+        if isinstance(aliases, (str, os.PathLike)):
+            aliases = load_aliases(aliases)
         aliases = aliases or {}
         self.shows = shows
         n = len(shows)
@@ -230,6 +237,7 @@ class Titles:
             if more:
                 raw += more
                 owners.extend([~i] * len(more))
+        del ranked, aliases
         lines = normalize(raw)
 
         # One line per distinct title, and the lines using each word, in line order. A
@@ -237,7 +245,7 @@ class Titles:
         # or as an earlier title, adds nothing. What lasts is flat, and the few small
         # objects that last are made once the scaffolding is gone, so the memory it
         # borrowed is not pinned between them.
-        kept, akas, post, seen = [], [], defaultdict(list), set()
+        kept, akas, post, seen = [], [], defaultdict(partial(array, 'I')), set()
         owner, first = [], self.first
         for line, who, title in zip(lines, owners, raw):
             if who >= 0:
@@ -271,7 +279,8 @@ class Titles:
         vocab = sorted(post)
         runs = list(map(post.__getitem__, vocab))
         self.post_start = array('I', list(accumulate(map(len, runs), initial=0)))
-        self.post = array('I', list(chain.from_iterable(runs)))
+        self.post = array('I')
+        self.post.frombytes(b''.join(map(array.tobytes, runs)))
         counted = set(chain.from_iterable(post.get(w.decode(), ()) for w in (*UNITS, *TENS)))
         del runs, post
         words = '\n'.join(vocab).encode()
@@ -330,14 +339,16 @@ class Titles:
         return self.post[self.post_start[lo]:self.post_start[hi]]
 
     def inside(self, part):
-        """Lines where part appears anywhere, inside a word or not."""
-        found, text, start = set(), self.text, self.start
+        """The best-known lines, at most WIDE of them, where part appears anywhere, inside
+        a word or not. Lines run best known first, so reading can stop early."""
+        found, text, start = [], self.text, self.start
         at = text.find(part)
-        while at >= 0:
+        while at >= 0 and len(found) < WIDE:
             d = bisect_right(start, at) - 1
-            found.add(d)
+            found.append(d)
             at = text.find(part, start[d + 1])
         return found
+
 
     # ------------------------------------------------------------ search
 
@@ -406,30 +417,50 @@ class Titles:
             # Anchored on the rarest word, so the text is read once and few lines follow.
             anchor = tokens[min(long, key=lambda k: (counts[k], -len(tokens[k])))]
             rest = [t for t in tokens if t is not anchor]
-            found = (d for d in sorted(self.inside(anchor)) if all(fits(t, line(d).split()) for t in rest))
+            found = (d for d in self.inside(anchor) if all(fits(t, line(d).split()) for t in rest))
             if take(4, found):
                 return
         if not deep:
             return
 
         # Typos: each word starts a word of the title, or is one slip from a whole word,
-        # or, for the last word, one slip from the start of one it is still typing.
+        # or, for the last word, one slip from the start of one it is still typing. The
+        # word with the fewest lines to look at picks them, and the rest are checked
+        # line by line, which is cheaper than gathering every line a short word is in.
         last = len(words) - 1
         slips = [self.slips(w) for w in words]
         typing = self.slips(words[-1], typing=True)
         if any(slips) or typing:
-            exact = [set(self.using(*s)) for s in spans]
-            near = [exact[k].union(*(self.using(lo, hi) for lo, hi in slips[k] + (typing if k == last else [])))
+            near = [slips[k] + (typing if k == last else []) for k in range(len(tokens))]
+            size = [counts[k] + sum(self.post_start[hi] - self.post_start[lo] for lo, hi in near[k])
                     for k in range(len(tokens))]
-            pool = set.intersection(*sorted(near, key=len))
-            counted = sorted((sum(d not in e for e in exact), d) for d in pool)
-            if take(5, [(n, d) for n, d in counted if n]):
+            a = min(range(len(tokens)), key=size.__getitem__)
+            pool = set(self.using(*spans[a]))
+            for lo, hi in near[a]:
+                pool.update(self.using(lo, hi))
+            near = [set(chain.from_iterable(range(lo, hi) for lo, hi in runs)) for runs in near]
+            found = []
+            for d in sorted(pool)[:WIDE]:
+                ws, ids, slipped = line(d).split(), None, 0
+                for k, t in enumerate(tokens):
+                    if any(w.startswith(t) for w in ws):
+                        continue
+                    if near[k]:
+                        ids = ids or [self.word_id(w) for w in ws]
+                        if not near[k].isdisjoint(ids):
+                            slipped += 1
+                            continue
+                    break
+                else:
+                    if slipped:
+                        found.append((slipped, d))
+            if take(5, sorted(found)):
                 return
 
         # Initials: a word of three to six letters stands for as many consecutive words
-        # of the title, and every other word starts one.
+        # of the title, and every other word starts one. A common word is taken as itself.
         for k, t in enumerate(tokens):
-            if not 3 <= len(t) <= 6 or not t.isalnum() or not t.isascii():
+            if not 3 <= len(t) <= 6 or not t.isalnum() or not t.isascii() or counts[k] > BROAD:
                 continue
             rest = tokens[:k] + tokens[k + 1:]
             narrow = sorted([spans[j] for j in range(len(tokens)) if j != k] + [self.span(t[j:j + 1]) for j in range(len(t))],
@@ -438,7 +469,7 @@ class Titles:
             for s in narrow[1:3]:
                 pool.intersection_update(self.using(*s))
             found = []
-            for d in sorted(pool):
+            for d in sorted(pool)[:WIDE]:
                 ws = line(d).split()
                 if t in bytes(w[0] for w in ws) and all(any(w.startswith(r) for w in ws) for r in rest):
                     found.append(d)
@@ -452,8 +483,10 @@ class Titles:
 
     def slips(self, word, typing=False):
         """Runs of vocab words, as (lo, hi) pairs, one slip from word; or, typing, the
-        words that start with a string one slip from it and with the same letter."""
-        if len(word) < 3:
+        words that start with a string one slip from it and with the same letter. A
+        slip needs three letters to be told apart from another word, and four while
+        the word is still being typed."""
+        if len(word) < (4 if typing else 3):
             return []
         own = self.span(word.encode())
         runs = []
@@ -488,14 +521,19 @@ class Titles:
             if sum(df(lo, hi) for lo, hi in runs) <= BROAD:
                 for lo, hi in runs:
                     pool.update(self.using(lo, hi))
+        known = {}      # each title word's query words and weight, worked out once
+
+        def read(w):
+            if w not in known:
+                wid = self.word_id(w)
+                known[w] = ({j for j in range(len(tokens)) if wid == ids[j] or wid in near[j]}, weight(df(wid, wid + 1)))
+            return known[w]
+
         scored = []
         for d in sorted(pool)[:BROAD]:
-            ws = self.line(d).split()
-            wids = [self.word_id(w) for w in ws]
-            hit = [{j for j in range(len(tokens)) if wid == ids[j] or wid in near[j]} for wid in wids]
-            have = [weight(df(wid, wid + 1)) for wid in wids]
-            title = sum(h for h, m in zip(have, hit) if m) / (sum(have) or 1)
-            query = sum(asked[j] for j in set().union(*hit)) / (sum(asked) or 1)
+            parts = [read(w) for w in self.line(d).split()]
+            title = sum(h for m, h in parts if m) / (sum(h for _m, h in parts) or 1)
+            query = sum(asked[j] for j in set().union(*(m for m, _h in parts))) / (sum(asked) or 1)
             if title >= .5 and query >= .25:
                 scored.append((-round(2 * title * query / (title + query), 3), d))
         scored.sort()

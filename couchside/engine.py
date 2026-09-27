@@ -15,7 +15,7 @@ import struct
 import sys
 import unicodedata
 
-from titles import Titles, load_aliases
+from titles import Titles
 
 RATINGS = (-1, 0, .35, .7, 1)
 MAX_LIST = 60
@@ -100,7 +100,7 @@ class Engine:
         self.theme_counts = [s['theme_bits'].bit_count() for s in self.shows]
         self.genre_counts = [s['genre_bits'].bit_count() for s in self.shows]
         self.quick_picks = [self.card(self.by_id[i]) for i in QUICK_PICKS if i in self.by_id]
-        self.titles = Titles(self.shows, self.popularity, load_aliases(model / 'search.json.gz'))
+        self.titles = Titles(self.shows, self.popularity, model / 'search.json.gz')
 
     # ---------------------------------------------------------------- shapes
 
