@@ -1,0 +1,1204 @@
+{
+ "about": "Viewer personas for scripts/bench/taste_bench.py. Chosen from general knowledge of real fan overlap, never from this engine's output. Ratings: loves 1, likes 0.7, dislikes -1.",
+ "catalog": "tvmaze-v2-2026-09-07",
+ "personas": [
+  {
+   "key": "prestige_crime",
+   "label": "Prestige crime drama",
+   "notes": "Cable and streaming crime sagas with long character arcs. Dislikes are network case-of-the-week procedurals: the same crime genre tags, a very different taste.",
+   "loves": [
+    {"id": 169, "name": "Breaking Bad", "year": 2008},
+    {"id": 527, "name": "The Sopranos", "year": 1999},
+    {"id": 179, "name": "The Wire", "year": 2002},
+    {"id": 618, "name": "Better Call Saul", "year": 2015},
+    {"id": 32, "name": "Fargo", "year": 2014},
+    {"id": 5, "name": "True Detective", "year": 2014}
+   ],
+   "likes": [
+    {"id": 13417, "name": "Ozark", "year": 2017},
+    {"id": 2705, "name": "Narcos", "year": 2015},
+    {"id": 10822, "name": "MINDHUNTER", "year": 2017},
+    {"id": 102, "name": "Boardwalk Empire", "year": 2010},
+    {"id": 269, "name": "Peaky Blinders", "year": 2013}
+   ],
+   "dislikes": [
+    {"id": 60, "name": "NCIS", "year": 2003},
+    {"id": 109, "name": "CSI: Crime Scene Investigation", "year": 2000},
+    {"id": 100, "name": "Blue Bloods", "year": 2010},
+    {"id": 81, "name": "Criminal Minds", "year": 2005}
+   ]
+  },
+  {
+   "key": "british_panel",
+   "label": "British panel comedy",
+   "notes": "UK comedy panel and quiz shows built on comedians riffing. Deliberately niche: The Big Fat Quiz sits just under the default popularity floor.",
+   "loves": [
+    {"id": 703, "name": "QI", "year": 2003},
+    {"id": 2957, "name": "Would I Lie to You?", "year": 2007},
+    {"id": 2955, "name": "Taskmaster", "year": 2015},
+    {"id": 884, "name": "8 Out of 10 Cats Does Countdown", "year": 2012}
+   ],
+   "likes": [
+    {"id": 1600, "name": "Have I Got News for You", "year": 1990},
+    {"id": 4062, "name": "Never Mind the Buzzcocks", "year": 1996},
+    {"id": 281, "name": "Mock the Week", "year": 2005},
+    {"id": 2956, "name": "The Big Fat Quiz", "year": 2004},
+    {"id": 31362, "name": "Richard Osman's House of Games", "year": 2017},
+    {"id": 3983, "name": "A League of Their Own", "year": 2010},
+    {"id": 3756, "name": "8 Out of 10 Cats", "year": 2005}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "cozy_mystery",
+   "label": "Cozy mysteries",
+   "notes": "Village and period whodunits with little on-screen gore. Dislikes are graphic horror, which shares the murder vocabulary but not the tone. Deliberately niche: Murder, She Wrote and Agatha Christie Poirot premiered before 1990; Rosemary & Thyme is below the popularity floor.",
+   "loves": [
+    {"id": 328, "name": "Midsomer Murders", "year": 1998},
+    {"id": 1437, "name": "Death in Paradise", "year": 2011},
+    {"id": 3156, "name": "Father Brown", "year": 2013},
+    {"id": 2083, "name": "Murder, She Wrote", "year": 1984}
+   ],
+   "likes": [
+    {"id": 1166, "name": "Agatha Christie Poirot", "year": 1989},
+    {"id": 882, "name": "Agatha Christie's Marple", "year": 2004},
+    {"id": 1548, "name": "Grantchester", "year": 2014},
+    {"id": 3302, "name": "Vera", "year": 2011},
+    {"id": 34904, "name": "Shakespeare & Hathaway - Private Investigators", "year": 2018},
+    {"id": 48830, "name": "Only Murders in the Building", "year": 2021},
+    {"id": 6020, "name": "Rosemary & Thyme", "year": 2003},
+    {"id": 1753, "name": "Jonathan Creek", "year": 1997}
+   ],
+   "dislikes": [
+    {"id": 194, "name": "Hannibal", "year": 2013},
+    {"id": 73, "name": "The Walking Dead", "year": 2010},
+    {"id": 30, "name": "American Horror Story", "year": 2011}
+   ]
+  },
+  {
+   "key": "shonen_anime",
+   "label": "Shonen anime",
+   "notes": "Long-running battle and adventure anime. Dislikes are celebrity and party reality TV. Deliberately niche: Dragon Ball Z premiered in 1989.",
+   "loves": [
+    {"id": 495, "name": "Naruto", "year": 2002},
+    {"id": 1505, "name": "One Piece", "year": 1999},
+    {"id": 919, "name": "Attack on Titan", "year": 2013},
+    {"id": 13615, "name": "My Hero Academia", "year": 2016},
+    {"id": 41469, "name": "Demon Slayer", "year": 2019},
+    {"id": 48450, "name": "Jujutsu Kaisen", "year": 2020}
+   ],
+   "likes": [
+    {"id": 1536, "name": "Hunter x Hunter", "year": 2011},
+    {"id": 1905, "name": "Bleach", "year": 2004},
+    {"id": 2071, "name": "Fullmetal Alchemist: Brotherhood", "year": 2009},
+    {"id": 4201, "name": "One-Punch Man", "year": 2015},
+    {"id": 31396, "name": "Black Clover", "year": 2017},
+    {"id": 2103, "name": "Dragon Ball Z", "year": 1989}
+   ],
+   "dislikes": [
+    {"id": 575, "name": "Keeping Up with the Kardashians", "year": 2007},
+    {"id": 745, "name": "The Real Housewives of Beverly Hills", "year": 2010},
+    {"id": 801, "name": "Jersey Shore", "year": 2009}
+   ]
+  },
+  {
+   "key": "adult_animation",
+   "label": "Adult animation",
+   "notes": "Satirical and absurdist animated comedy for grown-ups. Dislikes are preschool cartoons: the same Animation format, the opposite audience. Deliberately niche: The Simpsons premiered in 1989.",
+   "loves": [
+    {"id": 83, "name": "The Simpsons", "year": 1989},
+    {"id": 538, "name": "Futurama", "year": 1999},
+    {"id": 216, "name": "Rick and Morty", "year": 2013},
+    {"id": 184, "name": "BoJack Horseman", "year": 2014},
+    {"id": 112, "name": "South Park", "year": 1997}
+   ],
+   "likes": [
+    {"id": 84, "name": "Family Guy", "year": 1999},
+    {"id": 315, "name": "Archer", "year": 2009},
+    {"id": 107, "name": "Bob's Burgers", "year": 2011},
+    {"id": 215, "name": "American Dad!", "year": 2005},
+    {"id": 115, "name": "King of the Hill", "year": 1997},
+    {"id": 28757, "name": "Big Mouth", "year": 2017},
+    {"id": 38432, "name": "Solar Opposites", "year": 2020}
+   ],
+   "dislikes": [
+    {"id": 894, "name": "Paw Patrol", "year": 2013},
+    {"id": 4972, "name": "Peppa Pig", "year": 2004},
+    {"id": 6489, "name": "Dora the Explorer", "year": 2000}
+   ]
+  },
+  {
+   "key": "workplace_mockumentary",
+   "label": "Workplace comedy and mockumentary",
+   "notes": "Single-camera ensemble comedies, many shot as mockumentaries. All loves and likes, no dislikes. Holds both versions of The Office (US 2005 and UK 2001).",
+   "loves": [
+    {"id": 526, "name": "The Office", "year": 2005},
+    {"id": 174, "name": "Parks and Recreation", "year": 2009},
+    {"id": 49, "name": "Brooklyn Nine-Nine", "year": 2013},
+    {"id": 55350, "name": "Abbott Elementary", "year": 2021}
+   ],
+   "likes": [
+    {"id": 1292, "name": "The Office", "year": 2001},
+    {"id": 1864, "name": "Superstore", "year": 2015},
+    {"id": 537, "name": "30 Rock", "year": 2006},
+    {"id": 34522, "name": "What We Do in the Shadows", "year": 2019},
+    {"id": 80, "name": "Modern Family", "year": 2009},
+    {"id": 143, "name": "Silicon Valley", "year": 2014},
+    {"id": 532, "name": "Scrubs", "year": 2001}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "nordic_noir",
+   "label": "Scandinavian noir",
+   "notes": "Bleak Nordic police and conspiracy dramas, mostly in Swedish, Danish, Norwegian, Icelandic and Finnish, plus the US remake of The Killing. Deliberately niche: Modus and Jordskott sit below the default popularity floor.",
+   "loves": [
+    {"id": 1910, "name": "Bron / Broen", "year": 2011},
+    {"id": 1271, "name": "Forbrydelsen", "year": 2007},
+    {"id": 10363, "name": "Ófærð", "year": 2015},
+    {"id": 3623, "name": "Wallander", "year": 2006}
+   ],
+   "likes": [
+    {"id": 18279, "name": "Beck", "year": 1997},
+    {"id": 35724, "name": "Karppi", "year": 2018},
+    {"id": 43450, "name": "Kastanjemanden", "year": 2021},
+    {"id": 3964, "name": "Okkupert", "year": 2015},
+    {"id": 34796, "name": "Wisting", "year": 2019},
+    {"id": 35, "name": "The Killing", "year": 2011},
+    {"id": 4188, "name": "Modus", "year": 2015},
+    {"id": 3404, "name": "Jordskott", "year": 2014}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "kdrama_romance",
+   "label": "K-drama romance",
+   "notes": "Korean romantic comedies and melodramas. Dislikes are Korean zombie and creature horror, which share the language and channel but not the mood. Deliberately niche: Crash Landing on You, Descendants of the Sun and the disliked Kingdom sit below the default popularity floor.",
+   "loves": [
+    {"id": 42756, "name": "Crash Landing on You", "year": 2019},
+    {"id": 16150, "name": "Guardian: The Lonely and Great God", "year": 2016},
+    {"id": 56464, "name": "Hometown Cha-Cha-Cha", "year": 2021},
+    {"id": 3704, "name": "My Love from the Star", "year": 2013}
+   ],
+   "likes": [
+    {"id": 59755, "name": "Business Proposal", "year": 2022},
+    {"id": 3637, "name": "Boys over Flowers", "year": 2009},
+    {"id": 48104, "name": "It's Okay to Not Be Okay", "year": 2020},
+    {"id": 59683, "name": "Twenty-Five Twenty-One", "year": 2022},
+    {"id": 67633, "name": "Queen of Tears", "year": 2024},
+    {"id": 9426, "name": "Descendants of the Sun", "year": 2016}
+   ],
+   "dislikes": [
+    {"id": 46570, "name": "Sweet Home", "year": 2020},
+    {"id": 47199, "name": "All of Us Are Dead", "year": 2022},
+    {"id": 26153, "name": "Kingdom", "year": 2019}
+   ]
+  },
+  {
+   "key": "korean_thriller",
+   "label": "Korean thrillers",
+   "notes": "Korean survival, revenge, crime and creature thrillers. Deliberately niche: Kingdom, Vincenzo and Stranger sit below the default popularity floor.",
+   "loves": [
+    {"id": 43687, "name": "Squid Game", "year": 2021},
+    {"id": 26153, "name": "Kingdom", "year": 2019},
+    {"id": 9440, "name": "Signal", "year": 2016},
+    {"id": 65502, "name": "The Glory", "year": 2022}
+   ],
+   "likes": [
+    {"id": 46570, "name": "Sweet Home", "year": 2020},
+    {"id": 47199, "name": "All of Us Are Dead", "year": 2022},
+    {"id": 56942, "name": "Hellbound", "year": 2021},
+    {"id": 63870, "name": "Bloodhounds", "year": 2023},
+    {"id": 64369, "name": "Gyeongseong Creature", "year": 2023},
+    {"id": 64111, "name": "Moving", "year": 2023},
+    {"id": 52656, "name": "Vincenzo", "year": 2021},
+    {"id": 28517, "name": "Stranger", "year": 2017}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "mind_bending_scifi",
+   "label": "Mind-bending sci-fi",
+   "notes": "Puzzle-box and reality-bending science fiction. No dislikes.",
+   "loves": [
+    {"id": 305, "name": "Black Mirror", "year": 2011},
+    {"id": 17861, "name": "Dark", "year": 2017},
+    {"id": 44933, "name": "Severance", "year": 2022},
+    {"id": 1371, "name": "Westworld", "year": 2016},
+    {"id": 1871, "name": "Mr. Robot", "year": 2015}
+   ],
+   "likes": [
+    {"id": 35017, "name": "Devs", "year": 2020},
+    {"id": 6763, "name": "The OA", "year": 2016},
+    {"id": 39987, "name": "Russian Doll", "year": 2019},
+    {"id": 6456, "name": "Counterpart", "year": 2017},
+    {"id": 6393, "name": "Legion", "year": 2017},
+    {"id": 14657, "name": "Maniac", "year": 2018},
+    {"id": 158, "name": "Fringe", "year": 2008},
+    {"id": 138, "name": "The Leftovers", "year": 2014},
+    {"id": 39749, "name": "1899", "year": 2022}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "epic_fantasy",
+   "label": "Epic fantasy",
+   "notes": "Big-budget sword-and-sorcery sagas and their predecessors. No dislikes.",
+   "loves": [
+    {"id": 82, "name": "Game of Thrones", "year": 2011},
+    {"id": 44778, "name": "House of the Dragon", "year": 2022},
+    {"id": 28276, "name": "The Witcher", "year": 2019},
+    {"id": 35083, "name": "The Wheel of Time", "year": 2021}
+   ],
+   "likes": [
+    {"id": 33352, "name": "The Lord of the Rings: The Rings of Power", "year": 2022},
+    {"id": 7626, "name": "His Dark Materials", "year": 2019},
+    {"id": 40370, "name": "Shadow and Bone", "year": 2021},
+    {"id": 789, "name": "Merlin", "year": 2008},
+    {"id": 461, "name": "Legend of the Seeker", "year": 2008},
+    {"id": 28120, "name": "Carnival Row", "year": 2019},
+    {"id": 43, "name": "Outlander", "year": 2014}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "teen_drama",
+   "label": "Teen drama",
+   "notes": "High-school and twenty-something soaps from the WB and CW era to Netflix and HBO.",
+   "loves": [
+    {"id": 567, "name": "Gossip Girl", "year": 2007},
+    {"id": 776, "name": "The O.C.", "year": 2003},
+    {"id": 560, "name": "One Tree Hill", "year": 2003},
+    {"id": 63, "name": "The Vampire Diaries", "year": 2009},
+    {"id": 177, "name": "Pretty Little Liars", "year": 2010}
+   ],
+   "likes": [
+    {"id": 5262, "name": "Riverdale", "year": 2017},
+    {"id": 845, "name": "Dawson's Creek", "year": 1998},
+    {"id": 7194, "name": "13 Reasons Why", "year": 2017},
+    {"id": 28826, "name": "Euphoria", "year": 2019},
+    {"id": 548, "name": "Skins", "year": 2007},
+    {"id": 37854, "name": "Élite", "year": 2018},
+    {"id": 42062, "name": "Outer Banks", "year": 2020},
+    {"id": 44592, "name": "Never Have I Ever", "year": 2020}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "reality_competition",
+   "label": "Reality competition",
+   "notes": "Elimination game shows and competitive reality. Dislikes are dense serialized sci-fi and anime that everyone recommended. Deliberately niche: America's Next Top Model sits below the popularity floor.",
+   "loves": [
+    {"id": 114, "name": "Survivor", "year": 2000},
+    {"id": 18, "name": "The Amazing Race", "year": 2001},
+    {"id": 1526, "name": "RuPaul's Drag Race", "year": 2009},
+    {"id": 58177, "name": "The Traitors", "year": 2023}
+   ],
+   "likes": [
+    {"id": 1453, "name": "Big Brother", "year": 2000},
+    {"id": 11363, "name": "Love Island", "year": 2015},
+    {"id": 914, "name": "The Bachelor", "year": 2002},
+    {"id": 99, "name": "America's Next Top Model", "year": 2003},
+    {"id": 2100, "name": "The Challenge", "year": 1998},
+    {"id": 71, "name": "Dancing with the Stars", "year": 2005}
+   ],
+   "dislikes": [
+    {"id": 1371, "name": "Westworld", "year": 2016},
+    {"id": 17861, "name": "Dark", "year": 2017},
+    {"id": 919, "name": "Attack on Titan", "year": 2013}
+   ]
+  },
+  {
+   "key": "cooking_competition",
+   "label": "Cooking competition",
+   "notes": "Kitchen contests and chef reality. Dislikes are serial-killer dramas; Hannibal in particular talks about cooking constantly, which makes it a good trap for plot-text similarity. Deliberately niche: Nailed It! sits well below the popularity floor.",
+   "loves": [
+    {"id": 2950, "name": "The Great British Bake Off", "year": 2010},
+    {"id": 324, "name": "MasterChef", "year": 2010},
+    {"id": 295, "name": "Top Chef", "year": 2006},
+    {"id": 954, "name": "Chopped", "year": 2009}
+   ],
+   "likes": [
+    {"id": 253, "name": "Hell's Kitchen", "year": 2005},
+    {"id": 3160, "name": "MasterChef Australia", "year": 2009},
+    {"id": 8597, "name": "Iron Chef America", "year": 2005},
+    {"id": 805, "name": "Kitchen Nightmares", "year": 2007},
+    {"id": 3439, "name": "Great British Menu", "year": 2006},
+    {"id": 2879, "name": "Guy's Grocery Games", "year": 2013},
+    {"id": 1145, "name": "Beat Bobby Flay", "year": 2013},
+    {"id": 35093, "name": "Nailed It!", "year": 2018}
+   ],
+   "dislikes": [
+    {"id": 194, "name": "Hannibal", "year": 2013},
+    {"id": 161, "name": "Dexter", "year": 2006}
+   ]
+  },
+  {
+   "key": "nature_docs",
+   "label": "Nature documentaries",
+   "notes": "Landmark wildlife series. Dislikes are sensational reality that happens to involve animals or glamour. Deliberately niche: TVmaze rates Planet Earth II, Blue Planet II, Our Planet and Frozen Planet below the default popularity floor.",
+   "loves": [
+    {"id": 768, "name": "Planet Earth", "year": 2006},
+    {"id": 7103, "name": "The Blue Planet", "year": 2001},
+    {"id": 40920, "name": "Seven Worlds, One Planet", "year": 2019},
+    {"id": 38980, "name": "Dynasties", "year": 2018}
+   ],
+   "likes": [
+    {"id": 65182, "name": "Life on Our Planet", "year": 2023},
+    {"id": 61404, "name": "Prehistoric Planet", "year": 2022},
+    {"id": 52365, "name": "Secrets of the Whales", "year": 2021},
+    {"id": 22036, "name": "Planet Earth II", "year": 2016},
+    {"id": 25504, "name": "Blue Planet II", "year": 2017},
+    {"id": 17868, "name": "Our Planet", "year": 2019},
+    {"id": 4000, "name": "Frozen Planet", "year": 2011}
+   ],
+   "dislikes": [
+    {"id": 46381, "name": "Tiger King: Murder, Mayhem and Madness", "year": 2020},
+    {"id": 575, "name": "Keeping Up with the Kardashians", "year": 2007}
+   ]
+  },
+  {
+   "key": "true_crime_docs",
+   "label": "True crime docuseries",
+   "notes": "Investigative docuseries plus a couple of cable true-crime staples. Soupçons is the French production known in English as The Staircase. Deliberately niche: Don't F**k with Cats and the Ted Bundy Tapes sit below the popularity floor.",
+   "loves": [
+    {"id": 7989, "name": "Making a Murderer", "year": 2015},
+    {"id": 1542, "name": "The Jinx: The Life and Deaths of Robert Durst", "year": 2015},
+    {"id": 13645, "name": "Soupçons", "year": 2004},
+    {"id": 35097, "name": "Wild Wild Country", "year": 2018}
+   ],
+   "likes": [
+    {"id": 40484, "name": "Unsolved Mysteries", "year": 2020},
+    {"id": 41374, "name": "I'll Be Gone in the Dark", "year": 2020},
+    {"id": 52474, "name": "Night Stalker: The Hunt for a Serial Killer", "year": 2021},
+    {"id": 49420, "name": "The Vow", "year": 2020},
+    {"id": 46381, "name": "Tiger King: Murder, Mayhem and Madness", "year": 2020},
+    {"id": 45322, "name": "Don't F**k with Cats: Hunting an Internet Killer", "year": 2019},
+    {"id": 40412, "name": "Conversations with a Killer: The Ted Bundy Tapes", "year": 2019},
+    {"id": 974, "name": "Snapped", "year": 2004},
+    {"id": 1381, "name": "The First 48", "year": 2004}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "medical_drama",
+   "label": "Medical drama",
+   "notes": "Hospital ensembles from ER to The Pitt. Deliberately niche: St. Elsewhere premiered in 1982 and Private Practice sits below the popularity floor.",
+   "loves": [
+    {"id": 67, "name": "Grey's Anatomy", "year": 2005},
+    {"id": 118, "name": "House", "year": 2004},
+    {"id": 547, "name": "ER", "year": 1994},
+    {"id": 75632, "name": "The Pitt", "year": 2025}
+   ],
+   "likes": [
+    {"id": 2246, "name": "Chicago Med", "year": 2015},
+    {"id": 21845, "name": "The Good Doctor", "year": 2017},
+    {"id": 32291, "name": "New Amsterdam", "year": 2018},
+    {"id": 19809, "name": "The Resident", "year": 2018},
+    {"id": 770, "name": "Private Practice", "year": 2007},
+    {"id": 394, "name": "Call the Midwife", "year": 2012},
+    {"id": 147, "name": "Nurse Jackie", "year": 2009},
+    {"id": 2276, "name": "Code Black", "year": 2015},
+    {"id": 4460, "name": "St. Elsewhere", "year": 1982}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "police_procedural",
+   "label": "Police procedural",
+   "notes": "Network case-of-the-week crime. The mirror of prestige_crime: dislikes are slow-burn and surreal prestige crime that shares the genre tags.",
+   "loves": [
+    {"id": 60, "name": "NCIS", "year": 2003},
+    {"id": 81, "name": "Criminal Minds", "year": 2005},
+    {"id": 103, "name": "Law & Order: Special Victims Unit", "year": 1999},
+    {"id": 100, "name": "Blue Bloods", "year": 2010}
+   ],
+   "likes": [
+    {"id": 109, "name": "CSI: Crime Scene Investigation", "year": 2000},
+    {"id": 32938, "name": "The Rookie", "year": 2018},
+    {"id": 56, "name": "Chicago P.D.", "year": 2014},
+    {"id": 68, "name": "Castle", "year": 2009},
+    {"id": 65, "name": "Bones", "year": 2005},
+    {"id": 116, "name": "The Mentalist", "year": 2008},
+    {"id": 24, "name": "Hawaii Five-0", "year": 2010}
+   ],
+   "dislikes": [
+    {"id": 179, "name": "The Wire", "year": 2002},
+    {"id": 5, "name": "True Detective", "year": 2014},
+    {"id": 156, "name": "Twin Peaks", "year": 1990}
+   ]
+  },
+  {
+   "key": "superhero",
+   "label": "Superhero",
+   "notes": "Marvel, DC and creator-owned superhero series, live action and animated. No dislikes.",
+   "loves": [
+    {"id": 15299, "name": "The Boys", "year": 2019},
+    {"id": 1369, "name": "Marvel's Daredevil", "year": 2015},
+    {"id": 37196, "name": "Invincible", "year": 2021},
+    {"id": 41007, "name": "Loki", "year": 2021}
+   ],
+   "likes": [
+    {"id": 41748, "name": "WandaVision", "year": 2021},
+    {"id": 13, "name": "The Flash", "year": 2014},
+    {"id": 4, "name": "Arrow", "year": 2012},
+    {"id": 31, "name": "Marvel's Agents of S.H.I.E.L.D.", "year": 2013},
+    {"id": 1370, "name": "Marvel's Jessica Jones", "year": 2015},
+    {"id": 30386, "name": "The Umbrella Academy", "year": 2019},
+    {"id": 50603, "name": "Peacemaker", "year": 2022},
+    {"id": 435, "name": "Smallville", "year": 2001},
+    {"id": 58951, "name": "X-Men '97", "year": 2024}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "british_period",
+   "label": "British period drama",
+   "notes": "Costume drama and literary adaptations. Dislikes are crude comedy, party reality and gory horror. Deliberately niche: Cranford sits just under the popularity floor.",
+   "loves": [
+    {"id": 251, "name": "Downton Abbey", "year": 2010},
+    {"id": 2355, "name": "Pride and Prejudice", "year": 1995},
+    {"id": 1678, "name": "Poldark", "year": 2015},
+    {"id": 3594, "name": "The Crown", "year": 2016}
+   ],
+   "likes": [
+    {"id": 8699, "name": "Victoria", "year": 2016},
+    {"id": 1156, "name": "North & South", "year": 2004},
+    {"id": 42966, "name": "Bridgerton", "year": 2020},
+    {"id": 1087, "name": "Cranford", "year": 2007},
+    {"id": 284, "name": "Mr. Selfridge", "year": 2013},
+    {"id": 30702, "name": "Gentleman Jack", "year": 2019},
+    {"id": 1432, "name": "Wolf Hall", "year": 2015},
+    {"id": 41029, "name": "Sanditon", "year": 2019}
+   ],
+   "dislikes": [
+    {"id": 801, "name": "Jersey Shore", "year": 2009},
+    {"id": 347, "name": "It's Always Sunny in Philadelphia", "year": 2005},
+    {"id": 30, "name": "American Horror Story", "year": 2011}
+   ]
+  },
+  {
+   "key": "classic_multicam",
+   "label": "Classic multi-camera sitcoms",
+   "notes": "Studio-audience network sitcoms. Deliberately niche by era: Seinfeld, Cheers, The Golden Girls and Married... with Children premiered before 1990, so the default year floor removes them.",
+   "loves": [
+    {"id": 431, "name": "Friends", "year": 1994},
+    {"id": 530, "name": "Seinfeld", "year": 1989},
+    {"id": 553, "name": "Cheers", "year": 1982},
+    {"id": 540, "name": "Frasier", "year": 1993}
+   ],
+   "likes": [
+    {"id": 722, "name": "The Golden Girls", "year": 1985},
+    {"id": 573, "name": "Everybody Loves Raymond", "year": 1996},
+    {"id": 66, "name": "The Big Bang Theory", "year": 2007},
+    {"id": 171, "name": "How I Met Your Mother", "year": 2005},
+    {"id": 549, "name": "Will & Grace", "year": 1998},
+    {"id": 544, "name": "Home Improvement", "year": 1991},
+    {"id": 552, "name": "The King of Queens", "year": 1998},
+    {"id": 499, "name": "Married... with Children", "year": 1987}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "cringe_comedy",
+   "label": "Cringe comedy",
+   "notes": "Awkward, uncomfortable single-camera comedy. Dislikes are laugh-track CBS sitcoms: same genre, opposite sensibility. Deliberately niche: Nathan for You, Extras and Summer Heights High sit below the popularity floor.",
+   "loves": [
+    {"id": 551, "name": "Curb Your Enthusiasm", "year": 2000},
+    {"id": 1292, "name": "The Office", "year": 2001},
+    {"id": 3136, "name": "Nathan for You", "year": 2013},
+    {"id": 383, "name": "Peep Show", "year": 2003}
+   ],
+   "likes": [
+    {"id": 41904, "name": "I Think You Should Leave with Tim Robinson", "year": 2019},
+    {"id": 1270, "name": "Extras", "year": 2005},
+    {"id": 142, "name": "Veep", "year": 2012},
+    {"id": 321, "name": "Arrested Development", "year": 2003},
+    {"id": 347, "name": "It's Always Sunny in Philadelphia", "year": 2005},
+    {"id": 56116, "name": "The Rehearsal", "year": 2022},
+    {"id": 1285, "name": "Summer Heights High", "year": 2007},
+    {"id": 1443, "name": "Review", "year": 2014}
+   ],
+   "dislikes": [
+    {"id": 66, "name": "The Big Bang Theory", "year": 2007},
+    {"id": 130, "name": "Two and a Half Men", "year": 2003},
+    {"id": 355, "name": "Mike & Molly", "year": 2010}
+   ]
+  },
+  {
+   "key": "horror",
+   "label": "Horror",
+   "notes": "Supernatural, gothic and survival horror series. No dislikes.",
+   "loves": [
+    {"id": 29191, "name": "The Haunting of Hill House", "year": 2018},
+    {"id": 42840, "name": "Midnight Mass", "year": 2021},
+    {"id": 30, "name": "American Horror Story", "year": 2011},
+    {"id": 73, "name": "The Walking Dead", "year": 2010}
+   ],
+   "likes": [
+    {"id": 19, "name": "Supernatural", "year": 2005},
+    {"id": 16, "name": "Penny Dreadful", "year": 2014},
+    {"id": 194, "name": "Hannibal", "year": 2013},
+    {"id": 8706, "name": "Channel Zero", "year": 2016},
+    {"id": 2427, "name": "Ash vs Evil Dead", "year": 2015},
+    {"id": 8161, "name": "The Terror", "year": 2018},
+    {"id": 195, "name": "Bates Motel", "year": 2013},
+    {"id": 40357, "name": "Evil", "year": 2019},
+    {"id": 54723, "name": "FROM", "year": 2022},
+    {"id": 58166, "name": "The Fall of the House of Usher", "year": 2023}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "spy_thriller",
+   "label": "Spy thrillers",
+   "notes": "Espionage from le Carre to Jack Bauer, including the French Le Bureau des Legendes and the Israeli Fauda. Deliberately niche: Tinker Tailor Soldier Spy premiered in 1979.",
+   "loves": [
+    {"id": 157, "name": "The Americans", "year": 2013},
+    {"id": 7, "name": "Homeland", "year": 2011},
+    {"id": 45039, "name": "Slow Horses", "year": 2022},
+    {"id": 2285, "name": "The Night Manager", "year": 2016}
+   ],
+   "likes": [
+    {"id": 6131, "name": "Le Bureau des Légendes", "year": 2015},
+    {"id": 167, "name": "24", "year": 2001},
+    {"id": 557, "name": "Alias", "year": 2001},
+    {"id": 22904, "name": "Killing Eve", "year": 2018},
+    {"id": 5079, "name": "Tom Clancy's Jack Ryan", "year": 2018},
+    {"id": 657, "name": "Spooks", "year": 2002},
+    {"id": 15315, "name": "Fauda", "year": 2015},
+    {"id": 64977, "name": "The Day of the Jackal", "year": 2024},
+    {"id": 7259, "name": "Tinker Tailor Soldier Spy", "year": 1979}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "space_opera",
+   "label": "Space opera",
+   "notes": "Starships, empires and frontier crews. No dislikes.",
+   "loves": [
+    {"id": 1825, "name": "The Expanse", "year": 2015},
+    {"id": 166, "name": "Battlestar Galactica", "year": 2003},
+    {"id": 180, "name": "Firefly", "year": 2002},
+    {"id": 52341, "name": "Andor", "year": 2022}
+   ],
+   "likes": [
+    {"id": 475, "name": "Babylon 5", "year": 1993},
+    {"id": 429, "name": "Farscape", "year": 1999},
+    {"id": 204, "name": "Stargate SG·1", "year": 1997},
+    {"id": 206, "name": "Stargate Atlantis", "year": 2004},
+    {"id": 38963, "name": "The Mandalorian", "year": 2019},
+    {"id": 35951, "name": "Foundation", "year": 2021},
+    {"id": 1788, "name": "Killjoys", "year": 2015},
+    {"id": 563, "name": "Star Wars: The Clone Wars", "year": 2008},
+    {"id": 41414, "name": "For All Mankind", "year": 2019}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "star_trek",
+   "label": "Star Trek",
+   "notes": "One franchise across sixty years plus The Orville; the easiest persona for plot text, so a sanity check. Deliberately niche by era: the original series, The Next Generation and The Animated Series premiered before 1990.",
+   "loves": [
+    {"id": 491, "name": "Star Trek: The Next Generation", "year": 1987},
+    {"id": 493, "name": "Star Trek: Deep Space Nine", "year": 1993},
+    {"id": 490, "name": "Star Trek", "year": 1966},
+    {"id": 48090, "name": "Star Trek: Strange New Worlds", "year": 2022}
+   ],
+   "likes": [
+    {"id": 492, "name": "Star Trek: Voyager", "year": 1995},
+    {"id": 714, "name": "Star Trek: Enterprise", "year": 2001},
+    {"id": 7480, "name": "Star Trek: Discovery", "year": 2017},
+    {"id": 42193, "name": "Star Trek: Picard", "year": 2020},
+    {"id": 39323, "name": "Star Trek: Lower Decks", "year": 2020},
+    {"id": 20263, "name": "The Orville", "year": 2017},
+    {"id": 3513, "name": "Star Trek: The Animated Series", "year": 1973}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "family_drama",
+   "label": "Family drama",
+   "notes": "Warm ensemble family and small-town drama. No dislikes.",
+   "loves": [
+    {"id": 17128, "name": "This Is Us", "year": 2016},
+    {"id": 93, "name": "Parenthood", "year": 2010},
+    {"id": 781, "name": "Friday Night Lights", "year": 2006},
+    {"id": 525, "name": "Gilmore Girls", "year": 2000}
+   ],
+   "likes": [
+    {"id": 779, "name": "Brothers & Sisters", "year": 2006},
+    {"id": 34601, "name": "A Million Little Things", "year": 2018},
+    {"id": 367, "name": "Six Feet Under", "year": 2001},
+    {"id": 198, "name": "The Fosters", "year": 2013},
+    {"id": 38893, "name": "Virgin River", "year": 2019},
+    {"id": 38894, "name": "Sweet Magnolias", "year": 2020},
+    {"id": 3164, "name": "Heartland", "year": 2007},
+    {"id": 440, "name": "Everwood", "year": 2002}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "western",
+   "label": "Westerns",
+   "notes": "Frontier and modern Westerns. Dislikes are glossy teen soaps. Deliberately niche: Lonesome Dove (1989) and Gunsmoke (1955) predate the year floor.",
+   "loves": [
+    {"id": 565, "name": "Deadwood", "year": 2004},
+    {"id": 27848, "name": "Yellowstone", "year": 2018},
+    {"id": 53327, "name": "1883", "year": 2021},
+    {"id": 106, "name": "Justified", "year": 2010}
+   ],
+   "likes": [
+    {"id": 395, "name": "Longmire", "year": 2012},
+    {"id": 13634, "name": "Godless", "year": 2017},
+    {"id": 74, "name": "Hell on Wheels", "year": 2011},
+    {"id": 60550, "name": "1923", "year": 2022},
+    {"id": 66544, "name": "Lawmen: Bass Reeves", "year": 2023},
+    {"id": 7845, "name": "Lonesome Dove", "year": 1989},
+    {"id": 782, "name": "Gunsmoke", "year": 1955}
+   ],
+   "dislikes": [
+    {"id": 5262, "name": "Riverdale", "year": 2017},
+    {"id": 567, "name": "Gossip Girl", "year": 2007},
+    {"id": 28826, "name": "Euphoria", "year": 2019}
+   ]
+  },
+  {
+   "key": "indian_web",
+   "label": "Indian web series",
+   "notes": "Hindi-language streaming originals. Niche-heavy on purpose: TVmaze popularity is low for most Indian shows, so only The Family Man, Asur, Special OPS and Breathe clear the default floor.",
+   "loves": [
+    {"id": 18197, "name": "Sacred Games", "year": 2018},
+    {"id": 39868, "name": "Mirzapur", "year": 2018},
+    {"id": 43728, "name": "The Family Man", "year": 2019},
+    {"id": 51127, "name": "Scam 1992: The Harshad Mehta Story", "year": 2020},
+    {"id": 47014, "name": "Panchayat", "year": 2020}
+   ],
+   "likes": [
+    {"id": 49403, "name": "Kota Factory", "year": 2019},
+    {"id": 41322, "name": "Delhi Crime", "year": 2019},
+    {"id": 47606, "name": "Paatal Lok", "year": 2020},
+    {"id": 41207, "name": "Made in Heaven", "year": 2019},
+    {"id": 46942, "name": "Asur", "year": 2020},
+    {"id": 46754, "name": "Special OPS", "year": 2020},
+    {"id": 34269, "name": "Breathe", "year": 2018}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "spanish_language",
+   "label": "Spanish-language drama",
+   "notes": "Spanish and Mexican streaming and network drama. Deliberately niche: Who Killed Sara? and Sky Rojo sit below the popularity floor.",
+   "loves": [
+    {"id": 27436, "name": "La Casa de Papel", "year": 2017},
+    {"id": 37854, "name": "Élite", "year": 2018},
+    {"id": 25499, "name": "Las Chicas del Cable", "year": 2017},
+    {"id": 5881, "name": "Vis a Vis", "year": 2015}
+   ],
+   "likes": [
+    {"id": 5777, "name": "Velvet", "year": 2014},
+    {"id": 7907, "name": "Gran Hotel", "year": 2011},
+    {"id": 1031, "name": "El Internado", "year": 2007},
+    {"id": 1763, "name": "El Ministerio del Tiempo", "year": 2015},
+    {"id": 2682, "name": "Club de Cuervos", "year": 2015},
+    {"id": 59241, "name": "Berlín", "year": 2023},
+    {"id": 47415, "name": "Control Z", "year": 2020},
+    {"id": 53841, "name": "¿Quién mató a Sara?", "year": 2021},
+    {"id": 49021, "name": "Sky Rojo", "year": 2021}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "telenovela",
+   "label": "Latin telenovela",
+   "notes": "Classic Mexican, Colombian and Telemundo telenovelas plus Jane the Virgin, the English-language homage. Niche-heavy on purpose: Pasion de Gavilanes, La Usurpadora, Rubi, La fea mas bella, Teresa and Maria la del Barrio sit below the popularity floor.",
+   "loves": [
+    {"id": 40334, "name": "Yo soy Betty, la fea", "year": 1999},
+    {"id": 7016, "name": "La Reina del Sur", "year": 2011},
+    {"id": 28631, "name": "Rebelde", "year": 2004},
+    {"id": 17721, "name": "El Señor de los Cielos", "year": 2013}
+   ],
+   "likes": [
+    {"id": 23677, "name": "Pasión de Gavilanes", "year": 2003},
+    {"id": 16277, "name": "La Usurpadora", "year": 1998},
+    {"id": 16276, "name": "Rubí", "year": 2004},
+    {"id": 24562, "name": "La fea más bella", "year": 2006},
+    {"id": 44267, "name": "Teresa", "year": 2010},
+    {"id": 27965, "name": "María la del Barrio", "year": 1995},
+    {"id": 128, "name": "Jane the Virgin", "year": 2014}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "turkish_drama",
+   "label": "Turkish drama",
+   "notes": "Turkish dizi: Ottoman epics, romances and family crime. Deliberately niche: Ask-i Memnu and Kurulus: Osman sit below the popularity floor.",
+   "loves": [
+    {"id": 5858, "name": "Muhteşem Yüzyıl", "year": 2011},
+    {"id": 11834, "name": "Diriliş Ertuğrul", "year": 2014},
+    {"id": 7580, "name": "Kara Sevda", "year": 2015},
+    {"id": 18892, "name": "Aşk-ı Memnu", "year": 2008}
+   ],
+   "likes": [
+    {"id": 32417, "name": "Çukur", "year": 2017},
+    {"id": 35403, "name": "Yasak Elma", "year": 2018},
+    {"id": 7664, "name": "Kiralık Aşk", "year": 2015},
+    {"id": 57473, "name": "Yargı", "year": 2021},
+    {"id": 32694, "name": "Siyah Beyaz Aşk", "year": 2017},
+    {"id": 55740, "name": "Aşk Mantık İntikam", "year": 2021},
+    {"id": 36807, "name": "The Protector", "year": 2018},
+    {"id": 44935, "name": "Kuruluş: Osman", "year": 2019}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "kids_animation",
+   "label": "Kids animation",
+   "notes": "Preschool and all-ages cartoons watched by a family with young children. Dislikes are adult animation, the mirror of adult_animation. Deliberately niche: Octonauts sits below the popularity floor.",
+   "loves": [
+    {"id": 41821, "name": "Bluey", "year": 2018},
+    {"id": 713, "name": "SpongeBob SquarePants", "year": 1999},
+    {"id": 894, "name": "Paw Patrol", "year": 2013},
+    {"id": 4972, "name": "Peppa Pig", "year": 2004}
+   ],
+   "likes": [
+    {"id": 672, "name": "Phineas and Ferb", "year": 2007},
+    {"id": 396, "name": "Gravity Falls", "year": 2012},
+    {"id": 290, "name": "Adventure Time", "year": 2008},
+    {"id": 3134, "name": "The Amazing World of Gumball", "year": 2011},
+    {"id": 21311, "name": "Hey Duggee", "year": 2015},
+    {"id": 555, "name": "Avatar: The Last Airbender", "year": 2005},
+    {"id": 17756, "name": "Octonauts", "year": 2010}
+   ],
+   "dislikes": [
+    {"id": 84, "name": "Family Guy", "year": 1999},
+    {"id": 112, "name": "South Park", "year": 1997},
+    {"id": 216, "name": "Rick and Morty", "year": 2013}
+   ]
+  },
+  {
+   "key": "legal_drama",
+   "label": "Legal drama",
+   "notes": "Courtroom and law-firm drama, including the Korean Extraordinary Attorney Woo. Deliberately niche: L.A. Law premiered in 1986.",
+   "loves": [
+    {"id": 172, "name": "Suits", "year": 2011},
+    {"id": 101, "name": "The Good Wife", "year": 2009},
+    {"id": 18206, "name": "The Good Fight", "year": 2017},
+    {"id": 598, "name": "Boston Legal", "year": 2004}
+   ],
+   "likes": [
+    {"id": 52, "name": "How to Get Away with Murder", "year": 2014},
+    {"id": 679, "name": "Damages", "year": 2007},
+    {"id": 907, "name": "The Practice", "year": 1997},
+    {"id": 655, "name": "Ally McBeal", "year": 1997},
+    {"id": 52910, "name": "The Lincoln Lawyer", "year": 2022},
+    {"id": 3039, "name": "Goliath", "year": 2016},
+    {"id": 3933, "name": "Silk", "year": 2011},
+    {"id": 62357, "name": "Extraordinary Attorney Woo", "year": 2022},
+    {"id": 40420, "name": "Perry Mason", "year": 2020},
+    {"id": 1481, "name": "L.A. Law", "year": 1986}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "political_drama",
+   "label": "Political drama",
+   "notes": "Government and campaign drama from the US, UK, Denmark and France. No dislikes.",
+   "loves": [
+    {"id": 523, "name": "The West Wing", "year": 1999},
+    {"id": 175, "name": "House of Cards", "year": 2013},
+    {"id": 3934, "name": "Borgen", "year": 2010},
+    {"id": 151, "name": "The Newsroom", "year": 2012}
+   ],
+   "likes": [
+    {"id": 98, "name": "Scandal", "year": 2012},
+    {"id": 48, "name": "Madam Secretary", "year": 2014},
+    {"id": 8167, "name": "Designated Survivor", "year": 2016},
+    {"id": 835, "name": "Boss", "year": 2011},
+    {"id": 60213, "name": "The Diplomat", "year": 2023},
+    {"id": 12360, "name": "Baron Noir", "year": 2016},
+    {"id": 3282, "name": "House of Cards", "year": 1990},
+    {"id": 1084, "name": "Commander in Chief", "year": 2005},
+    {"id": 23470, "name": "Succession", "year": 2018},
+    {"id": 32490, "name": "Bodyguard", "year": 2018}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "slice_of_life_anime",
+   "label": "Slice-of-life anime",
+   "notes": "Gentle iyashikei and everyday-life anime. Dislikes are gore anime: the same Japanese Animation format, the opposite mood. Niche-heavy on purpose: most loved titles sit below the popularity floor while every dislike clears it.",
+   "loves": [
+    {"id": 33900, "name": "Yuru Camp△", "year": 2018},
+    {"id": 12310, "name": "Natsume's Book of Friends", "year": 2008},
+    {"id": 7906, "name": "Barakamon", "year": 2014},
+    {"id": 69956, "name": "Frieren: Beyond Journey's End", "year": 2023}
+   ],
+   "likes": [
+    {"id": 5460, "name": "K-ON!", "year": 2009},
+    {"id": 5199, "name": "Non Non Biyori", "year": 2013},
+    {"id": 26286, "name": "Aria", "year": 2005},
+    {"id": 8248, "name": "Mushi-Shi", "year": 2005},
+    {"id": 6473, "name": "Anohana: The Flower We Saw That Day", "year": 2011},
+    {"id": 56939, "name": "Komi Can't Communicate", "year": 2021},
+    {"id": 59698, "name": "Spy×Family", "year": 2022}
+   ],
+   "dislikes": [
+    {"id": 1440, "name": "Tokyo Ghoul", "year": 2014},
+    {"id": 2061, "name": "Elfen Lied", "year": 2004},
+    {"id": 5901, "name": "Another", "year": 2012},
+    {"id": 27, "name": "Berserk", "year": 1997}
+   ]
+  },
+  {
+   "key": "limited_series",
+   "label": "Prestige limited series",
+   "notes": "Acclaimed miniseries and short-run dramas. Deliberately niche: When They See Us sits below the popularity floor.",
+   "loves": [
+    {"id": 30770, "name": "Chernobyl", "year": 2019},
+    {"id": 465, "name": "Band of Brothers", "year": 2001},
+    {"id": 41428, "name": "The Queen's Gambit", "year": 2020},
+    {"id": 40546, "name": "Mare of Easttown", "year": 2021},
+    {"id": 14157, "name": "The Night Of", "year": 2016}
+   ],
+   "likes": [
+    {"id": 15112, "name": "Sharp Objects", "year": 2018},
+    {"id": 415, "name": "Olive Kitteridge", "year": 2014},
+    {"id": 34526, "name": "Unbelievable", "year": 2019},
+    {"id": 42361, "name": "Normal People", "year": 2020},
+    {"id": 38317, "name": "I May Destroy You", "year": 2020},
+    {"id": 54285, "name": "BEEF", "year": 2023},
+    {"id": 52426, "name": "Baby Reindeer", "year": 2024},
+    {"id": 78570, "name": "Adolescence", "year": 2025},
+    {"id": 464, "name": "The Pacific", "year": 2010},
+    {"id": 30202, "name": "When They See Us", "year": 2019}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "nineties_nostalgia",
+   "label": "1990s nostalgia",
+   "notes": "What a kid of the nineties watched: TGIF sitcoms, teen shows and syndicated action. Deliberately niche: Saved by the Bell and Family Matters premiered in 1989; Clarissa sits below the popularity floor.",
+   "loves": [
+    {"id": 582, "name": "The Fresh Prince of Bel-Air", "year": 1990},
+    {"id": 427, "name": "Buffy the Vampire Slayer", "year": 1997},
+    {"id": 430, "name": "The X-Files", "year": 1993},
+    {"id": 1252, "name": "Saved by the Bell", "year": 1989}
+   ],
+   "likes": [
+    {"id": 683, "name": "Boy Meets World", "year": 1993},
+    {"id": 818, "name": "Beverly Hills, 90210", "year": 1990},
+    {"id": 976, "name": "Sabrina the Teenage Witch", "year": 1996},
+    {"id": 1250, "name": "Family Matters", "year": 1989},
+    {"id": 437, "name": "Xena: Warrior Princess", "year": 1995},
+    {"id": 905, "name": "Hercules: The Legendary Journeys", "year": 1994},
+    {"id": 156, "name": "Twin Peaks", "year": 1990},
+    {"id": 7903, "name": "Martin", "year": 1992},
+    {"id": 7635, "name": "Sister, Sister", "year": 1994},
+    {"id": 4274, "name": "Clarissa Explains It All", "year": 1991}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "japanese_live_action",
+   "label": "Japanese live action",
+   "notes": "Japanese TV dramas and Netflix originals. Niche-heavy on purpose: only Alice in Borderland and Sanctuary clear the default popularity floor.",
+   "loves": [
+    {"id": 50036, "name": "Alice in Borderland", "year": 2020},
+    {"id": 37376, "name": "Midnight Diner", "year": 2009},
+    {"id": 27063, "name": "Kodoku no Gurume", "year": 2012},
+    {"id": 13017, "name": "Naoki Hanzawa", "year": 2013}
+   ],
+   "likes": [
+    {"id": 67788, "name": "Sanctuary", "year": 2023},
+    {"id": 42224, "name": "The Naked Director", "year": 2019},
+    {"id": 2775, "name": "Galileo", "year": 2007},
+    {"id": 15886, "name": "Legal High", "year": 2012},
+    {"id": 6226, "name": "Liar Game", "year": 2007},
+    {"id": 64293, "name": "First Love", "year": 2022},
+    {"id": 6423, "name": "Hana Yori Dango", "year": 2005},
+    {"id": 6898, "name": "Nodame Cantabile", "year": 2006}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "standup_sketch",
+   "label": "Stand-up and sketch",
+   "notes": "Sketch shows and stand-up showcases. Deliberately niche by era: Saturday Night Live, Monty Python and The Kids in the Hall premiered before 1990; Chappelle's Show sits below the popularity floor.",
+   "loves": [
+    {"id": 361, "name": "Saturday Night Live", "year": 1975},
+    {"id": 257, "name": "Key & Peele", "year": 2012},
+    {"id": 4128, "name": "Chappelle's Show", "year": 2003},
+    {"id": 694, "name": "Monty Python's Flying Circus", "year": 1969}
+   ],
+   "likes": [
+    {"id": 376, "name": "Portlandia", "year": 2011},
+    {"id": 327, "name": "Inside Amy Schumer", "year": 2013},
+    {"id": 2583, "name": "Mr. Show", "year": 1995},
+    {"id": 5112, "name": "The Kids in the Hall", "year": 1988},
+    {"id": 536, "name": "Whose Line Is It Anyway?", "year": 1998},
+    {"id": 5160, "name": "That Mitchell and Webb Look", "year": 2006},
+    {"id": 2591, "name": "Tim and Eric Awesome Show, Great Job!", "year": 2007},
+    {"id": 2684, "name": "Live at the Apollo", "year": 2004},
+    {"id": 29821, "name": "The Standups", "year": 2017},
+    {"id": 42850, "name": "A Black Lady Sketch Show", "year": 2019}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "feelgood_comedy",
+   "label": "Feel-good comedy",
+   "notes": "Kind-hearted ensemble comedy. Dislikes are grim, violent hits the viewer bailed on.",
+   "loves": [
+    {"id": 1775, "name": "Schitt's Creek", "year": 2015},
+    {"id": 44458, "name": "Ted Lasso", "year": 2020},
+    {"id": 2790, "name": "The Good Place", "year": 2016},
+    {"id": 33320, "name": "Derry Girls", "year": 2018}
+   ],
+   "likes": [
+    {"id": 17312, "name": "Kim's Convenience", "year": 2016},
+    {"id": 318, "name": "Community", "year": 2009},
+    {"id": 58, "name": "New Girl", "year": 2011},
+    {"id": 1368, "name": "Unbreakable Kimmy Schmidt", "year": 2015},
+    {"id": 38241, "name": "Ghosts", "year": 2019},
+    {"id": 46573, "name": "Ghosts", "year": 2021}
+   ],
+   "dislikes": [
+    {"id": 73, "name": "The Walking Dead", "year": 2010},
+    {"id": 15299, "name": "The Boys", "year": 2019},
+    {"id": 82, "name": "Game of Thrones", "year": 2011}
+   ]
+  },
+  {
+   "key": "historical_epic",
+   "label": "Historical epics",
+   "notes": "Swords, sails and dynasties from Rome to the Vikings to feudal Japan. Deliberately niche: Barbaren sits just under the popularity floor.",
+   "loves": [
+    {"id": 29, "name": "Vikings", "year": 2013},
+    {"id": 2759, "name": "The Last Kingdom", "year": 2015},
+    {"id": 677, "name": "Rome", "year": 2005},
+    {"id": 716, "name": "Spartacus", "year": 2010},
+    {"id": 37336, "name": "Shōgun", "year": 2024}
+   ],
+   "likes": [
+    {"id": 712, "name": "The Tudors", "year": 2007},
+    {"id": 182, "name": "Black Sails", "year": 2014},
+    {"id": 700, "name": "Marco Polo", "year": 2014},
+    {"id": 515, "name": "The Borgias", "year": 2011},
+    {"id": 45121, "name": "Vikings: Valhalla", "year": 2022},
+    {"id": 11312, "name": "Knightfall", "year": 2017},
+    {"id": 197, "name": "Da Vinci's Demons", "year": 2013},
+    {"id": 39320, "name": "Barbaren", "year": 2020},
+    {"id": 19685, "name": "Britannia", "year": 2018}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "psychological_anime",
+   "label": "Psychological and sci-fi anime",
+   "notes": "Cerebral, dark and cyberpunk anime. Deliberately niche: Monster, Paranoia Agent, Psycho-Pass and Code Geass sit below the popularity floor.",
+   "loves": [
+    {"id": 40, "name": "Death Note", "year": 2006},
+    {"id": 1925, "name": "Neon Genesis Evangelion", "year": 1995},
+    {"id": 2051, "name": "Steins;Gate", "year": 2011},
+    {"id": 1121, "name": "Cowboy Bebop", "year": 1998},
+    {"id": 8244, "name": "Monster", "year": 2004}
+   ],
+   "likes": [
+    {"id": 1938, "name": "Serial Experiments Lain", "year": 1998},
+    {"id": 1935, "name": "Ghost in the Shell: Stand Alone Complex", "year": 2002},
+    {"id": 2482, "name": "Paranoia Agent", "year": 2004},
+    {"id": 10773, "name": "Boku Dake ga Inai Machi", "year": 2016},
+    {"id": 48945, "name": "Cyberpunk: Edgerunners", "year": 2022},
+    {"id": 42155, "name": "Vinland Saga", "year": 2019},
+    {"id": 1939, "name": "Psycho-Pass", "year": 2012},
+    {"id": 5276, "name": "Code Geass: Hangyaku no Lelouch", "year": 2006}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "home_lifestyle",
+   "label": "Home renovation and lifestyle",
+   "notes": "HGTV renovation, makeover and real-estate reality. Dislikes are horror hits. Deliberately niche: Fixer Upper, Selling Sunset and Tidying Up sit below the popularity floor and This Old House premiered in 1979.",
+   "loves": [
+    {"id": 3341, "name": "Fixer Upper", "year": 2014},
+    {"id": 25268, "name": "Queer Eye", "year": 2018},
+    {"id": 4857, "name": "Love It or List It", "year": 2008},
+    {"id": 12135, "name": "Home Town", "year": 2017}
+   ],
+   "likes": [
+    {"id": 1418, "name": "Tiny House Nation", "year": 2014},
+    {"id": 4987, "name": "House Hunters", "year": 1999},
+    {"id": 3333, "name": "Million Dollar Listing: Los Angeles", "year": 2006},
+    {"id": 25960, "name": "The Repair Shop", "year": 2017},
+    {"id": 1802, "name": "This Old House", "year": 1979},
+    {"id": 41476, "name": "Selling Sunset", "year": 2019},
+    {"id": 40164, "name": "Tidying Up with Marie Kondo", "year": 2019}
+   ],
+   "dislikes": [
+    {"id": 30, "name": "American Horror Story", "year": 2011},
+    {"id": 73, "name": "The Walking Dead", "year": 2010}
+   ]
+  },
+  {
+   "key": "german_drama",
+   "label": "German-language drama",
+   "notes": "German streaming and public-broadcaster drama. Deutschland is the 2015 series known as Deutschland 83. Deliberately niche: Unorthodox and Der Tatortreiniger sit below the popularity floor.",
+   "loves": [
+    {"id": 17861, "name": "Dark", "year": 2017},
+    {"id": 25245, "name": "Babylon Berlin", "year": 2017},
+    {"id": 2028, "name": "Deutschland", "year": 2015},
+    {"id": 39319, "name": "How to Sell Drugs Online (Fast)", "year": 2019}
+   ],
+   "likes": [
+    {"id": 27344, "name": "Das Boot", "year": 2018},
+    {"id": 28240, "name": "4 Blocks", "year": 2017},
+    {"id": 39832, "name": "Parfum", "year": 2018},
+    {"id": 56198, "name": "Kleo", "year": 2022},
+    {"id": 39321, "name": "Tribes of Europa", "year": 2021},
+    {"id": 41027, "name": "Biohackers", "year": 2020},
+    {"id": 26285, "name": "Charité", "year": 2017},
+    {"id": 1224, "name": "Unsere Mütter, unsere Väter", "year": 2013},
+    {"id": 41072, "name": "Unorthodox", "year": 2020},
+    {"id": 5613, "name": "Der Tatortreiniger", "year": 2011}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "french_drama",
+   "label": "French-language drama",
+   "notes": "French streaming and Canal+ drama and comedy. Deliberately niche: Marianne, Braquo, Au service de la France, Hippocrate, Kaamelott and Plan Coeur sit below the popularity floor.",
+   "loves": [
+    {"id": 7098, "name": "Dix pour cent", "year": 2015},
+    {"id": 50701, "name": "Lupin", "year": 2021},
+    {"id": 6131, "name": "Le Bureau des Légendes", "year": 2015},
+    {"id": 1168, "name": "Les Revenants", "year": 2012}
+   ],
+   "likes": [
+    {"id": 2086, "name": "Engrenages", "year": 2005},
+    {"id": 12360, "name": "Baron Noir", "year": 2016},
+    {"id": 54780, "name": "HPI", "year": 2021},
+    {"id": 42586, "name": "Marianne", "year": 2019},
+    {"id": 5615, "name": "Braquo", "year": 2009},
+    {"id": 8666, "name": "Au service de la France", "year": 2015},
+    {"id": 37166, "name": "Hippocrate", "year": 2018},
+    {"id": 7092, "name": "Kaamelott", "year": 2005},
+    {"id": 39604, "name": "Plan Cœur", "year": 2018}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "sports_docs",
+   "label": "Sports docuseries",
+   "notes": "Behind-the-scenes sports documentaries. Dislikes are dating reality. Deliberately niche: Last Chance U, Sunderland 'Til I Die, All or Nothing, Cheer, Break Point and Full Swing sit below the popularity floor.",
+   "loves": [
+    {"id": 41074, "name": "Formula 1: Drive to Survive", "year": 2019},
+    {"id": 40358, "name": "The Last Dance", "year": 2020},
+    {"id": 55536, "name": "Welcome to Wrexham", "year": 2022},
+    {"id": 891, "name": "Hard Knocks", "year": 2001}
+   ],
+   "likes": [
+    {"id": 19562, "name": "Last Chance U", "year": 2016},
+    {"id": 39925, "name": "Sunderland 'Til I Die", "year": 2018},
+    {"id": 67138, "name": "Quarterback", "year": 2023},
+    {"id": 18873, "name": "All or Nothing", "year": 2016},
+    {"id": 45719, "name": "Cheer", "year": 2020},
+    {"id": 65904, "name": "Break Point", "year": 2023},
+    {"id": 66330, "name": "Full Swing", "year": 2023}
+   ],
+   "dislikes": [
+    {"id": 914, "name": "The Bachelor", "year": 2002},
+    {"id": 11363, "name": "Love Island", "year": 2015}
+   ]
+  },
+  {
+   "key": "late_night",
+   "label": "Late-night talk and news satire",
+   "notes": "US late-night and topical comedy plus Graham Norton. Deliberately niche: The Colbert Report, Full Frontal and Patriot Act sit below the popularity floor.",
+   "loves": [
+    {"id": 263, "name": "Last Week Tonight with John Oliver", "year": 2014},
+    {"id": 249, "name": "The Daily Show with Jon Stewart", "year": 1999},
+    {"id": 2756, "name": "The Late Show with Stephen Colbert", "year": 2015},
+    {"id": 363, "name": "Late Night with Seth Meyers", "year": 2014}
+   ],
+   "likes": [
+    {"id": 1388, "name": "Jimmy Kimmel Live", "year": 2003},
+    {"id": 718, "name": "The Tonight Show Starring Jimmy Fallon", "year": 2014},
+    {"id": 279, "name": "Real Time with Bill Maher", "year": 2003},
+    {"id": 247, "name": "The Colbert Report", "year": 2005},
+    {"id": 6663, "name": "Full Frontal with Samantha Bee", "year": 2016},
+    {"id": 243, "name": "Conan", "year": 2010},
+    {"id": 751, "name": "The Graham Norton Show", "year": 2007},
+    {"id": 38269, "name": "Patriot Act with Hasan Minhaj", "year": 2018}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "womens_dramedy",
+   "label": "Women-led dramedy",
+   "notes": "Half-hour comedies and dramedies centred on women's lives. No dislikes.",
+   "loves": [
+    {"id": 676, "name": "Sex and the City", "year": 1998},
+    {"id": 16149, "name": "Fleabag", "year": 2016},
+    {"id": 5967, "name": "Insecure", "year": 2016},
+    {"id": 19807, "name": "The Marvelous Mrs. Maisel", "year": 2017}
+   ],
+   "likes": [
+    {"id": 139, "name": "Girls", "year": 2012},
+    {"id": 2260, "name": "Crazy Ex-Girlfriend", "year": 2015},
+    {"id": 375, "name": "Broad City", "year": 2014},
+    {"id": 623, "name": "Younger", "year": 2015},
+    {"id": 1595, "name": "Grace and Frankie", "year": 2015},
+    {"id": 41632, "name": "Emily in Paris", "year": 2020},
+    {"id": 54914, "name": "Hacks", "year": 2021},
+    {"id": 35846, "name": "Dead to Me", "year": 2019},
+    {"id": 128, "name": "Jane the Virgin", "year": 2014}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "soap_opera",
+   "label": "Soap operas",
+   "notes": "British, Australian and American daily soaps. Niche by era on purpose: most long-running soaps premiered before 1990, so the default year floor removes them.",
+   "loves": [
+    {"id": 793, "name": "EastEnders", "year": 1985},
+    {"id": 4139, "name": "Coronation Street", "year": 1960},
+    {"id": 5420, "name": "Neighbours", "year": 1985},
+    {"id": 5419, "name": "Home and Away", "year": 1988}
+   ],
+   "likes": [
+    {"id": 2548, "name": "Emmerdale", "year": 1972},
+    {"id": 4175, "name": "Hollyoaks", "year": 1995},
+    {"id": 3399, "name": "Doctors", "year": 2000},
+    {"id": 729, "name": "Casualty", "year": 1986},
+    {"id": 806, "name": "The Bold and the Beautiful", "year": 1987},
+    {"id": 4344, "name": "The Young and the Restless", "year": 1973},
+    {"id": 812, "name": "Days of Our Lives", "year": 1965},
+    {"id": 16504, "name": "River City", "year": 2002}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "british_crime",
+   "label": "British crime drama",
+   "notes": "Modern and classic UK detective drama, darker than the cozy set. Deliberately niche: Inspector Morse premiered in 1987.",
+   "loves": [
+    {"id": 353, "name": "Line of Duty", "year": 2012},
+    {"id": 286, "name": "Happy Valley", "year": 2014},
+    {"id": 306, "name": "Broadchurch", "year": 2013},
+    {"id": 670, "name": "Luther", "year": 2010}
+   ],
+   "likes": [
+    {"id": 335, "name": "Sherlock", "year": 2010},
+    {"id": 1852, "name": "Shetland", "year": 2013},
+    {"id": 1268, "name": "Endeavour", "year": 2012},
+    {"id": 3276, "name": "Inspector Morse", "year": 1987},
+    {"id": 3249, "name": "Lewis", "year": 2006},
+    {"id": 1272, "name": "Foyle's War", "year": 2002},
+    {"id": 32490, "name": "Bodyguard", "year": 2018},
+    {"id": 3302, "name": "Vera", "year": 2011}
+   ],
+   "dislikes": []
+  }
+ ]
+}
