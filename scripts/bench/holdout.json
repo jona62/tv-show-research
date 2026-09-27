@@ -1,0 +1,477 @@
+{
+ "about": "Held-out viewer personas for scripts/bench/taste_bench.py. Never used to tune the engine, so they show whether constants tuned on personas.json generalise. Chosen from general knowledge of real fan overlap, never from this engine's output. Ratings: loves 1, likes 0.7, dislikes -1.",
+ "catalog": "tvmaze-v2-2026-09-07",
+ "personas": [
+  {
+   "key": "hbo_dramedy",
+   "label": "Prestige HBO dramedy",
+   "notes": "HBO comedy-dramas about wealth, ambition and self-delusion. High Maintenance is the 2016 HBO series, not the web original. Dislikes are wholesome Hallmark small-town drama: gentle and earnest where these are acid.",
+   "loves": [
+    {"id": 51394, "name": "The White Lotus", "year": 2021},
+    {"id": 11538, "name": "Barry", "year": 2018},
+    {"id": 23470, "name": "Succession", "year": 2018},
+    {"id": 1269, "name": "Enlightened", "year": 2011}
+   ],
+   "likes": [
+    {"id": 37387, "name": "The Righteous Gemstones", "year": 2019},
+    {"id": 1141, "name": "Eastbound & Down", "year": 2009},
+    {"id": 3080, "name": "Big Little Lies", "year": 2017},
+    {"id": 49313, "name": "Somebody Somewhere", "year": 2022},
+    {"id": 144, "name": "The Comeback", "year": 2005},
+    {"id": 20913, "name": "High Maintenance", "year": 2016},
+    {"id": 764, "name": "Bored to Death", "year": 2009}
+   ],
+   "dislikes": [
+    {"id": 2091, "name": "When Calls the Heart", "year": 2013},
+    {"id": 6744, "name": "Chesapeake Shores", "year": 2016},
+    {"id": 1177, "name": "Good Witch", "year": 2008}
+   ]
+  },
+  {
+   "key": "britcom_classic",
+   "label": "British sitcom classics",
+   "notes": "BBC and Channel 4 studio sitcoms from the 1970s to the 2000s. Porridge is the 1974 original. No dislikes.",
+   "loves": [
+    {"id": 577, "name": "Fawlty Towers", "year": 1975},
+    {"id": 1072, "name": "Blackadder", "year": 1983},
+    {"id": 2094, "name": "Only Fools and Horses....", "year": 1981},
+    {"id": 3254, "name": "Father Ted", "year": 1995}
+   ],
+   "likes": [
+    {"id": 368, "name": "Red Dwarf", "year": 1988},
+    {"id": 1151, "name": "The Young Ones", "year": 1982},
+    {"id": 1054, "name": "Absolutely Fabulous", "year": 1992},
+    {"id": 1530, "name": "The Vicar of Dibley", "year": 1994},
+    {"id": 3837, "name": "Keeping Up Appearances", "year": 1990},
+    {"id": 7753, "name": "One Foot in the Grave", "year": 1990},
+    {"id": 1776, "name": "Porridge", "year": 1974},
+    {"id": 1641, "name": "Black Books", "year": 2000},
+    {"id": 539, "name": "The IT Crowd", "year": 2006}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "australian_drama",
+   "label": "Australian drama",
+   "notes": "Australian crime, prison and period drama, mostly from the ABC. Rake and The Code are the Australian series, and the catalog dates Mystery Road to 2013. No dislikes.",
+   "loves": [
+    {"id": 1828, "name": "Wentworth", "year": 2013},
+    {"id": 33492, "name": "Mystery Road", "year": 2013},
+    {"id": 3661, "name": "Jack Irish", "year": 2012},
+    {"id": 3250, "name": "Rake", "year": 2010}
+   ],
+   "likes": [
+    {"id": 4276, "name": "Janet King", "year": 2014},
+    {"id": 30416, "name": "Harrow", "year": 2018},
+    {"id": 2002, "name": "Miss Fisher's Murder Mysteries", "year": 2012},
+    {"id": 1814, "name": "The Doctor Blake Mysteries", "year": 2013},
+    {"id": 6768, "name": "Secret City", "year": 2016},
+    {"id": 3313, "name": "The Code", "year": 2014},
+    {"id": 2477, "name": "Glitch", "year": 2015},
+    {"id": 1808, "name": "Underbelly", "year": 2008},
+    {"id": 1451, "name": "A Place to Call Home", "year": 2013}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "music_docs",
+   "label": "Music documentaries",
+   "notes": "Music history docuseries and deep dives into albums and songwriting. Dislikes are singing talent shows, The Voice in its US version and The X Factor in its UK original: the same Music tag, the opposite taste. Deliberately niche: Hip-Hop Evolution sits below the default popularity floor.",
+   "loves": [
+    {"id": 55965, "name": "The Beatles: Get Back", "year": 2021},
+    {"id": 17687, "name": "Soundbreaking", "year": 2016},
+    {"id": 45910, "name": "Laurel Canyon", "year": 2020},
+    {"id": 42997, "name": "Country Music", "year": 2019}
+   ],
+   "likes": [
+    {"id": 28487, "name": "The Defiant Ones", "year": 2017},
+    {"id": 13796, "name": "Classic Albums", "year": 1997},
+    {"id": 39043, "name": "ReMastered", "year": 2018},
+    {"id": 50616, "name": "Song Exploder", "year": 2020},
+    {"id": 19799, "name": "Jazz", "year": 2001},
+    {"id": 40009, "name": "Punk", "year": 2019},
+    {"id": 23528, "name": "Hip-Hop Evolution", "year": 2016}
+   ],
+   "dislikes": [
+    {"id": 288, "name": "American Idol", "year": 2002},
+    {"id": 70, "name": "The Voice", "year": 2011},
+    {"id": 696, "name": "The X Factor", "year": 2004}
+   ]
+  },
+  {
+   "key": "mecha_anime",
+   "label": "Mecha anime",
+   "notes": "Giant-robot anime from the first Gundam and Macross to 86. No dislikes.",
+   "loves": [
+    {"id": 5242, "name": "Mobile Suit Gundam", "year": 1979},
+    {"id": 5421, "name": "Tengen Toppa Gurren-Lagann", "year": 2007},
+    {"id": 1925, "name": "Neon Genesis Evangelion", "year": 1995},
+    {"id": 5168, "name": "Mobile Suit Gundam: Tekketsu no Orphans", "year": 2015}
+   ],
+   "likes": [
+    {"id": 5241, "name": "Mobile Suit Gundam Wing", "year": 1995},
+    {"id": 61323, "name": "Mobile Suit Gundam: The Witch From Mercury", "year": 2022},
+    {"id": 36395, "name": "Macross", "year": 1982},
+    {"id": 5285, "name": "Eureka Seven", "year": 2005},
+    {"id": 8235, "name": "Full Metal Panic!", "year": 2002},
+    {"id": 53961, "name": "86", "year": 2021},
+    {"id": 33921, "name": "Darling in the FranXX", "year": 2018},
+    {"id": 1441, "name": "Aldnoah.Zero", "year": 2014},
+    {"id": 9050, "name": "The Big O", "year": 2001}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "isekai_anime",
+   "label": "Isekai anime",
+   "notes": "Transported-to-another-world and reincarnation fantasy anime. No dislikes. Deliberately niche: Hataraku Maou-sama! sits below the default popularity floor.",
+   "loves": [
+    {"id": 14459, "name": "Re:Zero kara Hajimeru Isekai Seikatsu", "year": 2016},
+    {"id": 38390, "name": "That Time I Got Reincarnated as a Slime", "year": 2018},
+    {"id": 52279, "name": "Mushoku Tensei: Jobless Reincarnation", "year": 2021},
+    {"id": 10772, "name": "Kono Subarashii Sekai ni Shukufuku wo!", "year": 2016}
+   ],
+   "likes": [
+    {"id": 4270, "name": "Overlord", "year": 2015},
+    {"id": 2059, "name": "Sword Art Online", "year": 2012},
+    {"id": 40140, "name": "The Rising of the Shield Hero", "year": 2019},
+    {"id": 5470, "name": "No Game No Life", "year": 2014},
+    {"id": 4095, "name": "Log Horizon", "year": 2013},
+    {"id": 22852, "name": "Youjo Senki: Saga of Tanya the Evil", "year": 2017},
+    {"id": 43540, "name": "Ascendance of a Bookworm: I'll Do Anything to Become a Librarian!", "year": 2019},
+    {"id": 63236, "name": "The Eminence in Shadow", "year": 2022},
+    {"id": 6306, "name": "Hataraku Maou-sama!", "year": 2013}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "chinese_historical",
+   "label": "Chinese historical drama",
+   "notes": "Chinese costume drama: palace intrigue, wuxia and xianxia romance. Empresses in the Palace is the full 2012 broadcast, not the 2015 Netflix cut. No dislikes. Deliberately niche: Nirvana in Fire and Joy of Life sit below the default popularity floor.",
+   "loves": [
+    {"id": 7135, "name": "Nirvana in Fire", "year": 2015},
+    {"id": 38735, "name": "Story of Yanxi Palace", "year": 2018},
+    {"id": 3339, "name": "Empresses in the Palace", "year": 2012},
+    {"id": 40201, "name": "The Story of Ming Lan", "year": 2018},
+    {"id": 42806, "name": "The Untamed", "year": 2019}
+   ],
+   "likes": [
+    {"id": 39165, "name": "Ruyi's Royal Love in the Palace", "year": 2018},
+    {"id": 62994, "name": "Love Like the Galaxy", "year": 2022},
+    {"id": 45302, "name": "Joy of Life", "year": 2019},
+    {"id": 28950, "name": "Princess Agents", "year": 2017},
+    {"id": 46037, "name": "Legend of Fei", "year": 2020},
+    {"id": 53806, "name": "Word of Honor", "year": 2021},
+    {"id": 25125, "name": "Eternal Love", "year": 2017},
+    {"id": 63443, "name": "Love Between Fairy and Devil", "year": 2022}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "hindi_serials",
+   "label": "Hindi TV family serials",
+   "notes": "Long-running StarPlus, Zee TV and Colors family serials plus the Sony SAB sitcom Taarak Mehta Ka Ooltah Chashmah. No dislikes. Niche-heavy on purpose: Yeh Rishta Kya Kehlata Hai, Saath Nibhaana Saathiya, Balika Vadhu and Kasautii Zindagii Kay sit below the default popularity floor.",
+   "loves": [
+    {"id": 55393, "name": "Yeh Rishta Kya Kehlata Hai", "year": 2016},
+    {"id": 7684, "name": "Kumkum Bhagya", "year": 2014},
+    {"id": 48320, "name": "Saath Nibhaana Saathiya", "year": 2010},
+    {"id": 25501, "name": "Ishqbaaz", "year": 2016}
+   ],
+   "likes": [
+    {"id": 14286, "name": "Iss Pyaar Ko Kya Naam Doon...Ek Baar Phir", "year": 2013},
+    {"id": 24906, "name": "Uttaran", "year": 2008},
+    {"id": 25848, "name": "Qubool Hai", "year": 2012},
+    {"id": 54636, "name": "Ek Hazaaron Mein Meri Behna Hai", "year": 2011},
+    {"id": 22268, "name": "Balika Vadhu", "year": 2008},
+    {"id": 60072, "name": "Kasautii Zindagii Kay", "year": 2018},
+    {"id": 18303, "name": "Taarak Mehta Ka Ooltah Chashmah", "year": 2008}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "latam_crime",
+   "label": "Latin American crime drama",
+   "notes": "Narco, prison, heist and corruption drama from Mexico, Colombia, Argentina and Brazil. Dislikes are romantic Televisa telenovelas: the same language and country, the opposite mood. El Marginal and Monzón sit exactly at the default popularity floor.",
+   "loves": [
+    {"id": 37787, "name": "Narcos: Mexico", "year": 2018},
+    {"id": 17742, "name": "Pablo Escobar: El Patrón del Mal", "year": 2012},
+    {"id": 22557, "name": "El Marginal", "year": 2016},
+    {"id": 6804, "name": "Historia de un Clan", "year": 2015}
+   ],
+   "likes": [
+    {"id": 26955, "name": "El Chapo", "year": 2017},
+    {"id": 38272, "name": "Distrito Salvaje", "year": 2018},
+    {"id": 18267, "name": "Sr. Avila", "year": 2013},
+    {"id": 34437, "name": "O Mecanismo", "year": 2018},
+    {"id": 54915, "name": "Dom", "year": 2021},
+    {"id": 44901, "name": "Monzón: A Knockout Blow", "year": 2019},
+    {"id": 55561, "name": "Somos.", "year": 2021}
+   ],
+   "dislikes": [
+    {"id": 30295, "name": "Destilando Amor", "year": 2007},
+    {"id": 12262, "name": "Triunfo del Amor", "year": 2010},
+    {"id": 29905, "name": "Lo que la vida me robó", "year": 2013}
+   ]
+  },
+  {
+   "key": "nordic_comedy",
+   "label": "Scandinavian comedy",
+   "notes": "Danish, Norwegian and Swedish comedy and dramedy. No dislikes. Deliberately niche: Solsidan and Hjem til jul sit just below the default popularity floor.",
+   "loves": [
+    {"id": 7317, "name": "Klovn", "year": 2005},
+    {"id": 20974, "name": "Vikingane", "year": 2016},
+    {"id": 708, "name": "Lilyhammer", "year": 2012},
+    {"id": 6125, "name": "Dag", "year": 2010}
+   ],
+   "likes": [
+    {"id": 4251, "name": "Rita", "year": 2012},
+    {"id": 25500, "name": "Bonusfamiljen", "year": 2017},
+    {"id": 47113, "name": "Rådebank", "year": 2020},
+    {"id": 7597, "name": "Side om side", "year": 2013},
+    {"id": 43956, "name": "Exit", "year": 2019},
+    {"id": 8333, "name": "Hellfjord", "year": 2012},
+    {"id": 12773, "name": "Kvarteret Skatan", "year": 2003},
+    {"id": 4605, "name": "Solsidan", "year": 2010},
+    {"id": 41489, "name": "Hjem til jul", "year": 2019}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "supernatural_teen",
+   "label": "Supernatural teen drama",
+   "notes": "Witches, werewolves, vampires and demon hunters from the CW, Freeform and Netflix. Charmed is the 2018 CW reboot. No dislikes.",
+   "loves": [
+    {"id": 176, "name": "Teen Wolf", "year": 2011},
+    {"id": 2158, "name": "Shadowhunters: The Mortal Instruments", "year": 2016},
+    {"id": 62, "name": "The Originals", "year": 2013},
+    {"id": 32649, "name": "Chilling Adventures of Sabrina", "year": 2018},
+    {"id": 53647, "name": "Wednesday", "year": 2022}
+   ],
+   "likes": [
+    {"id": 36708, "name": "Legacies", "year": 2018},
+    {"id": 834, "name": "The Secret Circle", "year": 2011},
+    {"id": 24267, "name": "Charmed", "year": 2018},
+    {"id": 43917, "name": "Fate: The Winx Saga", "year": 2021},
+    {"id": 37031, "name": "Motherland: Fort Salem", "year": 2020},
+    {"id": 36218, "name": "The Order", "year": 2019},
+    {"id": 51305, "name": "First Kill", "year": 2022},
+    {"id": 37883, "name": "Locke & Key", "year": 2020}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "courtroom_tv",
+   "label": "Courtroom reality and daytime TV",
+   "notes": "Arbitration court shows plus daytime paternity and confrontation talk. No dislikes. Deliberately niche: Lauren Lake's Paternity Court sits below the default popularity floor.",
+   "loves": [
+    {"id": 7364, "name": "Judge Judy", "year": 1996},
+    {"id": 57806, "name": "Judy Justice", "year": 2021},
+    {"id": 38930, "name": "Judge Mathis", "year": 1999},
+    {"id": 10691, "name": "The People's Court", "year": 2012}
+   ],
+   "likes": [
+    {"id": 73909, "name": "Divorce Court", "year": 2018},
+    {"id": 68196, "name": "Tribunal Justice", "year": 2023},
+    {"id": 59226, "name": "Judge Steve Harvey", "year": 2022},
+    {"id": 6279, "name": "Judge Rinder", "year": 2014},
+    {"id": 44682, "name": "Court Cam", "year": 2019},
+    {"id": 41901, "name": "Lauren Lake's Paternity Court", "year": 2013},
+    {"id": 6062, "name": "Maury", "year": 1991},
+    {"id": 6067, "name": "The Steve Wilkos Show", "year": 2007}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "political_satire",
+   "label": "Political satire",
+   "notes": "Scripted political and institutional satire from Yes Minister to Veep. Yes, Prime Minister and Spitting Image are the 1980s originals. Dislikes are earnest network political drama: the same Washington vocabulary, the opposite tone.",
+   "loves": [
+    {"id": 1667, "name": "The Thick of It", "year": 2005},
+    {"id": 142, "name": "Veep", "year": 2012},
+    {"id": 1606, "name": "Yes Minister", "year": 1980},
+    {"id": 6647, "name": "Yes, Prime Minister", "year": 1986}
+   ],
+   "likes": [
+    {"id": 63267, "name": "The Regime", "year": 2024},
+    {"id": 332, "name": "Alpha House", "year": 2013},
+    {"id": 4792, "name": "Spitting Image", "year": 1984},
+    {"id": 2576, "name": "Brass Eye", "year": 1997},
+    {"id": 32263, "name": "Avenue 5", "year": 2020},
+    {"id": 2362, "name": "Twenty Twelve", "year": 2011},
+    {"id": 3375, "name": "W1A", "year": 2014},
+    {"id": 13357, "name": "The New Statesman", "year": 1987}
+   ],
+   "dislikes": [
+    {"id": 8167, "name": "Designated Survivor", "year": 2016},
+    {"id": 48, "name": "Madam Secretary", "year": 2014}
+   ]
+  },
+  {
+   "key": "cult_adult_animation",
+   "label": "Cult adult animation",
+   "notes": "Adult Swim and MTV animation beyond the prime-time hits. No dislikes. Deliberately niche: Metalocalypse sits below the default popularity floor.",
+   "loves": [
+    {"id": 304, "name": "The Venture Bros.", "year": 2003},
+    {"id": 382, "name": "Aqua Teen Hunger Force", "year": 2000},
+    {"id": 1810, "name": "Harvey Birdman, Attorney at Law", "year": 2000},
+    {"id": 47182, "name": "Smiling Friends", "year": 2020}
+   ],
+   "likes": [
+    {"id": 6239, "name": "Space Ghost Coast to Coast", "year": 1994},
+    {"id": 7366, "name": "Sealab 2021", "year": 2000},
+    {"id": 1000, "name": "Squidbillies", "year": 2005},
+    {"id": 7760, "name": "Home Movies", "year": 1999},
+    {"id": 1960, "name": "Moral Orel", "year": 2005},
+    {"id": 2579, "name": "Frisky Dingo", "year": 2006},
+    {"id": 928, "name": "Metalocalypse", "year": 2006},
+    {"id": 2554, "name": "Daria", "year": 1997},
+    {"id": 910, "name": "Beavis and Butt-Head", "year": 1992}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "network_2000s",
+   "label": "2000s network serials",
+   "notes": "Serialized broadcast drama of the Lost era: mystery, science fiction and soap. Jericho and Invasion are the 2006 CBS and 2005 ABC series. No dislikes.",
+   "loves": [
+    {"id": 123, "name": "Lost", "year": 2004},
+    {"id": 134, "name": "Heroes", "year": 2006},
+    {"id": 541, "name": "Prison Break", "year": 2005},
+    {"id": 550, "name": "Desperate Housewives", "year": 2004}
+   ],
+   "likes": [
+    {"id": 796, "name": "Ugly Betty", "year": 2006},
+    {"id": 918, "name": "Pushing Daisies", "year": 2007},
+    {"id": 795, "name": "Jericho", "year": 2006},
+    {"id": 458, "name": "FlashForward", "year": 2009},
+    {"id": 168, "name": "Chuck", "year": 2007},
+    {"id": 566, "name": "Ghost Whisperer", "year": 2005},
+    {"id": 861, "name": "Dirty Sexy Money", "year": 2007},
+    {"id": 457, "name": "The Event", "year": 2010},
+    {"id": 1477, "name": "Invasion", "year": 2005}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "craft_competition",
+   "label": "Craft and making competitions",
+   "notes": "Gentle contests in pottery, sewing, baking, art and design, mostly British. Dislikes are conflict-driven Bravo reality: the same Reality format, the opposite temperament.",
+   "loves": [
+    {"id": 7520, "name": "The Great Pottery Throw Down", "year": 2015},
+    {"id": 3909, "name": "The Great British Sewing Bee", "year": 2013},
+    {"id": 2950, "name": "The Great British Bake Off", "year": 2010},
+    {"id": 6310, "name": "Portrait Artist of the Year", "year": 2013}
+   ],
+   "likes": [
+    {"id": 9324, "name": "Landscape Artist of the Year", "year": 2015},
+    {"id": 43250, "name": "Interior Design Masters with Alan Carr", "year": 2019},
+    {"id": 40390, "name": "Glow Up: Britain's Next Make-Up Star", "year": 2019},
+    {"id": 37329, "name": "Blown Away", "year": 2019},
+    {"id": 35248, "name": "Making It", "year": 2018},
+    {"id": 48165, "name": "The Big Flower Fight", "year": 2020},
+    {"id": 58448, "name": "Handmade: Britain's Best Woodworker", "year": 2021}
+   ],
+   "dislikes": [
+    {"id": 1011, "name": "Vanderpump Rules", "year": 2013},
+    {"id": 2900, "name": "Below Deck", "year": 2013},
+    {"id": 521, "name": "The Real Housewives of New Jersey", "year": 2009}
+   ]
+  },
+  {
+   "key": "science_docs",
+   "label": "Science documentaries",
+   "notes": "Space, physics and popular science series. The Planets is the 2019 Brian Cox series. Dislikes are paranormal and pseudoscience series: the same documentary format and mystery vocabulary, the opposite method.",
+   "loves": [
+    {"id": 1128, "name": "Cosmos", "year": 1980},
+    {"id": 2481, "name": "How the Universe Works", "year": 2010},
+    {"id": 3321, "name": "NOVA", "year": 1974},
+    {"id": 1605, "name": "Through the Wormhole", "year": 2010}
+   ],
+   "likes": [
+    {"id": 5095, "name": "Wonders of the Universe", "year": 2011},
+    {"id": 42228, "name": "The Planets", "year": 2019},
+    {"id": 33738, "name": "One Strange Rock", "year": 2018},
+    {"id": 379, "name": "Mythbusters", "year": 2003},
+    {"id": 3209, "name": "Brain Games", "year": 2011},
+    {"id": 448, "name": "The Universe", "year": 2007},
+    {"id": 5075, "name": "Into the Universe with Stephen Hawking", "year": 2010}
+   ],
+   "dislikes": [
+    {"id": 675, "name": "Ancient Aliens", "year": 2009},
+    {"id": 926, "name": "Ghost Adventures", "year": 2008},
+    {"id": 1209, "name": "The Curse of Oak Island", "year": 2014}
+   ]
+  },
+  {
+   "key": "military_drama",
+   "label": "Military drama",
+   "notes": "Combat and special-forces drama from the Second World War to Iraq and Afghanistan. No dislikes.",
+   "loves": [
+    {"id": 465, "name": "Band of Brothers", "year": 2001},
+    {"id": 1240, "name": "Generation Kill", "year": 2008},
+    {"id": 28160, "name": "SEAL Team", "year": 2017},
+    {"id": 44388, "name": "Masters of the Air", "year": 2024}
+   ],
+   "likes": [
+    {"id": 790, "name": "The Unit", "year": 2006},
+    {"id": 804, "name": "Strike Back", "year": 2010},
+    {"id": 11311, "name": "SIX", "year": 2017},
+    {"id": 43539, "name": "SAS: Rogue Heroes", "year": 2022},
+    {"id": 4402, "name": "China Beach", "year": 1988},
+    {"id": 1765, "name": "Tour of Duty", "year": 1987},
+    {"id": 581, "name": "JAG", "year": 1995},
+    {"id": 3287, "name": "Over There", "year": 2005},
+    {"id": 9329, "name": "The Long Road Home", "year": 2017}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "true_story_drama",
+   "label": "True-story drama",
+   "notes": "Scripted dramatizations of real crimes, cons and scandals, several adapted from podcasts: Dirty John, Dr. Death, The Dropout, WeCrashed, Joe vs Carole, The Shrink Next Door and Gaslit. No dislikes.",
+   "loves": [
+    {"id": 34649, "name": "Dirty John", "year": 2018},
+    {"id": 41736, "name": "The Dropout", "year": 2022},
+    {"id": 43875, "name": "Dr. Death", "year": 2021},
+    {"id": 54439, "name": "The Staircase", "year": 2022}
+   ],
+   "likes": [
+    {"id": 53182, "name": "WeCrashed", "year": 2022},
+    {"id": 49925, "name": "Joe vs Carole", "year": 2022},
+    {"id": 52202, "name": "Candy", "year": 2022},
+    {"id": 53730, "name": "Gaslit", "year": 2022},
+    {"id": 47477, "name": "The Shrink Next Door", "year": 2021},
+    {"id": 44818, "name": "Inventing Anna", "year": 2022},
+    {"id": 60196, "name": "Welcome to Chippendales", "year": 2022},
+    {"id": 30659, "name": "The Act", "year": 2019},
+    {"id": 55085, "name": "Love & Death", "year": 2023}
+   ],
+   "dislikes": []
+  },
+  {
+   "key": "eighties_action",
+   "label": "1980s action and adventure",
+   "notes": "Cult action, gadget and detective shows of the 1980s. Dislikes are the 2008 to 2018 reboots of three of them: the same titles and premises, remade for a different taste.",
+   "loves": [
+    {"id": 825, "name": "Knight Rider", "year": 1982},
+    {"id": 1058, "name": "The A-Team", "year": 1983},
+    {"id": 680, "name": "Airwolf", "year": 1984},
+    {"id": 821, "name": "MacGyver", "year": 1985}
+   ],
+   "likes": [
+    {"id": 760, "name": "Miami Vice", "year": 1984},
+    {"id": 956, "name": "Magnum, P.I.", "year": 1980},
+    {"id": 8736, "name": "Street Hawk", "year": 1985},
+    {"id": 2031, "name": "The Fall Guy", "year": 1981},
+    {"id": 1499, "name": "Simon & Simon", "year": 1981},
+    {"id": 1496, "name": "Remington Steele", "year": 1982},
+    {"id": 7051, "name": "The Greatest American Hero", "year": 1981}
+   ],
+   "dislikes": [
+    {"id": 5511, "name": "MacGyver", "year": 2016},
+    {"id": 451, "name": "Knight Rider", "year": 2008},
+    {"id": 32819, "name": "Magnum P.I.", "year": 2018}
+   ]
+  }
+ ]
+}
