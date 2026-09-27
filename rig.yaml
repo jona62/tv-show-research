@@ -1,15 +1,18 @@
-# All three apps in one workspace, sharing one copy of the 46MB model.
+# Four apps in one workspace. A deploy uploads each app's own path and nothing
+# else (the machine running the deploy does the git checkout), so model/ never
+# reaches the workspace; the release uploader refuses a file over about 2 MB anyway.
 #
-# model/ sits outside every app directory on purpose: the release uploader
-# refuses a blob over about 2MB, so the model is copied to /home/developer/model
-# once over SSH and named in MODEL_DIR (see app/README.md). A git-source deploy,
-# which clones the whole repo, finds model/ beside the apps and ignores it.
+# The research site reads the frozen September snapshot, copied once over SSH to
+# /home/developer/model. model-refresher rebuilds a live model from fresh TVmaze
+# data every night into /home/developer/tv-model, and Next Watch and Couchside read
+# tv-model/current. When it moves, each restarts on the new model after its own
+# delay, so the two are never down together.
 name: tv-taste
 visibility: public
 
 workspace:
   image: base
-  # Three engines hold about 650MB resident each, under 2GB together.
+  # Three engines hold about 350 MB each here; a nightly build peaks near 1 GB.
   resources: { ramMb: 3072, vcpuCount: 1, diskSizeMb: 5120 }
   deployment:
     strategy: incremental
@@ -36,7 +39,8 @@ apps:
     start: python3 server.py
     env:
       PORT: "8081"
-      MODEL_DIR: /home/developer/model
+      MODEL_DIR: /home/developer/tv-model/current
+      RELOAD_DELAY_SECONDS: "30"
     health:
       path: /healthz
       timeoutSeconds: 90
@@ -52,7 +56,8 @@ apps:
     start: python3 server.py
     env:
       PORT: "8082"
-      MODEL_DIR: /home/developer/model
+      MODEL_DIR: /home/developer/tv-model/current
+      RELOAD_DELAY_SECONDS: "150"
     health:
       path: /healthz
       timeoutSeconds: 120
