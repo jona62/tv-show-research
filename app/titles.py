@@ -202,6 +202,33 @@ def load_aliases(path):
     return found
 
 
+class Words:
+    """Sorted, distinct words packed into one byte string, read like a list. Every
+    STEP-th word is kept as an object of its own, so a search narrows to STEP words at
+    the speed of C and reads the few it needs from the string: a quarter of a million
+    words take a few megabytes this way, where a list of them would take a dozen."""
+    STEP = 32
+
+    def __init__(self, text, start):
+        """text: the words in order, each followed by a newline; start: where each begins."""
+        self.text, self.start, self.n = text, start, len(start) - 1
+        self.marks = [self[k] for k in range(0, self.n, self.STEP)]
+
+    def __len__(self):
+        return self.n
+
+    def __getitem__(self, k):
+        if not 0 <= k < self.n:
+            raise IndexError(k)
+        return self.text[self.start[k]:self.start[k + 1] - 1]
+
+    def bisect(self, word, lo=0):
+        """Where word would go among the words: the first place whose word is not less."""
+        block = bisect_left(self.marks, word)
+        low = max(lo, (block - 1) * self.STEP + 1 if block else 0)
+        return bisect_left(self, word, low, max(low, min(block * self.STEP, self.n)))
+
+
 class Found:
     """What a search turned up: (show index, aka) pairs, best first; whether the best
     of them matched well enough that looking further afield would add nothing; and
@@ -285,7 +312,8 @@ class Titles:
         self.post.frombytes(b''.join(map(array.tobytes, runs)))
         counted = set(chain.from_iterable(post.get(w.decode(), ()) for w in (*UNITS, *TENS)))
         del runs, post
-        words = '\n'.join(vocab).encode()
+        words = ('\n'.join(vocab) + '\n').encode()
+        starts = array('I', list(accumulate(map((1).__add__, map(len, map(str.encode, vocab))), initial=0)))
         del vocab
 
         # Compact forms: every line's plain form, then the forms without a leading
@@ -304,7 +332,7 @@ class Titles:
         keyed.sort()
         self.order = array('I', list(map(itemgetter(1), keyed)))
         del keyed
-        self.vocab = words.split(b'\n') if words else []
+        self.vocab = Words(words, starts)
 
     # ------------------------------------------------------------ reading
 
@@ -330,10 +358,10 @@ class Titles:
 
     def span(self, word):
         """The run of vocab words that start with word."""
-        return bisect_left(self.vocab, word), bisect_left(self.vocab, word + TOP)
+        return self.vocab.bisect(word), self.vocab.bisect(word + TOP)
 
     def word_id(self, word):
-        k = bisect_left(self.vocab, word)
+        k = self.vocab.bisect(word)
         return k if k < len(self.vocab) and self.vocab[k] == word else None
 
     def using(self, lo, hi):
@@ -426,14 +454,18 @@ class Titles:
                 return
         if not deep:
             return
+        # Guesses are for a query that matched nothing as typed: once one has, they would
+        # only crowd the page with shows it did not ask for. The exception is a word that
+        # starts no title's word at all, which a title can hold only as initials.
+        settled = any(key[0] <= STRONG for key, _d in best.values())
 
         # Typos: each word starts a word of the title, or is one slip from a whole word,
         # or, for the last word, one slip from the start of one it is still typing. The
         # word with the fewest lines to look at picks them, and the rest are checked
         # line by line, which is cheaper than gathering every line a short word is in.
         last = len(words) - 1
-        slips = [self.slips(w) for w in words]
-        typing = self.slips(words[-1], typing=True)
+        slips = [] if settled else [self.slips(w) for w in words]
+        typing = [] if settled else self.slips(words[-1], typing=True)
         if any(slips) or typing:
             near = [slips[k] + (typing if k == last else []) for k in range(len(tokens))]
             size = [counts[k] + sum(self.post_start[hi] - self.post_start[lo] for lo, hi in near[k])
@@ -464,7 +496,7 @@ class Titles:
         # Initials: a word of three to six letters stands for as many consecutive words
         # of the title, and every other word starts one. A common word is taken as itself.
         for k, t in enumerate(tokens):
-            if not 3 <= len(t) <= 6 or not t.isalnum() or not t.isascii() or counts[k] > BROAD:
+            if not 3 <= len(t) <= 6 or not t.isalnum() or not t.isascii() or counts[k] > (0 if settled else BROAD):
                 continue
             rest = tokens[:k] + tokens[k + 1:]
             narrow = sorted([spans[j] for j in range(len(tokens)) if j != k] + [self.span(t[j:j + 1]) for j in range(len(t))],
@@ -480,17 +512,17 @@ class Titles:
             if take(6, found):
                 return
 
-        # Part: only when nothing starts with the query, since then it may well be longer
+        # Part: a query of several words that matched nothing as typed may well be longer
         # than the title it means.
-        if len(tokens) > 1 and not any(key[0] <= 2 for key, _d in best.values()):
+        if len(tokens) > 1 and not settled:
             take(7, self.part(tokens, spans, slips))
 
     def slips(self, word, typing=False):
         """Runs of vocab words, as (lo, hi) pairs, one slip from word; or, typing, the
         words that start with a string one slip from it and with the same letter. A
         slip needs three letters to be told apart from another word, and four while
-        the word is still being typed."""
-        if len(word) < (4 if typing else 3):
+        the word is still being typed; past twenty, no title has such a word to find."""
+        if not (4 if typing else 3) <= len(word) <= 20:
             return []
         own = self.span(word.encode())
         runs = []
@@ -498,11 +530,11 @@ class Titles:
             if typing and (len(guess) < 4 or guess[0] != word[0]):
                 continue
             guess = guess.encode()
-            k = bisect_left(self.vocab, guess)
+            k = self.vocab.bisect(guess)
             if k == len(self.vocab):
                 continue
             if typing and self.vocab[k].startswith(guess):
-                runs.append((k, bisect_left(self.vocab, guess + TOP, k)))
+                runs.append((k, self.vocab.bisect(guess + TOP, k)))
             elif not typing and self.vocab[k] == guess and not own[0] <= k < own[1]:
                 runs.append((k, k + 1))
         return runs

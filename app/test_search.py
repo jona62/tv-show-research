@@ -84,10 +84,11 @@ SHOWS = [
     show(29, 'The Last Kingdom', 2015), show(30, '13 Reasons Why', 2017), show(31, 'How I Met Your Mother', 2005),
     show(32, 'Bob Hearts Abishola', 2019), show(33, 'Popular Show', 2010, 9.9), show(34, 'Popular Show', 2012, 5.0),
     show(35, 'Popular Show', 2014, 5.0), show(36, '!!!', 2000), show(37, 'Shogun', 1980), show(38, 'Shōgun', 2024),
+    show(39, 'Hi! My Mr. Right', 2023),
 ]
 KNOWN = {1: 99, 2: 97, 3: 40, 4: 60, 5: 98, 6: 99, 7: 70, 8: 100, 9: 99, 10: 99, 11: 100, 12: 95, 13: 99, 14: 100,
          15: 100, 16: 99, 17: 98, 18: 99, 19: 98, 20: 99, 21: 100, 22: 80, 23: 50, 24: 99, 25: 98, 26: 99, 27: 100,
-         28: 100, 29: 97, 30: 98, 31: 99, 32: 90, 33: 60, 34: 60, 35: 60, 36: 10, 37: 85, 38: 100}
+         28: 100, 29: 97, 30: 98, 31: 99, 32: 90, 33: 60, 34: 60, 35: 60, 36: 10, 37: 85, 38: 100, 39: 70}
 ALIASES = {18: ['Money Heist', 'La casa de papel', 'LA CASA DE PAPEL', 'Haus des Geldes'],
            19: ['Shingeki no Kyojin', '進撃の巨人'], 11: ['Law & Order: SVU'], 6: ['Breaking Bad', 'Во все тяжкие'],
            3: ['The Office'], 999: ['Nowhere']}
@@ -119,7 +120,8 @@ check('numbers match as digits or words', ids('brooklyn 99') == [13] and ids('br
 check('typos are forgiven', ids('breaking bda', 1) == [6] and ids('stranger thigns') == [8]
       and ids('sucession') == [9] and ids('sucesion') == [9] and ids('the wirre', 1) == [10])
 check('a slip in the word being typed', ids('stranger thign') == [8])
-check('initials stand for words', ids('law and order svu', 1) == [11] and ids('himym') == [31])
+check('initials stand for words', ids('law and order svu', 1) == [11] and ids('himym') == [39, 31])
+check('a title the letters happen to start does not hide the one they stand for', ids('himym')[1:] == [31])
 check('a longer query still finds the title it holds', ids('demon slayer kimetsu no yaiba') == [17]
       and ids('stranger things season 4') == [8])
 check('a trailing year picks the show of that year', ids('doctor who 1963', 1) == [20]
