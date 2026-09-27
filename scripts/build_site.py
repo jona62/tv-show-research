@@ -13,7 +13,6 @@ PUBLIC=SITE/'public'
 PUBLIC.mkdir(exist_ok=True)
 OUT=ROOT/'output'
 (OUT/'site-qa').mkdir(parents=True,exist_ok=True)
-d=json.loads((OUT/'visual_data.json').read_text())
 esc=html.escape
 for name in ('style.css','app.js','chart.js','radar.js'):
     shutil.copyfile(SITE/name,PUBLIC/name)

@@ -1,6 +1,8 @@
 # TV Taste
 
-Three things over one frozen TVmaze snapshot of 89,594 shows.
+Three apps over the TVmaze catalogue of TV series. Next Watch and Couchside read
+a model rebuilt every night; the research site keeps the 89,594-show snapshot it
+was published with.
 
 **[app/](app/) is Next Watch**, the web app: rate what you have watched, get
 ranked picks with the reason each one surfaced, and see your taste drawn against
@@ -59,6 +61,13 @@ MODEL_ROOT=/tmp/tv-model SEED_MODEL_DIR=model RAW_SOURCE_DIR=data/raw \
   .venv/bin/python scripts/refresher.py    # http://localhost:8083
 .venv/bin/python scripts/test_refresher.py
 ```
+
+## Deploy
+
+Every app is an entry in the root `rig.yaml`, the only manifest in the
+repository. It is connected to Rigbox through the GitHub app, so a push to
+`main` is a deploy, and Rigbox restarts only the apps whose folder, entry or
+secrets changed.
 
 Data from [TVmaze](https://www.tvmaze.com/),
 [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Similarity is

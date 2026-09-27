@@ -1,6 +1,6 @@
 # Next Watch
 
-A small web app over the frozen TVmaze catalog. Rate what you have watched, get
+A small web app over the TVmaze catalogue. Rate what you have watched, get
 what to watch next, see what your taste is made of, and see how each pick lines
 up against it.
 
@@ -106,27 +106,13 @@ scanner depends on.
 
 ## Deploy
 
-Both apps live in one Rigbox workspace and share a single copy of the model.
-The root `rig.yaml` declares them; `app/rig.yaml` is only for running this app
-on its own.
-
-```sh
-python3 app/build.py
-rig deploy --app next-watch -w tv-taste-research --no-env-file
-```
-
-The model never travels in the release. Rigbox caps a release at roughly 16 MB,
-well under the 46 MB model, so `model/` sits outside every app directory and is
-copied to the workspace once:
-
-```sh
-rsync -av model/ tv-taste-research-<id>@<region>.rigbox.dev:~/model/
-```
-
-Both apps then read it through `MODEL_DIR=/home/developer/model`. A git-source
-deploy clones the whole repo, finds `model/` beside the apps, and needs no
-`MODEL_DIR`. Two engines need about 1 GB between them, so the workspace runs
-with 3 GB.
+Next Watch is the `next-watch` app in the root `rig.yaml`, on port 8081.
+Pushing to `main` deploys it through the Rigbox GitHub connection; commit
+`public/` after `build.py`, since the host runs `server.py` with no build
+step. The model never travels in a release: the app reads the one the
+refresher keeps on the workspace, through `MODEL_DIR`. Locally, `build.py`
+links the repository's `model/` into `app/model/` and the server finds it
+there.
 
 Only `app/public/` is served as files. The model and the Python sources sit
 outside the document root and return 404.

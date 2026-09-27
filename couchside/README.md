@@ -1,8 +1,8 @@
 # Couchside
 
 A streaming-style front end for the TV Taste recommender: a dark, poster-led
-browser with a hero, rows and title pages, over the same frozen TVmaze
-snapshot of 89,594 shows. Nothing plays. It is for finding your next show.
+browser with a hero, rows and title pages, over the same TVmaze catalogue,
+rebuilt every night. Nothing plays. It is for finding your next show.
 
 ## What is on it
 
@@ -76,7 +76,7 @@ TVmaze keeps every poster at a URL built from its image id, so
 `art.bin.gz` (269 KB). Posters load straight from TVmaze's image server, which
 TVmaze allows; the page sends no referrer. The server reads `art.bin.gz` from
 the model directory when the model carries one, as each refreshed model does, and
-otherwise the copy here, which matches the frozen snapshot.
+otherwise the copy here, which matches the repository's `model/`.
 
 ### TMDB first
 

@@ -12,15 +12,9 @@ Build from the parent research directory:
 .venv/bin/python scripts/build_site.py
 ```
 
-The root `rig.yaml` is the Git-based deploy-button manifest; it starts `python3 site/server.py` from a full checkout. The prebuilt model and public files are committed, so deployment needs only Python 3.10+ and no package installation. The button creates/configures a fork and workspace through Rigbox.
+The site is the `tv-taste` app in the root `rig.yaml`, and pushing to `main` deploys it through the Rigbox GitHub connection. It reads the frozen model from `MODEL_DIR=/home/developer/model` on the workspace, not the nightly one, so its numbers stay as published. The public files are committed, so the server needs only Python 3.10+ and no packages.
 
-For local source changes, deploy this directory:
-
-```sh
-rig deploy
-```
-
-Rigbox runs the Python server on port 8080 and probes `/healthz`. Only files inside `public/` are served as files. `model/catalog.json.gz` stays outside the public root. Search and recommendation APIs expose curated results, not raw model files. The original six-show research report remains unchanged and describes the older English-scripted subset. Current catalog statistics and theme definitions are at `/catalog-audit.json` and `/expanded_theme_rules.json`. The app is explicitly public in `rig.yaml`; the workspace is 1 vCPU, 1GB RAM, and 3GB disk. Subsequent deploys use the existing binding in `.rig.lock`.
+Rigbox runs the Python server on port 8080 and probes `/healthz`. Only files inside `public/` are served as files. `model/catalog.json.gz` stays outside the public root. Search and recommendation APIs expose curated results, not raw model files. The original six-show research report remains unchanged and describes the older English-scripted subset. Current catalog statistics and theme definitions are at `/catalog-audit.json` and `/expanded_theme_rules.json`. The app is public in `rig.yaml`.
 
 `public/` is generated. Edit `index.template.html`, `style.css`, `app.js`, `chart.js`, or `../scripts/build_site.py`, then rebuild. The badge links to 512KB Club; the site has not been submitted to the directory. No external browser assets or tracking are loaded.
 
@@ -35,8 +29,9 @@ From the parent project directory, run:
 .venv/bin/python scripts/build_model.py
 .venv/bin/python scripts/build_site.py
 .venv/bin/python scripts/test_recommender.py
-rig deploy --from-dir site --no-env-file
 ```
+
+To publish the result, copy `model/` to `/home/developer/model` on the workspace, then commit `site/public/` and `output/` and push.
 
 `--refresh` archives the old raw responses and manifest under `data/archive/` before downloading a new complete snapshot. Without that flag the downloader resumes cached pages and preserves their retrieval date. The online model is rebuilt from the full raw catalog; normal user interactions do not download or refit the dataset. Rebuild `model/catalog.json.gz` before the first site build on a clean checkout.
 
