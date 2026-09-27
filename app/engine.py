@@ -40,7 +40,7 @@ DEFAULT_SETTINGS = {
     'text': 40, 'themes': 35, 'genres': 25,
     'closest': .3, 'dislike': .35,
     'language': 'all', 'type': 'all', 'status': 'all',
-    'year_min': 1990, 'runtime_min': 0, 'rating_min': 0, 'known_min': 85,
+    'year_min': 1900, 'runtime_min': 0, 'rating_min': 0, 'known_min': 60,
 }
 
 # Recognisable starting points so a first visit is two taps from a result.

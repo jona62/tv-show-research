@@ -46,7 +46,8 @@ check('genre and theme rates sit strictly between 0 and 1',
 empty = Taste(a, [], [])
 sample = range(0, e.n, 997)
 check('an empty list scores every show zero', all(empty.score(i) == 0 for i in sample))
-check('an empty list leaves closeness alone', all(empty.factor(i) == 1 for i in sample))
+check('an empty list adds only the pull toward well-rated shows',
+      all(abs(empty.factor(i) - math.exp(taste.QUALITY * empty.quality(i))) < 1e-12 for i in sample))
 check('an empty list has no leanings', empty.summary() == {'leans': [], 'avoids': []})
 
 # 3. A list of Korean dramas prefers Korean dramas to American sitcoms.
@@ -81,8 +82,9 @@ check('two or more dislikes of a kind read as avoiding it',
 # 6. Scores stay bounded by the family weights and clips.
 bound = sum(w * c for f, (w, c) in FAMILIES.items() if f in a.values or f in a.masks)
 check('taste scores stay within their bound', all(abs(many.score(i)) <= bound + 1e-6 for i in range(0, e.n, 311)))
-check('the factor is exp(strength x score)',
-      abs(many.factor(target) - math.exp(taste.STRENGTH * many.score(target))) < 1e-9 or taste.QUALITY)
+check('the factor is exp(strength x fit + quality x rating pull)',
+      abs(many.factor(target) - math.exp(taste.STRENGTH * many.score(target) + taste.QUALITY * many.quality(target))) < 1e-9)
+check('an unrated show is not pulled either way', many.quality(next(i for i, s in enumerate(e.shows) if not s['rating'])) == 0)
 
 # 7. A show with no data in a family is not guessed at: that family adds nothing.
 no_genre = next(i for i, s in enumerate(e.shows) if not s['genre_bits'] and s['recommendable'])

@@ -31,14 +31,14 @@ reference = recommender.Engine()
 
 
 def closeness_only(body):
-    """The ranking with taste switched off and every liked show one interest, which
-    leaves closeness alone: what the research engine ranks by."""
-    saved = taste_module.STRENGTH, engine_module.INTEREST_JOIN
-    taste_module.STRENGTH, engine_module.INTEREST_JOIN = 0.0, 0.0
+    """The ranking with taste and the rating pull switched off and every liked show
+    one interest, which leaves closeness alone: what the research engine ranks by."""
+    saved = taste_module.STRENGTH, taste_module.QUALITY, engine_module.INTEREST_JOIN
+    taste_module.STRENGTH, taste_module.QUALITY, engine_module.INTEREST_JOIN = 0.0, 0.0, 0.0
     try:
         return app.calculate(body)
     finally:
-        taste_module.STRENGTH, engine_module.INTEREST_JOIN = saved
+        taste_module.STRENGTH, taste_module.QUALITY, engine_module.INTEREST_JOIN = saved
 
 
 # 1. Closeness alone ranks as the research engine does once the settings line up;

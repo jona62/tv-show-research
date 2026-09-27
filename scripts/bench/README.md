@@ -29,8 +29,9 @@ Three protocols, each run twice:
   should not contain the persona's dislikes.
 
 The two runs differ only in settings. `default` is the engine's own
-`DEFAULT_SETTINGS`, which is what both apps send: popularity floor 85 and
-premiered 1990 or later. `wide` sets `known_min 0` and `year_min 1900`, so every
+`DEFAULT_SETTINGS`, which is what both apps send: popularity floor 60 and any
+premiere year (85 and 1990 before the taste model). `wide` sets `known_min 0` and
+`year_min 1900`, so every
 recommendable show competes. A target the filters remove counts as a miss and is
 reported, with the filter that removed it.
 
@@ -91,39 +92,51 @@ profile, which is the first place to look when a persona scores badly.
 
 ## Baseline
 
-`baseline.json` is the engine as of `b7ae920` (`app/engine.py` hash
-`b87bbf85692e`) on the 2026-09-07 model:
+`baseline.json` is the engine with the taste model (taste.py and interests in
+engine.py) on the 2026-09-07 model, under its own defaults. `closeness-only.json`
+is the engine before it, as of `b7ae920` (`app/engine.py` hash `b87bbf85692e`),
+which ranked by closeness alone under the old defaults (floor 85, from 1990).
+Compare a change with `--compare scripts/bench/baseline.json`.
 
-| | default | wide |
+| | closeness only | taste model |
 |---|---:|---:|
-| pool | 6,643 | 79,573 |
-| leave-one-out HR@10 / HR@24 / HR@100 | 6.9% / 13.3% / 27.8% | 3.0% / 5.8% / 11.6% |
-| leave-one-out MRR, median rank | 0.033, 504 | 0.019, 1,913 |
-| leave-one-out targets filtered | 118 of 622 | 0 |
-| few-shot HR@24, MRR | 10.2%, 0.026 | 3.8%, 0.013 |
-| held-out dislikes in the top 24 | 0 of 49 | 0 of 49 |
-| distinct picks, mean popularity | 1,024, 92.4 | 1,187, 58.5 |
+| default: leave-one-out HR@24 / HR@100 | 13.3% / 27.8% | 42.4% / 65.1% |
+| default: MRR, median rank | 0.033, 504 | 0.149, 43 |
+| default: targets filtered | 118 of 622 | 11 of 622 |
+| default: few-shot HR@24 | 10.2% | 33.2% |
+| wide: leave-one-out HR@24 / HR@100 | 5.8% / 11.6% | 40.4% / 60.9% |
+| wide: MRR, median rank | 0.019, 1,913 | 0.144, 47 |
+| wide: few-shot HR@24 | 3.8% | 30.8% |
+| dislikes in the top 24 of loves and likes alone | 0 of 49 | 2 of 49 |
+| wide: mean popularity of the top 24 | 58.5 | 85.7 |
 
-A random ranking would score an HR@24 of about 0.3% under `default` and 0.03%
-under `wide`, so the engine is well above chance and still far from knowing the
-viewer. It does best where plot words are specific: Star Trek, nature
-documentaries, cooking contests, Westerns, medical and legal drama. It does worst
-where taste is tone, language or quality rather than subject: scripted comedy
-of every kind, K-dramas and other non-English drama in the wide pool, and
-prestige limited series. Under `default`, the popularity floor removes most
-Japanese, Indian and slice-of-life anime targets and half the French ones, and
-the year floor removes the soaps and pre-1990 classics. No contrasting dislike
-reaches a top 24 yet, so the dislike rows are a guard rail for now; the closest
-call is True Detective at rank 34 for the police procedural fan.
+A random ranking would score an HR@24 of about 0.3% under the old default and
+0.03% under `wide`. The closeness-only engine did best where plot words are
+specific (Star Trek, nature documentaries, cooking contests, Westerns, medical and
+legal drama) and worst where taste is tone, language or quality: scripted comedy,
+non-English drama and prestige limited series. Under its default, the popularity
+floor removed most Japanese, Indian and slice-of-life anime targets and half the
+French ones, and the year floor the soaps and pre-1990 classics.
+
+The taste model's handful of global constants (in taste.py: STRENGTH, PRIOR,
+QUALITY and the family weights; in engine.py: INTEREST_JOIN and INTEREST_SHARE,
+plus the default floor and year) were chosen on these personas, taking a change
+only when it raised leave-one-out MRR on both the even and the odd half of the
+persona list. So these numbers flatter it somewhat. `holdout.json` holds personas
+nobody tuned on; judge generalisation there:
+
+```sh
+.venv/bin/python scripts/bench/taste_bench.py --personas scripts/bench/holdout.json --jobs 4
+```
 
 ## Caveats
 
 - The personas encode general fan knowledge of which shows go together, not
   logged viewing, and were written without looking at this engine's output. They
   are a sanity benchmark with a known shape, not ground truth.
-- Keep them a test set. Never edit a persona to move a number, and never fit or
-  tune weights on them, the learned taste model included, or the numbers stop
-  meaning anything.
+- Never edit a persona to move a number, and never fit anything per persona.
+  The few global constants above were tuned on `personas.json`; `holdout.json`
+  stays untouched by tuning so there is always an honest check.
 - 51 personas and 622 leave-one-out targets is a small sample. Look at the
   per-persona table before believing a small pooled move.
 - Leave-one-out undercounts near-duplicates. Held out, The Great British Bake

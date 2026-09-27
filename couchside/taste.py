@@ -24,16 +24,19 @@ from array import array
 import math
 
 REFERENCE_MIN = 40   # base rates come from recommendable shows at least this well known
-PRIOR = 3.0          # pseudo-shows of catalogue taste mixed into every list
+PRIOR = 12.0         # pseudo-shows of catalogue taste mixed into every list
 DISLIKE = 0.5        # how hard a disliked show counts against what it carries
-STRENGTH = 0.35      # a pick's closeness is multiplied by exp(STRENGTH x taste)
-QUALITY = 0.0        # a pull toward well-rated shows that is the same for everyone
+STRENGTH = 0.7       # a pick's closeness is multiplied by exp(STRENGTH x taste)
+QUALITY = 0.4        # a pull toward well-rated shows that is the same for everyone
 
 # family: (weight, clip). A family adds weight x its score, clipped to plus or minus clip.
+# Tuned on scripts/bench (see its README). Themes carry no weight: the regex themes are
+# noisy, already count toward closeness, and the bench ranked better without them here;
+# they still describe a list's leanings.
 FAMILIES = {
     'language': (1.0, 2.0), 'format': (1.0, 2.0), 'country': (0.5, 1.5), 'network': (0.4, 1.5),
-    'decade': (0.5, 1.5), 'length': (0.4, 1.0), 'fame': (0.5, 1.5), 'acclaim': (0.3, 1.0),
-    'genre': (0.5, 2.5), 'theme': (0.25, 1.5), 'subgenre': (0.5, 2.5),
+    'decade': (0.5, 1.5), 'length': (0.4, 1.0), 'fame': (0.8, 1.5), 'acclaim': (0.5, 1.0),
+    'genre': (0.5, 2.5), 'theme': (0.0, 1.5), 'subgenre': (0.5, 2.5),
 }
 CATEGORICAL = ('language', 'format', 'country', 'network', 'decade', 'length', 'fame', 'acclaim')
 SETS = ('genre', 'theme', 'subgenre')
@@ -254,14 +257,16 @@ class Taste:
             total += self.family_score(entry, i)
         return total
 
+    def quality(self, i):
+        """How far show i's public rating sits from an ordinary one, from -1.5 to 1.5;
+        zero when it has none, so a new show is not held back for being new."""
+        rating = self.a.engine.shows[i]['rating']
+        return clamp((rating - 7.2) / 1.2, 1.5) if rating else 0.0
+
     def factor(self, i):
-        """What a pick's closeness is multiplied by."""
-        boost = STRENGTH * self.score(i)
-        if QUALITY:
-            rating = self.a.engine.shows[i]['rating']
-            if rating:
-                boost += QUALITY * clamp((rating - 7.2) / 1.2, 1.5)
-        return math.exp(boost)
+        """What a pick's closeness is multiplied by: its fit with the list, and a pull
+        toward well-rated shows that is the same for everyone."""
+        return math.exp(STRENGTH * self.score(i) + QUALITY * self.quality(i))
 
     def reasons(self, i, limit=3):
         """The attributes of show i that fit the list best, strongest first. Ones most

@@ -17,10 +17,13 @@ const FOCUS = {
 const FORMATS = ['all', 'scripted', 'animation', 'documentary', 'unscripted'];
 const DEFAULTS = {
   text: 40, themes: 35, genres: 25, closest: .3, dislike: .35,
-  language: 'all', type: 'all', status: 'all', year_min: 1990, runtime_min: 0,
-  rating_min: 0, known_min: 85,
+  language: 'all', type: 'all', status: 'all', year_min: 1900, runtime_min: 0,
+  rating_min: 0, known_min: 60,
 };
 const KNOWN = [0, 60, 85, 95];
+// Version 2 widened the defaults to fairly known shows of any year, once the ranking
+// learned which eras and how well known a list likes.
+const VERSION = 2;
 const el = (tag, text = '', cls = '') => {
   const n = document.createElement(tag);
   if (text) n.textContent = text;
@@ -35,7 +38,7 @@ const button = (text, cls, onClick) => {
 };
 const meta = s => [s.year ?? 'Year unknown', s.channel, s.rating ? '★ ' + s.rating : null].filter(Boolean).join(' · ');
 
-let state = { profile: [], saved: [], settings: { ...DEFAULTS }, similar_to: [] };
+let state = { version: VERSION, profile: [], saved: [], settings: { ...DEFAULTS }, similar_to: [] };
 let data = null, tab = 'next', reqId = 0, reqAbort = null, timer = null;
 let searchId = 0, searchAbort = null, searchTimer = null, fitPick = null;
 let allSignals = false, allRelated = false;
@@ -45,13 +48,20 @@ try {
   const saved = JSON.parse(localStorage.getItem(KEY));
   if (saved && Array.isArray(saved.profile)) {
     state = {
+      version: VERSION,
       profile: saved.profile.filter(p => Number.isInteger(p.id) && RATINGS.some(([w]) => w === p.weight)).slice(0, 60),
       saved: (Array.isArray(saved.saved) ? saved.saved : []).filter(s => Number.isInteger(s.id)).slice(0, 200),
       settings: { ...DEFAULTS, ...(saved.settings || {}) },
       similar_to: Array.isArray(saved.similar_to) ? saved.similar_to.filter(Number.isInteger) : [],
     };
-    // A lists saved before the popularity control existed keeps its old rating floor otherwise.
-    if (!KNOWN.includes(state.settings.known_min)) state.settings.known_min = 85;
+    // A list saved before version 2 held well known shows from 1990 on because those
+    // were the defaults, so it moves to the new ones once.
+    if (!(saved.version >= 2)) {
+      if (state.settings.known_min === 85) state.settings.known_min = DEFAULTS.known_min;
+      if (state.settings.year_min === 1990) state.settings.year_min = DEFAULTS.year_min;
+    }
+    // A list saved before the popularity control existed keeps its old rating floor otherwise.
+    if (!KNOWN.includes(state.settings.known_min)) state.settings.known_min = DEFAULTS.known_min;
     state.settings.rating_min = 0;
     // Format used to be a raw catalog type; anything the new grouping cannot show falls back.
     if (!FORMATS.includes(state.settings.type)) state.settings.type = 'all';
