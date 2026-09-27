@@ -269,20 +269,25 @@ tvmaze = Stub([{'id': 19, 'name': 'Attack on Titan', 'year': 2013, 'url': 'https
                {'id': 9, 'name': 'Succession', 'year': 2018, 'url': 'https://www.tvmaze.com/shows/9/x'}])
 out = answer(engine, 'money heist', tvmaze)
 check('a strong local answer does not ask TVmaze', said == [] and out == {
-    'shows': [{'id': 18, 'name': 'La Casa de Papel', 'aka': 'Money Heist'}], 'missing': []})
+    'shows': [{'id': 18, 'name': 'La Casa de Papel', 'aka': 'Money Heist'}], 'missing': [], 'missing_first': False})
 out = answer(engine, 'sucession', tvmaze)
 check('a weak one does, and TVmaze\'s shows in the catalogue lead',
       said == ['sucession'] and [c['id'] for c in out['shows']] == [19, 9])
 check('shows TVmaze has and the catalogue does not are missing, with their page', out['missing'] == [new])
+check('they follow the results when TVmaze ranks a catalogue show first', out['missing_first'] is False)
+out = answer(engine, 'sucession', Stub([new, tvmaze.found[0]]))
+check('and lead them when TVmaze ranks a missing show first', out['missing_first'] is True
+      and out['missing'] == [new] and out['shows'][0]['id'] == 19)
 said.clear()
 out = answer(engine, 'shingeki no kyojim', tvmaze)
 check('a show both found keeps the title it was found by', out['shows'][0] == {
     'id': 19, 'name': 'Attack on Titan', 'aka': 'Shingeki no Kyojin'})
 check('TVmaze down leaves the local answer as it was', answer(engine, 'sucession', Stub(None)) == {
-    'shows': [{'id': 9, 'name': 'Succession'}], 'missing': []})
+    'shows': [{'id': 9, 'name': 'Succession'}], 'missing': [], 'missing_first': False})
 said.clear()
 check('a search too short is never sent', answer(engine, 'zq', tvmaze)['shows'] == [] and said == [])
-check('nothing found anywhere is an empty answer', answer(engine, 'zzzqqq', Stub([])) == {'shows': [], 'missing': []})
+check('nothing found anywhere is an empty answer',
+      answer(engine, 'zzzqqq', Stub([])) == {'shows': [], 'missing': [], 'missing_first': False})
 many = Stub([{**new, 'id': 500 + k} for k in range(8)])
 check('at most three missing shows are named', len(answer(engine, 'zzzqqq', many)['missing']) == 3)
 

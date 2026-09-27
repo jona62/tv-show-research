@@ -188,13 +188,18 @@ function renderSimilar() {
 }
 
 /* -------------------------------------------------------------- search */
+// The server forgives typos, spacing and other titles, and asks TVmaze about shows
+// too new for the catalogue, so a search here rarely comes back empty.
 $('q').addEventListener('input', () => {
   const query = $('q').value.trim();
   const id = ++searchId;
   clearTimeout(searchTimer); searchAbort?.abort();
   $('clear-q').hidden = !query;
-  if (query.length < 2) { closeDrop(); return; }
-  openDrop('Searching…');
+  if (!query) { closeDrop(); return; }
+  // One character finds only a show of that one letter, such as V, so it searches
+  // quietly and shows the list only when there is one.
+  const quiet = query.length < 2;
+  if (!quiet) openDrop('Searching…');
   searchTimer = setTimeout(async () => {
     searchAbort = new AbortController();
     try {
@@ -202,16 +207,33 @@ $('q').addEventListener('input', () => {
       const body = await res.json();
       if (id !== searchId) return;
       if (!res.ok) throw new Error(body.error || 'Search is unavailable.');
-      renderHits(body.shows);
+      if (quiet && !body.shows.length) closeDrop();
+      else renderHits(body, query);
     } catch (e) {
-      if (e.name !== 'AbortError' && id === searchId) openDrop(e.message);
+      if (e.name !== 'AbortError' && id === searchId && !quiet) openDrop(e.message);
     }
   }, 180);
 });
 $('clear-q').addEventListener('click', () => {
   $('q').value = ''; $('clear-q').hidden = true; closeDrop(); $('q').focus();
 });
-$('q').addEventListener('keydown', e => { if (e.key === 'Escape') { $('q').value = ''; closeDrop(); } });
+$('q').addEventListener('keydown', e => {
+  if (e.key === 'Escape') { $('q').value = ''; $('clear-q').hidden = true; closeDrop(); }
+  if (e.key === 'ArrowDown' && !$('drop').hidden) { e.preventDefault(); stepHits(-1, 1); }
+});
+// Arrow keys move between results, and up from the first returns to the box.
+$('hits').addEventListener('keydown', e => {
+  const rows = [...$('hits').querySelectorAll('.hit:not([disabled])')];
+  const at = rows.indexOf(document.activeElement);
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); stepHits(at, e.key === 'ArrowDown' ? 1 : -1); }
+  if (e.key === 'Escape') { closeDrop(); $('q').focus(); }
+});
+function stepHits(at, step) {
+  const rows = [...$('hits').querySelectorAll('.hit:not([disabled])')];
+  const next = at + step;
+  if (next < 0) $('q').focus();
+  else rows[Math.min(next, rows.length - 1)]?.focus();
+}
 document.addEventListener('click', e => {
   if (!e.target.closest('.top')) closeDrop();
 });
@@ -220,27 +242,50 @@ function openDrop(message) {
   $('drop').hidden = false;
   $('q').setAttribute('aria-expanded', 'true');
   $('hint').textContent = message || '';
-  if (message) $('hits').replaceChildren();
+  if (message) { $('hits').replaceChildren(); $('missing').hidden = true; }
 }
 function closeDrop() {
   $('drop').hidden = true;
   $('q').setAttribute('aria-expanded', 'false');
 }
-function renderHits(shows) {
-  openDrop(shows.length ? '' : 'No match in this snapshot. Try a shorter title.');
+function renderHits({ shows, missing = [], missing_first: first = false }, query) {
+  // Checking the spelling is suggested only when neither the catalogue, typos and all,
+  // nor TVmaze found anything.
+  openDrop(shows.length ? '' : missing.length ? `Nothing in the catalogue matches “${query}” yet.`
+    : `No show matches “${query}”. Check the spelling.`);
+  // A show too new for the catalogue goes first when it is TVmaze's best match.
+  $('drop').insertBefore($('missing'), first ? $('hits') : null);
   const list = $('hits');
   list.replaceChildren();
   for (const s of shows) {
     const li = el('li');
     const already = has(s.id);
     const row = button('', 'hit', () => { add(s); $('q').value = ''; $('clear-q').hidden = true; closeDrop(); });
-    row.append(el('b', s.name), el('small', meta(s)), el('em', already ? 'Added' : 'Add'));
+    row.append(el('b', s.name), el('small', meta(s)));
+    if (s.aka) row.append(el('small', `Also known as ${s.aka}`, 'aka'));
+    row.append(el('em', already ? 'Added' : 'Add'));
     row.disabled = already;
     row.setAttribute('role', 'option');
-    row.setAttribute('aria-label', `${already ? 'Already added' : 'Add'} ${s.name}, ${meta(s)}`);
+    row.setAttribute('aria-label', [`${already ? 'Already added' : 'Add'} ${s.name}`, s.aka ? `also known as ${s.aka}` : '',
+      meta(s)].filter(Boolean).join(', '));
     li.append(row);
     list.append(li);
   }
+  renderMissing(missing);
+}
+// Shows TVmaze has that the catalogue does not yet: named, with a link to TVmaze.
+function renderMissing(missing) {
+  $('missing').hidden = !missing.length;
+  $('missing-list').replaceChildren(...missing.map(m => {
+    const li = el('li');
+    const link = el('a', 'See it on TVmaze');
+    link.href = m.url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.setAttribute('aria-label', `${m.name} on TVmaze, opens in a new tab`);
+    li.append(el('b', m.name), el('small', m.year ? String(m.year) : 'New'), link);
+    return li;
+  }));
 }
 
 /* --------------------------------------------------------- quick picks */

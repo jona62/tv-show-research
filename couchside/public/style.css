@@ -230,6 +230,14 @@ main{min-height:70vh;padding-bottom:calc(var(--dock) + 24px + env(safe-area-inse
 .search-box input:focus{border-color:#fff;outline:none;background:#333}
 /* Wide screens search from the nav, so the page's own box is only for phones. */
 @media(min-width:760px){.search-box{display:none}}
+/* shows TVmaze has that the catalogue does not yet */
+.missing{margin-bottom:18px}
+.note + .missing .page-h2{margin-top:8px}
+.missing-list{list-style:none;margin:0 var(--gutter);padding:0;max-width:720px}
+.missing-list li{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.missing-list li:last-child{border-bottom:0}
+.missing-list b{font-size:16px;overflow-wrap:anywhere}
+.missing-list a{margin-left:auto;color:var(--brand);font-size:14px;white-space:nowrap}
 
 /* welcome -------------------------------------------------------------- */
 .welcome-head{padding:0 var(--gutter);margin-bottom:18px;max-width:720px}

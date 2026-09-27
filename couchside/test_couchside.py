@@ -565,7 +565,7 @@ check('a show too new for the catalogue comes back as missing, with its TVmaze p
     {'id': 900000001, 'name': 'Kimetsu Academy', 'year': 2026, 'url': NEW_SHOW['url']}])
 status, _headers, body = fetch('/api/search?q=xyzzyq')
 check('TVmaze failing is an empty answer, not an error', status == 200
-      and json.loads(body) == {'shows': [], 'missing': []})
+      and json.loads(body) == {'shows': [], 'missing': [], 'missing_first': False})
 status, _headers, body = fetch('/api/home', {'profile': PROFILE, 'settings': DEFAULT_SETTINGS})
 check('home answers over HTTP', status == 200 and json.loads(body)['personal'] is True)
 check('a bad title id is a 400', fetch('/api/title', {'profile': [], 'id': -1})[0] == 400)

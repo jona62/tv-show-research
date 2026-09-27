@@ -174,13 +174,15 @@ check('a search it cannot place asks TVmaze once', len(tvmaze_asked) == 1 and 'k
 check("TVmaze's match in the catalogue leads, as an ordinary card", status == 200 and found['shows'][0]['id'] == 41469
       and set(found['shows'][0]) >= {'id', 'name', 'year', 'channel', 'known'})
 check('a show TVmaze has and the catalogue does not yet comes back as missing, with its page', found['missing'] == [
-    {'id': 900000001, 'name': 'Kimetsu Academy', 'year': 2026, 'url': NEW_SHOW['url']}])
+    {'id': 900000001, 'name': 'Kimetsu Academy', 'year': 2026, 'url': NEW_SHOW['url']}]
+    and found['missing_first'] is False)
 search('kimetsu no yaiba')
 check('the same search again is answered from the cache', len(tvmaze_asked) == 1)
 status, _headers, found = search('xyzzyq')
-check('TVmaze down is an empty answer, not an error', status == 200 and found == {'shows': [], 'missing': []})
+NOTHING = {'shows': [], 'missing': [], 'missing_first': False}
+check('TVmaze down is an empty answer, not an error', status == 200 and found == NOTHING)
 check('an overlong search is refused', fetch('/api/search?q=' + 'x' * 101)[0] == 400)
-check('an empty search finds nothing', search('')[2] == {'shows': [], 'missing': []})
+check('an empty search finds nothing', search('')[2] == NOTHING)
 first_load = len(page) + sum((PUBLIC / name).stat().st_size for name in ASSETS)
 badge = float(re.search(rb'loads (\d+\.\d) KB', page)[1])
 check('the size badge states the page as served, under the budget',

@@ -1,7 +1,7 @@
 import { encode, decode, LIMITS } from './transfer.js';
 import { matrix, svgPath } from './qr.js';
 import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere, longDate, airs,
-  whereToWatch, trailerSearch } from './format.js';
+  whereToWatch, trailerSearch, searchNote } from './format.js';
 
 const boot = JSON.parse(document.getElementById('boot').textContent);
 const $ = id => document.getElementById(id);
@@ -1133,7 +1133,14 @@ const NOTES = { 1: 'you loved it', '-1': 'not for you' };
 function fill(grid, items, options = () => ({})) {
   grid.replaceChildren(...items.map(c => {
     const li = el('li');
-    li.append(cardEl(c, options(c)));
+    const o = options(c);
+    li.append(cardEl(c, o));
+    // A caption under the poster, already read out as part of the card's own label.
+    if (o.caption) {
+      const caption = el('span', o.caption, 'grid-caption');
+      caption.setAttribute('aria-hidden', 'true');
+      li.append(caption);
+    }
     return li;
   }));
 }
@@ -1174,27 +1181,53 @@ function suggestions() {
   $('search-note').textContent = 'Search by title. Until then, here is what people are watching.';
   const popular = home?.rows.find(r => r.key === 'popular')?.items || [];
   fill($('results'), home ? [...home.top10, ...popular] : boot.starters);
+  $('missing').hidden = true;
 }
 
+// The server forgives typos, spacing and other titles, and asks TVmaze about shows
+// too new for the catalogue, so a search here rarely comes back empty.
 function search(q, typed = true) {
   const query = q.trim();
   for (const input of [$('q'), $('q-page')]) if (document.activeElement !== input && input.value !== q) input.value = q;
   clearTimeout(searchTimer);
   const id = ++searchReq;
-  if (query.length < 2) { suggestions(); return; }
-  $('search-note').textContent = 'Searching…';
+  if (!query) { suggestions(); return; }
+  // One character finds only a show of that one letter, such as V, so until one turns
+  // up the page keeps its suggestions.
+  const quiet = query.length < 2;
+  if (quiet) suggestions();
+  else $('search-note').textContent = 'Searching…';
   searchTimer = setTimeout(async () => {
     try {
-      const { shows } = await call(`/api/search?q=${encodeURIComponent(query)}`);
-      if (id !== searchReq) return;
+      const { shows, missing = [], missing_first: first = false } = await call(`/api/search?q=${encodeURIComponent(query)}`);
+      if (id !== searchReq || (quiet && !shows.length)) return;
       shows.forEach(remember);
-      $('search-note').textContent = shows.length ? `Shows matching “${query}”`
-        : `Nothing in this snapshot matches “${query}”. Try a shorter title.`;
-      fill($('results'), shows.map(s => ({ ...s, ...(known.get(s.id) || {}) })));
+      $('search-note').textContent = searchNote(query, shows.length, missing.length);
+      fill($('results'), shows.map(s => ({ ...s, ...(known.get(s.id) || {}), aka: s.aka })),
+        c => (c.aka ? { note: `also known as ${c.aka}`, caption: `Also known as ${c.aka}` } : {}));
+      showMissing(missing, first);
     } catch (e) {
-      if (id === searchReq) $('search-note').textContent = e.message;
+      if (id === searchReq && !quiet) $('search-note').textContent = e.message;
     }
   }, typed ? 200 : 0);
+}
+
+// Shows TVmaze has that the catalogue does not yet, each linked to its TVmaze page;
+// ahead of the results when TVmaze ranks one of them first.
+function showMissing(missing, first) {
+  const box = $('missing');
+  box.hidden = !missing.length;
+  $('missing-list').replaceChildren(...missing.map(m => {
+    const li = el('li');
+    const link = el('a', 'See it on TVmaze');
+    link.href = m.url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.setAttribute('aria-label', `${m.name} on TVmaze, opens in a new tab`);
+    li.append(el('b', m.name), el('span', m.year ? String(m.year) : 'New', 'muted'), link);
+    return li;
+  }));
+  $('search').insertBefore(box, first ? $('results') : null);
 }
 
 function typed(input) {

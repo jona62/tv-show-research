@@ -7,7 +7,8 @@ only guesses (typos, initials, part of a title), the server asks TVmaze's search
 which is fuzzy and knows other names. Its matches that are in the catalogue lead the
 results, since it knew what the guesses did not; those that are not come back as
 missing, with their TVmaze page, so the page can say they arrive with the nightly
-refresh. The browser never talks to TVmaze for this.
+refresh, and put them first when TVmaze ranks one of them first. The browser never
+talks to TVmaze for this.
 
 TVmaze allows about 20 calls every 10 seconds from one address, and every app on this
 host shares it. So answers are cached, each app keeps to a small window of its own, a
@@ -99,10 +100,11 @@ class Remote:
 
 def answer(engine, q, remote=None, card=None):
     """{'shows': cards, best first, 'missing': shows TVmaze knows that the catalogue
-    does not yet}. card turns a catalog index into the app's own card."""
+    does not yet, 'missing_first': whether TVmaze's best match is one of those}. card
+    turns a catalog index into the app's own card."""
     card = card or engine.card
     found = engine.titles.find(q)
-    hits, missing = found.hits, []
+    hits, missing, first = found.hits, [], False
     if not found.strong and remote and len(''.join(q.split())) >= SHORTEST:
         wider = remote.search(q) or []
         aka = dict(hits)
@@ -111,4 +113,6 @@ def answer(engine, q, remote=None, card=None):
             merged.setdefault(i, also or aka.get(i))
         hits = list(merged.items())[:LIMIT]
         missing = [s for s in wider if s['id'] not in engine.by_id][:MISSING]
-    return {'shows': [{**card(i), 'aka': also} if also else card(i) for i, also in hits], 'missing': missing}
+        first = bool(wider) and wider[0]['id'] not in engine.by_id
+    return {'shows': [{**card(i), 'aka': also} if also else card(i) for i, also in hits], 'missing': missing,
+            'missing_first': first}

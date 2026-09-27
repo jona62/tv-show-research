@@ -87,6 +87,14 @@ export function whereToWatch(show, tmdb, site, channels, apple) {
   };
 }
 
+// What the search page says over its results. Checking the spelling is suggested only
+// when neither the catalogue, typos and all, nor TVmaze found anything.
+export function searchNote(query, found, missing) {
+  if (found) return `Shows matching “${query}”`;
+  if (missing) return `Nothing in the catalogue matches “${query}” yet.`;
+  return `Nothing matches “${query}”. Check the spelling.`;
+}
+
 // A YouTube search for the trailer, for shows no trailer service knows.
 export const trailerSearch = (name, year) =>
   `https://www.youtube.com/results?search_query=${encodeURIComponent(`${name}${year ? ` ${year}` : ''} official trailer`)}`;

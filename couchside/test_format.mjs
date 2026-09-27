@@ -1,5 +1,5 @@
 import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere, longDate, airs,
-  hostOf, sameService, watchLinks, whereToWatch, trailerSearch } from './format.js';
+  hostOf, sameService, watchLinks, whereToWatch, trailerSearch, searchNote } from './format.js';
 let fails = 0;
 const check = (name, ok, extra = '') => { console.log(`${ok ? 'pass' : 'FAIL'}  ${name}${ok ? '' : '  ' + extra}`); if (!ok) fails++; };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -77,5 +77,11 @@ check('fallback icons come through this server', fallback.links[0].logo === '/ap
   && fallback.links[0].label === 'Stream Stranger Things on Netflix, opens in a new tab');
 check('services with no TMDB page to link are not shown', !whereToWatch('X', { link: null, providers: tmdb.providers }, null, [], null).credit);
 check('no TMDB data at all is the fallback', same(whereToWatch('X', null, null, [], null), { credit: false, links: [] }));
+
+check('search says what it found', searchNote('lost', 3, 0) === 'Shows matching “lost”'
+  && searchNote('lost', 3, 1) === 'Shows matching “lost”');
+check('shows only TVmaze has are not in the catalogue yet', searchNote('new show', 0, 1) === 'Nothing in the catalogue matches “new show” yet.');
+check('only a search that found nothing anywhere suggests the spelling', searchNote('qzx', 0, 0) === 'Nothing matches “qzx”. Check the spelling.'
+  && !searchNote('qzx', 1, 0).includes('spelling') && !searchNote('qzx', 0, 2).includes('spelling'));
 console.log(fails ? `\n${fails} failed` : '\nall format checks passed');
 process.exit(fails ? 1 : 0);
