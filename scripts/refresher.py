@@ -12,17 +12,27 @@ MODEL_ROOT (/home/developer/tv-model) holds everything:
 
     current -> versions/<stamp>   what the apps read, swapped with one rename
     versions/<stamp>/             catalog.json.gz vectors.bin.gz popularity.bin.gz
-                                  art.bin.gz, tmdb.json.gz when there is TMDB data,
-                                  and build.json, written last to mark it complete
+                                  art.bin.gz, the facets (facets.bin.gz,
+                                  facets.json.gz, search.json.gz), tmdb.json.gz
+                                  when there is TMDB data, and build.json, written
+                                  last to mark it complete
     raw/                          the latest TVmaze pages and manifest.json
+    wikidata/                     cache.json.gz, the Wikidata facts the facets are
+                                  built from (see wikidata.py), and meta.json
     tmdb/                         TMDB id mapping and cache (see tmdb.py)
     state.json                    past runs, so a restart keeps its history
     logs/                         one log per run, the last 14 kept
 
+The Wikidata cache is fetched again when it is WIKIDATA_MAX_AGE_DAYS (7) old or was
+fetched by another wikidata.py. A failed fetch is only a warning: the facets are
+built from the cache there is, or from TVmaze alone when there is none.
+
 Settings, all optional: PORT (8083), MODEL_ROOT, SEED_MODEL_DIR (/home/developer/model),
 REFRESH_AT_UTC (04:30), AUTO_DELAY_SECONDS (120), TMDB_API_KEY, TMDB_REGION (US),
-TMDB_MIN_POPULARITY (60), TMDB_DAILY_LIMIT (6000), and RAW_SOURCE_DIR, which copies
-TVmaze pages from a local folder instead of downloading them, for local runs.
+TMDB_MIN_POPULARITY (60), TMDB_DAILY_LIMIT (6000), WIKIDATA_MAX_AGE_DAYS (7, and 0
+fetches every run), WIKIDATA_SPARQL_URL and WIKIDATA_BACKOFF_SECONDS, which wikidata.py
+is given, and RAW_SOURCE_DIR, which copies TVmaze pages from a local folder instead of
+downloading them, for local runs.
 """
 from collections import deque
 from contextlib import contextmanager
@@ -52,10 +62,13 @@ import zlib
 HERE = Path(__file__).resolve().parent
 STAMP = re.compile(r'\d{8}T\d{6}Z')
 MODEL_FILES = ('catalog.json.gz', 'vectors.bin.gz', 'popularity.bin.gz', 'art.bin.gz')
+# Built beside the model files from Wikidata and TVmaze. A version may lack them, as the
+# frozen seed does, but it has all three or none.
+FACET_FILES = ('facets.bin.gz', 'facets.json.gz', 'search.json.gz')
 # The sources whose change means the model must be built again. tmdb.py and this file
 # only shape display data and the service, so a change to them rebuilds nothing.
-PIPELINE = ('download.py', 'build_model.py', 'build_popularity.py', 'build_art.py',
-            'study/theme_rules.json', 'study/audit.json', 'requirements-refresher.txt')
+PIPELINE = ('download.py', 'build_model.py', 'build_popularity.py', 'build_art.py', 'build_facets.py',
+            'wikidata.py', 'study/theme_rules.json', 'study/audit.json', 'requirements-refresher.txt')
 KEEP_VERSIONS = 3
 KEEP_LOGS = 14
 KEEP_RUNS = 60
@@ -63,11 +76,14 @@ STALE = timedelta(hours=26)
 RETRY = timedelta(hours=2)
 MAX_SHIFT = 0.10
 TMDB_MAX_AGE = timedelta(days=180)
+WIKIDATA_MAX_AGE_DAYS = 7
+# A fetch that finds fewer than half the shows the last one did looks broken, not new.
+WIKIDATA_MIN_SHARE = 0.5
 THREAD_VARS = ('OPENBLAS_NUM_THREADS', 'OMP_NUM_THREADS', 'MKL_NUM_THREADS',
                'VECLIB_MAXIMUM_THREADS', 'NUMEXPR_NUM_THREADS')
 SECRETS = ('TMDB_API_KEY',)
 TIMEOUTS = {'download': 3 * 3600, 'build_model': 2 * 3600, 'build_popularity': 1800, 'build_art': 1800,
-            'tmdb': 3 * 3600, 'tmdb carry': 1800, 'validate': 1800}
+            'wikidata': 3600, 'build_facets': 1800, 'tmdb': 3 * 3600, 'tmdb carry': 1800, 'validate': 1800}
 AUTOMATIC = ('daily', 'catch-up', 'retry', 'tmdb')
 CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; "
        "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
@@ -122,9 +138,9 @@ def next_daily(after, at):
     return slot if slot > after else slot + timedelta(days=1)
 
 
-def pipeline_hash(folder=HERE):
+def pipeline_hash(folder=HERE, names=PIPELINE):
     digest = hashlib.sha256()
-    for name in PIPELINE:
+    for name in names:
         path = Path(folder) / name
         digest.update(name.encode() + b'\0' + (path.read_bytes() if path.exists() else b'(missing)') + b'\0')
     return digest.hexdigest()[:12]
@@ -243,11 +259,14 @@ def read_catalog(path):
     return data
 
 
-def vectors_shape(path):
+def matrix_shape(path):
+    """(rows, cols, nnz) of a sparse matrix in the vectors.bin.gz layout, once its size
+    is checked against its header."""
+    path = Path(path)
     with gzip.open(path, 'rb') as f:
         head = f.read(12)
         if len(head) < 12:
-            raise Invalid('vectors.bin.gz is truncated.')
+            raise Invalid(f'{path.name} is truncated.')
         rows, cols, nnz = struct.unpack('<III', head)
         size = 12
         while True:
@@ -257,8 +276,47 @@ def vectors_shape(path):
             size += len(chunk)
     expected = 12 + 4 * ((rows + 1) + 2 * nnz + (cols + 1) + 2 * nnz)
     if size != expected:
-        raise Invalid(f'vectors.bin.gz holds {size:,} bytes where its header promises {expected:,}.')
+        raise Invalid(f'{path.name} holds {size:,} bytes where its header promises {expected:,}.')
     return rows, cols, nnz
+
+
+def check_facets(folder, ids, date):
+    """What a version's facet files hold, or None when it has none. Raises Invalid when
+    they are partial, broken, or built for another catalog."""
+    present = [name for name in FACET_FILES if (folder / name).exists()]
+    if not present:
+        return None
+    if len(present) < len(FACET_FILES):
+        missing = [name for name in FACET_FILES if name not in present]
+        raise Invalid(f"{', '.join(missing)} missing beside {', '.join(present)}.")
+    try:
+        rows, cols, nnz = matrix_shape(folder / 'facets.bin.gz')
+        meta = json.loads(gzip.decompress((folder / 'facets.json.gz').read_bytes()))
+        search = json.loads(gzip.decompress((folder / 'search.json.gz').read_bytes()))
+    except Invalid:
+        raise
+    except (OSError, EOFError, ValueError, zlib.error, struct.error) as exc:
+        raise Invalid(f'A facet file does not decompress: {exc}') from None
+    if rows != len(ids):
+        raise Invalid(f'facets.bin.gz has {rows:,} rows where the catalog has {len(ids):,} shows.')
+    families = meta.get('families') if isinstance(meta, dict) else None
+    tokens = meta.get('tokens') if isinstance(meta, dict) else None
+    if not isinstance(families, list) or not families or not isinstance(tokens, list):
+        raise Invalid('facets.json.gz holds no families and tokens.')
+    if len(tokens) != cols:
+        raise Invalid(f'facets.json.gz names {len(tokens):,} tokens where facets.bin.gz has {cols:,} columns.')
+    if any(not isinstance(t, list) or len(t) != 4 or type(t[0]) is not int or not 0 <= t[0] < len(families)
+           for t in tokens):
+        raise Invalid('facets.json.gz holds a malformed token.')
+    if meta.get('date') != date:
+        raise Invalid(f"facets.json.gz was built for the catalog of {meta.get('date')}, not {date}.")
+    aliases = search.get('aliases') if isinstance(search, dict) else None
+    known = set(ids)
+    if not isinstance(aliases, dict) or not all(k.isdigit() and int(k) in known and isinstance(v, list)
+                                                for k, v in aliases.items()):
+        raise Invalid('search.json.gz names shows that are not in this catalog.')
+    return {'tokens': cols, 'nonzeros': nnz, 'linked': meta.get('linked'), 'aliases': len(aliases),
+            'wikidata_fetched_at': meta.get('wikidata_fetched_at')}
 
 
 def validate_version(folder, previous_shows=None, manifest=None):
@@ -270,7 +328,7 @@ def validate_version(folder, previous_shows=None, manifest=None):
             raise Invalid(f'{name} is missing.')
     try:
         catalog = read_catalog(folder / 'catalog.json.gz')
-        rows, cols, nnz = vectors_shape(folder / 'vectors.bin.gz')
+        rows, cols, nnz = matrix_shape(folder / 'vectors.bin.gz')
         popularity = gzip.decompress((folder / 'popularity.bin.gz').read_bytes())
         art = gzip.decompress((folder / 'art.bin.gz').read_bytes())
     except Invalid:
@@ -316,8 +374,9 @@ def validate_version(folder, previous_shows=None, manifest=None):
         if entries and parse_time(data.get('fetched_at')) is None:
             raise Invalid('tmdb.json.gz carries no fetch date.')
         tmdb = {'fetched_at': data.get('fetched_at') if entries else None, 'shows': len(entries)}
+    facets = check_facets(folder, ids, date)
     return {'shows': shows, 'snapshot_date': date, 'catalog_version': catalog.get('version'),
-            'text_features': cols, 'nonzeros': nnz, 'tmdb': tmdb}
+            'text_features': cols, 'nonzeros': nnz, 'tmdb': tmdb, 'facets': facets}
 
 
 # Running the steps --------------------------------------------------------------------
@@ -508,6 +567,15 @@ class Config:
         self.tmdb_region = (env.get('TMDB_REGION') or 'US').strip().upper()
         self.tmdb_min_popularity = int(env.get('TMDB_MIN_POPULARITY') or 60)
         self.tmdb_daily_limit = int(env.get('TMDB_DAILY_LIMIT') or 6000)
+        try:
+            days = float(env.get('WIKIDATA_MAX_AGE_DAYS') or WIKIDATA_MAX_AGE_DAYS)
+        except ValueError:
+            days = -1.0
+        if not 0 <= days < float('inf'):
+            raise ValueError('WIKIDATA_MAX_AGE_DAYS must be a number of days, 0 or more.')
+        self.wikidata_max_age = timedelta(days=days)
+        # Passed to wikidata.py: another endpoint, and the first wait after a failed query.
+        self.wikidata_env = {k: env[k] for k in ('WIKIDATA_SPARQL_URL', 'WIKIDATA_BACKOFF_SECONDS') if env.get(k)}
         self.raw_source = where(env['RAW_SOURCE_DIR']) if env.get('RAW_SOURCE_DIR') else None
         self.scripts = HERE
         self.python = sys.executable
@@ -523,15 +591,18 @@ class Refresher:
         self.root = Path(config.root)
         self.versions = self.root / 'versions'
         self.raw = self.root / 'raw'
+        self.wikidata = self.root / 'wikidata'
         self.logs = self.root / 'logs'
         self.runner = runner or Processes()
         self.clock = clock
         self.pipeline = pipeline_hash(config.scripts)
+        # A cache fetched by another wikidata.py may lack what this one fetches.
+        self.wikidata_script = pipeline_hash(config.scripts, ('wikidata.py',))
         self.lock = threading.Lock()       # one run at a time in this process
         self.guard = threading.RLock()     # the state and the run in progress
         self.stopping = threading.Event()
         self.wake = threading.Event()
-        self.state = {'runs': [], 'last_success': None, 'tmdb': None}
+        self.state = {'runs': [], 'last_success': None, 'tmdb': None, 'wikidata': None}
         self.running = None
         self.thread = None
         self.scheduler = None
@@ -550,7 +621,8 @@ class Refresher:
             if (self.root / 'state.json').exists():
                 self.say('state.json did not parse; starting a fresh history.')
             state = {}
-        return {'runs': state.get('runs', []), 'last_success': state.get('last_success'), 'tmdb': state.get('tmdb')}
+        return {'runs': state.get('runs', []), 'last_success': state.get('last_success'), 'tmdb': state.get('tmdb'),
+                'wikidata': state.get('wikidata')}
 
     def save_state(self):
         with self.guard:
@@ -614,6 +686,11 @@ class Refresher:
             else:
                 os.rename(old, self.raw)
         remove(self.root / 'current.tmp')
+        # A fetch stopped part way leaves its unfinished cache, and perhaps wikidata.py's own
+        # temporary file beside it.
+        if self.wikidata.is_dir():
+            for leftover in [self.wikidata / 'cache.new.json.gz', *self.wikidata.glob('.*.tmp')]:
+                remove(leftover)
 
     def last_built(self):
         success = self.state.get('last_success') or {}
@@ -675,7 +752,7 @@ class Refresher:
 
     def start(self, schedule=True):
         os.umask(0o022)
-        for folder in (self.root, self.versions, self.logs, self.root / 'tmdb'):
+        for folder in (self.root, self.versions, self.logs, self.root / 'tmdb', self.wikidata):
             folder.mkdir(parents=True, exist_ok=True)
         self.state = self.load_state()
         for run in self.state['runs']:
@@ -793,7 +870,7 @@ class Refresher:
             self.lock.release()
             self.wake.set()
 
-    def child_env(self, tmdb=False):
+    def child_env(self, tmdb=False, wikidata=False):
         env = {k: v for k, v in os.environ.items() if k not in SECRETS}
         env.update({name: '1' for name in THREAD_VARS})
         env.update(PYTHONUNBUFFERED='1', PYTHONDONTWRITEBYTECODE='1', PYTHONUTF8='1')
@@ -801,6 +878,8 @@ class Refresher:
             env.update(TMDB_API_KEY=self.config.tmdb_key, TMDB_REGION=self.config.tmdb_region,
                        TMDB_MIN_POPULARITY=str(self.config.tmdb_min_popularity),
                        TMDB_DAILY_LIMIT=str(self.config.tmdb_daily_limit))
+        if wikidata:
+            env.update(self.config.wikidata_env, TV_RAW_DIR=str(self.raw))
         return env
 
     def build_env(self, folder, audit):
@@ -808,6 +887,8 @@ class Refresher:
         env.update(TV_RAW_DIR=str(self.raw), TV_MANIFEST=str(self.raw / 'manifest.json'),
                    TV_STUDY_DIR=str(self.config.scripts / 'study'), TV_MODEL_OUT=str(folder),
                    TV_ART_OUT=str(folder / 'art.bin.gz'), TV_AUDIT_DIR=str(audit))
+        # Only the facets step is told where the Wikidata cache is, and only by facets_step.
+        env.pop('TV_WIKIDATA', None)
         return env
 
     def script(self, name):
@@ -859,6 +940,84 @@ class Refresher:
         if old is not None and old.exists():
             ctx.run_step('tmdb carry', self.script('tmdb.py') + ['--version', folder, '--carry', old], self.child_env())
 
+    def wikidata_meta(self):
+        """What meta.json says about the Wikidata cache: its fetch date, its show count
+        and the wikidata.py that fetched it. {} when there is no cache."""
+        meta = read_json(self.wikidata / 'meta.json', {})
+        return meta if isinstance(meta, dict) and (self.wikidata / 'cache.json.gz').is_file() else {}
+
+    def wikidata_due(self):
+        """Why the Wikidata cache should be fetched again, or None."""
+        if not (self.wikidata / 'cache.json.gz').is_file():
+            return 'there is no Wikidata cache'
+        if not self.config.wikidata_max_age:
+            return 'WIKIDATA_MAX_AGE_DAYS is 0'
+        meta = self.wikidata_meta()
+        if meta.get('script') != self.wikidata_script:
+            return 'wikidata.py changed since the cache was fetched'
+        fetched = parse_time(meta.get('fetched_at'))
+        if fetched is None:
+            return 'the cache carries no fetch date'
+        if self.clock() - fetched >= self.config.wikidata_max_age:
+            return f'the cache is {(self.clock() - fetched).days} days old'
+        return None
+
+    def wikidata_step(self, ctx):
+        """The Wikidata cache the facets are built from, fetched again when it is due. The
+        fetch goes to cache.new.json.gz and replaces the cache only once it is whole and
+        about as large as the last one. A failed fetch is a warning, never a failed run:
+        the cache there is stays in use. Returns the cache's path, or None."""
+        cache, new = self.wikidata / 'cache.json.gz', self.wikidata / 'cache.new.json.gz'
+        reason = self.wikidata_due()
+        if reason is None:
+            ctx.log(f"wikidata: the cache fetched {self.wikidata_meta().get('fetched_at')} is fresh; "
+                    'not fetching it again')
+            return cache
+        ctx.log(f'wikidata: fetching, as {reason}')
+        self.wikidata.mkdir(parents=True, exist_ok=True)
+        remove(new)
+        try:
+            done = ctx.run_step('wikidata', self.script('wikidata.py') + ['--out', new], self.child_env(wikidata=True))
+            line = next((l for l in reversed(done['tail']) if l.startswith('RESULT ')), None)
+            result = json.loads(line[len('RESULT '):]) if line else None
+            if not isinstance(result, dict) or not new.is_file() or not isinstance(result.get('shows'), int):
+                raise StepFailed('wikidata.py wrote no cache.')
+            before = self.wikidata_meta().get('shows')
+            if isinstance(before, int) and result['shows'] < before * WIKIDATA_MIN_SHARE:
+                raise StepFailed(f"the fetch found {result['shows']:,} shows where the cache has {before:,}")
+            os.replace(new, cache)
+            write_json(self.wikidata / 'meta.json', {
+                'fetched_at': result.get('fetched_at'), 'shows': result['shows'], 'mapped': result.get('mapped'),
+                'script': self.wikidata_script})
+            ctx.log(f"wikidata: cached {result['shows']:,} shows, fetched {result.get('fetched_at')}")
+        except StepFailed as exc:
+            if cache.is_file():
+                ctx.warn(f"Wikidata step failed, keeping the cache fetched {self.wikidata_meta().get('fetched_at')}: {exc}")
+            else:
+                ctx.warn(f'Wikidata step failed, building the facets from TVmaze alone: {exc}')
+            result = {'error': str(exc)}
+        finally:
+            remove(new)
+        with self.guard:
+            self.state['wikidata'] = {'at': iso(self.clock()), **result}
+        return cache if cache.is_file() else None
+
+    def facets_step(self, ctx, env, cache):
+        """The facets, from the Wikidata cache when there is one. A cache that will not
+        build is set aside for this run with a warning, and the facets built from TVmaze
+        alone; a build that fails even so fails the run, like any other model step."""
+        env = dict(env)
+        if cache is not None:
+            env['TV_WIKIDATA'] = str(cache)
+        try:
+            ctx.run_step('build_facets', self.script('build_facets.py'), env)
+        except StepFailed as exc:
+            if cache is None:
+                raise
+            ctx.warn(f'The facets would not build from the Wikidata cache, so they were built without it: {exc}')
+            env.pop('TV_WIKIDATA')
+            ctx.run_step('build_facets', self.script('build_facets.py'), env)
+
     def finish(self, ctx, folder, build):
         """build.json last, then the rename, then the swap."""
         ctx.check()
@@ -890,11 +1049,13 @@ class Refresher:
             ctx.log(f"catalog: {report.get('searchable_shows', 0):,} shows, "
                     f"{report.get('recommendable_shows', 0):,} recommendable")
         remove(audit)
+        self.facets_step(ctx, env, self.wikidata_step(ctx))
         self.tmdb_step(ctx, folder, previous, required=False)
         checked = ctx.validate(folder, previous and previous['build'].get('shows'), self.raw / 'manifest.json')
         self.finish(ctx, folder, {
             'version': ctx.stamp, 'built_at': iso(self.clock()), 'snapshot_date': checked['snapshot_date'],
-            'shows': checked['shows'], 'pipeline': self.pipeline, 'seeded_from': None, 'tmdb': checked['tmdb']})
+            'shows': checked['shows'], 'pipeline': self.pipeline, 'seeded_from': None, 'tmdb': checked['tmdb'],
+            'facets': checked['facets']})
 
     def tmdb_run(self, ctx):
         """Only the TMDB step, on a copy of the live version."""
@@ -907,26 +1068,29 @@ class Refresher:
             raise StepFailed('There are no TVmaze pages yet; run a full refresh first.')
         folder = ctx.new_version()
         with ctx.step('copy'):
-            for name in MODEL_FILES:
-                link_or_copy(live['path'] / name, folder / name)
+            for name in MODEL_FILES + FACET_FILES:
+                if name in MODEL_FILES or (live['path'] / name).is_file():
+                    link_or_copy(live['path'] / name, folder / name)
         self.tmdb_step(ctx, folder, live, required=True)
         checked = ctx.validate(folder, live['build'].get('shows'))
         old = live['build']
         self.finish(ctx, folder, {
             'version': ctx.stamp, 'built_at': iso(self.clock()), 'snapshot_date': old.get('snapshot_date'),
             'shows': checked['shows'], 'pipeline': old.get('pipeline'), 'seeded_from': old.get('seeded_from'),
-            'tmdb': checked['tmdb']})
+            'tmdb': checked['tmdb'], 'facets': checked['facets']})
 
     def seed_run(self, ctx):
         """The first version, copied from the model the apps were deployed with. Art comes
-        from the raw pages when the seed has none."""
+        from the raw pages when the seed has none. The facets come along when the seed has
+        all three files; the first full build makes them otherwise."""
         seed = Path(self.config.seed)
         missing = [name for name in MODEL_FILES[:3] if not (seed / name).is_file()]
         if missing:
             raise StepFailed(f"Nothing to seed from: {seed} lacks {', '.join(missing)}.")
         folder = ctx.new_version()
+        facets = FACET_FILES if all((seed / name).is_file() for name in FACET_FILES) else ()
         with ctx.step('copy seed'):
-            for name in MODEL_FILES + ('tmdb.json.gz',):
+            for name in MODEL_FILES + facets + ('tmdb.json.gz',):
                 if (seed / name).is_file():
                     shutil.copyfile(seed / name, folder / name)
         if not (folder / 'art.bin.gz').exists():
@@ -936,7 +1100,8 @@ class Refresher:
         checked = ctx.validate(folder)
         self.finish(ctx, folder, {
             'version': ctx.stamp, 'built_at': iso(self.clock()), 'snapshot_date': checked['snapshot_date'],
-            'shows': checked['shows'], 'pipeline': self.pipeline, 'seeded_from': str(seed), 'tmdb': checked['tmdb']})
+            'shows': checked['shows'], 'pipeline': self.pipeline, 'seeded_from': str(seed), 'tmdb': checked['tmdb'],
+            'facets': checked['facets']})
 
     # Scheduling ----------------------------------------------------------------------
 
@@ -1019,8 +1184,10 @@ class Refresher:
             runs = [summary(run) for run in self.state['runs'][:15]]
             last_success = self.state.get('last_success')
             tmdb_last = self.state.get('tmdb')
+            wikidata_last = self.state.get('wikidata')
         live = self.current()
         due, reason = self.next_run()
+        meta = self.wikidata_meta()
         return {
             'status': 'running' if running else 'idle',
             'now': iso(now),
@@ -1035,6 +1202,10 @@ class Refresher:
             'tmdb': {'configured': bool(self.config.tmdb_key), 'region': self.config.tmdb_region,
                      'min_popularity': self.config.tmdb_min_popularity,
                      'daily_limit': self.config.tmdb_daily_limit, 'last': tmdb_last},
+            'wikidata': {'max_age_days': self.config.wikidata_max_age.total_seconds() / 86400,
+                         'cache': {'fetched_at': meta.get('fetched_at'), 'shows': meta.get('shows'),
+                                   'mapped': meta.get('mapped')} if meta else None,
+                         'last': wikidata_last},
             'pipeline': self.pipeline,
             'model_root': str(self.root),
         }
@@ -1068,6 +1239,16 @@ def took(seconds):
     return f'{seconds // 3600} h {seconds % 3600 // 60:02d} min'
 
 
+def facts_line(facets):
+    """The live build's facets in a line, or None when it has none."""
+    if not facets:
+        return None
+    source = (f"Wikidata fetched {when(facets['wikidata_fetched_at'])}" if facets.get('wikidata_fetched_at')
+              else 'TVmaze alone')
+    return (f"{facets.get('tokens') or 0:,} tokens, {facets.get('linked') or 0:,} shows linked, "
+            f"{facets.get('aliases') or 0:,} with other names; from {source}")
+
+
 def render_page(status):
     e = lambda value: html.escape(str(value), quote=True)
     live, running, tmdb = status['current'], status['running'], status['tmdb']
@@ -1096,7 +1277,14 @@ def render_page(status):
         ('snapshot date', build.get('snapshot_date')), ('shows', f"{build['shows']:,}" if build.get('shows') else None),
         ('pipeline', build.get('pipeline')), ('seeded from', build.get('seeded_from')),
         ('TMDB data', f"{build['tmdb']['shows']:,} shows, fetched {when(build['tmdb']['fetched_at'])}"
-         if (build.get('tmdb') or {}).get('shows') else None))) if live else ''
+         if (build.get('tmdb') or {}).get('shows') else None),
+        ('facets', facts_line(build.get('facets'))))) if live else ''
+    wikidata = status['wikidata']
+    cache, tried = wikidata.get('cache') or {}, wikidata.get('last') or {}
+    wikidata_line = (f"{cache['shows']:,} shows cached, fetched {when(cache.get('fetched_at'))}" if cache.get('shows')
+                     else 'No cache yet; the next build fetches one')
+    wikidata_note = f"Fetched again when {wikidata['max_age_days']:g} days old" + (
+        f"; the last try, {when(tried.get('at'))}, failed: {tried['error']}" if tried.get('error') else '')
     last = tmdb.get('last') or {}
     tmdb_line = (f"On, region {e(tmdb['region'])}, up to {tmdb['daily_limit']:,} shows a night"
                  if tmdb['configured'] else 'Off: set TMDB_API_KEY to add where to watch, ratings and trailers')
@@ -1134,12 +1322,13 @@ def render_page(status):
 <section class="cards">
 <div class="card"><h2>Next run</h2><p>{e(when(status['next_run']['at']))}</p><p class="dim">{e(why)}</p></div>
 <div class="card"><h2>TMDB</h2><p>{tmdb_line}</p><p class="dim">{tmdb_note}</p></div>
+<div class="card"><h2>Wikidata</h2><p>{e(wikidata_line)}</p><p class="dim">{e(wikidata_note)}</p></div>
 <div class="card"><h2>Pipeline</h2><p><code>{e(status['pipeline'])}</code></p><p class="dim">{e(kept)}</p></div>
 </section>
 <section><h2>Live build</h2>{f'<dl>{facts}</dl>' if live else '<p class="dim">Nothing is live yet.</p>'}</section>
 <section><h2>Recent runs</h2>{table}</section>
 </main>
-<footer class="dim">Show data from TVmaze, CC BY-SA 4.0.{' This product uses the TMDB API but is not endorsed or certified by TMDB.' if tmdb['configured'] else ''}</footer>
+<footer class="dim">Show data from TVmaze, CC BY-SA 4.0, and Wikidata, CC0.{' This product uses the TMDB API but is not endorsed or certified by TMDB.' if tmdb['configured'] else ''}</footer>
 </body>
 </html>
 '''
