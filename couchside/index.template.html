@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#141414">
+<meta name="description" content="Rows of TV shows picked for your taste, across __CATALOG_COUNT__ series. Rate what you have seen and every row leans your way.">
+<title>Couchside</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/style.css">
+<script type="module" src="/main.js"></script>
+</head>
+<body>
+<a class="skip" href="#page">Skip to content</a>
+
+<header class="nav" id="nav">
+  <a class="brand" href="/" data-link aria-label="Couchside, home">Couchside</a>
+  <nav class="links" aria-label="Sections">
+    <a href="/" data-link data-page="home">Home</a>
+    <a href="/new" data-link data-page="new">New &amp; Popular</a>
+    <a href="/list" data-link data-page="list">My List</a>
+  </nav>
+  <div class="tools">
+    <div class="find" id="find">
+      <button class="icon-btn" id="find-open" type="button" aria-label="Search"></button>
+      <input id="q" type="search" placeholder="Search by title" autocomplete="off" maxlength="100"
+             aria-label="Search shows by title" enterkeyhint="search">
+    </div>
+    <button class="avatar" id="account-open" type="button" aria-label="Your profile and settings" aria-haspopup="dialog"></button>
+  </div>
+</header>
+
+<main id="page" tabindex="-1">
+  <section id="home" class="view" aria-label="Home">
+    <div class="hero" id="hero"></div>
+    <div class="rows" id="rows"></div>
+  </section>
+
+  <section id="welcome" class="view page" aria-labelledby="welcome-h" hidden>
+    <div class="welcome-head">
+      <h1 id="welcome-h">Pick three or more shows you like</h1>
+      <p class="lede">Every row is built from them. You can rate anything else as you browse.</p>
+    </div>
+    <ul class="grid picks" id="starters"></ul>
+    <div class="welcome-bar">
+      <span id="picked-note" role="status" aria-live="polite"></span>
+      <button class="btn ghost" id="skip" type="button">Skip for now</button>
+      <button class="btn primary" id="continue" type="button" disabled>Continue</button>
+    </div>
+  </section>
+
+  <section id="new" class="view page" aria-labelledby="new-h" hidden>
+    <h1 id="new-h" class="page-h">New &amp; Popular</h1>
+    <div id="new-body"></div>
+  </section>
+
+  <section id="list" class="view page" aria-labelledby="list-h" hidden>
+    <h1 id="list-h" class="page-h">My List</h1>
+    <p class="note" id="list-note"></p>
+    <ul class="grid" id="list-grid"></ul>
+    <h2 class="page-h2">Rated by you</h2>
+    <div class="chips" id="rated-filter" role="group" aria-label="Show ratings"></div>
+    <p class="note" id="rated-note"></p>
+    <ul class="grid" id="rated-grid"></ul>
+  </section>
+
+  <section id="search" class="view page" aria-labelledby="search-h" hidden>
+    <h1 id="search-h" class="sr">Search</h1>
+    <div class="search-box">
+      <input id="q-page" type="search" placeholder="Search by title" autocomplete="off" maxlength="100"
+             aria-label="Search shows by title" enterkeyhint="search">
+    </div>
+    <p class="note" id="search-note" role="status" aria-live="polite"></p>
+    <ul class="grid" id="results"></ul>
+  </section>
+</main>
+
+<footer class="foot">
+  <p><button class="link" id="open-about" type="button">How Couchside works</button></p>
+  <p>Shows, images and details from <a href="https://www.tvmaze.com/">TVmaze</a>, <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. Catalogue snapshot __DATASET_DATE__.</p>
+  <p>Nothing plays here: Couchside is for finding your next show.</p>
+</footer>
+
+<nav class="dock" aria-label="Sections">
+  <a href="/" data-link data-page="home" data-icon="home">Home</a>
+  <a href="/new" data-link data-page="new" data-icon="spark">New &amp; Popular</a>
+  <a href="/list" data-link data-page="list" data-icon="saved">My List</a>
+  <a href="/search" data-link data-page="search" data-icon="search">Search</a>
+</nav>
+
+<dialog id="title" class="modal" aria-labelledby="t-name"><div class="sheet" id="t-sheet"></div></dialog>
+
+<dialog id="account" class="menu" aria-labelledby="account-h"><div class="menu-sheet">
+  <div class="menu-head">
+    <span class="avatar big" aria-hidden="true"></span>
+    <div><h2 id="account-h">Your profile</h2><p id="account-counts"></p></div>
+    <button class="icon-btn close-btn" type="button" data-close aria-label="Close"></button>
+  </div>
+  <a class="menu-item" href="/list" data-link>My List and ratings</a>
+  <a class="menu-item" href="/welcome" data-link>Pick shows you like</a>
+  <label class="menu-item menu-field" for="reach">What to recommend
+    <select id="reach">
+      <option value="85">Well-known shows</option>
+      <option value="60">Fairly well known ones too</option>
+      <option value="0">Anything in the catalogue</option>
+    </select>
+  </label>
+  <button class="menu-item" id="open-move" type="button">Move your list to another device</button>
+  <button class="menu-item" id="open-about-2" type="button">How Couchside works</button>
+  <button class="menu-item danger" id="reset" type="button">Start over</button>
+</div></dialog>
+
+<dialog id="move" class="modal small" aria-labelledby="move-h"><div class="sheet pad">
+  <button class="icon-btn close-btn corner" type="button" data-close aria-label="Close"></button>
+  <h2 id="move-h" class="sheet-h">Move your list to another device</h2>
+  <p id="move-count" class="note"></p>
+  <label class="field" for="move-link">Open this on the other device
+    <input id="move-link" type="text" readonly spellcheck="false">
+  </label>
+  <div class="move-acts">
+    <button id="copy-link" class="btn ghost" type="button">Copy link</button>
+    <button id="copy-code" class="btn ghost" type="button">Copy code only</button>
+    <span id="copy-said" class="said" role="status" aria-live="polite"></span>
+  </div>
+  <figure id="qr-wrap" class="qr">
+    <svg id="qr" role="img" aria-label="QR code for this list"></svg>
+    <figcaption id="qr-note"></figcaption>
+  </figure>
+  <p class="note">The list rides in the part of the address after the #, which browsers never send anywhere. A code from Next Watch works here too, and one from here works there.</p>
+  <h3 class="move-h">Bring a list in</h3>
+  <label class="field" for="move-paste">Paste a link or code
+    <textarea id="move-paste" rows="3" spellcheck="false" autocomplete="off"></textarea>
+  </label>
+  <p id="move-status" class="note" role="status" aria-live="polite"></p>
+  <div class="move-acts">
+    <button id="do-merge" class="btn ghost" type="button">Add to my list</button>
+    <button id="do-replace" class="btn ghost" type="button">Replace my list</button>
+  </div>
+</div></dialog>
+
+<dialog id="about" class="modal small" aria-labelledby="about-h"><div class="sheet pad">
+  <button class="icon-btn close-btn corner" type="button" data-close aria-label="Close"></button>
+  <h2 id="about-h" class="sheet-h">How Couchside works</h2>
+  <p>Every row is built from the shows you rate. <b>Love this</b> pulls hardest, <b>I like this</b> pulls a little less, and anything close to what you marked <b>Not for me</b> is pushed back. Rows called <i>Because you loved</i> follow one show at a time.</p>
+  <p>A match compares a show with your single best pick, so 99% is as close to your taste as anything gets. It measures how alike the stories, themes and genres are, not a promise you will enjoy it.</p>
+  <p>The catalogue is a TVmaze snapshot of __CATALOG_COUNT__ series from __DATASET_DATE__. Cast, seasons, episodes and backdrops are fetched from TVmaze when you open a title, and posters load from TVmaze's image server. TVmaze does not record age ratings, so Couchside cannot show them.</p>
+  <p>Your ratings and My List stay in this browser. There is no account, and nothing about you is stored on a server. Nothing plays here: open a title on TVmaze to see where it airs.</p>
+</div></dialog>
+
+<div id="toast" class="toast" role="status" aria-live="polite" popover="manual"></div>
+<script type="application/json" id="boot">__BOOTSTRAP__</script>
+</body>
+</html>

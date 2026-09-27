@@ -4,8 +4,18 @@
     {
       "name": "next-watch",
       "runtimeExecutable": ".venv/bin/python",
-      "runtimeArgs": ["app/server.py"],
+      "runtimeArgs": [
+        "app/server.py"
+      ],
       "port": 8091
+    },
+    {
+      "name": "couchside",
+      "runtimeExecutable": ".venv/bin/python",
+      "runtimeArgs": [
+        "couchside/server.py"
+      ],
+      "port": 8082
     }
   ]
 }
