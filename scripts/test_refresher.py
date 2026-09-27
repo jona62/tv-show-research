@@ -288,6 +288,35 @@ r.boot()
 check('boot schedules the catch-up AUTO_DELAY_SECONDS after start', r.catch_up_at == r.started_at)
 check('status names the next run', r.status()['next_run'] == {'at': refresher.iso(r.started_at), 'reason': 'catch-up'})
 
+# TMDB switched on after the live version was built: fetch it without waiting for the night.
+r = make('tmdb-on', TMDB_API_KEY='v3-key-for-tests-0000000000000000')
+add_version(r, '20260101T000000Z', built_at=NOW - timedelta(hours=2))
+r.swap_current('20260101T000000Z')
+r.state['last_success'] = {'at': refresher.iso(NOW - timedelta(hours=2))}
+check('TMDB on with no TMDB data calls for a TMDB run', 'no TMDB data' in (r.needs_tmdb() or ''))
+r.boot()
+check('boot schedules the TMDB run, not a full one', r.tmdb_at == r.started_at and r.catch_up_at is None)
+check('the TMDB run is next', r.next_run() == (r.started_at, 'tmdb'))
+check('status explains it', r.status()['next_run']['reason'] == 'tmdb')
+off = make('tmdb-off')
+add_version(off, '20260101T000000Z', built_at=NOW - timedelta(hours=2))
+off.swap_current('20260101T000000Z')
+off.state['last_success'] = {'at': refresher.iso(NOW - timedelta(hours=2))}
+off.boot()
+check('without a key there is no TMDB run', off.needs_tmdb() is None and off.tmdb_at is None)
+has = make('tmdb-has', TMDB_API_KEY='v3-key-for-tests-0000000000000000')
+folder = add_version(has, '20260101T000000Z', built_at=NOW - timedelta(hours=2))
+build = json.loads((folder / 'build.json').read_text())
+build['tmdb'] = {'fetched_at': refresher.iso(NOW), 'shows': 40}
+(folder / 'build.json').write_text(json.dumps(build))
+has.swap_current('20260101T000000Z')
+check('a version that already has TMDB data needs none', has.needs_tmdb() is None)
+stale = make('tmdb-stale', TMDB_API_KEY='v3-key-for-tests-0000000000000000')
+add_version(stale, '20260101T000000Z', pipeline='000000000000')
+stale.swap_current('20260101T000000Z')
+stale.boot()
+check('a due full build carries TMDB, so no separate run', stale.catch_up_at is not None and stale.tmdb_at is None)
+
 # The scheduler itself: seeds at start, then catches up at once with AUTO_DELAY_SECONDS=0.
 runner = FakeRunner()
 r = make('scheduler', runner, seed=write_model(TMP / 'seed-scheduler', 100))

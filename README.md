@@ -32,6 +32,34 @@ python3 site/server.py
 features, and builds the shared model every app reads. Python 3.10+; no app
 needs packages at runtime.
 
+## Fresh data every night
+
+Next Watch and Couchside read a live model that `scripts/refresher.py` rebuilds
+each night at 04:30 UTC: it downloads TVmaze's whole show index, rebuilds the
+model into a new folder under `/home/developer/tv-model/versions/`, checks it,
+and only then moves `tv-model/current` to it. Each app notices the move and
+restarts on the new model, Next Watch after 30 seconds and Couchside after 150,
+so they are never down together. A failed build leaves the live model alone and
+is retried two hours later. The research site stays on the snapshot it was
+published with.
+
+The refresher is the private `model-refresher` app in `rig.yaml`. Its page shows
+the live build, recent runs and the next one, with a *Rebuild now* button. It
+rebuilds on deploy whenever the pipeline changes, and seeds itself from the frozen
+model the first time it starts.
+
+With `TMDB_API_KEY` set, each build also fetches TMDB's US age ratings, streaming
+services, trailers and backdrops for the 23,000 or so best-known shows, 6,000 a
+night, keeping each for at most TMDB's six months. Couchside shows them, credited
+to TMDB and JustWatch; nothing from TMDB reaches the ranking. On Rigbox the token
+goes in the GitHub connection's runtime secrets as `TMDB_READ_API=...`.
+
+```sh
+MODEL_ROOT=/tmp/tv-model SEED_MODEL_DIR=model RAW_SOURCE_DIR=data/raw \
+  .venv/bin/python scripts/refresher.py    # http://localhost:8083
+.venv/bin/python scripts/test_refresher.py
+```
+
 Data from [TVmaze](https://www.tvmaze.com/),
 [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Similarity is
 not a guarantee of enjoyment.

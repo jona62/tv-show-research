@@ -68,7 +68,7 @@ THREAD_VARS = ('OPENBLAS_NUM_THREADS', 'OMP_NUM_THREADS', 'MKL_NUM_THREADS',
 SECRETS = ('TMDB_API_KEY',)
 TIMEOUTS = {'download': 3 * 3600, 'build_model': 2 * 3600, 'build_popularity': 1800, 'build_art': 1800,
             'tmdb': 3 * 3600, 'tmdb carry': 1800, 'validate': 1800}
-AUTOMATIC = ('daily', 'catch-up', 'retry')
+AUTOMATIC = ('daily', 'catch-up', 'retry', 'tmdb')
 CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; "
        "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 ASSETS = {'/refresher.js': ('refresher.js', 'text/javascript; charset=utf-8'),
@@ -539,6 +539,7 @@ class Refresher:
         self.next_daily_at = next_daily(self.started_at, config.refresh_at)
         self.catch_up_at = None
         self.retry_at = None
+        self.tmdb_at = None
         self.lock_file = None
 
     # State -------------------------------------------------------------------------
@@ -640,6 +641,17 @@ class Refresher:
             return 'the last build is more than 26 hours old'
         return None
 
+    def needs_tmdb(self):
+        """Why the live version should get TMDB data before the next build, or None. It
+        is due when TMDB was switched on, say by adding the key, after that version was
+        built, so the data need not wait for the nightly run."""
+        if not self.config.tmdb_key:
+            return None
+        cur = self.current()
+        if cur is None or ((cur['build'].get('tmdb') or {}).get('shows') or 0):
+            return None
+        return 'TMDB is on but the live version has no TMDB data'
+
     def refreshed_since(self, moment):
         started = parse_time((self.state.get('last_success') or {}).get('started_at'))
         return started is not None and started >= moment
@@ -655,6 +667,8 @@ class Refresher:
             options.append((self.catch_up_at, 'catch-up'))
         if self.retry_at:
             options.append((self.retry_at, 'retry'))
+        if self.tmdb_at:
+            options.append((self.tmdb_at, 'tmdb'))
         return min(options, key=lambda option: option[0])
 
     # Running -----------------------------------------------------------------------
@@ -942,6 +956,12 @@ class Refresher:
         if reason:
             self.catch_up_at = self.started_at + timedelta(seconds=self.config.auto_delay)
             self.say(f'Catching up at {iso(self.catch_up_at)}: {reason}.')
+            return
+        # A full build fetches TMDB anyway; without one due, fetch it on its own.
+        wanted = self.needs_tmdb()
+        if wanted:
+            self.tmdb_at = self.started_at + timedelta(seconds=self.config.auto_delay)
+            self.say(f'Fetching TMDB data at {iso(self.tmdb_at)}: {wanted}.')
 
     def schedule(self):
         try:
@@ -969,11 +989,15 @@ class Refresher:
                 self.catch_up_at = None
                 if not self.needs_catch_up():
                     continue
+            elif reason == 'tmdb':
+                self.tmdb_at = None
+                if not self.needs_tmdb():
+                    continue
             else:
                 self.retry_at = None
                 if self.latest_full_outcome() == 'success':
                     continue
-            if self.start_run('full', reason) is None:
+            if self.start_run('tmdb' if reason == 'tmdb' else 'full', reason) is None:
                 self.say(f'Skipped the {reason} run: another refresher holds the lock.')
 
     def stop(self, timeout=30):
@@ -1084,7 +1108,8 @@ def render_page(status):
     buttons = buttons.replace('{d}', ' disabled' if running else '')
     daily = f"{status['schedule']['daily_at_utc']} UTC"
     why = {'daily': f'The daily run, at {daily}', 'catch-up': f'A catch-up run; the daily one is at {daily}',
-           'retry': f'A retry of a failed run; the daily one is at {daily}'}.get(status['next_run']['reason'], daily)
+           'retry': f'A retry of a failed run; the daily one is at {daily}',
+           'tmdb': f'Fetching TMDB data now that it is on; the daily run is at {daily}'}.get(status['next_run']['reason'], daily)
     kept = len(status['versions'])
     kept = f"{kept} version{'' if kept == 1 else 's'} kept in {status['model_root']}"
     return f'''<!doctype html>

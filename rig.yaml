@@ -84,8 +84,12 @@ apps:
     limits:
       memoryMaxMb: 1500
       cpuPercent: 60
+    # TMDB's read access token, pasted into the GitHub connection's runtime secrets as
+    # TMDB_READ_API=... (the same line as in a local .env) and forwarded as TMDB_API_KEY.
+    # Optional: without it TMDB is simply off.
     secrets:
       - name: TMDB_API_KEY
+        from: TMDB_READ_API
         optional: true
     env:
       PORT: "8083"
