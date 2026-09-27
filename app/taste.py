@@ -284,9 +284,11 @@ class Taste:
         found.sort(key=lambda f: -f[0])
         out, seen = [], set()
         for _score, family, label in found:
-            # TVmaze's Crime and Wikidata's crime are one reason.
-            if label.casefold() not in seen:
-                seen.add(label.casefold())
+            # TVmaze's Crime, the Crime / illicit enterprise theme and Wikidata's crime
+            # are one reason.
+            key = label.split(' / ')[0].casefold()
+            if key not in seen:
+                seen.add(key)
                 out.append({'family': family, 'label': label})
         return out[:limit]
 
@@ -308,7 +310,8 @@ class Taste:
                 if support >= 2 and share >= 0.25 and lift >= 1.5 and base[v] < COMMON:
                     leans.append((share * math.log(lift), {
                         'family': family, 'label': name(v), 'share': round(share * 100),
-                        'base': round(base[v] * 100, 1), 'shows': support}))
+                        'base': round(base[v] * 100, 1), 'shows': support},
+                        (family, self._backers(family, v)) if family == 'subgenre' else (family, v)))
             for v, disliked in bad.items() if family in AVOIDABLE else ():
                 share = mass.get(v, 0.0) / total if total else 0.0
                 if disliked >= 2 and share < base[v] and disliked / count >= 0.5:
@@ -320,7 +323,24 @@ class Taste:
                         avoids.append((base[v], {'family': family, 'label': name(v), 'why': 'never', 'shows': 0}))
         leans.sort(key=lambda f: -f[0])
         avoids.sort(key=lambda f: -f[0])
-        return {'leans': distinct(leans, limit), 'avoids': distinct(avoids, limit)}
+        # Wikidata tags the same two sitcoms mockumentary, pseudo documentary and parody
+        # (a genre with its parents): one pattern under three names, so a subgenre backed
+        # by exactly the shows of a stronger one is left out.
+        seen, kept = set(), []
+        for entry in leans:
+            if entry[2] not in seen:
+                seen.add(entry[2])
+                kept.append(entry[:2])
+        return {'leans': distinct(kept, limit), 'avoids': distinct(avoids, limit)}
+
+    def _backers(self, family, v):
+        """The liked shows that carry value v of a family."""
+        a = self.a
+        if family in CATEGORICAL:
+            column = a.values[family]
+            return frozenset(i for i, _w in self.liked if column[i] == v)
+        masks, known = a.masks[family], a.known[family]
+        return frozenset(i for i, _w in self.liked if known[i] and masks[i] >> v & 1)
 
 
 def distinct(ranked, limit):
@@ -328,7 +348,7 @@ def distinct(ranked, limit):
     case or family: TVmaze's Crime and Wikidata's crime are one leaning."""
     out, seen = [], set()
     for _rank, entry in ranked:
-        key = entry['label'].casefold()
+        key = entry['label'].split(' / ')[0].casefold()
         if key not in seen:
             seen.add(key)
             out.append(entry)
