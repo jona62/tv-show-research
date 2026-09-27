@@ -380,7 +380,6 @@ class Titles:
             at = text.find(part, start[d + 1])
         return found
 
-
     # ------------------------------------------------------------ search
 
     def find(self, q, limit=LIMIT):
@@ -448,9 +447,9 @@ class Titles:
         long = [k for k, t in enumerate(tokens) if len(t) > 2]
         if long:
             # Anchored on the rarest word, so the text is read once and few lines follow.
-            anchor = tokens[min(long, key=lambda k: (counts[k], -len(tokens[k])))]
-            rest = [t for t in tokens if t is not anchor]
-            found = (d for d in self.inside(anchor) if all(fits(t, line(d).split()) for t in rest))
+            a = min(long, key=lambda k: (counts[k], -len(tokens[k])))
+            rest = tokens[:a] + tokens[a + 1:]
+            found = (d for d in self.inside(tokens[a]) if all(fits(t, line(d).split()) for t in rest))
             if take(4, found):
                 return
         if not deep:
