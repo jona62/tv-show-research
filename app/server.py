@@ -12,6 +12,8 @@ from engine import Engine
 HERE = Path(__file__).resolve().parent
 PUBLIC = HERE / 'public'
 SLOTS = threading.BoundedSemaphore(3)
+# The app keeps its tab in the path, so these are the page too and a refresh keeps the tab.
+TAB_PATHS = ('/saved', '/taste', '/shows')
 
 
 def model_dir():
@@ -73,6 +75,8 @@ class Handler(SimpleHTTPRequestHandler):
         if path.startswith('/api/'):
             self.send_json({'error': 'Not found.'}, 404)
             return
+        if path in TAB_PATHS:
+            self.path = '/'
         super().do_GET()
 
     def do_POST(self):

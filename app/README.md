@@ -26,7 +26,9 @@ Four screens and nothing else:
   signals and the fit chart keep describing the whole list, since narrowing is a
   lens on the picks, not a different taste.
 
-Light by default, dark on request, one layout that works at 375px and on a desktop.
+The tab you are on sits in the path (`/saved`, `/taste`, `/shows`), so a refresh or
+a bookmark lands on the same one. Light by default, dark on request, one layout
+that works at 375px and on a desktop.
 First load is under 50 KB of HTML, CSS and JS; the 512 KB ceiling is enforced by
 the build.
 
@@ -136,6 +138,7 @@ by the *Tune* preset. Missing data contributes zero rather than being guessed at
 `server.py` is a standard-library HTTP server with `GET /api/search` and
 `POST /api/recommend`. Both are stateless: your list lives in your browser and is
 posted with each request, never stored. Three concurrent calculations at most.
+It also answers the three tab paths with the page, so a refresh keeps the tab.
 
 `main.js` renders; `fit.js` holds the taste chart and its pure value maths;
 `similar.js` holds the rules for which chosen shows the picks are matched to.

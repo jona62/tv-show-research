@@ -73,6 +73,9 @@ setTheme(localStorage.getItem('next-watch-theme') === 'dark' ? 'dark' : 'light')
 $('theme').addEventListener('click', () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
 
 /* ---------------------------------------------------------------- tabs */
+// The tab lives in the path (/saved, /taste, /shows; Watch next is /), so a refresh
+// or a bookmark lands on the same one. Replaced in place, so Back still leaves the
+// app rather than walking through tabs. The fragment stays for transfer links.
 function show(name) {
   tab = name;
   for (const section of TABS) $(section).hidden = section !== name;
@@ -80,8 +83,14 @@ function show(name) {
   if (name === 'taste') renderFit();
   if (name === 'saved') renderSaved();
   document.documentElement.scrollTop = document.body.scrollTop = 0;
+  const path = name === 'next' ? '/' : `/${name}`;
+  if (location.pathname !== path) history.replaceState(null, '', path + location.search + location.hash);
 }
 const TABS = ['next', 'saved', 'taste', 'shows'];
+const firstTab = () => {
+  const name = location.pathname.slice(1);
+  return TABS.includes(name) ? name : 'next';
+};
 for (const t of document.querySelectorAll('.tab')) {
   t.addEventListener('click', () => show(t.dataset.tab));
   t.addEventListener('keydown', e => {
@@ -830,6 +839,6 @@ renderPicks();
 renderList();
 renderSaved();
 syncTune();
-show('next');
+show(firstTab());
 run(0);
 readLink();
