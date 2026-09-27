@@ -163,9 +163,11 @@ select{padding:8px 10px;border:1px solid var(--line);border-radius:7px;backgroun
 .item{border:1px solid var(--line);border-radius:var(--r);background:var(--raised);padding:11px 12px}
 .item-top{display:flex;gap:10px;align-items:baseline}
 .item-name{flex:1;font-size:15px;font-weight:600;overflow-wrap:anywhere}
-.similar{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);padding:7px 6px;
-  margin:-7px 0;border-radius:6px;cursor:pointer;white-space:nowrap}
-.similar input{width:16px;height:16px;margin:0;accent-color:var(--accent)}
+/* Not a flex box: a flex label's baseline comes from the checkbox, which lifts its text
+   off the line the title and Remove sit on. As a plain box its baseline is the text's. */
+.similar{font-size:12.5px;color:var(--muted);padding:7px 6px;margin:-7px 0;border-radius:6px;
+  cursor:pointer;white-space:nowrap}
+.similar input{width:16px;height:16px;margin:0 6px 0 0;vertical-align:middle;accent-color:var(--accent)}
 .similar:hover{color:var(--ink)}
 .item.chosen{border-color:var(--accent)}
 .item.chosen .similar{color:var(--accent);font-weight:600}
