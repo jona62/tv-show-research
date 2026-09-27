@@ -1,10 +1,13 @@
-"""Check the model refresher and its TMDB step, with the network and the builds faked.
+"""Check the model refresher, its TMDB step and its Wikidata step, with the network and
+the builds faked.
 
 Run from the repository root:  .venv/bin/python scripts/test_refresher.py
 
-Nothing here reaches TVmaze or TMDB. The build steps are stand-ins that write small but
-well-formed model files, and TMDB is a pretend server. Validation and carrying TMDB
-data forward really run, as child processes, the way the service runs them.
+Nothing here reaches TVmaze, TMDB or Wikidata. The build steps are stand-ins that write
+small but well-formed model files, and TMDB and the Wikidata query service are pretend
+servers. Validation, the facet build and carrying TMDB data forward really run, as
+child processes, the way the service runs them, and so does the Wikidata fetch where a
+test asks for it.
 
 TV_FULL_TEST=1 adds an end-to-end check: the real build steps, driven by the refresher,
 against the TVmaze pages in data/raw (or TV_FULL_RAW) into a temporary MODEL_ROOT, and a
@@ -12,9 +15,10 @@ rebuild with the scripts' default paths, which must reproduce the committed mode
 """
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime, timedelta, timezone
-from http.server import ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError
+from urllib.parse import parse_qs
 from urllib.request import ProxyHandler, Request, build_opener
 import filecmp
 import gzip
@@ -27,6 +31,7 @@ import runpy
 import shutil
 import stat
 import struct
+import subprocess
 import sys
 import tempfile
 import threading
@@ -39,11 +44,12 @@ sys.path.insert(0, str(SCRIPTS))
 
 import refresher                                                # noqa: E402
 import tmdb                                                     # noqa: E402
+import wikidata                                                 # noqa: E402
 
 NOW = datetime.now(timezone.utc).replace(microsecond=0)
 KEY_V3 = '0123456789abcdef0123456789abcdef'
 KEY_V4 = 'eyJhbGciOiJIUzI1NiJ9.a-read-access-token.signature'
-BUILD_KEYS = ['version', 'built_at', 'snapshot_date', 'shows', 'pipeline', 'seeded_from', 'tmdb']
+BUILD_KEYS = ['version', 'built_at', 'snapshot_date', 'shows', 'pipeline', 'seeded_from', 'tmdb', 'facets']
 RECORD_KEYS = ['tmdb_id', 'fetched_at', 'rating', 'watch_link', 'providers', 'trailers', 'backdrop',
                'vote_average', 'vote_count']
 TMP = Path(tempfile.mkdtemp(prefix='refresher-test-'))
@@ -148,15 +154,30 @@ def result(code=0, tail=('ok',), peak=12.5):
     return {'returncode': code, 'seconds': 0.01, 'peak_mb': peak, 'tail': list(tail), 'timed_out': False}
 
 
-class FakeRunner:
-    """Stands in for the build subprocesses; validation and the TMDB carry really run."""
+def small_cache(ids, fetched=NOW):
+    """A Wikidata cache as wikidata.py writes one: every show a drama, three actors
+    shared around, and a German name each."""
+    labels = {'Q900001': 'drama television series', 'Q900100': 'Actor A', 'Q900101': 'Actor B', 'Q900102': 'Actor C'}
+    shows = {str(i): {'qid': f'Q{i}', 'via': 'p8600', 'genre': ['Q900001'], 'cast': [f'Q{900100 + i % 3}'],
+                      'names': [['de', f'Sendung {i}'], ['en', f'Show {i}']]} for i in ids}
+    return {'version': 1, 'fetched_at': refresher.iso(fetched), 'source': 'https://www.wikidata.org',
+            'license': 'CC0-1.0', 'mapped': {'p8600': len(shows), 'imdb': 0}, 'labels': labels, 'parents': {},
+            'belongs': {}, 'shows': shows}
 
-    def __init__(self, shows=100, fail=None, hold=None):
+
+class FakeRunner:
+    """Stands in for the build subprocesses. Validation, the facet build and the TMDB
+    carry really run; so does the Wikidata fetch when real_wikidata is set, and
+    otherwise a small cache stands in for it."""
+
+    def __init__(self, shows=100, fail=None, hold=None, real_wikidata=False):
         self.shows, self.fail, self.hold = shows, fail, hold
         self.calls = []
         self.real = refresher.Processes()
+        self.real_steps = ('validate', 'tmdb carry', 'build_facets') + (('wikidata',) if real_wikidata else ())
         self.popularity_shows = None
         self.tmdb_code, self.tmdb_error = 0, None
+        self.cache_shows = None
 
     def names(self):
         return [call['name'] for call in self.calls]
@@ -166,12 +187,12 @@ class FakeRunner:
 
     def run(self, name, argv, env, cwd, timeout, log):
         self.calls.append({'name': name, 'argv': list(argv), 'env': dict(env)})
-        if name in ('validate', 'tmdb carry'):
+        if name == self.fail:
+            return result(1, [f'{name} fell over'])
+        if name in self.real_steps:
             return self.real.run(name, argv, env, cwd, timeout, log)
         if self.hold is not None and name == 'build_model':
             self.hold.wait(30)
-        if name == self.fail:
-            return result(1, [f'{name} fell over'])
         if name == 'download':
             write_raw(argv[argv.index('--out') + 1], self.shows)
         elif name == 'build_model':
@@ -184,6 +205,11 @@ class FakeRunner:
             write_popularity(env['TV_MODEL_OUT'], self.popularity_shows or catalog_count(env['TV_MODEL_OUT']))
         elif name == 'build_art':
             write_art(Path(env['TV_ART_OUT']), catalog_count(env['TV_MODEL_OUT']))
+        elif name == 'wikidata':
+            cache = small_cache(range(1, (self.cache_shows or self.shows) + 1))
+            Path(argv[argv.index('--out') + 1]).write_bytes(wikidata.encode(cache))
+            return result(0, ['RESULT ' + json.dumps({'fetched_at': cache['fetched_at'], 'shows': len(cache['shows']),
+                                                      'mapped': cache['mapped']})])
         elif name == 'tmdb':
             folder = Path(argv[argv.index('--version') + 1])
             log(f"calling TMDB with {env.get('TMDB_API_KEY')}")
@@ -378,7 +404,7 @@ check('a full run succeeds', done['outcome'] == 'success', done.get('error'))
 check('current is a relative link to the new version', live(r) == f"versions/{done['version']}")
 check('the swap leaves no temporary link behind', not os.path.lexists(r.root / 'current.tmp'))
 check('the steps run in order', runner.names() == ['validate', 'download', 'build_model', 'build_popularity',
-                                                    'build_art', 'validate'], runner.names())
+                                                    'build_art', 'wikidata', 'build_facets', 'validate'], runner.names())
 env = runner.env_for('build_model')
 check('build steps write into the temporary version', env['TV_MODEL_OUT'].endswith(f"versions/{done['version']}.tmp")
       and env['TV_ART_OUT'] == env['TV_MODEL_OUT'] + '/art.bin.gz')
@@ -392,13 +418,27 @@ check('build steps run single-threaded', all(call['env'].get(v) == '1' for call 
 check('the download goes to raw.new and is swapped into raw',
       runner.calls[1]['argv'][-2:] == ['--out', str(r.root / 'raw.new')] and (r.raw / 'manifest.json').exists()
       and not os.path.lexists(r.root / 'raw.new') and not os.path.lexists(r.root / 'raw.old'))
-check('a version holds the four model files and build.json',
+check('a version holds the four model files, the three facet files and build.json',
       sorted(p.name for p in (r.versions / done['version']).iterdir())
-      == sorted(['build.json', *refresher.MODEL_FILES]))
+      == sorted(['build.json', *refresher.MODEL_FILES, *refresher.FACET_FILES]))
 build = r.current()['build']
 check('build.json describes the build', list(build) == BUILD_KEYS and build['version'] == done['version']
       and build['shows'] == 100 and build['seeded_from'] is None and build['pipeline'] == r.pipeline
-      and build['tmdb'] == {'fetched_at': None, 'shows': 0}, build)
+      and build['tmdb'] == {'fetched_at': None, 'shows': 0}
+      and build['facets'] == {'tokens': 3, 'nonzeros': 100, 'linked': 100, 'aliases': 100,
+                              'wikidata_fetched_at': refresher.iso(NOW)}, build)
+facet_env = runner.env_for('build_facets')
+check('the facets are built into the temporary version from the Wikidata cache',
+      facet_env['TV_MODEL_OUT'] == env['TV_MODEL_OUT'] and facet_env['TV_RAW_DIR'] == str(r.raw)
+      and facet_env['TV_WIKIDATA'] == str(r.root / 'wikidata' / 'cache.json.gz'))
+check('the fetch reads MODEL_ROOT/raw and writes beside the cache',
+      runner.env_for('wikidata')['TV_RAW_DIR'] == str(r.raw)
+      and runner.calls[5]['argv'][-2:] == ['--out', str(r.root / 'wikidata' / 'cache.new.json.gz')])
+check('a fetched cache replaces the old one and is described in meta.json',
+      (r.root / 'wikidata' / 'cache.json.gz').is_file() and not (r.root / 'wikidata' / 'cache.new.json.gz').exists()
+      and json.loads((r.root / 'wikidata' / 'meta.json').read_text()) == {
+          'fetched_at': refresher.iso(NOW), 'shows': 100, 'mapped': {'p8600': 100, 'imdb': 0},
+          'script': r.wikidata_script})
 check('each step records its time', all(s['seconds'] is not None and s['outcome'] == 'ok' for s in done['steps']))
 check('child steps record their peak memory', all(s['peak_mb'] for s in done['steps']), done['steps'])
 log_text = (r.logs / f"{done['id']}.log").read_text()
@@ -678,10 +718,12 @@ after = r.current()
 check('the TMDB-only run makes a new live version', r.state['runs'][0]['kind'] == 'tmdb'
       and r.state['runs'][0]['outcome'] == 'success' and after['version'] != before['version'], r.state['runs'][0])
 check('it runs only the TMDB step and validation', runner.names()[-2:] == ['tmdb', 'validate'])
-check('the model files are the live version\'s, shared not rebuilt',
-      all(os.stat(after['path'] / n).st_ino == os.stat(before['path'] / n).st_ino for n in refresher.MODEL_FILES))
+check('the model and facet files are the live version\'s, shared not rebuilt',
+      all(os.stat(after['path'] / n).st_ino == os.stat(before['path'] / n).st_ino
+          for n in refresher.MODEL_FILES + refresher.FACET_FILES))
 check('build.json carries the model\'s facts forward', all(after['build'][k] == before['build'][k]
-      for k in ('snapshot_date', 'shows', 'pipeline', 'seeded_from')) and list(after['build']) == BUILD_KEYS)
+      for k in ('snapshot_date', 'shows', 'pipeline', 'seeded_from', 'facets')) and list(after['build']) == BUILD_KEYS
+      and after['build']['facets']['linked'] == 100)
 
 runner.tmdb_code, runner.tmdb_error = 3, tmdb.REJECTED
 done = run(r)
@@ -1038,7 +1080,404 @@ del os.environ['TMDB_API_KEY']
 check('a crash exits 1 with the key scrubbed from its traceback', code == 1 and 'Traceback' in errors.getvalue()
       and KEY_V3 not in errors.getvalue() and '[key]' in errors.getvalue())
 
-# 11. download.py --out --------------------------------------------------------------------------------------------
+# 11. Wikidata, the fetch itself -------------------------------------------------------------------------------------
+
+class FakeWikidata:
+    """A pretend query.wikidata.org answering the fetcher's queries from a dict of items. It
+    can be down, run out of time on batches above a size, and serve scripted answers
+    first. Every query is recorded with the headers it came with."""
+
+    def __init__(self, items, fail=False):
+        self.items, self.fail = items, fail
+        self.script = []
+        self.split_above = None
+        self.queries = []
+        self.lock = threading.Lock()
+        fake = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                body = self.rfile.read(int(self.headers.get('Content-Length') or 0)).decode()
+                status, headers, answer = fake.answer(parse_qs(body).get('query', [''])[0], self.headers)
+                if status == 200 and 'gzip' in (self.headers.get('Accept-Encoding') or ''):
+                    answer, headers = gzip.compress(answer), {**headers, 'Content-Encoding': 'gzip'}
+                self.send_response(status)
+                for key, value in headers.items():
+                    self.send_header(key, value)
+                self.send_header('Content-Length', str(len(answer)))
+                self.end_headers()
+                self.wfile.write(answer)
+
+            def log_message(self, *_args):
+                pass
+
+        self.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.url = f'http://127.0.0.1:{self.server.server_address[1]}/sparql'
+
+    def close(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+    def tags(self):
+        with self.lock:
+            return [q['query'].split('\n', 1)[0].lstrip('#') for q in self.queries]
+
+    def answer(self, query, headers):
+        with self.lock:
+            self.queries.append({'query': query, 'agent': headers.get('User-Agent'), 'accept': headers.get('Accept')})
+            scripted = self.script.pop(0) if self.script else None
+        if scripted:
+            return scripted
+        if self.fail:
+            return 503, {}, b'The service is down.'
+        tag = query.split('\n', 1)[0].lstrip('#')
+        block = re.search(r'VALUES \?item \{([^}]*)\}', query)
+        items = re.findall(r'wd:(Q\d+)', block[1]) if block else []
+        if self.split_above and len(items) > self.split_above:
+            return 500, {}, b'java.util.concurrent.TimeoutException: query took too long'
+        uri = lambda q: {'type': 'uri', 'value': wikidata.ENTITY + q}
+        lit = lambda text, lang=None: {'type': 'literal', 'value': text, **({'xml:lang': lang} if lang else {})}
+        known = lambda q: self.items.get(q, {})
+        if tag == 'tvmaze':
+            rows = [{'item': uri(q), 'id': lit(v)} for q, d in self.items.items() for v in d.get('P8600', [])]
+        elif tag == 'imdb':
+            wanted = set(re.findall(r'"(tt\d+)"', query))
+            rows = [{'item': uri(q), 'imdb': lit(v)} for q, d in self.items.items() for v in d.get('P345', []) if v in wanted]
+        elif tag == 'claims':
+            props = re.findall(r'wdt:(P\d+)', re.search(r'VALUES \?p \{([^}]*)\}', query)[1])
+            rows = [{'item': uri(q), 'p': {'type': 'uri', 'value': wikidata.DIRECT + p}, 'v': uri(v)}
+                    for q in items for p in props for v in known(q).get(p, [])]
+        elif tag in ('cast', 'parents'):
+            rows = [{'item': uri(q), 'v': uri(v)} for q in items for v in known(q).get('P161' if tag == 'cast' else 'P279', [])]
+        elif tag in ('labels', 'any-labels'):
+            rows = [{'item': uri(q), 'label': lit(text, lang)} for q in items for lang, text in known(q).get('labels', [])
+                    if tag == 'any-labels' or lang in ('en', 'mul')]
+        elif tag == 'names':
+            rows = [{'item': uri(q), 'name': lit(text, lang)} for q in items
+                    for lang, text in known(q).get('labels', []) + known(q).get('aliases', [])]
+        else:
+            return 400, {}, b'Unknown query'
+        body = json.dumps({'head': {'vars': []}, 'results': {'bindings': rows}}).encode()
+        return 200, {'Content-Type': 'application/sparql-results+json'}, body
+
+
+ITEMS = {
+    'Q1': {'P8600': ['1'], 'P345': ['tt1000001'], 'P136': ['Q500'], 'P161': ['Q600', 'Q601'], 'P170': ['Q700'],
+           'P4969': ['Q3'], 'labels': [('en', 'Show 1'), ('fr', 'Le Show')], 'aliases': [('en', 'S1')]},
+    'Q2': {'P8600': ['2'], 'P136': ['Q500'], 'P161': ['Q600'], 'P58': ['Q700'], 'labels': [('en', 'Show 2')]},
+    'Q3': {'P8600': ['3'], 'P144': ['Q1', 'Q800'], 'labels': [('en', 'Show 3')]},
+    'Q4': {'P8600': ['3', 'x'], 'labels': [('en', 'Show 3 again')]},
+    'Q6': {'P345': ['tt1000006'], 'P161': ['Q601'], 'labels': [('en', 'Show 6')]},
+    'Q7': {'P8600': ['7'], 'P345': ['tt1000008'], 'labels': [('en', 'Show 7')]},
+    'Q500': {'P279': ['Q501'], 'labels': [('en', 'crime television series')]},
+    'Q501': {'P279': ['Q502'], 'labels': [('en', 'crime fiction')]},
+    'Q502': {'P279': ['Q503'], 'labels': [('en', 'fiction')]},
+    'Q503': {'labels': [('en', 'work')]},
+    'Q600': {'labels': [('mul', 'Actor Mul'), ('de', 'Schauspieler')]},
+    'Q601': {'labels': [('ja', '俳優'), ('zh', '俳優'), ('ko', '배우')]},
+    'Q700': {'labels': [('en', 'Maker'), ('mul', 'Maker Mul')]},
+    'Q800': {'P179': ['Q801'], 'labels': [('en', 'A Book')]},
+    'Q801': {'labels': [('en', 'A Book Series')]},
+}
+
+
+class Naps:
+    """Records the waits the client would sleep."""
+
+    def __init__(self):
+        self.waits = []
+
+    def __call__(self, seconds):
+        self.waits.append(seconds)
+
+
+fake = FakeWikidata(ITEMS)
+naps = Naps()
+client = wikidata.Sparql(fake.url, sleep=naps, log=lambda _line: None, backoff=2)
+rows = client.select(wikidata.Q_TVMAZE)
+check('a query is POSTed with the agent and the Accept the service asks for', len(rows) == 6
+      and fake.queries[-1]['agent'] == 'tv-taste-research/1.0 (https://github.com/jona62/tv-show-research)'
+      and fake.queries[-1]['accept'] == 'application/sparql-results+json')
+check('answers are read gzipped', client.bytes > 0 and not naps.waits)
+fake.script = [(429, {'Retry-After': '7'}, b'Too many requests')]
+client.select(wikidata.Q_TVMAZE)
+check('a 429 waits out its Retry-After and asks again', naps.waits == [7.0] and fake.tags()[-2:] == ['tvmaze', 'tvmaze'])
+naps.waits.clear()
+fake.script = [(503, {}, b'busy'), (502, {}, b'bad gateway')]
+check('server errors are retried with a growing wait', len(client.select(wikidata.Q_TVMAZE)) == 6 and naps.waits == [2, 4])
+naps.waits.clear()
+fake.script = [(500, {}, b'java.util.concurrent.TimeoutException')]
+check('a query that cannot be split is retried when the service runs out of time',
+      len(client.select(wikidata.Q_TVMAZE)) == 6 and naps.waits == [2])
+fake.script = [(400, {}, b'Parse error')]
+before = len(fake.queries)
+rejects('a query the service refuses is not retried', lambda: client.select(wikidata.Q_TVMAZE), wikidata.WikidataError,
+        'answered 400')
+check('only the one request went out', len(fake.queries) == before + 1)
+fake.split_above = 2
+batch = ['Q1', 'Q2', 'Q3', 'Q6', 'Q7']
+before = len(fake.queries)
+answered = [b for b, _rows in wikidata.batched(client, batch, 5, lambda b: wikidata.Q_NAMES.format(items=wikidata.entities(b)))]
+check('a batch the service runs out of time on is split in half until it fits',
+      answered == [['Q1', 'Q2'], ['Q3'], ['Q6', 'Q7']] and len(fake.queries) - before == 5, answered)
+fake.split_above = None
+fake.script = [(200, {}, b'{"head": {"vars": []}, "results": {"bindings": [{"item": ')]
+answered = [b for b, _rows in wikidata.batched(client, ['Q1', 'Q2'], 5, lambda b: wikidata.Q_NAMES.format(items=wikidata.entities(b)))]
+check('an answer cut off part way is treated as out of time', answered == [['Q1'], ['Q2']], answered)
+down = FakeWikidata({}, fail=True)
+naps.waits.clear()
+rejects('a service that stays down is given up on',
+        lambda: wikidata.Sparql(down.url, sleep=naps, log=lambda _line: None, backoff=1).select(wikidata.Q_TVMAZE),
+        wikidata.WikidataError, 'gave up after 6 attempts')
+check('with waits that double', naps.waits == [1, 2, 4, 8, 16], naps.waits)
+check('Retry-After is read as seconds or a date', wikidata.retry_after('3', 9) == 3.0 and wikidata.retry_after(None, 9) == 9
+      and wikidata.retry_after('Wed, 21 Oct 2015 07:28:00 GMT', 9) == 0.0 and wikidata.retry_after('99999', 9) == 600.0)
+
+by_show = {1: ['Q1'], 3: ['Q3', 'Q4'], 7: ['Q7']}
+by_item = {'Q1': {1}, 'Q3': {3}, 'Q4': {3}, 'Q7': {7}}
+chosen, skipped = wikidata.match(by_show, by_item, {8: 'tt8', 9: 'tt9', 10: 'tt10', 11: 'tt11', 12: 'tt12'},
+                                 {'tt8': {'Q7'}, 'tt9': {'Q90'}, 'tt10': {'Q90'}, 'tt11': {'Q111', 'Q110'}})
+check('a show named by several items takes the oldest', chosen[3] == ('Q3', 'p8600'))
+check('an IMDb match is taken only for an item with no TVmaze id of its own', 8 not in chosen
+      and skipped['item has a TVmaze id'] == 1)
+check('an item two shows reach by IMDb goes to neither', 9 not in chosen and 10 not in chosen
+      and skipped['item reached twice'] == 2)
+check('several items for one IMDb id: the oldest', chosen[11] == ('Q110', 'imdb') and 12 not in chosen)
+
+raw_dir = TMP / 'wikidata-raw'
+write_raw(raw_dir, shows=[{'id': i, 'name': f'Show {i}', 'externals': {'imdb': f'tt{1000000 + i}'}} for i in range(1, 9)]
+          + [{'id': 9, 'name': 'No IMDb', 'externals': {'imdb': 'nm0000001'}}])
+cache = wikidata.fetch(raw_dir, wikidata.Sparql(fake.url, sleep=naps, log=lambda _line: None), log=lambda _line: None,
+                       now=NOW)
+shows = cache['shows']
+check('the fetch maps shows by TVmaze id, then by IMDb id', sorted(shows, key=int) == ['1', '2', '3', '6', '7']
+      and cache['mapped'] == {'p8600': 4, 'imdb': 1} and shows['6'] == {'qid': 'Q6', 'via': 'imdb', 'cast': ['Q601'],
+                                                                         'names': [['en', 'Show 6']]}, shows)
+check('a TVmaze id that is not a number is ignored', 'x' not in shows)
+check('each field holds the property values, sorted', shows['1']['genre'] == ['Q500'] and shows['1']['cast'] == ['Q600', 'Q601']
+      and shows['1']['maker'] == {'P170': ['Q700']} and shows['2']['maker'] == {'P58': ['Q700']}
+      and shows['1']['franchise'] == {'P4969': ['Q3']} and shows['3']['franchise'] == {'P144': ['Q1', 'Q800']})
+check('empty fields are left out', 'award' not in shows['1'] and 'subject' not in shows['3'])
+check('names are every label and alias', shows['1']['names'] == [['en', 'S1'], ['en', 'Show 1'], ['fr', 'Le Show']])
+check('superclasses go two levels up from each genre', cache['parents'] == {'Q500': ['Q501'], 'Q501': ['Q502']})
+check('franchise targets carry what they belong to', cache['belongs'] == {'Q800': ['Q801']})
+check('labels: English, else the default label, else the one most languages share',
+      cache['labels']['Q700'] == 'Maker' and cache['labels']['Q600'] == 'Actor Mul' and cache['labels']['Q601'] == '俳優'
+      and cache['labels']['Q801'] == 'A Book Series' and cache['labels']['Q501'] == 'crime fiction')
+check('the fetch time and the licence are recorded', cache['fetched_at'] == refresher.iso(NOW)
+      and cache['license'] == 'CC0-1.0' and cache['version'] == 1)
+body = wikidata.encode(cache)
+check('the cache encodes to the same bytes every time, with no gzip timestamp', body == wikidata.encode(json.loads(
+    json.dumps(cache))) and body[4:8] == bytes(4))
+(TMP / 'cache-v2.json.gz').write_bytes(gzip.compress(json.dumps({**cache, 'version': 2}).encode()))
+rejects('a cache of another version is refused', lambda: wikidata.read(TMP / 'cache-v2.json.gz'), ValueError, 'version 1')
+check('no cache file reads as None', wikidata.read(TMP / 'no-cache.json.gz') is None)
+
+cli_out = TMP / 'cli-cache.json.gz'
+env = {**{k: v for k, v in os.environ.items() if not k.startswith(('TV_', 'WIKIDATA_'))},
+       'TV_RAW_DIR': str(raw_dir), 'WIKIDATA_SPARQL_URL': fake.url}
+done = subprocess.run([sys.executable, str(SCRIPTS / 'wikidata.py'), '--out', str(cli_out)], env=env,
+                      capture_output=True, text=True, timeout=120)
+result_line = next((l for l in reversed(done.stdout.splitlines()) if l.startswith('RESULT ')), '')
+check('wikidata.py --out writes the cache and ends with RESULT', done.returncode == 0 and cli_out.is_file()
+      and json.loads(result_line[len('RESULT '):])['shows'] == 5 and wikidata.read(cli_out)['mapped']['imdb'] == 1,
+      done.stdout[-500:] + done.stderr[-500:])
+done = subprocess.run([sys.executable, str(SCRIPTS / 'wikidata.py'), '--out', str(TMP / 'never.json.gz')],
+                      env={**env, 'WIKIDATA_SPARQL_URL': down.url, 'WIKIDATA_BACKOFF_SECONDS': '0.01'},
+                      capture_output=True, text=True, timeout=120)
+check('a fetch that fails exits 1 and writes nothing', done.returncode == 1 and 'wikidata: failed' in done.stdout
+      and not (TMP / 'never.json.gz').exists(), done.stdout[-300:])
+down.close()
+
+# 12. Facets in a version, and the Wikidata step in a run --------------------------------------------------------------
+
+
+def with_facets(folder, count=100, cache_shows=None):
+    """A model folder with real facets built from a small cache."""
+    folder = write_model(folder, count)
+    raw = write_raw(Path(str(folder) + '-raw'), count)
+    (Path(str(folder) + '-cache.json.gz')).write_bytes(wikidata.encode(small_cache(range(1, (cache_shows or count) + 1))))
+    env = {**{k: v for k, v in os.environ.items() if not k.startswith('TV_')}, 'TV_MODEL_OUT': str(folder),
+           'TV_RAW_DIR': str(raw), 'TV_WIKIDATA': str(folder) + '-cache.json.gz'}
+    done = subprocess.run([sys.executable, str(SCRIPTS / 'build_facets.py')], env=env, capture_output=True, text=True)
+    if done.returncode:
+        raise AssertionError(done.stderr)
+    return folder
+
+
+good = with_facets(TMP / 'facets-good')
+check('a version\'s facets are validated and summed up', refresher.validate_version(good)['facets'] == {
+    'tokens': 3, 'nonzeros': 100, 'linked': 100, 'aliases': 100, 'wikidata_fetched_at': refresher.iso(NOW)})
+check('a version without facets passes, with none', refresher.validate_version(write_model(TMP / 'facets-none', 100))['facets']
+      is None)
+partial = with_facets(TMP / 'facets-partial')
+(partial / 'search.json.gz').unlink()
+rejects('facets without their search file are refused', lambda: refresher.validate_version(partial), refresher.Invalid,
+        'search.json.gz missing beside')
+other = with_facets(TMP / 'facets-other', 99)
+mixed = with_facets(TMP / 'facets-mixed')
+for name in refresher.FACET_FILES:
+    shutil.copyfile(other / name, mixed / name)
+rejects('facets built for another catalog are refused', lambda: refresher.validate_version(mixed), refresher.Invalid,
+        'facets.bin.gz has 99 rows where the catalog has 100 shows')
+columns = with_facets(TMP / 'facets-columns')
+meta = json.loads(gunzip(columns / 'facets.json.gz'))
+gz(columns / 'facets.json.gz', json.dumps({**meta, 'tokens': meta['tokens'][1:]}).encode())
+rejects('a token list that does not match the columns is refused', lambda: refresher.validate_version(columns),
+        refresher.Invalid, 'names 2 tokens where facets.bin.gz has 3 columns')
+gz(columns / 'facets.json.gz', json.dumps({**meta, 'date': '2020-01-01'}).encode())
+rejects('facets from another day are refused', lambda: refresher.validate_version(columns), refresher.Invalid,
+        'built for the catalog of 2020-01-01')
+gz(columns / 'facets.json.gz', json.dumps(meta).encode())
+(columns / 'search.json.gz').write_bytes(b'not gzip')
+rejects('a search file that does not decompress is refused', lambda: refresher.validate_version(columns),
+        refresher.Invalid, 'does not decompress')
+gz(columns / 'search.json.gz', json.dumps({'version': 1, 'aliases': {'500': ['Elsewhere']}}).encode())
+rejects('aliases for shows outside the catalog are refused', lambda: refresher.validate_version(columns),
+        refresher.Invalid, 'search.json.gz names shows that are not in this catalog')
+shutil.copyfile(good / 'search.json.gz', columns / 'search.json.gz')
+gz(columns / 'facets.bin.gz', gunzip(good / 'facets.bin.gz')[:-4])
+rejects('a truncated facet matrix is refused', lambda: refresher.validate_version(columns), refresher.Invalid,
+        'header promises')
+
+runner = FakeRunner()
+r = make('seed-facets', runner, seed=with_facets(TMP / 'seed-with-facets'))
+r.boot()
+check('a seed with facets carries them into the first version', all((r.current()['path'] / n).is_file()
+      for n in refresher.FACET_FILES) and r.current()['build']['facets']['linked'] == 100)
+half_seed = with_facets(TMP / 'seed-half-facets')
+(half_seed / 'facets.json.gz').unlink()
+r = make('seed-half', FakeRunner(), seed=half_seed)
+r.boot()
+check('a seed with only some facet files leaves them behind', r.current() is not None
+      and not any((r.current()['path'] / n).exists() for n in refresher.FACET_FILES)
+      and r.current()['build']['facets'] is None)
+
+rejects('WIKIDATA_MAX_AGE_DAYS must be a number', lambda: refresher.Config({'WIKIDATA_MAX_AGE_DAYS': 'soon'}),
+        ValueError, 'WIKIDATA_MAX_AGE_DAYS')
+rejects('WIKIDATA_MAX_AGE_DAYS cannot be negative', lambda: refresher.Config({'WIKIDATA_MAX_AGE_DAYS': '-1'}),
+        ValueError, 'WIKIDATA_MAX_AGE_DAYS')
+check('WIKIDATA_MAX_AGE_DAYS defaults to a week', refresher.Config({}).wikidata_max_age == timedelta(days=7)
+      and refresher.Config({'WIKIDATA_MAX_AGE_DAYS': '0.5'}).wikidata_max_age == timedelta(hours=12))
+
+
+def wikidata_run(name, server, **env):
+    runner = FakeRunner(real_wikidata=True)
+    r = make(name, runner, seed=write_model(TMP / f'seed-{name}', 100), WIKIDATA_SPARQL_URL=server.url,
+             WIKIDATA_BACKOFF_SECONDS='0.01', **env)
+    r.boot()
+    return r, runner
+
+
+def version_facets(r):
+    return json.loads(gunzip(r.current()['path'] / 'facets.json.gz'))
+
+
+# Success: the fetch runs as a child against the pretend service, and the facets use it.
+r, runner = wikidata_run('wikidata-ok', fake)
+done = run(r)
+cache_file, meta_file = r.root / 'wikidata' / 'cache.json.gz', r.root / 'wikidata' / 'meta.json'
+check('a run fetches Wikidata when there is no cache', done['outcome'] == 'success' and 'wikidata' in runner.names()
+      and not done['warnings'], done)
+check('the cache lands in MODEL_ROOT/wikidata', wikidata.read(cache_file)['mapped'] == {'p8600': 4, 'imdb': 1}
+      and json.loads(meta_file.read_text())['shows'] == 5 and not (r.root / 'wikidata' / 'cache.new.json.gz').exists())
+facets_meta = version_facets(r)
+check('the version\'s facets come from it', facets_meta['linked'] == 5
+      and facets_meta['wikidata_fetched_at'] == wikidata.read(cache_file)['fetched_at']
+      and r.current()['build']['facets']['linked'] == 5)
+check('the run records what the fetch found', r.state['wikidata']['shows'] == 5
+      and r.state['wikidata']['mapped'] == {'p8600': 4, 'imdb': 1})
+status = r.status()
+check('status carries the Wikidata cache', status['wikidata']['cache']['shows'] == 5
+      and status['wikidata']['max_age_days'] == 7 and status['wikidata']['last']['shows'] == 5)
+page = refresher.render_page(status)
+check('the page shows the cache and the live facets', '5 shows cached' in page and 'Wikidata fetched' in page
+      and 'and Wikidata, CC0' in page)
+
+calls = len(runner.calls)
+before = cache_file.read_bytes()
+done = run(r)
+check('a fresh cache is not fetched again', done['outcome'] == 'success' and 'wikidata' not in runner.names()[calls:]
+      and 'build_facets' in runner.names()[calls:] and cache_file.read_bytes() == before)
+check('and the log says why', 'is fresh; not fetching it again' in (r.logs / f"{done['id']}.log").read_text())
+check('a cache is due again once it is a week old, or fetched by another wikidata.py', r.wikidata_due() is None)
+saved = json.loads(meta_file.read_text())
+meta_file.write_text(json.dumps({**saved, 'script': '000000000000'}))
+check('another wikidata.py makes it due', 'wikidata.py changed' in (r.wikidata_due() or ''))
+meta_file.write_text(json.dumps({**saved, 'fetched_at': refresher.iso(NOW - timedelta(days=8))}))
+check('eight days makes it due', r.wikidata_due() == 'the cache is 8 days old')
+
+# Failure with a cache: the old one carries on and the run still succeeds.
+fake.fail = True
+old_bytes = cache_file.read_bytes()
+done = run(r)
+check('a failed fetch never fails the run', done['outcome'] == 'success' and runner.names()[-3:] == [
+    'wikidata', 'build_facets', 'validate'], done)
+check('it leaves a warning naming the cache kept', any('Wikidata step failed, keeping the cache fetched' in w
+                                                       for w in done['warnings']), done['warnings'])
+check('the old cache stays and the facets are built from it', cache_file.read_bytes() == old_bytes
+      and version_facets(r)['linked'] == 5 and runner.env_for('build_facets')['TV_WIKIDATA'] == str(cache_file))
+check('the failure is recorded', 'gave up' in r.state['wikidata']['error']
+      and r.status()['wikidata']['cache']['shows'] == 5)
+check('and shown on the page', 'the last try' in refresher.render_page(r.status()))
+fake.fail = False
+
+# A fetch that finds far fewer shows than the cache holds is not trusted.
+meta_file.write_text(json.dumps({**saved, 'shows': 1000, 'fetched_at': refresher.iso(NOW - timedelta(days=8))}))
+done = run(r)
+check('a much smaller fetch is refused and the cache kept', done['outcome'] == 'success'
+      and any('found 5 shows where the cache has 1,000' in w for w in done['warnings'])
+      and cache_file.read_bytes() == old_bytes, done['warnings'])
+
+# A cache that will not build is set aside for the run.
+cache_file.write_bytes(b'not a cache')
+meta_file.write_text(json.dumps({**saved, 'fetched_at': refresher.iso(NOW)}))
+done = run(r)
+check('a broken cache is set aside and the facets built from TVmaze alone', done['outcome'] == 'success'
+      and any('would not build from the Wikidata cache' in w for w in done['warnings'])
+      and runner.names()[-3:] == ['build_facets', 'build_facets', 'validate'] and version_facets(r)['linked'] == 0,
+      done['warnings'])
+
+# No cache and no Wikidata: TVmaze facets, and a warning.
+down = FakeWikidata({}, fail=True)
+r, runner = wikidata_run('wikidata-none', down)
+done = run(r)
+check('with no cache and no Wikidata the run still succeeds', done['outcome'] == 'success'
+      and any('building the facets from TVmaze alone' in w for w in done['warnings']), done)
+check('its facets say they have no Wikidata', version_facets(r)['linked'] == 0
+      and version_facets(r)['wikidata_fetched_at'] is None and not (r.root / 'wikidata' / 'cache.json.gz').exists()
+      and 'TV_WIKIDATA' not in runner.env_for('build_facets'))
+check('the page says a cache is still to come', 'No cache yet' in refresher.render_page(r.status()))
+down.close()
+
+r, runner = wikidata_run('wikidata-always', fake, WIKIDATA_MAX_AGE_DAYS='0')
+run(r)
+calls = len(runner.calls)
+run(r)
+check('WIKIDATA_MAX_AGE_DAYS=0 fetches every run', runner.names()[calls:].count('wikidata') == 1)
+
+runner = FakeRunner(fail='build_facets')
+r = make('facets-fail', runner, seed=write_model(TMP / 'seed-facets-fail', 100))
+r.boot()
+before = live(r)
+done = run(r)
+check('facets that will not build even without the cache fail the run', done['outcome'] == 'failed'
+      and 'build_facets failed' in (done['error'] or '') and live(r) == before
+      and runner.names()[-2:] == ['build_facets', 'build_facets'], done)
+
+r = make('wikidata-tidy')
+(r.root / 'wikidata' / 'cache.new.json.gz').write_bytes(b'half')
+(r.root / 'wikidata' / '.cache.new.json.gz.123.456.tmp').write_bytes(b'half')
+(r.root / 'wikidata' / 'cache.json.gz').write_bytes(b'kept')
+r.take_file_lock()
+r.tidy()
+r.release_file_lock()
+check('an interrupted fetch\'s leftovers are cleared, and the cache kept',
+      sorted(p.name for p in (r.root / 'wikidata').iterdir()) == ['cache.json.gz'])
+fake.close()
+
+# 13. download.py --out --------------------------------------------------------------------------------------------
 
 pages = {0: [{'id': 1}, {'id': 2}], 1: [{'id': 250}]}
 
@@ -1081,7 +1520,7 @@ check('the --out manifest lists the pages', manifest['pages'] == 2 and manifest[
 check('download --out leaves the default paths alone', not sentinel.exists())
 check('--refresh and --out together are refused', combined == 2)
 
-# 12. End to end with the real build steps (opt in) -------------------------------------------------------------------
+# 14. End to end with the real build steps (opt in) -------------------------------------------------------------------
 
 
 def full_test(raw_dir, manifest):
@@ -1089,8 +1528,11 @@ def full_test(raw_dir, manifest):
     seed.mkdir()
     for name in ('catalog.json.gz', 'vectors.bin.gz', 'popularity.bin.gz'):
         shutil.copyfile(ROOT / 'model' / name, seed / name)
+    # Wikidata is the pretend service: a few real TVmaze ids, so the facets have links.
+    service = FakeWikidata(ITEMS)
     config = refresher.Config({'MODEL_ROOT': str(TMP / 'full-root'), 'SEED_MODEL_DIR': str(seed),
-                               'RAW_SOURCE_DIR': str(raw_dir), 'AUTO_DELAY_SECONDS': '0'})
+                               'RAW_SOURCE_DIR': str(raw_dir), 'AUTO_DELAY_SECONDS': '0',
+                               'WIKIDATA_SPARQL_URL': service.url})
     r = refresher.Refresher(config, quiet=True)
     r.start(schedule=False)
     r.boot()
@@ -1113,6 +1555,9 @@ def full_test(raw_dir, manifest):
           and gunzip(cur['path'] / 'popularity.bin.gz') == gunzip(ROOT / 'model' / 'popularity.bin.gz'))
     check('the refresher rebuilds art with the committed content', cur is not None
           and gunzip(cur['path'] / 'art.bin.gz') == gunzip(ROOT / 'couchside' / 'art.bin.gz'))
+    check('the real build makes facets from the Wikidata cache', cur is not None and cur['build']['facets']
+          and cur['build']['facets']['linked'] >= 4 and cur['build']['facets']['tokens'] > 1000, cur and cur['build'])
+    service.close()
     print('\n  step timings, driven by the refresher:')
     for run_record in reversed(r.state['runs']):
         for s in run_record['steps']:

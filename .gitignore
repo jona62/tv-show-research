@@ -11,6 +11,8 @@ __pycache__/
 data/raw/
 data/archive/
 data/model-backup/
+# The Wikidata cache scripts/wikidata.py writes; build_facets.py reads it.
+data/wikidata.json.gz
 output/site-qa/
 output/qa/
 *.log
