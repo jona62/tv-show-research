@@ -50,6 +50,13 @@ the live build, recent runs and the next one, with a *Rebuild now* button. It
 rebuilds on deploy whenever the pipeline changes, and seeds itself from the frozen
 model the first time it starts.
 
+Each build also adds taste facets from Wikidata, whose data is CC0 and so may
+shape the ranking: genres, creators and writers, cast, franchise and spin-off
+links, subjects and settings, and awards, for the shows Wikidata can match by
+TVmaze or IMDb id, beside TVmaze's networks for every show, plus each show's names
+in other languages for search. The Wikidata cache is fetched again once it is a
+week old; when Wikidata is down, the last cache serves, so it never fails a build.
+
 With `TMDB_API_KEY` set, each build also fetches TMDB's US age ratings, streaming
 services, trailers and backdrops for the 23,000 or so best-known shows, 6,000 a
 night, keeping each for at most TMDB's six months. Couchside shows them, credited
@@ -60,6 +67,7 @@ goes in the GitHub connection's runtime secrets as `TMDB_READ_API=...`.
 MODEL_ROOT=/tmp/tv-model SEED_MODEL_DIR=model RAW_SOURCE_DIR=data/raw \
   .venv/bin/python scripts/refresher.py    # http://localhost:8083
 .venv/bin/python scripts/test_refresher.py
+.venv/bin/python scripts/test_facets.py
 ```
 
 ## Deploy
@@ -70,5 +78,7 @@ repository. It is connected to Rigbox through the GitHub app, so a push to
 secrets changed.
 
 Data from [TVmaze](https://www.tvmaze.com/),
-[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Similarity is
-not a guarantee of enjoyment.
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/), and
+[Wikidata](https://www.wikidata.org/),
+[CC0](https://creativecommons.org/publicdomain/zero/1.0/). Similarity is not a
+guarantee of enjoyment.
