@@ -125,10 +125,10 @@ def rejects(label, fn, said):
         check(f'rejects {label}', said in str(exc), str(exc))
 
 
-# 1. One engine for both apps, with its search, the search's TVmaze fallback and the
-# model follower, each copied unchanged.
-check('the build copies the engine, its search, the fallback and the follower',
-      {'engine.py', 'titles.py', 'fallback.py', 'follow.py'} <= set(MODULES))
+# 1. One engine for both apps, with its taste model, its search and the search's
+# TVmaze fallback, the model follower and the facet reader, each copied unchanged.
+check('the build copies every one of them',
+      {'engine.py', 'taste.py', 'titles.py', 'fallback.py', 'follow.py', 'facets.py'} <= set(MODULES))
 for name in MODULES:
     check(f'{name} is Next Watch\'s, unchanged',
           (ROOT / 'app' / name).read_bytes() == (ROOT / 'couchside' / name).read_bytes())
@@ -226,7 +226,15 @@ personal = [r for r in home['rows'] if r['key'] != 'top10']
 check('nothing rated comes back in a row', not RATED & {c['id'] for r in personal for c in r['items']})
 check('matches sit between 1 and 99', all(c['match'] is None or 1 <= c['match'] <= 99 for r in home['rows'] for c in r['items']))
 seeds = [r['title'] for r in home['rows'] if r['key'].startswith('seed-')]
-check('rows follow the shows you loved first', seeds[:2] == ['Because you loved Severance', 'Because you loved Breaking Bad'], seeds)
+positives = [p for p in PROFILE if p['weight'] > 0]
+negatives = [p for p in PROFILE if p['weight'] < 0]
+closeness = {p['id']: engine.blend(engine.by_id[p['id']], engine.validate({'profile': PROFILE})[1]) for p in PROFILE}
+interests = engine.ranking(positives, negatives, closeness, engine.validate({'profile': PROFILE})[1]).interests
+owner = {p['id']: n for n, group in enumerate(interests) for p in group}
+seed_owners = [owner[int(r['key'][5:])] for r in home['rows'] if r['key'].startswith('seed-')]
+check('seed rows take one show from each interest, heaviest first',
+      seed_owners[:len(interests)] == list(range(min(len(interests), len(seed_owners)))), seeds)
+check('a loved show fronts the heaviest interest', seeds[0] == 'Because you loved Breaking Bad', seeds)
 check('a liked seed says liked', any(t == 'Because you liked Peaky Blinders' for t in seeds), seeds)
 for r in home['rows']:
     if r['key'].startswith('genre-'):
@@ -658,8 +666,9 @@ check('TMDB\'s logo is served as TMDB publishes it', status == 200 and headers.g
 check('the 404 and offline pages stay as built', fetch('/nope')[2] == (ROOT / 'couchside' / 'public' / '404.html').read_bytes()
       and fetch('/offline.html')[2] == (ROOT / 'couchside' / 'public' / 'offline.html').read_bytes())
 check('the new sources and model files are not served',
-      all(fetch(path)[0] == 404 for path in ('/tmdb.py', '/follow.py', '/titles.py', '/fallback.py', '/tmdb.json.gz',
-                                             '/search.json.gz', '/build.json')))
+      all(fetch(path)[0] == 404 for path in ('/tmdb.py', '/follow.py', '/facets.py', '/titles.py', '/fallback.py',
+                                             '/tmdb.json.gz', '/build.json', '/facets.bin.gz', '/facets.json.gz',
+                                             '/search.json.gz')))
 httpd.shutdown()
 
 # 8. Following the model: leave for a complete new one, and for nothing else.

@@ -1,0 +1,3941 @@
+{
+ "bench": {
+  "version": 1,
+  "seed": 20260927,
+  "top": 24,
+  "hit_at": [10, 24, 100],
+  "few_shot": {"size": 3, "draws": 5},
+  "weights": {"loves": 1, "likes": 0.7, "dislikes": -1}
+ },
+ "run": {
+  "engine": "app/engine.py",
+  "engine_sha256": "cbacce57306b",
+  "git": "364b6b3-dirty",
+  "model": "model",
+  "model_version": "tvmaze-v2-2026-09-07",
+  "model_date": "2026-09-07",
+  "catalog_shows": 89594,
+  "default_settings": {
+   "text": 40,
+   "themes": 35,
+   "genres": 25,
+   "facets": 30,
+   "closest": 0.3,
+   "dislike": 0.35,
+   "language": "all",
+   "type": "all",
+   "status": "all",
+   "year_min": 1900,
+   "runtime_min": 0,
+   "rating_min": 0,
+   "known_min": 60
+  },
+  "python": "3.13.2",
+  "runtime_s": 36.9
+ },
+ "personas": {"file": "scripts/bench/holdout.json", "sha256": "99630d2444b0", "count": 20, "ratings": 264},
+ "settings": {
+  "default": {
+   "overrides": {},
+   "settings": {
+    "text": 40,
+    "themes": 35,
+    "genres": 25,
+    "facets": 30,
+    "closest": 0.3,
+    "dislike": 0.35,
+    "language": "all",
+    "type": "all",
+    "status": "all",
+    "year_min": 1900,
+    "runtime_min": 0,
+    "rating_min": 0,
+    "known_min": 60
+   },
+   "summary": {
+    "pool": 25273,
+    "loo": {
+     "n": 244,
+     "filtered": 12,
+     "hr10": 0.3607,
+     "hr24": 0.4426,
+     "hr100": 0.6352,
+     "mrr": 0.1652,
+     "median_rank": 36,
+     "unscored": 2,
+     "filtered_by": {"known_min": 12},
+     "persona_hr24": 0.4378,
+     "persona_mrr": 0.1647
+    },
+    "few_shot": {
+     "n": 920,
+     "filtered": 48,
+     "hr10": 0.2087,
+     "hr24": 0.3522,
+     "hr100": 0.5924,
+     "mrr": 0.1036,
+     "median_rank": 64,
+     "persona_hr24": 0.3504
+    },
+    "dislikes": {
+     "personas": 7,
+     "held_out": 20,
+     "held_out_top24": 0,
+     "held_out_top24_rate": 0.0,
+     "held_out_median_rank": 5413,
+     "liked_only_top24": 0,
+     "liked_only_top24_rate": 0.0
+    },
+    "picks": {"distinct": 458, "slots": 480, "share_of_slots": 0.9542, "mean_popularity": 87.0},
+    "adapter_drift": 0,
+    "runtime_s": 37.1
+   },
+   "personas": {
+    "hbo_dramedy": {
+     "loo": {
+      "n": 11,
+      "filtered": 0,
+      "hr10": 0.3636,
+      "hr24": 0.3636,
+      "hr100": 0.4545,
+      "mrr": 0.0875,
+      "median_rank": 111,
+      "unscored": 0,
+      "targets": [
+       {"id": 51394, "name": "The White Lotus", "weight": 1, "rank": 7},
+       {"id": 11538, "name": "Barry", "weight": 1, "rank": 5},
+       {"id": 23470, "name": "Succession", "weight": 1, "rank": 1069},
+       {"id": 1269, "name": "Enlightened", "weight": 1, "rank": 3},
+       {"id": 37387, "name": "The Righteous Gemstones", "weight": 0.7, "rank": 228},
+       {"id": 1141, "name": "Eastbound & Down", "weight": 0.7, "rank": 255},
+       {"id": 3080, "name": "Big Little Lies", "weight": 0.7, "rank": 148},
+       {"id": 49313, "name": "Somebody Somewhere", "weight": 0.7, "rank": 111},
+       {"id": 144, "name": "The Comeback", "weight": 0.7, "rank": 91},
+       {"id": 20913, "name": "High Maintenance", "weight": 0.7, "rank": 1223},
+       {"id": 764, "name": "Bored to Death", "weight": 0.7, "rank": 4}
+      ]
+     },
+     "few_shot": {
+      "n": 40,
+      "filtered": 0,
+      "hr10": 0.1,
+      "hr24": 0.25,
+      "hr100": 0.5,
+      "mrr": 0.0471,
+      "median_rank": 95,
+      "draws": [
+       {
+        "profile": [37387, 1141, 764],
+        "targets": [51394, 11538, 23470, 1269, 3080, 49313, 144, 20913],
+        "ranks": [64, 29, 142, 18, 21, 521, 95, 2539]
+       },
+       {
+        "profile": [51394, 11538, 764],
+        "targets": [23470, 1269, 37387, 1141, 3080, 49313, 144, 20913],
+        "ranks": [45, 4, 519, 284, 29, 105, 205, 1598]
+       },
+       {
+        "profile": [51394, 37387, 764],
+        "targets": [11538, 23470, 1269, 1141, 3080, 49313, 144, 20913],
+        "ranks": [21, 27, 3, 216, 19, 235, 183, 1700]
+       },
+       {
+        "profile": [11538, 23470, 144],
+        "targets": [51394, 1269, 37387, 1141, 3080, 49313, 20913, 764],
+        "ranks": [38, 18, 415, 319, 28, 107, 2490, 2]
+       },
+       {
+        "profile": [11538, 3080, 20913],
+        "targets": [51394, 23470, 1269, 37387, 1141, 49313, 144, 764],
+        "ranks": [69, 89, 17, 430, 406, 129, 553, 6]
+       }
+      ]
+     },
+     "dislikes": {
+      "held_out": 3,
+      "held_out_top24": 0,
+      "targets": [
+       {"id": 2091, "name": "When Calls the Heart", "weight": -1, "rank": 4329},
+       {"id": 6744, "name": "Chesapeake Shores", "weight": -1, "rank": 3277},
+       {"id": 1177, "name": "Good Witch", "weight": -1, "rank": 7872}
+      ],
+      "liked_only_top24": 0,
+      "liked_only_surfaced": []
+     },
+     "picks": [
+      [367, "Six Feet Under"],
+      [559, "Entourage"],
+      [1821, "Ballers"],
+      [145, "House of Lies"],
+      [1063, "Studio 60 on the Sunset Strip"],
+      [32, "Fargo"],
+      [537, "30 Rock"],
+      [769, "Better Off Ted"],
+      [342, "Louie"],
+      [517, "Psych"],
+      [160, "Weeds"],
+      [4144, "Imposters"],
+      [28, "Californication"],
+      [18196, "Corporate"],
+      [147, "Nurse Jackie"],
+      [1210, "How to Make It in America"],
+      [762, "The Big C"],
+      [143, "Silicon Valley"],
+      [5967, "Insecure"],
+      [170, "Orange Is the New Black"],
+      [708, "Lilyhammer"],
+      [36673, "After Life"],
+      [598, "Boston Legal"],
+      [797, "Rescue Me"]
+     ],
+     "pick_popularity": 97.08,
+     "adapter_drift": []
+    },
+    "britcom_classic": {
+     "loo": {
+      "n": 13,
+      "filtered": 0,
+      "hr10": 0.5385,
+      "hr24": 0.7692,
+      "hr100": 0.9231,
+      "mrr": 0.1857,
+      "median_rank": 10,
+      "unscored": 0,
+      "targets": [
+       {"id": 577, "name": "Fawlty Towers", "weight": 1, "rank": 6},
+       {"id": 1072, "name": "Blackadder", "weight": 1, "rank": 36},
+       {"id": 2094, "name": "Only Fools and Horses....", "weight": 1, "rank": 1},
+       {"id": 3254, "name": "Father Ted", "weight": 1, "rank": 13},
+       {"id": 368, "name": "Red Dwarf", "weight": 0.7, "rank": 156},
+       {"id": 1151, "name": "The Young Ones", "weight": 0.7, "rank": 10},
+       {"id": 1054, "name": "Absolutely Fabulous", "weight": 0.7, "rank": 2},
+       {"id": 1530, "name": "The Vicar of Dibley", "weight": 0.7, "rank": 6},
+       {"id": 3837, "name": "Keeping Up Appearances", "weight": 0.7, "rank": 16},
+       {"id": 7753, "name": "One Foot in the Grave", "weight": 0.7, "rank": 10},
+       {"id": 1776, "name": "Porridge", "weight": 0.7, "rank": 18},
+       {"id": 1641, "name": "Black Books", "weight": 0.7, "rank": 38},
+       {"id": 539, "name": "The IT Crowd", "weight": 0.7, "rank": 8}
+      ]
+     },
+     "few_shot": {
+      "n": 50,
+      "filtered": 0,
+      "hr10": 0.24,
+      "hr24": 0.48,
+      "hr100": 0.74,
+      "mrr": 0.1306,
+      "median_rank": 29,
+      "draws": [
+       {
+        "profile": [1151, 3837, 7753],
+        "targets": [577, 1072, 2094, 3254, 368, 1054, 1530, 1776, 1641, 539],
+        "ranks": [22, 75, 5, 67, 879, 8, 6, 35, 165, 81]
+       },
+       {
+        "profile": [1072, 1054, 1776],
+        "targets": [577, 2094, 3254, 368, 1151, 1530, 3837, 7753, 1641, 539],
+        "ranks": [16, 1, 77, 55, 29, 8, 22, 35, 608, 21]
+       },
+       {
+        "profile": [577, 3254, 1641],
+        "targets": [1072, 2094, 368, 1151, 1054, 1530, 3837, 7753, 1776, 539],
+        "ranks": [614, 3, 494, 116, 7, 84, 16, 17, 187, 1]
+       },
+       {
+        "profile": [577, 7753, 539],
+        "targets": [1072, 2094, 3254, 368, 1151, 1054, 1530, 3837, 1776, 1641],
+        "ranks": [308, 2, 11, 1178, 105, 3, 44, 19, 32, 128]
+       },
+       {
+        "profile": [2094, 3254, 1530],
+        "targets": [577, 1072, 368, 1151, 1054, 3837, 7753, 1776, 1641, 539],
+        "ranks": [12, 19, 434, 39, 1, 11, 14, 41, 124, 2]
+       }
+      ]
+     },
+     "dislikes": {"held_out": 0, "held_out_top24": 0, "targets": [], "liked_only_top24": 0, "liked_only_surfaced": []},
+     "picks": [
+      [4529, "Are You Being Served?"],
+      [1065, "Spaced"],
+      [10993, "Waiting for God"],
+      [16058, "dinnerladies"],
+      [4030, "The Royle Family"],
+      [7039, "Open All Hours"],
+      [16531, "You Rang, M'Lord?"],
+      [4726, "Going Straight"],
+      [2323, "Miranda"],
+      [6081, "Bottom"],
+      [6022, "To the Manor Born"],
+      [1598, "A Bit of Fry and Laurie"],
+      [383, "Peep Show"],
+      [1720, "The League of Gentlemen"],
+      [6134, "The Brittas Empire"],
+      [6021, "The Good Life"],
+      [8051, "Some Mothers Do 'Ave 'Em"],
+      [4292, "Game On!"],
+      [1056, "'Allo 'Allo!"],
+      [4708, "Men Behaving Badly"],
+      [3451, "Detectorists"],
+      [9815, "Upstart Crow"],
+      [6492, "Drop the Dead Donkey"],
+      [3951, "Still Open All Hours"]
+     ],
+     "pick_popularity": 91.71,
+     "adapter_drift": []
+    },
+    "australian_drama": {
+     "loo": {
+      "n": 13,
+      "filtered": 0,
+      "hr10": 0.3846,
+      "hr24": 0.3846,
+      "hr100": 0.6154,
+      "mrr": 0.3536,
+      "median_rank": 49,
+      "unscored": 0,
+      "targets": [
+       {"id": 1828, "name": "Wentworth", "weight": 1, "rank": 1},
+       {"id": 33492, "name": "Mystery Road", "weight": 1, "rank": 2},
+       {"id": 3661, "name": "Jack Irish", "weight": 1, "rank": 32},
+       {"id": 3250, "name": "Rake", "weight": 1, "rank": 159},
+       {"id": 4276, "name": "Janet King", "weight": 0.7, "rank": 1},
+       {"id": 30416, "name": "Harrow", "weight": 0.7, "rank": 49},
+       {"id": 2002, "name": "Miss Fisher's Murder Mysteries", "weight": 0.7, "rank": 1},
+       {"id": 1814, "name": "The Doctor Blake Mysteries", "weight": 0.7, "rank": 1},
+       {"id": 6768, "name": "Secret City", "weight": 0.7, "rank": 374},
+       {"id": 3313, "name": "The Code", "weight": 0.7, "rank": 241},
+       {"id": 2477, "name": "Glitch", "weight": 0.7, "rank": 205},
+       {"id": 1808, "name": "Underbelly", "weight": 0.7, "rank": 103},
+       {"id": 1451, "name": "A Place to Call Home", "weight": 0.7, "rank": 57}
+      ]
+     },
+     "few_shot": {
+      "n": 50,
+      "filtered": 0,
+      "hr10": 0.4,
+      "hr24": 0.5,
+      "hr100": 0.68,
+      "mrr": 0.2099,
+      "median_rank": 24,
+      "draws": [
+       {
+        "profile": [4276, 30416, 3313],
+        "targets": [1828, 33492, 3661, 3250, 2002, 1814, 6768, 2477, 1808, 1451],
+        "ranks": [2, 6, 61, 147, 1, 3, 24, 99, 52, 142]
+       },
+       {
+        "profile": [2002, 6768, 1451],
+        "targets": [1828, 33492, 3661, 3250, 4276, 30416, 1814, 3313, 2477, 1808],
+        "ranks": [1, 16, 24, 27, 2, 15, 19, 30, 102, 206]
+       },
+       {
+        "profile": [1828, 3661, 3250],
+        "targets": [33492, 4276, 30416, 2002, 1814, 6768, 3313, 2477, 1808, 1451],
+        "ranks": [9, 2, 5, 1, 3, 490, 360, 178, 85, 4]
+       },
+       {
+        "profile": [3661, 30416, 1814],
+        "targets": [1828, 33492, 3250, 4276, 2002, 6768, 3313, 2477, 1808, 1451],
+        "ranks": [7, 3, 111, 1, 2, 365, 558, 74, 147, 347]
+       },
+       {
+        "profile": [33492, 30416, 1451],
+        "targets": [1828, 3661, 3250, 4276, 2002, 1814, 6768, 3313, 2477, 1808],
+        "ranks": [4, 42, 125, 1, 3, 2, 332, 429, 31, 385]
+       }
+      ]
+     },
+     "dislikes": {"held_out": 0, "held_out_top24": 0, "targets": [], "liked_only_top24": 0, "liked_only_surfaced": []},
+     "picks": [
+      [10822, "MINDHUNTER"],
+      [69, "The Blacklist"],
+      [26868, "Collateral"],
+      [20303, "Doctor Doctor"],
+      [1985, "The Tunnel"],
+      [1758, "DCI Banks"],
+      [28489, "Absentia"],
+      [286, "Happy Valley"],
+      [320, "The Fall"],
+      [13417, "Ozark"],
+      [22904, "Killing Eve"],
+      [1050, "Top of the Lake"],
+      [20055, "Hyde & Seek"],
+      [3493, "Old School"],
+      [46, "Forever"],
+      [25719, "Gone"],
+      [32490, "Bodyguard"],
+      [87, "The Bridge"],
+      [90, "Haven"],
+      [339, "American Crime"],
+      [3371, "Unforgotten"],
+      [2415, "Snowfall"],
+      [404, "Magic City"],
+      [14157, "The Night Of"]
+     ],
+     "pick_popularity": 96.71,
+     "adapter_drift": []
+    },
+    "music_docs": {
+     "loo": {
+      "n": 11,
+      "filtered": 1,
+      "hr10": 0.3636,
+      "hr24": 0.4545,
+      "hr100": 0.8182,
+      "mrr": 0.1958,
+      "median_rank": 29,
+      "unscored": 0,
+      "targets": [
+       {"id": 55965, "name": "The Beatles: Get Back", "weight": 1, "rank": 3},
+       {"id": 17687, "name": "Soundbreaking", "weight": 1, "rank": 84},
+       {"id": 45910, "name": "Laurel Canyon", "weight": 1, "rank": 15},
+       {"id": 42997, "name": "Country Music", "weight": 1, "rank": 1},
+       {"id": 28487, "name": "The Defiant Ones", "weight": 0.7, "rank": 29},
+       {"id": 13796, "name": "Classic Albums", "weight": 0.7, "rank": 70},
+       {"id": 39043, "name": "ReMastered", "weight": 0.7, "rank": 46},
+       {"id": 50616, "name": "Song Exploder", "weight": 0.7, "rank": 229},
+       {"id": 19799, "name": "Jazz", "weight": 0.7, "rank": 3},
+       {"id": 40009, "name": "Punk", "weight": 0.7, "rank": 3},
+       {"id": 23528, "name": "Hip-Hop Evolution", "weight": 0.7, "rank": null, "filtered": "known_min"}
+      ]
+     },
+     "few_shot": {
+      "n": 40,
+      "filtered": 4,
+      "hr10": 0.375,
+      "hr24": 0.675,
+      "hr100": 0.9,
+      "mrr": 0.1929,
+      "median_rank": 16,
+      "draws": [
+       {
+        "profile": [45910, 42997, 50616],
+        "targets": [55965, 17687, 28487, 13796, 39043, 19799, 40009, 23528],
+        "ranks": [1, 25, 19, 15, 34, 2, 4, null]
+       },
+       {
+        "profile": [39043, 50616, 19799],
+        "targets": [55965, 17687, 45910, 42997, 28487, 13796, 40009, 23528],
+        "ranks": [2, 22, 26, 1, 19, 10, 6, null]
+       },
+       {
+        "profile": [55965, 19799, 40009],
+        "targets": [17687, 45910, 42997, 28487, 13796, 39043, 50616, 23528],
+        "ranks": [17, 6, 1, 27, 18, 54, 75, null]
+       },
+       {
+        "profile": [13796, 50616, 40009],
+        "targets": [55965, 17687, 45910, 42997, 28487, 39043, 19799, 23528],
+        "ranks": [3, 15, 16, 6, 35, 31, 8, null]
+       },
+       {
+        "profile": [42997, 40009, 23528],
+        "targets": [55965, 17687, 45910, 28487, 13796, 39043, 50616, 19799],
+        "ranks": [3, 14, 10, 21, 13, 28, 22, 1]
+       }
+      ]
+     },
+     "dislikes": {
+      "held_out": 3,
+      "held_out_top24": 0,
+      "targets": [
+       {"id": 288, "name": "American Idol", "weight": -1, "rank": 7635},
+       {"id": 70, "name": "The Voice", "weight": -1, "rank": 6761},
+       {"id": 696, "name": "The X Factor", "weight": -1, "rank": 4459}
+      ],
+      "liked_only_top24": 0,
+      "liked_only_surfaced": []
+     },
+     "picks": [
+      [34082, "The Toys That Made Us"],
+      [63257, "Trainwreck: Woodstock '99"],
+      [61353, "Benjamin Franklin"],
+      [15139, "The Eighties"],
+      [83602, "Billy Joel: And So It Goes"],
+      [19800, "Thomas Jefferson"],
+      [29823, "The History of Rock 'n' Roll"],
+      [25729, "History Detectives"],
+      [19532, "The Men Who Built America"],
+      [2165, "The Seventies"],
+      [25886, "Long Strange Trip"],
+      [29055, "America in Color"],
+      [13440, "Digging for Britain"],
+      [36937, "Drain the Oceans"],
+      [1639, "Andrew Marr's History of the World"],
+      [1693, "Masters of Money"],
+      [53586, "Ancient Unexplained Files"],
+      [11138, "America: The Story of Us"],
+      [25874, "American Playboy: The Hugh Hefner Story"],
+      [70086, "Ladies First: A Story of Women in Hip-Hop"],
+      [26368, "The African Americans: Many Rivers to Cross"],
+      [38371, "Rise of the Nazis"],
+      [4418, "Declassified"],
+      [34897, "Civilisations"]
+     ],
+     "pick_popularity": 77.25,
+     "adapter_drift": []
+    },
+    "mecha_anime": {
+     "loo": {
+      "n": 13,
+      "filtered": 0,
+      "hr10": 0.3077,
+      "hr24": 0.4615,
+      "hr100": 0.6154,
+      "mrr": 0.1118,
+      "median_rank": 37,
+      "unscored": 0,
+      "targets": [
+       {"id": 5242, "name": "Mobile Suit Gundam", "weight": 1, "rank": 23},
+       {"id": 5421, "name": "Tengen Toppa Gurren-Lagann", "weight": 1, "rank": 11},
+       {"id": 1925, "name": "Neon Genesis Evangelion", "weight": 1, "rank": 4},
+       {"id": 5168, "name": "Mobile Suit Gundam: Tekketsu no Orphans", "weight": 1, "rank": 4},
+       {"id": 5241, "name": "Mobile Suit Gundam Wing", "weight": 0.7, "rank": 127},
+       {"id": 61323, "name": "Mobile Suit Gundam: The Witch From Mercury", "weight": 0.7, "rank": 1088},
+       {"id": 36395, "name": "Macross", "weight": 0.7, "rank": 156},
+       {"id": 5285, "name": "Eureka Seven", "weight": 0.7, "rank": 2},
+       {"id": 8235, "name": "Full Metal Panic!", "weight": 0.7, "rank": 46},
+       {"id": 53961, "name": "86", "weight": 0.7, "rank": 4},
+       {"id": 33921, "name": "Darling in the FranXX", "weight": 0.7, "rank": 381},
+       {"id": 1441, "name": "Aldnoah.Zero", "weight": 0.7, "rank": 553},
+       {"id": 9050, "name": "The Big O", "weight": 0.7, "rank": 37}
+      ]
+     },
+     "few_shot": {
+      "n": 50,
+      "filtered": 0,
+      "hr10": 0.18,
+      "hr24": 0.4,
+      "hr100": 0.66,
+      "mrr": 0.0748,
+      "median_rank": 39,
+      "draws": [
+       {
+        "profile": [5168, 36395, 9050],
+        "targets": [5242, 5421, 1925, 5241, 61323, 5285, 8235, 53961, 33921, 1441],
+        "ranks": [5, 87, 37, 29, 522, 2, 30, 11, 210, 61]
+       },
+       {
+        "profile": [5421, 1925, 5241],
+        "targets": [5242, 5168, 61323, 36395, 5285, 8235, 53961, 33921, 1441, 9050],
+        "ranks": [17, 51, 1058, 201, 16, 67, 11, 267, 374, 28]
+       },
+       {
+        "profile": [5241, 5285, 1441],
+        "targets": [5242, 5421, 1925, 5168, 61323, 36395, 8235, 53961, 33921, 9050],
+        "ranks": [8, 131, 11, 2, 513, 9, 141, 13, 229, 39]
+       },
+       {
+        "profile": [5285, 8235, 53961],
+        "targets": [5242, 5421, 1925, 5168, 5241, 61323, 36395, 33921, 1441, 9050],
+        "ranks": [84, 18, 16, 3, 159, 1150, 46, 187, 185, 10]
+       },
+       {
+        "profile": [5168, 5241, 53961],
+        "targets": [5242, 5421, 1925, 61323, 36395, 5285, 8235, 33921, 1441, 9050],
+        "ranks": [2, 194, 14, 346, 18, 4, 47, 135, 70, 23]
+       }
+      ]
+     },
+     "dislikes": {"held_out": 0, "held_out_top24": 0, "targets": [], "liked_only_top24": 0, "liked_only_surfaced": []},
+     "picks": [
+      [1926, "Ima, Soko ni Iru Boku"],
+      [27438, "Space Pirate Captain Harlock"],
+      [6278, "Robotech"],
+      [1750, "Black Butler"],
+      [2483, "Darker Than Black"],
+      [35212, "Golden Kamuy"],
+      [4306, "Trigun"],
+      [8238, "Uchuu Senkan Yamato 2199"],
+      [5476, "Bishoujo Senshi Sailor Moon"],
+      [16151, "Katei Kyoshi Hitman Reborn!"],
+      [5363, "After War Gundam X"],
+      [69696, "A Returner's Magic Should Be Special"],
+      [2061, "Elfen Lied"],
+      [8232, "Black Lagoon"],
+      [1935, "Ghost in the Shell: Stand Alone Complex"],
+      [15172, "Yu-Gi-Oh! 5D's"],
+      [43968, "Azur Lane"],
+      [8524, "The Seven Deadly Sins"],
+      [4150, "Gintama"],
+      [4268, "Accel World"],
+      [33562, "Beatless"],
+      [12654, "Basilisk"],
+      [50528, "Our Last Crusade or the Rise of a New World"],
+      [5247, "Mobile Fighter G Gundam"]
+     ],
+     "pick_popularity": 87.62,
+     "adapter_drift": []
+    },
+    "isekai_anime": {
+     "loo": {
+      "n": 13,
+      "filtered": 1,
+      "hr10": 0.4615,
+      "hr24": 0.5385,
+      "hr100": 0.7692,
+      "mrr": 0.1488,
+      "median_rank": 13,
+      "unscored": 0,
+      "targets": [
+       {"id": 14459, "name": "Re:Zero kara Hajimeru Isekai Seikatsu", "weight": 1, "rank": 7},
+       {"id": 38390, "name": "That Time I Got Reincarnated as a Slime", "weight": 1, "rank": 1},
+       {"id": 52279, "name": "Mushoku Tensei: Jobless Reincarnation", "weight": 1, "rank": 7},
+       {"id": 10772, "name": "Kono Subarashii Sekai ni Shukufuku wo!", "weight": 1, "rank": 13},
+       {"id": 4270, "name": "Overlord", "weight": 0.7, "rank": 6},
+       {"id": 2059, "name": "Sword Art Online", "weight": 0.7, "rank": 6},
+       {"id": 40140, "name": "The Rising of the Shield Hero", "weight": 0.7, "rank": 74},
+       {"id": 5470, "name": "No Game No Life", "weight": 0.7, "rank": 164},
+       {"id": 4095, "name": "Log Horizon", "weight": 0.7, "rank": 354},
+       {"id": 22852, "name": "Youjo Senki: Saga of Tanya the Evil", "weight": 0.7, "rank": 6},
+       {"id": 43540, "name": "Ascendance of a Bookworm: I'll Do Anything to Become a Librarian!", "weight": 0.7, "rank": 35},
+       {"id": 63236, "name": "The Eminence in Shadow", "weight": 0.7, "rank": 47},
+       {"id": 6306, "name": "Hataraku Maou-sama!", "weight": 0.7, "rank": null, "filtered": "known_min"}
+      ]
+     },
+     "few_shot": {
+      "n": 50,
+      "filtered": 5,
+      "hr10": 0.3,
+      "hr24": 0.48,
+      "hr100": 0.74,
+      "mrr": 0.1296,
+      "median_rank": 26,
+      "draws": [
+       {
+        "profile": [52279, 4095, 22852],
+        "targets": [14459, 38390, 10772, 4270, 2059, 40140, 5470, 43540, 63236, 6306],
+        "ranks": [6, 1, 16, 7, 20, 35, 92, 58, 32, null]
+       },
+       {
+        "profile": [14459, 52279, 40140],
+        "targets": [38390, 10772, 4270, 2059, 5470, 4095, 22852, 43540, 63236, 6306],
+        "ranks": [1, 19, 10, 15, 263, 403, 6, 62, 47, null]
+       },
+       {
+        "profile": [14459, 10772, 22852],
+        "targets": [38390, 52279, 4270, 2059, 40140, 5470, 4095, 43540, 63236, 6306],
+        "ranks": [1, 8, 9, 6, 72, 371, 383, 26, 53, null]
+       },
+       {
+        "profile": [5470, 4095, 22852],
+        "targets": [14459, 38390, 52279, 10772, 4270, 2059, 40140, 43540, 63236, 6306],
+        "ranks": [4, 20, 55, 130, 18, 24, 28, 201, 9, null]
+       },
+       {
+        "profile": [52279, 22852, 43540],
+        "targets": [14459, 38390, 10772, 4270, 2059, 40140, 5470, 4095, 63236, 6306],
+        "ranks": [7, 1, 11, 9, 12, 44, 231, 436, 36, null]
+       }
+      ]
+     },
+     "dislikes": {"held_out": 0, "held_out_top24": 0, "targets": [], "liked_only_top24": 0, "liked_only_surfaced": []},
+     "picks": [
+      [8287, "JoJo's Bizarre Adventure"],
+      [919, "Attack on Titan"],
+      [90197, "Daemons of the Shadow Realm"],
+      [64632, "Solo Leveling"],
+      [1536, "Hunter x Hunter"],
+      [1964, "Kiseijuu: Sei no Kakuritsu"],
+      [60258, "Skeleton Knight in Another World"],
+      [41469, "Demon Slayer"],
+      [80316, "Witch Hat Atelier"],
+      [69956, "Frieren: Beyond Journey's End"],
+      [2368, "Dragon Ball Super"],
+      [38610, "Goblin Slayer"],
+      [80375, "Bleach: Thousand-Year Blood War"],
+      [25696, "Sword Oratoria: Dungeon ni Deai wo Motomeru no wa Machigatteiru Darou ka Gaiden"],
+      [2103, "Dragon Ball Z"],
+      [2102, "Dragon Ball"],
+      [92492, "Black Torch"],
+      [42155, "Vinland Saga"],
+      [89106, "Hell Mode: The Hardcore Gamer Dominates in Another World with Garbage Balancing"],
+      [35212, "Golden Kamuy"],
+      [2069, "Fairy Tail"],
+      [2037, "Akame ga Kill!"],
+      [42372, "Dr. Stone"],
+      [42647, "Arifureta: From Commonplace to World's Strongest"]
+     ],
+     "pick_popularity": 95.62,
+     "adapter_drift": []
+    },
+    "chinese_historical": {
+     "loo": {
+      "n": 13,
+      "filtered": 2,
+      "hr10": 0.2308,
+      "hr24": 0.4615,
+      "hr100": 0.5385,
+      "mrr": 0.1188,
+      "median_rank": 55,
+      "unscored": 0,
+      "targets": [
+       {"id": 7135, "name": "Nirvana in Fire", "weight": 1, "rank": null, "filtered": "known_min"},
+       {"id": 38735, "name": "Story of Yanxi Palace", "weight": 1, "rank": 6},
+       {"id": 3339, "name": "Empresses in the Palace", "weight": 1, "rank": 55},
+       {"id": 40201, "name": "The Story of Ming Lan", "weight": 1, "rank": 14},
+       {"id": 42806, "name": "The Untamed", "weight": 1, "rank": 13},
+       {"id": 39165, "name": "Ruyi's Royal Love in the Palace", "weight": 0.7, "rank": 1},
+       {"id": 62994, "name": "Love Like the Galaxy", "weight": 0.7, "rank": 280},
+       {"id": 45302, "name": "Joy of Life", "weight": 0.7, "rank": null, "filtered": "known_min"},
+       {"id": 28950, "name": "Princess Agents", "weight": 0.7, "rank": 9},
+       {"id": 46037, "name": "Legend of Fei", "weight": 0.7, "rank": 138},
+       {"id": 53806, "name": "Word of Honor", "weight": 0.7, "rank": 149},
+       {"id": 25125, "name": "Eternal Love", "weight": 0.7, "rank": 182},
+       {"id": 63443, "name": "Love Between Fairy and Devil", "weight": 0.7, "rank": 13}
+      ]
+     },
+     "few_shot": {
+      "n": 50,
+      "filtered": 8,
+      "hr10": 0.1,
+      "hr24": 0.22,
+      "hr100": 0.62,
+      "mrr": 0.0312,
+      "median_rank": 76,
+      "draws": [
+       {
+        "profile": [38735, 40201, 53806],
+        "targets": [7135, 3339, 42806, 39165, 62994, 45302, 28950, 46037, 25125, 63443],
+        "ranks": [null, 23, 69, 9, 446, null, 7, 87, 191, 70]
+       },
+       {
+        "profile": [3339, 40201, 53806],
+        "targets": [7135, 38735, 42806, 39165, 62994, 45302, 28950, 46037, 25125, 63443],
+        "ranks": [null, 44, 82, 4, 295, null, 52, 48, 95, 128]
+       },
+       {
+        "profile": [7135, 38735, 28950],
+        "targets": [3339, 40201, 42806, 39165, 62994, 45302, 46037, 53806, 25125, 63443],
+        "ranks": [18, 10, 100, 13, 662, null, 101, 184, 66, 37]
+       },
+       {
+        "profile": [39165, 46037, 25125],
+        "targets": [7135, 38735, 3339, 40201, 42806, 62994, 45302, 28950, 53806, 63443],
+        "ranks": [null, 89, 30, 6, 86, 231, null, 50, 168, 157]
+       },
+       {
+        "profile": [7135, 28950, 53806],
+        "targets": [38735, 3339, 40201, 42806, 39165, 62994, 45302, 46037, 25125, 63443],
+        "ranks": [11, 41, 13, 56, 24, 597, null, 55, 76, 45]
+       }
+      ]
+     },
+     "dislikes": {"held_out": 0, "held_out_top24": 0, "targets": [], "liked_only_top24": 0, "liked_only_surfaced": []},
+     "picks": [
+      [46807, "Legend of Lu Zhen"],
+      [47912, "The Wolf"],
+      [40023, "The King of Blaze"],
+      [23580, "The Legend of Chusen"],
+      [51738, "The Legend of Xiao Chuo"],
+      [25906, "The Glory of Tang Dynasty"],
+      [74786, "The Double"],
+      [34720, "Untouchable Lovers"],
+      [27744, "Song of Phoenix"],
+      [2898, "Guai Xia Yi Zhi Mei"],
+      [29611, "The Advisors Alliance"],
+      [36660, "Cinderella Chef"],
+      [38155, "Heavy Sweetness, Ash-like Frost"],
+      [44743, "A Little Thing Called First Love"],
+      [36600, "Secret of the Three Kingdoms"],
+      [30952, "The Four"],
+      [23581, "Stay with Me"],
+      [25570, "Chinese Hero Zhao Zi Long"],
+      [42463, "Legend of the Phoenix"],
+      [53314, "Douluo Continent"],
+      [45935, "The Untamed Special Edition"],
+      [34741, "Beyond Light Years"],
+      [37210, "Legend of Fu Yao"],
+      [53849, "The Sword and the Brocade"]
+     ],
+     "pick_popularity": 70.12,
+     "adapter_drift": []
+    },
+    "hindi_serials": {
+     "loo": {
+      "n": 11,
+      "filtered": 4,
+      "hr10": 0.5455,
+      "hr24": 0.5455,
+      "hr100": 0.5455,
+      "mrr": 0.2527,
+      "median_rank": 9,
+      "unscored": 0,
+      "targets": [
+       {"id": 55393, "name": "Yeh Rishta Kya Kehlata Hai", "weight": 1, "rank": null, "filtered": "known_min"},
+       {"id": 7684, "name": "Kumkum Bhagya", "weight": 1, "rank": 1},
+       {"id": 48320, "name": "Saath Nibhaana Saathiya", "weight": 1, "rank": null, "filtered": "known_min"},
+       {"id": 25501, "name": "Ishqbaaz", "weight": 1, "rank": 6},
+       {"id": 14286, "name": "Iss Pyaar Ko Kya Naam Doon...Ek Baar Phir", "weight": 0.7, "rank": 4},
+       {"id": 24906, "name": "Uttaran", "weight": 0.7, "rank": 9},
+       {"id": 25848, "name": "Qubool Hai", "weight": 0.7, "rank": 4},
+       {"id": 54636, "name": "Ek Hazaaron Mein Meri Behna Hai", "weight": 0.7, "rank": 1},
+       {"id": 22268, "name": "Balika Vadhu", "weight": 0.7, "rank": null, "filtered": "known_min"},
+       {"id": 60072, "name": "Kasautii Zindagii Kay", "weight": 0.7, "rank": null, "filtered": "known_min"},
+       {"id": 18303, "name": "Taarak Mehta Ka Ooltah Chashmah", "weight": 0.7, "rank": 627}
+      ]
+     },
+     "few_shot": {
+      "n": 40,
+      "filtered": 16,
+      "hr10": 0.4,
+      "hr24": 0.525,
+      "hr100": 0.6,
+      "mrr": 0.1851,
+      "median_rank": 20,
+      "draws": [
+       {
+        "profile": [48320, 14286, 22268],
+        "targets": [55393, 7684, 25501, 24906, 25848, 54636, 60072, 18303],
+        "ranks": [null, 2, 9, 5, 8, 1, null, 48]
+       },
+       {
+        "profile": [14286, 25848, 18303],
+        "targets": [55393, 7684, 48320, 25501, 24906, 54636, 22268, 60072],
+        "ranks": [null, 1, null, 23, 29, 3, null, null]
+       },
+       {
+        "profile": [54636, 22268, 18303],
+        "targets": [55393, 7684, 48320, 25501, 14286, 24906, 25848, 60072],
+        "ranks": [null, 1, null, 12, 4, 7, 19, null]
+       },
+       {
+        "profile": [55393, 24906, 18303],
+        "targets": [7684, 48320, 25501, 14286, 25848, 54636, 22268, 60072],
+        "ranks": [4, null, 14, 2, 42, 3, null, null]
+       },
+       {
+        "profile": [14286, 54636, 18303],
+        "targets": [55393, 7684, 48320, 25501, 24906, 25848, 22268, 60072],
+        "ranks": [null, 1, null, 6, 20, 9, null, null]
+       }
+      ]
+     },
+     "dislikes": {"held_out": 0, "held_out_top24": 0, "targets": [], "liked_only_top24": 0, "liked_only_surfaced": []},
+     "picks": [
+      [6996, "Swaragini"],
+      [29606, "Dil Boley Oberoi"],
+      [43264, "Hum: I'm Because of Us"],
+      [44988, "Yehh Jadu Hai Jinn Ka"],
+      [26168, "Dekha Ek Khwaab"],
+      [13881, "Siya Ke Ram"],
+      [14811, "Dahleez"],
+      [26165, "Zindagi Ki Mehek"],
+      [53192, "College Romance"],
+      [5016, "Mahabharat"],
+      [44418, "XXX: Uncensored"],
+      [71131, "Aakhri Sach"],
+      [32278, "Tu Sooraj Main Saanjh, Piyaji"],
+      [51613, "Flames"],
+      [43263, "Gandii Baat"],
+      [16781, "Permanent Roommates"],
+      [11864, "Kaisi Yeh Yaariyan"],
+      [16607, "Mahabharat"],
+      [52027, "Mismatched"],
+      [41207, "Made in Heaven"],
+      [51380, "Ishq Mein Marjawan"],
+      [40257, "Left-Handed Wife"],
+      [14719, "Hatim"],
+      [33330, "Chandra Nandini"]
+     ],
+     "pick_popularity": 69.83,
+     "adapter_drift": []
+    },
+    "latam_crime": {
+     "loo": {
+      "n": 11,
+      "filtered": 0,
+      "hr10": 0.1818,
+      "hr24": 0.1818,
+      "hr100": 0.9091,
+      "mrr": 0.0696,
+      "median_rank": 79,
+      "unscored": 0,
+      "targets": [
+       {"id": 37787, "name": "Narcos: Mexico", "weight": 1, "rank": 87},
+       {"id": 17742, "name": "Pablo Escobar: El Patrón del Mal", "weight": 1, "rank": 664},
+       {"id": 22557, "name": "El Marginal", "weight": 1, "rank": 79},
+       {"id": 6804, "name": "Historia de un Clan", "weight": 1, "rank": 9},
+       {"id": 26955, "name": "El Chapo", "weight": 0.7, "rank": 2},
+       {"id": 38272, "name": "Distrito Salvaje", "weight": 0.7, "rank": 32},
+       {"id": 18267, "name": "Sr. Avila", "weight": 0.7, "rank": 80},
+       {"id": 34437, "name": "O Mecanismo", "weight": 0.7, "rank": 26},
+       {"id": 54915, "name": "Dom", "weight": 0.7, "rank": 45},
+       {"id": 44901, "name": "Monzón: A Knockout Blow", "weight": 0.7, "rank": 82},
+       {"id": 55561, "name": "Somos.", "weight": 0.7, "rank": 80}
+      ]
+     },
+     "few_shot": {
+      "n": 40,
+      "filtered": 0,
+      "hr10": 0.05,
+      "hr24": 0.1,
+      "hr100": 0.55,
+      "mrr": 0.0409,
+      "median_rank": 84,
+      "draws": [
+       {
+        "profile": [26955, 44901, 55561],
+        "targets": [37787, 17742, 22557, 6804, 38272, 18267, 34437, 54915],
+        "ranks": [49, 65, 84, 1, 66, 255, 1497, 531]
+       },
+       {
+        "profile": [17742, 26955, 55561],
+        "targets": [37787, 22557, 6804, 38272, 18267, 34437, 54915, 44901],
+        "ranks": [98, 282, 20, 64, 1130, 2164, 624, 159]
+       },
+       {
+        "profile": [34437, 54915, 44901],
+        "targets": [37787, 17742, 22557, 6804, 26955, 38272, 18267, 55561],
+        "ranks": [759, 1891, 46, 8, 56, 82, 262, 72]
+       },
+       {
+        "profile": [17742, 22557, 34437],
+        "targets": [37787, 6804, 26955, 38272, 18267, 54915, 44901, 55561],
+        "ranks": [265, 32, 27, 54, 89, 108, 83, 264]
+       },
+       {
+        "profile": [26955, 38272, 55561],
+        "targets": [37787, 17742, 22557, 6804, 18267, 34437, 54915, 44901],
+        "ranks": [52, 75, 137, 11, 74, 444, 647, 121]
+       }
+      ]
+     },
+     "dislikes": {
+      "held_out": 3,
+      "held_out_top24": 0,
+      "targets": [
+       {"id": 30295, "name": "Destilando Amor", "weight": -1, "rank": 5697},
+       {"id": 12262, "name": "Triunfo del Amor", "weight": -1, "rank": 1005},
+       {"id": 29905, "name": "Lo que la vida me robó", "weight": -1, "rank": 977}
+      ],
+      "liked_only_top24": 0,
+      "liked_only_surfaced": []
+     },
+     "picks": [
+      [49383, "La Venganza de Analía"],
+      [25084, "Ingobernable"],
+      [48367, "Preso No. 1"],
+      [7016, "La Reina del Sur"],
+      [1226, "Profugos"],
+      [2705, "Narcos"],
+      [40618, "Metástasis"],
+      [30731, "El Jardín de Bronce"],
+      [30723, "Alias J.J."],
+      [39908, "La reina del flow"],
+      [23098, "El Chema"],
+      [41258, "Palabra de Ladrón"],
+      [45942, "Okupas"],
+      [51965, "Falsa Identidad"],
+      [47501, "Operación Pacífico"],
+      [40742, "Irmandade"],
+      [90043, "Dona Beja"],
+      [37868, "Hache"],
+      [43216, "ADDA"],
+      [68877, "Clanes"],
+      [55855, "Santo"],
+      [38904, "Vivir sin permiso"],
+      [16045, "Dupla Identidade"],
+      [41639, "El inocente"]
+     ],
+     "pick_popularity": 78.71,
+     "adapter_drift": []
+    },
+    "nordic_comedy": {
+     "loo": {
+      "n": 13,
+      "filtered": 2,
+      "hr10": 0.6154,
+      "hr24": 0.6154,
+      "hr100": 0.6923,
+      "mrr": 0.2693,
+      "median_rank": 5,
+      "unscored": 0,
+      "targets": [
+       {"id": 7317, "name": "Klovn", "weight": 1, "rank": 1},
+       {"id": 20974, "name": "Vikingane", "weight": 1, "rank": 5},
+       {"id": 708, "name": "Lilyhammer", "weight": 1, "rank": 313},
+       {"id": 6125, "name": "Dag", "weight": 1, "rank": 2},
+       {"id": 4251, "name": "Rita", "weight": 0.7, "rank": 3},
+       {"id": 25500, "name": "Bonusfamiljen", "weight": 0.7, "rank": 2},
+       {"id": 47113, "name": "Rådebank", "weight": 0.7, "rank": 293},
+       {"id": 7597, "name": "Side om side", "weight": 0.7, "rank": 5},
+       {"id": 43956, "name": "Exit", "weight": 0.7, "rank": 2},
+       {"id": 8333, "name": "Hellfjord", "weight": 0.7, "rank": 90},
+       {"id": 12773, "name": "Kvarteret Skatan", "weight": 0.7, "rank": 4},
+       {"id": 4605, "name": "Solsidan", "weight": 0.7, "rank": null, "filtered": "known_min"},
+       {"id": 41489, "name": "Hjem til jul", "weight": 0.7, "rank": null, "filtered": "known_min"}
+      ]
+     },
+     "few_shot": {
+      "n": 50,
+      "filtered": 7,
+      "hr10": 0.22,
+      "hr24": 0.36,
+      "hr100": 0.54,
+      "mrr": 0.0904,
+      "median_rank": 78,
+      "draws": [
+       {
+        "profile": [6125, 4251, 25500],
+        "targets": [7317, 20974, 708, 47113, 7597, 43956, 8333, 12773, 4605, 41489],
+        "ranks": [4, 24, 255, 127, 49, 9, 412, 8, null, null]
+       },
+       {
+        "profile": [8333, 12773, 41489],
+        "targets": [7317, 20974, 708, 6125, 4251, 25500, 47113, 7597, 43956, 4605],
+        "ranks": [1604, 80, 6497, 21, 6076, 1308, 289, 51, 22, null]
+       },
+       {
+        "profile": [4251, 43956, 4605],
+        "targets": [7317, 20974, 708, 6125, 25500, 47113, 7597, 8333, 12773, 41489],
+        "ranks": [9, 18, 70, 4, 1, 98, 27, 325, 22, null]
+       },
+       {
+        "profile": [7317, 708, 41489],
+        "targets": [20974, 6125, 4251, 25500, 47113, 7597, 43956, 8333, 12773, 4605],
+        "ranks": [15, 5, 1, 1145, 460, 23, 3, 64, 969, null]
+       },
+       {
+        "profile": [708, 7597, 43956],
+        "targets": [7317, 20974, 6125, 4251, 25500, 47113, 8333, 12773, 4605, 41489],
+        "ranks": [4321, 10, 2, 1929, 706, 78, 46, 6973, null, null]
+       }
+      ]
+     },
+     "dislikes": {"held_out": 0, "held_out_top24": 0, "targets": [], "liked_only_top24": 0, "liked_only_surfaced": []},
+     "picks": [
+      [45301, "Hjerte til hjerte"],
+      [32188, "Etaten"],
+      [40296, "Magnus"],
+      [26435, "LEIF & BILLY"],
+      [12514, "Sjit Happens"],
+      [48472, "Pørni"],
+      [1392, "Welcome to Sweden"],
+      [36591, "Fallet"],
+      [36136, "Sjölyckan"],
+      [30488, "Våra vänners liv"],
+      [12889, "Unge Lovende"],
+      [49907, "Familien Lykke"],
+      [19692, "NileCity 105.6"],
+      [22202, "Vårdgården"],
+      [71504, "Milliardærøya"],
+      [45466, "Førstegangstjenesten"],
+      [35020, "Hvite gutter"],
+      [43590, "Kärlek & Anarki"],
+      [69402, "Dummedag"],
+      [11561, "Badehotellet"],
+      [32874, "Svensson, Svensson"],
+      [20240, "NAV"],
+      [41337, "Café Bärs"],
+      [19699, "Macken"]
+     ],
+     "pick_popularity": 72.33,
+     "adapter_drift": []
+    },
+    "supernatural_teen": {
+     "loo": {
+      "n": 13,
+      "filtered": 0,
+      "hr10": 0.4615,
+      "hr24": 0.6923,
+      "hr100": 0.9231,
+      "mrr": 0.1769,
+      "median_rank": 16,
+      "unscored": 0,
+      "targets": [
+       {"id": 176, "name": "Teen Wolf", "weight": 1, "rank": 16},
+       {"id": 2158, "name": "Shadowhunters: The Mortal Instruments", "weight": 1, "rank": 9},
+       {"id": 62, "name": "The Originals", "weight": 1, "rank": 1},
+       {"id": 32649, "name": "Chilling Adventures of Sabrina", "weight": 1, "rank": 4},
+       {"id": 53647, "name": "Wednesday", "weight": 1, "rank": 21},
+       {"id": 36708, "name": "Legacies", "weight": 0.7, "rank": 2},
+       {"id": 834, "name": "The Secret Circle", "weight": 0.7, "rank": 35},
+       {"id": 24267, "name": "Charmed", "weight": 0.7, "rank": 47},
+       {"id": 43917, "name": "Fate: The Winx Saga", "weight": 0.7, "rank": 60},
+       {"id": 37031, "name": "Motherland: Fort Salem", "weight": 0.7, "rank": 9},
+       {"id": 36218, "name": "The Order", "weight": 0.7, "rank": 10},
+       {"id": 51305, "name": "First Kill", "weight": 0.7, "rank": 200},
+       {"id": 37883, "name": "Locke & Key", "weight": 0.7, "rank": 22}
+      ]
+     },
+     "few_shot": {
+      "n": 50,
+      "filtered": 0,
+      "hr10": 0.28,
+      "hr24": 0.48,
+      "hr100": 0.9,
+      "mrr": 0.1305,
+      "median_rank": 29,
+      "draws": [
+       {
+        "profile": [62, 43917, 37031],
+        "targets": [176, 2158, 32649, 53647, 36708, 834, 24267, 36218, 51305, 37883],
+        "ranks": [17, 8, 19, 92, 2, 42, 30, 15, 158, 44]
+       },
+       {
+        "profile": [36708, 834, 36218],
+        "targets": [176, 2158, 62, 32649, 53647, 24267, 43917, 37031, 51305, 37883],
+        "ranks": [7, 19, 1, 9, 89, 24, 99, 105, 101, 124]
+       },
+       {
+        "profile": [24267, 36218, 51305],
+        "targets": [176, 2158, 62, 32649, 53647, 36708, 834, 43917, 37031, 37883],
+        "ranks": [40, 29, 1, 5, 20, 4, 42, 81, 35, 13]
+       },
+       {
+        "profile": [43917, 51305, 37883],
+        "targets": [176, 2158, 62, 32649, 53647, 36708, 834, 24267, 37031, 36218],
+        "ranks": [83, 35, 18, 2, 29, 32, 97, 73, 58, 3]
+       },
+       {
+        "profile": [176, 36708, 37883],
+        "targets": [2158, 62, 32649, 53647, 834, 24267, 43917, 37031, 36218, 51305],
+        "ranks": [24, 1, 10, 9, 100, 20, 55, 73, 7, 222]
+       }
+      ]
+     },
+     "dislikes": {"held_out": 0, "held_out_top24": 0, "targets": [], "liked_only_top24": 0, "liked_only_surfaced": []},
+     "picks": [
+      [63, "The Vampire Diaries"],
+      [1859, "Lucifer"],
+      [19, "Supernatural"],
+      [54127, "Let the Right One In"],
+      [506, "Charmed"],
+      [90, "Haven"],
+      [28276, "The Witcher"],
+      [815, "Reaper"],
+      [29191, "The Haunting of Hill House"],
+      [13701, "The Exorcist"],
+      [3144, "Preacher"],
+      [218, "Being Human"],
+      [2993, "Stranger Things"],
+      [111, "Once Upon a Time"],
+      [49673, "The Haunting of Bly Manor"],
+      [10, "Grimm"],
+      [22, "True Blood"],
+      [31339, "A Discovery of Witches"],
+      [6767, "Wynonna Earp"],
+      [428, "Angel"],
+      [46, "Forever"],
+      [57400, "Dead Boy Detectives"],
+      [56093, "The Winchesters"],
+      [15, "Constantine"]
+     ],
+     "pick_popularity": 98.25,
+     "adapter_drift": []
+    },
+    "courtroom_tv": {
+     "loo": {
+      "n": 12,
+      "filtered": 1,
+      "hr10": 0.4167,
+      "hr24": 0.5,
+      "hr100": 0.5833,
+      "mrr": 0.1724,
+      "median_rank": 24,
+      "unscored": 0,
+      "targets": [
+       {"id": 7364, "name": "Judge Judy", "weight": 1, "rank": 4},
+       {"id": 57806, "name": "Judy Justice", "weight": 1, "rank": 4},
+       {"id": 38930, "name": "Judge Mathis", "weight": 1, "rank": 1},
+       {"id": 10691, "name": "The People's Court", "weight": 1, "rank": 584},
+       {"id": 73909, "name": "Divorce Court", "weight": 0.7, "rank": 4},
+       {"id": 68196, "name": "Tribunal Justice", "weight": 0.7, "rank": 4},
+       {"id": 59226, "name": "Judge Steve Harvey", "weight": 0.7, "rank": 524},
+       {"id": 6279, "name": "Judge Rinder", "weight": 0.7, "rank": 24},
+       {"id": 44682, "name": "Court Cam", "weight": 0.7, "rank": 4169},
+       {"id": 41901, "name": "Lauren Lake's Paternity Court", "weight": 0.7, "rank": null, "filtered": "known_min"},
+       {"id": 6062, "name": "Maury", "weight": 0.7, "rank": 122},
+       {"id": 6067, "name": "The Steve Wilkos Show", "weight": 0.7, "rank": 69}
+      ]
+     },
+     "few_shot": {
+      "n": 45,
+      "filtered": 5,
+      "hr10": 0.1778,
+      "hr24": 0.3333,
+      "hr100": 0.4222,
+      "mrr": 0.0622,
+      "median_rank": 1316,
+      "draws": [
+       {
+        "profile": [73909, 59226, 6279],
+        "targets": [7364, 57806, 38930, 10691, 68196, 44682, 41901, 6062, 6067],
+        "ranks": [5, 28, 2, 1316, 47, 5257, null, 15207, 16398]
+       },
+       {
+        "profile": [10691, 73909, 59226],
+        "targets": [7364, 57806, 38930, 68196, 6279, 44682, 41901, 6062, 6067],
+        "ranks": [4, 13, 3, 229, 11, 5720, null, 13966, 16864]
+       },
+       {
+        "profile": [57806, 59226, 44682],
+        "targets": [7364, 38930, 10691, 73909, 68196, 6279, 41901, 6062, 6067],
+        "ranks": [11, 17, 3023, 24, 41, 31, null, 15069, 15540]
+       },
+       {
+        "profile": [68196, 59226, 6067],
+        "targets": [7364, 57806, 38930, 10691, 73909, 6279, 44682, 41901, 6062],
+        "ranks": [3361, 3496, 3, 10386, 1998, 1025, 10683, null, 801]
+       },
+       {
+        "profile": [57806, 38930, 6062],
+        "targets": [7364, 10691, 73909, 68196, 59226, 6279, 44682, 41901, 6067],
+        "ranks": [10, 3101, 6, 3, 4457, 24, 4008, null, 18]
+       }
+      ]
+     },
+     "dislikes": {"held_out": 0, "held_out_top24": 0, "targets": [], "liked_only_top24": 0, "liked_only_surfaced": []},
+     "picks": [
+      [68065, "Mathis Court with Judge Mathis"],
+      [46596, "Chrissy's Court"],
+      [15066, "Justice with Judge Mablean"],
+      [81521, "Ozark Law"],
+      [5603, "Crime & Punishment"],
+      [89182, "Desert Law"],
+      [2341, "Justice with Judge Jeanine"],
+      [17495, "RBT"],
+      [1314, "Cold Justice"],
+      [24857, "TMZ on TV"],
+      [1872, "Cold Justice: Sex Crimes"],
+      [52482, "Night Court"],
+      [6073, "The Queen Latifah Show"],
+      [907, "The Practice"],
+      [19388, "Merv Griffin Show"],
+      [89343, "The Claudia Winkleman Show"],
+      [34570, "Judge Romesh"],
+      [9200, "Made in Hollywood"],
+      [16921, "Sin City Justice"],
+      [43920, "Variety Studio: Actors on Actors"],
+      [21987, "Live PD"],
+      [240, "Cops"],
+      [5753, "Late Night with Jimmy Fallon"],
+      [59870, "Beyond Belief with George Noory"]
+     ],
+     "pick_popularity": 78.75,
+     "adapter_drift": []
+    },
+    "political_satire": {
+     "loo": {
+      "n": 12,
+      "filtered": 0,
+      "hr10": 0.25,
+      "hr24": 0.25,
+      "hr100": 0.4167,
+      "mrr": 0.1333,
+      "median_rank": 107,
+      "unscored": 0,
+      "targets": [
+       {"id": 1667, "name": "The Thick of It", "weight": 1, "rank": 144},
+       {"id": 142, "name": "Veep", "weight": 1, "rank": 140},
+       {"id": 1606, "name": "Yes Minister", "weight": 1, "rank": 1},
+       {"id": 6647, "name": "Yes, Prime Minister", "weight": 1, "rank": 6},
+       {"id": 63267, "name": "The Regime", "weight": 0.7, "rank": 1512},
+       {"id": 332, "name": "Alpha House", "weight": 0.7, "rank": 1206},
+       {"id": 4792, "name": "Spitting Image", "weight": 0.7, "rank": 107},
+       {"id": 2576, "name": "Brass Eye", "weight": 0.7, "rank": 2349},
+       {"id": 32263, "name": "Avenue 5", "weight": 0.7, "rank": 1552},
+       {"id": 2362, "name": "Twenty Twelve", "weight": 0.7, "rank": 27},
+       {"id": 3375, "name": "W1A", "weight": 0.7, "rank": 27},
+       {"id": 13357, "name": "The New Statesman", "weight": 0.7, "rank": 3}
+      ]
+     },
+     "few_shot": {
+      "n": 45,
+      "filtered": 0,
+      "hr10": 0.1556,
+      "hr24": 0.3556,
+      "hr100": 0.5778,
+      "mrr": 0.11,
+      "median_rank": 62,
+      "draws": [
+       {
+        "profile": [63267, 4792, 32263],
+        "targets": [1667, 142, 1606, 6647, 332, 2576, 2362, 3375, 13357],
+        "ranks": [4, 12, 1, 3, 23, 2649, 234, 221, 20]
+       },
+       {
+        "profile": [332, 2576, 32263],
+        "targets": [1667, 142, 1606, 6647, 63267, 4792, 2362, 3375, 13357],
+        "ranks": [19, 24, 40, 81, 454, 1142, 920, 911, 980]
+       },
+       {
+        "profile": [1606, 63267, 2576],
+        "targets": [1667, 142, 6647, 332, 4792, 32263, 2362, 3375, 13357],
+        "ranks": [49, 86, 1, 221, 65, 1879, 61, 62, 17]
+       },
+       {
+        "profile": [6647, 3375, 13357],
+        "targets": [1667, 142, 1606, 63267, 332, 4792, 2576, 32263, 2362],
+        "ranks": [49, 391, 1, 964, 490, 28, 2050, 3686, 12]
+       },
+       {
+        "profile": [332, 32263, 2362],
+        "targets": [1667, 142, 1606, 6647, 63267, 4792, 2576, 3375, 13357],
+        "ranks": [19, 17, 2, 28, 283, 679, 2740, 10, 390]
+       }
+      ]
+     },
+     "dislikes": {
+      "held_out": 2,
+      "held_out_top24": 0,
+      "targets": [
+       {"id": 8167, "name": "Designated Survivor", "weight": -1, "rank": 6294},
+       {"id": 48, "name": "Madam Secretary", "weight": -1, "rank": 5247}
+      ],
+      "liked_only_top24": 0,
+      "liked_only_surfaced": []
+     },
+     "picks": [
+      [1151, "The Young Ones"],
+      [7622, "Hi-de-Hi!"],
+      [1720, "The League of Gentlemen"],
+      [6492, "Drop the Dead Donkey"],
+      [1598, "A Bit of Fry and Laurie"],
+      [4292, "Game On!"],
+      [2343, "Rev."],
+      [3719, "Toast of London"],
+      [1292, "The Office"],
+      [6081, "Bottom"],
+      [13344, "Filthy Rich & Catflap"],
+      [16058, "dinnerladies"],
+      [1065, "Spaced"],
+      [9815, "Upstart Crow"],
+      [539, "The IT Crowd"],
+      [16531, "You Rang, M'Lord?"],
+      [4030, "The Royle Family"],
+      [7043, "Saxondale"],
+      [2779, "The Fast Show"],
+      [2356, "Up the Women"],
+      [7040, "Sorry!"],
+      [1530, "The Vicar of Dibley"],
+      [2094, "Only Fools and Horses...."],
+      [11094, "The Comic Strip Presents..."]
+     ],
+     "pick_popularity": 90.54,
+     "adapter_drift": []
+    },
+    "cult_adult_animation": {
+     "loo": {
+      "n": 13,
+      "filtered": 1,
+      "hr10": 0.3077,
+      "hr24": 0.4615,
+      "hr100": 0.6923,
+      "mrr": 0.0826,
+      "median_rank": 27,
+      "unscored": 0,
+      "targets": [
+       {"id": 304, "name": "The Venture Bros.", "weight": 1, "rank": 4},
+       {"id": 382, "name": "Aqua Teen Hunger Force", "weight": 1, "rank": 14},
+       {"id": 1810, "name": "Harvey Birdman, Attorney at Law", "weight": 1, "rank": 17},
+       {"id": 47182, "name": "Smiling Friends", "weight": 1, "rank": 3},
+       {"id": 6239, "name": "Space Ghost Coast to Coast", "weight": 0.7, "rank": 114},
+       {"id": 7366, "name": "Sealab 2021", "weight": 0.7, "rank": 47},
+       {"id": 1000, "name": "Squidbillies", "weight": 0.7, "rank": 27},
+       {"id": 7760, "name": "Home Movies", "weight": 0.7, "rank": 198},
+       {"id": 1960, "name": "Moral Orel", "weight": 0.7, "rank": 5177},
+       {"id": 2579, "name": "Frisky Dingo", "weight": 0.7, "rank": 6},
+       {"id": 928, "name": "Metalocalypse", "weight": 0.7, "rank": null, "filtered": "known_min"},
+       {"id": 2554, "name": "Daria", "weight": 0.7, "rank": 9},
+       {"id": 910, "name": "Beavis and Butt-Head", "weight": 0.7, "rank": 94}
+      ]
+     },
+     "few_shot": {
+      "n": 50,
+      "filtered": 3,
+      "hr10": 0.12,
+      "hr24": 0.2,
+      "hr100": 0.5,
+      "mrr": 0.063,
+      "median_rank": 99,
+      "draws": [
+       {
+        "profile": [47182, 1000, 7760],
+        "targets": [304, 382, 1810, 6239, 7366, 1960, 2579, 928, 2554, 910],
+        "ranks": [36, 134, 58, 35, 438, 15950, 39, null, 85, 551]
+       },
+       {
+        "profile": [304, 1000, 1960],
+        "targets": [382, 1810, 47182, 6239, 7366, 7760, 2579, 928, 2554, 910],
+        "ranks": [2, 2216, 88, 1085, 850, 954, 43, null, 83, 658]
+       },
+       {
+        "profile": [382, 1000, 928],
+        "targets": [304, 1810, 47182, 6239, 7366, 7760, 1960, 2579, 2554, 910],
+        "ranks": [1, 790, 15, 218, 386, 762, 15087, 29, 530, 168]
+       },
+       {
+        "profile": [6239, 928, 910],
+        "targets": [304, 382, 1810, 47182, 7366, 1000, 7760, 1960, 2579, 2554],
+        "ranks": [9, 23, 99, 3, 365, 48, 778, 14430, 31, 19]
+       },
+       {
+        "profile": [47182, 7366, 2554],
+        "targets": [304, 382, 1810, 6239, 1000, 7760, 1960, 2579, 928, 910],
+        "ranks": [12, 154, 10, 46, 121, 79, 10655, 2, null, 68]
+       }
+      ]
+     },
+     "dislikes": {"held_out": 0, "held_out_top24": 0, "targets": [], "liked_only_top24": 0, "liked_only_surfaced": []},
+     "picks": [
+      [686, "Robot Chicken"],
+      [112, "South Park"],
+      [713, "SpongeBob SquarePants"],
+      [216, "Rick and Morty"],
+      [6240, "Lucy, The Daughter of the Devil"],
+      [115, "King of the Hill"],
+      [315, "Archer"],
+      [912, "The Boondocks"],
+      [538, "Futurama"],
+      [4221, "The Head"],
+      [16574, "The Garfield Show"],
+      [215, "American Dad!"],
+      [3135, "Mike Tyson Mysteries"],
+      [86177, "President Curtis"],
+      [84, "Family Guy"],
+      [41933, "Inside Job"],
+      [1615, "Steven Universe"],
+      [3134, "The Amazing World of Gumball"],
+      [69327, "Common Side Effects"],
+      [30170, "Soul Quest Overdrive"],
+      [5041, "The Angry Beavers"],
+      [5022, "The Drinky Crow Show"],
+      [1661, "The PJs"],
+      [58323, "Shrinking"]
+     ],
+     "pick_popularity": 93.38,
+     "adapter_drift": []
+    },
+    "network_2000s": {
+     "loo": {
+      "n": 13,
+      "filtered": 0,
+      "hr10": 0.3846,
+      "hr24": 0.3846,
+      "hr100": 0.6154,
+      "mrr": 0.1718,
+      "median_rank": 43,
+      "unscored": 0,
+      "targets": [
+       {"id": 123, "name": "Lost", "weight": 1, "rank": 6},
+       {"id": 134, "name": "Heroes", "weight": 1, "rank": 1},
+       {"id": 541, "name": "Prison Break", "weight": 1, "rank": 163},
+       {"id": 550, "name": "Desperate Housewives", "weight": 1, "rank": 138},
+       {"id": 796, "name": "Ugly Betty", "weight": 0.7, "rank": 129},
+       {"id": 918, "name": "Pushing Daisies", "weight": 0.7, "rank": 2},
+       {"id": 795, "name": "Jericho", "weight": 0.7, "rank": 3},
+       {"id": 458, "name": "FlashForward", "weight": 0.7, "rank": 7},
+       {"id": 168, "name": "Chuck", "weight": 0.7, "rank": 36},
+       {"id": 566, "name": "Ghost Whisperer", "weight": 0.7, "rank": 43},
+       {"id": 861, "name": "Dirty Sexy Money", "weight": 0.7, "rank": 188},
+       {"id": 457, "name": "The Event", "weight": 0.7, "rank": 94},
+       {"id": 1477, "name": "Invasion", "weight": 0.7, "rank": 438}
+      ]
+     },
+     "few_shot": {
+      "n": 50,
+      "filtered": 0,
+      "hr10": 0.1,
+      "hr24": 0.24,
+      "hr100": 0.46,
+      "mrr": 0.0596,
+      "median_rank": 124,
+      "draws": [
+       {
+        "profile": [123, 796, 458],
+        "targets": [134, 541, 550, 918, 795, 168, 566, 861, 457, 1477],
+        "ranks": [20, 75, 140, 2, 35, 439, 278, 70, 458, 372]
+       },
+       {
+        "profile": [566, 861, 457],
+        "targets": [123, 134, 541, 550, 796, 918, 795, 458, 168, 1477],
+        "ranks": [70, 1, 193, 719, 87, 42, 14, 16, 44, 4484]
+       },
+       {
+        "profile": [541, 795, 457],
+        "targets": [123, 134, 550, 796, 918, 458, 168, 566, 861, 1477],
+        "ranks": [67, 5, 1447, 3669, 495, 70, 36, 187, 2010, 1306]
+       },
+       {
+        "profile": [134, 168, 861],
+        "targets": [123, 541, 550, 796, 918, 795, 458, 566, 457, 1477],
+        "ranks": [17, 207, 350, 150, 89, 18, 9, 112, 24, 3090]
+       },
+       {
+        "profile": [541, 918, 168],
+        "targets": [123, 134, 550, 796, 795, 458, 566, 861, 457, 1477],
+        "ranks": [2, 124, 20, 619, 252, 489, 135, 846, 589, 1670]
+       }
+      ]
+     },
+     "dislikes": {"held_out": 0, "held_out_top24": 0, "targets": [], "liked_only_top24": 0, "liked_only_surfaced": []},
+     "picks": [
+      [478, "Terminator: The Sarah Connor Chronicles"],
+      [158, "Fringe"],
+      [167, "24"],
+      [19, "Supernatural"],
+      [434, "Warehouse 13"],
+      [46, "Forever"],
+      [432, "Dollhouse"],
+      [154, "Sanctuary"],
+      [435, "Smallville"],
+      [1478, "Jeremiah"],
+      [557, "Alias"],
+      [815, "Reaper"],
+      [494, "V"],
+      [584, "Las Vegas"],
+      [1098, "Early Edition"],
+      [1130, "Journeyman"],
+      [800, "Kyle XY"],
+      [1867, "Second Chance"],
+      [483, "The 4400"],
+      [485, "Day Break"],
+      [542, "Eureka"],
+      [1963, "Threshold"],
+      [1063, "Studio 60 on the Sunset Strip"],
+      [1483, "Irwin Allen's Lost in Space"]
+     ],
+     "pick_popularity": 96.62,
+     "adapter_drift": []
+    },
+    "craft_competition": {
+     "loo": {
+      "n": 11,
+      "filtered": 0,
+      "hr10": 0.1818,
+      "hr24": 0.2727,
+      "hr100": 0.3636,
+      "mrr": 0.1317,
+      "median_rank": 125,
+      "unscored": 1,
+      "targets": [
+       {"id": 7520, "name": "The Great Pottery Throw Down", "weight": 1, "rank": 61},
+       {"id": 3909, "name": "The Great British Sewing Bee", "weight": 1, "rank": 735},
+       {"id": 2950, "name": "The Great British Bake Off", "weight": 1, "rank": 297},
+       {"id": 6310, "name": "Portrait Artist of the Year", "weight": 1, "rank": 1},
+       {"id": 9324, "name": "Landscape Artist of the Year", "weight": 0.7, "rank": 3},
+       {"id": 43250, "name": "Interior Design Masters with Alan Carr", "weight": 0.7, "rank": 150},
+       {"id": 40390, "name": "Glow Up: Britain's Next Make-Up Star", "weight": 0.7, "rank": 15},
+       {"id": 37329, "name": "Blown Away", "weight": 0.7, "rank": 262},
+       {"id": 35248, "name": "Making It", "weight": 0.7, "rank": 125},
+       {"id": 48165, "name": "The Big Flower Fight", "weight": 0.7, "rank": 25260, "unscored": true},
+       {"id": 58448, "name": "Handmade: Britain's Best Woodworker", "weight": 0.7, "rank": 112}
+      ]
+     },
+     "few_shot": {
+      "n": 40,
+      "filtered": 0,
+      "hr10": 0.15,
+      "hr24": 0.2,
+      "hr100": 0.4,
+      "mrr": 0.0723,
+      "median_rank": 158,
+      "draws": [
+       {
+        "profile": [43250, 40390, 58448],
+        "targets": [7520, 3909, 2950, 6310, 9324, 37329, 35248, 48165],
+        "ranks": [11, 580, 1641, 9, 40, 111, 65, 2557]
+       },
+       {
+        "profile": [7520, 9324, 58448],
+        "targets": [3909, 2950, 6310, 43250, 40390, 37329, 35248, 48165],
+        "ranks": [156, 903, 1, 227, 5, 99, 158, 25270]
+       },
+       {
+        "profile": [37329, 35248, 48165],
+        "targets": [7520, 3909, 2950, 6310, 9324, 43250, 40390, 58448],
+        "ranks": [280, 11404, 10825, 25, 23, 1608, 10, 1780]
+       },
+       {
+        "profile": [3909, 2950, 48165],
+        "targets": [7520, 6310, 9324, 43250, 40390, 37329, 35248, 58448],
+        "ranks": [1, 8526, 9713, 5588, 9012, 5415, 8815, 70]
+       },
+       {
+        "profile": [43250, 40390, 48165],
+        "targets": [7520, 3909, 2950, 6310, 9324, 37329, 35248, 58448],
+        "ranks": [146, 6680, 6438, 8, 25, 67, 69, 272]
+       }
+      ]
+     },
+     "dislikes": {
+      "held_out": 3,
+      "held_out_top24": 0,
+      "targets": [
+       {"id": 1011, "name": "Vanderpump Rules", "weight": -1, "rank": 14014},
+       {"id": 2900, "name": "Below Deck", "weight": -1, "rank": 25260, "unscored": true},
+       {"id": 521, "name": "The Real Housewives of New Jersey", "weight": -1, "rank": 9256}
+      ],
+      "liked_only_top24": 0,
+      "liked_only_surfaced": []
+     },
+     "picks": [
+      [28251, "Cabins in the Wild with Dick Strawbridge"],
+      [38112, "Celebs on the Farm"],
+      [8540, "Four in a Bed"],
+      [2958, "The Apprentice"],
+      [14078, "Britain's Missing Top Model"],
+      [59604, "RuPaul's Drag Race UK vs The World"],
+      [37842, "The Circle"],
+      [2055, "71 Degrees North"],
+      [41616, "Home Is Where the Art Is"],
+      [25089, "The Big Painting Challenge"],
+      [25268, "Queer Eye"],
+      [15284, "Asia's Next Top Model"],
+      [70184, "Alone"],
+      [5115, "Best Ink"],
+      [7062, "The Glass House"],
+      [5108, "Jim Henson's Creature Shop Challenge"],
+      [7200, "Ellen's Design Challenge"],
+      [26315, "Scruffts: Britain's Favourite Dog"],
+      [11604, "Ultimate Big Brother"],
+      [34761, "The Titan Games"],
+      [6550, "Sunday Brunch"],
+      [52794, "Pooch Perfect"],
+      [2916, "Car Warriors"],
+      [38356, "Race Across the World"]
+     ],
+     "pick_popularity": 77.62,
+     "adapter_drift": []
+    },
+    "science_docs": {
+     "loo": {
+      "n": 11,
+      "filtered": 0,
+      "hr10": 0.3636,
+      "hr24": 0.3636,
+      "hr100": 0.3636,
+      "mrr": 0.2434,
+      "median_rank": 325,
+      "unscored": 1,
+      "targets": [
+       {"id": 1128, "name": "Cosmos", "weight": 1, "rank": 3},
+       {"id": 2481, "name": "How the Universe Works", "weight": 1, "rank": 3767},
+       {"id": 3321, "name": "NOVA", "weight": 1, "rank": 1},
+       {"id": 1605, "name": "Through the Wormhole", "weight": 1, "rank": 1},
+       {"id": 5095, "name": "Wonders of the Universe", "weight": 0.7, "rank": 325},
+       {"id": 42228, "name": "The Planets", "weight": 0.7, "rank": 975},
+       {"id": 33738, "name": "One Strange Rock", "weight": 0.7, "rank": 966},
+       {"id": 379, "name": "Mythbusters", "weight": 0.7, "rank": 3},
+       {"id": 3209, "name": "Brain Games", "weight": 0.7, "rank": 25260, "unscored": true},
+       {"id": 448, "name": "The Universe", "weight": 0.7, "rank": 214},
+       {"id": 5075, "name": "Into the Universe with Stephen Hawking", "weight": 0.7, "rank": 1511}
+      ]
+     },
+     "few_shot": {
+      "n": 40,
+      "filtered": 0,
+      "hr10": 0.25,
+      "hr24": 0.275,
+      "hr100": 0.4,
+      "mrr": 0.1527,
+      "median_rank": 183,
+      "draws": [
+       {
+        "profile": [1128, 379, 448],
+        "targets": [2481, 3321, 1605, 5095, 42228, 33738, 3209, 5075],
+        "ranks": [788, 2, 1, 209, 186, 413, 13706, 189]
+       },
+       {
+        "profile": [3321, 1605, 5095],
+        "targets": [1128, 2481, 42228, 33738, 379, 3209, 448, 5075],
+        "ranks": [1, 575, 139, 6421, 2, 25270, 71, 252]
+       },
+       {
+        "profile": [1128, 42228, 5075],
+        "targets": [2481, 3321, 1605, 5095, 33738, 379, 3209, 448],
+        "ranks": [466, 1, 4, 56, 100, 19, 13977, 127]
+       },
+       {
+        "profile": [1128, 1605, 3209],
+        "targets": [2481, 3321, 5095, 42228, 33738, 379, 448, 5075],
+        "ranks": [1764, 1, 1770, 2146, 5536, 6, 1235, 1820]
+       },
+       {
+        "profile": [2481, 33738, 448],
+        "targets": [1128, 3321, 1605, 5095, 42228, 379, 3209, 5075],
+        "ranks": [93, 151, 6, 1832, 3, 183, 25270, 35]
+       }
+      ]
+     },
+     "dislikes": {
+      "held_out": 3,
+      "held_out_top24": 0,
+      "targets": [
+       {"id": 675, "name": "Ancient Aliens", "weight": -1, "rank": 5885},
+       {"id": 926, "name": "Ghost Adventures", "weight": -1, "rank": 5413},
+       {"id": 1209, "name": "The Curse of Oak Island", "weight": -1, "rank": 6355}
+      ],
+      "liked_only_top24": 0,
+      "liked_only_surfaced": []
+     },
+     "picks": [
+      [77692, "Walking with Dinosaurs"],
+      [4975, "Clash of the Dinosaurs"],
+      [36937, "Drain the Oceans"],
+      [1449, "Life Below Zero°"],
+      [68696, "The Americas"],
+      [768, "Planet Earth"],
+      [22036, "Planet Earth II"],
+      [3330, "Nature"],
+      [40918, "Planet Earth III"],
+      [51927, "Alien Worlds"],
+      [41251, "Lost Treasures of Egypt"],
+      [33952, "Big Cats"],
+      [15139, "The Eighties"],
+      [25853, "Origins of Us"],
+      [3335, "Coast"],
+      [19147, "New Zealand: Earth's Mythical Islands"],
+      [5503, "David Attenborough's First Life"],
+      [1654, "Human Planet"],
+      [46678, "Mysteries of the Deep"],
+      [7103, "The Blue Planet"],
+      [29854, "Great Migrations"],
+      [13668, "Head Rush"],
+      [4660, "Explorer"],
+      [11483, "Lost Land of the Volcano"]
+     ],
+     "pick_popularity": 80.83,
+     "adapter_drift": []
+    },
+    "military_drama": {
+     "loo": {
+      "n": 13,
+      "filtered": 0,
+      "hr10": 0.3077,
+      "hr24": 0.3846,
+      "hr100": 0.6923,
+      "mrr": 0.1466,
+      "median_rank": 29,
+      "unscored": 0,
+      "targets": [
+       {"id": 465, "name": "Band of Brothers", "weight": 1, "rank": 1},
+       {"id": 1240, "name": "Generation Kill", "weight": 1, "rank": 2},
+       {"id": 28160, "name": "SEAL Team", "weight": 1, "rank": 55},
+       {"id": 44388, "name": "Masters of the Air", "weight": 1, "rank": 29},
+       {"id": 790, "name": "The Unit", "weight": 0.7, "rank": 14},
+       {"id": 804, "name": "Strike Back", "weight": 0.7, "rank": 9},
+       {"id": 11311, "name": "SIX", "weight": 0.7, "rank": 28},
+       {"id": 43539, "name": "SAS: Rogue Heroes", "weight": 0.7, "rank": 114},
+       {"id": 4402, "name": "China Beach", "weight": 0.7, "rank": 126},
+       {"id": 1765, "name": "Tour of Duty", "weight": 0.7, "rank": 10},
+       {"id": 581, "name": "JAG", "weight": 0.7, "rank": 615},
+       {"id": 3287, "name": "Over There", "weight": 0.7, "rank": 69},
+       {"id": 9329, "name": "The Long Road Home", "weight": 0.7, "rank": 464}
+      ]
+     },
+     "few_shot": {
+      "n": 50,
+      "filtered": 0,
+      "hr10": 0.3,
+      "hr24": 0.5,
+      "hr100": 0.82,
+      "mrr": 0.1359,
+      "median_rank": 24,
+      "draws": [
+       {
+        "profile": [465, 790, 4402],
+        "targets": [1240, 28160, 44388, 804, 11311, 43539, 1765, 581, 3287, 9329],
+        "ranks": [3, 27, 8, 9, 22, 63, 2, 355, 19, 202]
+       },
+       {
+        "profile": [11311, 1765, 581],
+        "targets": [465, 1240, 28160, 44388, 790, 804, 43539, 4402, 3287, 9329],
+        "ranks": [1, 11, 36, 20, 39, 18, 97, 77, 80, 242]
+       },
+       {
+        "profile": [1240, 44388, 11311],
+        "targets": [465, 28160, 790, 804, 43539, 4402, 1765, 581, 3287, 9329],
+        "ranks": [1, 10, 249, 4, 5, 169, 27, 439, 64, 58]
+       },
+       {
+        "profile": [804, 11311, 9329],
+        "targets": [465, 1240, 28160, 44388, 790, 43539, 4402, 1765, 581, 3287],
+        "ranks": [1, 3, 11, 4, 70, 13, 207, 18, 992, 82]
+       },
+       {
+        "profile": [804, 4402, 1765],
+        "targets": [465, 1240, 28160, 44388, 790, 11311, 43539, 581, 3287, 9329],
+        "ranks": [3, 7, 24, 8, 21, 25, 41, 633, 28, 73]
+       }
+      ]
+     },
+     "dislikes": {"held_out": 0, "held_out_top24": 0, "targets": [], "liked_only_top24": 0, "liked_only_surfaced": []},
+     "picks": [
+      [464, "The Pacific"],
+      [72, "NCIS: Los Angeles"],
+      [1157, "North and South"],
+      [677, "Rome"],
+      [164, "Banshee"],
+      [166, "Battlestar Galactica"],
+      [101, "The Good Wife"],
+      [34685, "The Gilded Age"],
+      [30770, "Chernobyl"],
+      [716, "Spartacus"],
+      [358, "Spartacus: Gods of the Arena"],
+      [2315, "Shark"],
+      [29, "Vikings"],
+      [1462, "Combat!"],
+      [5818, "Space: Above and Beyond"],
+      [1435, "Herman Wouk's The Winds of War"],
+      [32491, "World on Fire"],
+      [618, "Better Call Saul"],
+      [24623, "The Brave"],
+      [475, "Babylon 5"],
+      [60548, "A Small Light"],
+      [748, "Oz"],
+      [1748, "Matlock"],
+      [20651, "Warrior"]
+     ],
+     "pick_popularity": 95.67,
+     "adapter_drift": []
+    },
+    "true_story_drama": {
+     "loo": {
+      "n": 13,
+      "filtered": 0,
+      "hr10": 0.2308,
+      "hr24": 0.3077,
+      "hr100": 0.3077,
+      "mrr": 0.1159,
+      "median_rank": 194,
+      "unscored": 0,
+      "targets": [
+       {"id": 34649, "name": "Dirty John", "weight": 1, "rank": 504},
+       {"id": 41736, "name": "The Dropout", "weight": 1, "rank": 194},
+       {"id": 43875, "name": "Dr. Death", "weight": 1, "rank": 148},
+       {"id": 54439, "name": "The Staircase", "weight": 1, "rank": 16},
+       {"id": 53182, "name": "WeCrashed", "weight": 0.7, "rank": 184},
+       {"id": 49925, "name": "Joe vs Carole", "weight": 0.7, "rank": 1918},
+       {"id": 52202, "name": "Candy", "weight": 0.7, "rank": 1},
+       {"id": 53730, "name": "Gaslit", "weight": 0.7, "rank": 872},
+       {"id": 47477, "name": "The Shrink Next Door", "weight": 0.7, "rank": 1375},
+       {"id": 44818, "name": "Inventing Anna", "weight": 0.7, "rank": 893},
+       {"id": 60196, "name": "Welcome to Chippendales", "weight": 0.7, "rank": 246},
+       {"id": 30659, "name": "The Act", "weight": 0.7, "rank": 6},
+       {"id": 55085, "name": "Love & Death", "weight": 0.7, "rank": 4}
+      ]
+     },
+     "few_shot": {
+      "n": 50,
+      "filtered": 0,
+      "hr10": 0.08,
+      "hr24": 0.16,
+      "hr100": 0.26,
+      "mrr": 0.0469,
+      "median_rank": 486,
+      "draws": [
+       {
+        "profile": [41736, 49925, 55085],
+        "targets": [34649, 43875, 54439, 53182, 52202, 53730, 47477, 44818, 60196, 30659],
+        "ranks": [3198, 90, 41, 646, 1, 622, 2104, 1762, 107, 23]
+       },
+       {
+        "profile": [49925, 53730, 30659],
+        "targets": [34649, 41736, 43875, 54439, 53182, 52202, 47477, 44818, 60196, 55085],
+        "ranks": [486, 51, 307, 16, 657, 14, 3264, 3040, 166, 261]
+       },
+       {
+        "profile": [43875, 53182, 47477],
+        "targets": [34649, 41736, 54439, 49925, 52202, 53730, 44818, 60196, 30659, 55085],
+        "ranks": [1803, 180, 768, 1399, 198, 294, 1520, 779, 1083, 707]
+       },
+       {
+        "profile": [34649, 41736, 52202],
+        "targets": [43875, 54439, 53182, 49925, 53730, 47477, 44818, 60196, 30659, 55085],
+        "ranks": [264, 19, 576, 3851, 1005, 3529, 1222, 176, 2, 9]
+       },
+       {
+        "profile": [34649, 53182, 60196],
+        "targets": [41736, 43875, 54439, 49925, 52202, 53730, 47477, 44818, 30659, 55085],
+        "ranks": [215, 1021, 56, 3479, 63, 1122, 941, 761, 3, 114]
+       }
+      ]
+     },
+     "dislikes": {"held_out": 0, "held_out_top24": 0, "targets": [], "liked_only_top24": 0, "liked_only_surfaced": []},
+     "picks": [
+      [87753, "Furious"],
+      [64641, "Under the Bridge"],
+      [47259, "Duster"],
+      [81110, "Harlan Coben's I Will Find You"],
+      [79127, "M.I.A."],
+      [46213, "Power Book IV: Force"],
+      [78570, "Adolescence"],
+      [83331, "The Westies"],
+      [75030, "Paradise"],
+      [74670, "All Her Fault"],
+      [13417, "Ozark"],
+      [75026, "MobLand"],
+      [527, "The Sopranos"],
+      [68408, "Dept. Q"],
+      [473, "Veronica Mars"],
+      [45500, "Landscapers"],
+      [68752, "High Potential"],
+      [80725, "Task"],
+      [10822, "MINDHUNTER"],
+      [54829, "Culprits"],
+      [175, "House of Cards"],
+      [50907, "DAHMER - Monster: The Jeffrey Dahmer Story"],
+      [299, "Power"],
+      [748, "Oz"]
+     ],
+     "pick_popularity": 98.58,
+     "adapter_drift": []
+    },
+    "eighties_action": {
+     "loo": {
+      "n": 11,
+      "filtered": 0,
+      "hr10": 0.2727,
+      "hr24": 0.3636,
+      "hr100": 0.8182,
+      "mrr": 0.1253,
+      "median_rank": 42,
+      "unscored": 0,
+      "targets": [
+       {"id": 825, "name": "Knight Rider", "weight": 1, "rank": 19},
+       {"id": 1058, "name": "The A-Team", "weight": 1, "rank": 9},
+       {"id": 680, "name": "Airwolf", "weight": 1, "rank": 102},
+       {"id": 821, "name": "MacGyver", "weight": 1, "rank": 1},
+       {"id": 760, "name": "Miami Vice", "weight": 0.7, "rank": 28},
+       {"id": 956, "name": "Magnum, P.I.", "weight": 0.7, "rank": 42},
+       {"id": 8736, "name": "Street Hawk", "weight": 0.7, "rank": 63},
+       {"id": 2031, "name": "The Fall Guy", "weight": 0.7, "rank": 10},
+       {"id": 1499, "name": "Simon & Simon", "weight": 0.7, "rank": 67},
+       {"id": 1496, "name": "Remington Steele", "weight": 0.7, "rank": 80},
+       {"id": 7051, "name": "The Greatest American Hero", "weight": 0.7, "rank": 411}
+      ]
+     },
+     "few_shot": {
+      "n": 40,
+      "filtered": 0,
+      "hr10": 0.2,
+      "hr24": 0.275,
+      "hr100": 0.5,
+      "mrr": 0.1197,
+      "median_rank": 98,
+      "draws": [
+       {
+        "profile": [760, 1499, 1496],
+        "targets": [825, 1058, 680, 821, 956, 8736, 2031, 7051],
+        "ranks": [7, 714, 590, 344, 2, 794, 437, 2999]
+       },
+       {
+        "profile": [1058, 821, 8736],
+        "targets": [825, 680, 760, 956, 2031, 1499, 1496, 7051],
+        "ranks": [16, 57, 110, 1132, 7, 1766, 289, 161]
+       },
+       {
+        "profile": [8736, 2031, 1496],
+        "targets": [825, 1058, 680, 821, 760, 956, 1499, 7051],
+        "ranks": [5, 3, 33, 1, 50, 139, 205, 47]
+       },
+       {
+        "profile": [821, 956, 7051],
+        "targets": [825, 1058, 680, 760, 8736, 2031, 1499, 1496],
+        "ranks": [545, 1, 42, 334, 98, 11, 14, 718]
+       },
+       {
+        "profile": [760, 1496, 7051],
+        "targets": [825, 1058, 680, 821, 956, 8736, 2031, 1499],
+        "ranks": [1, 107, 513, 52, 65, 80, 122, 154]
+       }
+      ]
+     },
+     "dislikes": {
+      "held_out": 3,
+      "held_out_top24": 0,
+      "targets": [
+       {"id": 5511, "name": "MacGyver", "weight": -1, "rank": 57},
+       {"id": 451, "name": "Knight Rider", "weight": -1, "rank": 50},
+       {"id": 32819, "name": "Magnum P.I.", "weight": -1, "rank": 73}
+      ],
+      "liked_only_top24": 0,
+      "liked_only_surfaced": []
+     },
+     "picks": [
+      [13102, "Hardcastle and McCormick"],
+      [31, "Marvel's Agents of S.H.I.E.L.D."],
+      [8733, "Automan"],
+      [8127, "S.W.A.T."],
+      [3741, "Hill Street Blues"],
+      [8864, "The Highwayman"],
+      [4948, "Hart to Hart"],
+      [975, "Batman"],
+      [109, "CSI: Crime Scene Investigation"],
+      [832, "The Rockford Files"],
+      [474, "Charlie's Angels"],
+      [336, "Marvel's Agent Carter"],
+      [490, "Star Trek"],
+      [3620, "Mission: Impossible"],
+      [7150, "The Fugitive"],
+      [3621, "Mission: Impossible"],
+      [53629, "NCIS: Hawaiʻi"],
+      [749, "CSI: NY"],
+      [4467, "T. J. Hooker"],
+      [1309, "Boomtown"],
+      [528, "The Flash"],
+      [4652, "Hunter"],
+      [2, "Person of Interest"],
+      [68, "Castle"]
+     ],
+     "pick_popularity": 92.88,
+     "adapter_drift": []
+    }
+   }
+  },
+  "wide": {
+   "overrides": {"known_min": 0, "year_min": 1900},
+   "settings": {
+    "text": 40,
+    "themes": 35,
+    "genres": 25,
+    "facets": 30,
+    "closest": 0.3,
+    "dislike": 0.35,
+    "language": "all",
+    "type": "all",
+    "status": "all",
+    "year_min": 1900,
+    "runtime_min": 0,
+    "rating_min": 0,
+    "known_min": 0
+   },
+   "summary": {
+    "pool": 79573,
+    "loo": {
+     "n": 244,
+     "filtered": 0,
+     "hr10": 0.3525,
+     "hr24": 0.4385,
+     "hr100": 0.6352,
+     "mrr": 0.1652,
+     "median_rank": 37,
+     "unscored": 2,
+     "filtered_by": {},
+     "persona_hr24": 0.434,
+     "persona_mrr": 0.1642
+    },
+    "few_shot": {
+     "n": 920,
+     "filtered": 0,
+     "hr10": 0.1902,
+     "hr24": 0.3217,
+     "hr100": 0.5533,
+     "mrr": 0.0988,
+     "median_rank": 73,
+     "persona_hr24": 0.3197
+    },
+    "dislikes": {
+     "personas": 7,
+     "held_out": 20,
+     "held_out_top24": 0,
+     "held_out_top24_rate": 0.0,
+     "held_out_median_rank": 12944,
+     "liked_only_top24": 0,
+     "liked_only_top24_rate": 0.0
+    },
+    "picks": {"distinct": 458, "slots": 480, "share_of_slots": 0.9542, "mean_popularity": 81.07},
+    "adapter_drift": 0,
+    "runtime_s": 87.4
+   },
+   "personas": {
+    "hbo_dramedy": {
+     "loo": {
+      "n": 11,
+      "filtered": 0,
+      "hr10": 0.3636,
+      "hr24": 0.3636,
+      "hr100": 0.4545,
+      "mrr": 0.0875,
+      "median_rank": 111,
+      "unscored": 0,
+      "targets": [
+       {"id": 51394, "name": "The White Lotus", "weight": 1, "rank": 7},
+       {"id": 11538, "name": "Barry", "weight": 1, "rank": 5},
+       {"id": 23470, "name": "Succession", "weight": 1, "rank": 1325},
+       {"id": 1269, "name": "Enlightened", "weight": 1, "rank": 3},
+       {"id": 37387, "name": "The Righteous Gemstones", "weight": 0.7, "rank": 229},
+       {"id": 1141, "name": "Eastbound & Down", "weight": 0.7, "rank": 257},
+       {"id": 3080, "name": "Big Little Lies", "weight": 0.7, "rank": 149},
+       {"id": 49313, "name": "Somebody Somewhere", "weight": 0.7, "rank": 111},
+       {"id": 144, "name": "The Comeback", "weight": 0.7, "rank": 91},
+       {"id": 20913, "name": "High Maintenance", "weight": 0.7, "rank": 1593},
+       {"id": 764, "name": "Bored to Death", "weight": 0.7, "rank": 4}
+      ]
+     },
+     "few_shot": {
+      "n": 40,
+      "filtered": 0,
+      "hr10": 0.1,
+      "hr24": 0.25,
+      "hr100": 0.5,
+      "mrr": 0.0471,
+      "median_rank": 96,
+      "draws": [
+       {
+        "profile": [37387, 1141, 764],
+        "targets": [51394, 11538, 23470, 1269, 3080, 49313, 144, 20913],
+        "ranks": [64, 29, 143, 18, 21, 582, 96, 3562]
+       },
+       {
+        "profile": [51394, 11538, 764],
+        "targets": [23470, 1269, 37387, 1141, 3080, 49313, 144, 20913],
+        "ranks": [45, 4, 539, 289, 29, 105, 207, 1881]
+       },
+       {
+        "profile": [51394, 37387, 764],
+        "targets": [11538, 23470, 1269, 1141, 3080, 49313, 144, 20913],
+        "ranks": [21, 27, 3, 221, 19, 240, 186, 2258]
+       },
+       {
+        "profile": [11538, 23470, 144],
+        "targets": [51394, 1269, 37387, 1141, 3080, 49313, 20913, 764],
+        "ranks": [38, 18, 430, 326, 28, 107, 3165, 2]
+       },
+       {
+        "profile": [11538, 3080, 20913],
+        "targets": [51394, 23470, 1269, 37387, 1141, 49313, 144, 764],
+        "ranks": [69, 89, 17, 444, 416, 129, 586, 6]
+       }
+      ]
+     },
+     "dislikes": {
+      "held_out": 3,
+      "held_out_top24": 0,
+      "targets": [
+       {"id": 2091, "name": "When Calls the Heart", "weight": -1, "rank": 6764},
+       {"id": 6744, "name": "Chesapeake Shores", "weight": -1, "rank": 4656},
+       {"id": 1177, "name": "Good Witch", "weight": -1, "rank": 15804}
+      ],
+      "liked_only_top24": 0,
+      "liked_only_surfaced": []
+     },
+     "picks": [
+      [367, "Six Feet Under"],
+      [559, "Entourage"],
+      [1821, "Ballers"],
+      [145, "House of Lies"],
+      [1063, "Studio 60 on the Sunset Strip"],
+      [32, "Fargo"],
+      [537, "30 Rock"],
+      [769, "Better Off Ted"],
+      [342, "Louie"],
+      [517, "Psych"],
+      [160, "Weeds"],
+      [4144, "Imposters"],
+      [28, "Californication"],
+      [18196, "Corporate"],
+      [147, "Nurse Jackie"],
+      [1210, "How to Make It in America"],
+      [762, "The Big C"],
+      [143, "Silicon Valley"],
+      [5967, "Insecure"],
+      [170, "Orange Is the New Black"],
+      [708, "Lilyhammer"],
+      [36673, "After Life"],
+      [598, "Boston Legal"],
+      [797, "Rescue Me"]
+     ],
+     "pick_popularity": 97.08,
+     "adapter_drift": []
+    },
+    "britcom_classic": {
+     "loo": {
+      "n": 13,
+      "filtered": 0,
+      "hr10": 0.5385,
+      "hr24": 0.7692,
+      "hr100": 0.9231,
+      "mrr": 0.1856,
+      "median_rank": 10,
+      "unscored": 0,
+      "targets": [
+       {"id": 577, "name": "Fawlty Towers", "weight": 1, "rank": 6},
+       {"id": 1072, "name": "Blackadder", "weight": 1, "rank": 36},
+       {"id": 2094, "name": "Only Fools and Horses....", "weight": 1, "rank": 1},
+       {"id": 3254, "name": "Father Ted", "weight": 1, "rank": 13},
+       {"id": 368, "name": "Red Dwarf", "weight": 0.7, "rank": 193},
+       {"id": 1151, "name": "The Young Ones", "weight": 0.7, "rank": 10},
+       {"id": 1054, "name": "Absolutely Fabulous", "weight": 0.7, "rank": 2},
+       {"id": 1530, "name": "The Vicar of Dibley", "weight": 0.7, "rank": 6},
+       {"id": 3837, "name": "Keeping Up Appearances", "weight": 0.7, "rank": 16},
+       {"id": 7753, "name": "One Foot in the Grave", "weight": 0.7, "rank": 10},
+       {"id": 1776, "name": "Porridge", "weight": 0.7, "rank": 18},
+       {"id": 1641, "name": "Black Books", "weight": 0.7, "rank": 38},
+       {"id": 539, "name": "The IT Crowd", "weight": 0.7, "rank": 8}
+      ]
+     },
+     "few_shot": {
+      "n": 50,
+      "filtered": 0,
+      "hr10": 0.24,
+      "hr24": 0.48,
+      "hr100": 0.74,
+      "mrr": 0.1296,
+      "median_rank": 31,
+      "draws": [
+       {
+        "profile": [1151, 3837, 7753],
+        "targets": [577, 1072, 2094, 3254, 368, 1054, 1530, 1776, 1641, 539],
+        "ranks": [22, 91, 5, 79, 1329, 8, 6, 35, 202, 100]
+       },
+       {
+        "profile": [1072, 1054, 1776],
+        "targets": [577, 2094, 3254, 368, 1151, 1530, 3837, 7753, 1641, 539],
+        "ranks": [17, 1, 90, 65, 31, 8, 23, 39, 899, 22]
+       },
+       {
+        "profile": [577, 3254, 1641],
+        "targets": [1072, 2094, 368, 1151, 1054, 1530, 3837, 7753, 1776, 539],
+        "ranks": [896, 3, 706, 128, 7, 94, 16, 17, 227, 1]
+       },
+       {
+        "profile": [577, 7753, 539],
+        "targets": [1072, 2094, 3254, 368, 1151, 1054, 1530, 3837, 1776, 1641],
+        "ranks": [420, 2, 11, 1799, 123, 3, 47, 19, 35, 160]
+       },
+       {
+        "profile": [2094, 3254, 1530],
+        "targets": [577, 1072, 368, 1151, 1054, 3837, 7753, 1776, 1641, 539],
+        "ranks": [12, 19, 633, 45, 1, 11, 14, 52, 159, 2]
+       }
+      ]
+     },
+     "dislikes": {"held_out": 0, "held_out_top24": 0, "targets": [], "liked_only_top24": 0, "liked_only_surfaced": []},
+     "picks": [
+      [4529, "Are You Being Served?"],
+      [1065, "Spaced"],
+      [10993, "Waiting for God"],
+      [16058, "dinnerladies"],
+      [4030, "The Royle Family"],
+      [7039, "Open All Hours"],
+      [16531, "You Rang, M'Lord?"],
+      [4726, "Going Straight"],
+      [2323, "Miranda"],
+      [6081, "Bottom"],
+      [6022, "To the Manor Born"],
+      [1598, "A Bit of Fry and Laurie"],
+      [383, "Peep Show"],
+      [1720, "The League of Gentlemen"],
+      [6134, "The Brittas Empire"],
+      [6021, "The Good Life"],
+      [8051, "Some Mothers Do 'Ave 'Em"],
+      [4292, "Game On!"],
+      [1056, "'Allo 'Allo!"],
+      [4708, "Men Behaving Badly"],
+      [3451, "Detectorists"],
+      [9815, "Upstart Crow"],
+      [6492, "Drop the Dead Donkey"],
+      [3951, "Still Open All Hours"]
+     ],
+     "pick_popularity": 91.71,
+     "adapter_drift": []
+    },
+    "australian_drama": {
+     "loo": {
+      "n": 13,
+      "filtered": 0,
+      "hr10": 0.3846,
+      "hr24": 0.3846,
+      "hr100": 0.6154,
+      "mrr": 0.3536,
+      "median_rank": 49,
+      "unscored": 0,
+      "targets": [
+       {"id": 1828, "name": "Wentworth", "weight": 1, "rank": 1},
+       {"id": 33492, "name": "Mystery Road", "weight": 1, "rank": 2},
+       {"id": 3661, "name": "Jack Irish", "weight": 1, "rank": 32},
+       {"id": 3250, "name": "Rake", "weight": 1, "rank": 160},
+       {"id": 4276, "name": "Janet King", "weight": 0.7, "rank": 1},
+       {"id": 30416, "name": "Harrow", "weight": 0.7, "rank": 49},
+       {"id": 2002, "name": "Miss Fisher's Murder Mysteries", "weight": 0.7, "rank": 1},
+       {"id": 1814, "name": "The Doctor Blake Mysteries", "weight": 0.7, "rank": 1},
+       {"id": 6768, "name": "Secret City", "weight": 0.7, "rank": 380},
+       {"id": 3313, "name": "The Code", "weight": 0.7, "rank": 243},
+       {"id": 2477, "name": "Glitch", "weight": 0.7, "rank": 206},
+       {"id": 1808, "name": "Underbelly", "weight": 0.7, "rank": 103},
+       {"id": 1451, "name": "A Place to Call Home", "weight": 0.7, "rank": 57}
+      ]
+     },
+     "few_shot": {
+      "n": 50,
+      "filtered": 0,
+      "hr10": 0.4,
+      "hr24": 0.5,
+      "hr100": 0.68,
+      "mrr": 0.2099,
+      "median_rank": 24,
+      "draws": [
+       {
+        "profile": [4276, 30416, 3313],
+        "targets": [1828, 33492, 3661, 3250, 2002, 1814, 6768, 2477, 1808, 1451],
+        "ranks": [2, 6, 61, 148, 1, 3, 24, 100, 52, 143]
+       },
+       {
+        "profile": [2002, 6768, 1451],
+        "targets": [1828, 33492, 3661, 3250, 4276, 30416, 1814, 3313, 2477, 1808],
+        "ranks": [1, 16, 24, 27, 2, 15, 19, 30, 104, 209]
+       },
+       {
+        "profile": [1828, 3661, 3250],
+        "targets": [33492, 4276, 30416, 2002, 1814, 6768, 3313, 2477, 1808, 1451],
+        "ranks": [9, 2, 5, 1, 3, 499, 367, 180, 85, 4]
+       },
+       {
+        "profile": [3661, 30416, 1814],
+        "targets": [1828, 33492, 3250, 4276, 2002, 6768, 3313, 2477, 1808, 1451],
+        "ranks": [7, 3, 111, 1, 2, 370, 578, 74, 148, 351]
+       },
+       {
+        "profile": [33492, 30416, 1451],
+        "targets": [1828, 3661, 3250, 4276, 2002, 1814, 6768, 3313, 2477, 1808],
+        "ranks": [4, 42, 125, 1, 3, 2, 335, 433, 31, 389]
+       }
+      ]
+     },
+     "dislikes": {"held_out": 0, "held_out_top24": 0, "targets": [], "liked_only_top24": 0, "liked_only_surfaced": []},
+     "picks": [
+      [10822, "MINDHUNTER"],
+      [69, "The Blacklist"],
+      [26868, "Collateral"],
+      [20303, "Doctor Doctor"],
+      [1985, "The Tunnel"],
+      [1758, "DCI Banks"],
+      [28489, "Absentia"],
+      [286, "Happy Valley"],
+      [320, "The Fall"],
+      [13417, "Ozark"],
+      [22904, "Killing Eve"],
+      [1050, "Top of the Lake"],
+      [20055, "Hyde & Seek"],
+      [3493, "Old School"],
+      [46, "Forever"],
+      [25719, "Gone"],
+      [32490, "Bodyguard"],
+      [87, "The Bridge"],
+      [90, "Haven"],
+      [339, "American Crime"],
+      [3371, "Unforgotten"],
+      [2415, "Snowfall"],
+      [404, "Magic City"],
+      [14157, "The Night Of"]
+     ],
+     "pick_popularity": 96.71,
+     "adapter_drift": []
+    },
+    "music_docs": {
+     "loo": {
+      "n": 11,
+      "filtered": 0,
+      "hr10": 0.3636,
+      "hr24": 0.4545,
+      "hr100": 0.8182,
+      "mrr": 0.1937,
+      "median_rank": 39,
+      "unscored": 0,
+      "targets": [
+       {"id": 55965, "name": "The Beatles: Get Back", "weight": 1, "rank": 3},
+       {"id": 17687, "name": "Soundbreaking", "weight": 1, "rank": 135},
+       {"id": 45910, "name": "Laurel Canyon", "weight": 1, "rank": 19},
+       {"id": 42997, "name": "Country Music", "weight": 1, "rank": 1},
+       {"id": 28487, "name": "The Defiant Ones", "weight": 0.7, "rank": 39},
+       {"id": 13796, "name": "Classic Albums", "weight": 0.7, "rank": 93},
+       {"id": 39043, "name": "ReMastered", "weight": 0.7, "rank": 62},
+       {"id": 50616, "name": "Song Exploder", "weight": 0.7, "rank": 418},
+       {"id": 19799, "name": "Jazz", "weight": 0.7, "rank": 3},
+       {"id": 40009, "name": "Punk", "weight": 0.7, "rank": 3},
+       {"id": 23528, "name": "Hip-Hop Evolution", "weight": 0.7, "rank": 64}
+      ]
+     },
+     "few_shot": {
+      "n": 40,
+      "filtered": 0,
+      "hr10": 0.325,
+      "hr24": 0.525,
+      "hr100": 0.975,
+      "mrr": 0.1838,
+      "median_rank": 23,
+      "draws": [
+       {
+        "profile": [45910, 42997, 50616],
+        "targets": [55965, 17687, 28487, 13796, 39043, 19799, 40009, 23528],
+        "ranks": [1, 55, 34, 22, 70, 2, 4, 18]
+       },
+       {
+        "profile": [39043, 50616, 19799],
+        "targets": [55965, 17687, 45910, 42997, 28487, 13796, 40009, 23528],
+        "ranks": [2, 41, 47, 1, 36, 17, 6, 12]
+       },
+       {
+        "profile": [55965, 19799, 40009],
+        "targets": [17687, 45910, 42997, 28487, 13796, 39043, 50616, 23528],
+        "ranks": [23, 7, 1, 44, 25, 90, 131, 57]
+       },
+       {
+        "profile": [13796, 50616, 40009],
+        "targets": [55965, 17687, 45910, 42997, 28487, 39043, 19799, 23528],
+        "ranks": [3, 29, 30, 7, 77, 68, 15, 10]
+       },
+       {
+        "profile": [42997, 40009, 23528],
+        "targets": [55965, 17687, 45910, 28487, 13796, 39043, 50616, 19799],
+        "ranks": [3, 27, 18, 43, 23, 58, 45, 1]
+       }
+      ]
+     },
+     "dislikes": {
+      "held_out": 3,
+      "held_out_top24": 0,
+      "targets": [
+       {"id": 288, "name": "American Idol", "weight": -1, "rank": 20806},
+       {"id": 70, "name": "The Voice", "weight": -1, "rank": 18559},
+       {"id": 696, "name": "The X Factor", "weight": -1, "rank": 12944}
+      ],
+      "liked_only_top24": 0,
+      "liked_only_surfaced": []
+     },
+     "picks": [
+      [34082, "The Toys That Made Us"],
+      [63257, "Trainwreck: Woodstock '99"],
+      [61353, "Benjamin Franklin"],
+      [58097, "1968 The Global Revolt"],
+      [15139, "The Eighties"],
+      [35746, "Elvis Presley: The Searcher"],
+      [83602, "Billy Joel: And So It Goes"],
+      [19800, "Thomas Jefferson"],
+      [29823, "The History of Rock 'n' Roll"],
+      [6849, "American Epic"],
+      [25729, "History Detectives"],
+      [19532, "The Men Who Built America"],
+      [2165, "The Seventies"],
+      [25886, "Long Strange Trip"],
+      [29055, "America in Color"],
+      [13440, "Digging for Britain"],
+      [36937, "Drain the Oceans"],
+      [1639, "Andrew Marr's History of the World"],
+      [1693, "Masters of Money"],
+      [53586, "Ancient Unexplained Files"],
+      [11138, "America: The Story of Us"],
+      [15816, "In the Footsteps of Alexander the Great"],
+      [25874, "American Playboy: The Hugh Hefner Story"],
+      [70086, "Ladies First: A Story of Women in Hip-Hop"]
+     ],
+     "pick_popularity": 72.42,
+     "adapter_drift": []
+    },
+    "mecha_anime": {
+     "loo": {
+      "n": 13,
+      "filtered": 0,
+      "hr10": 0.3077,
+      "hr24": 0.4615,
+      "hr100": 0.6154,
+      "mrr": 0.1115,
+      "median_rank": 37,
+      "unscored": 0,
+      "targets": [
+       {"id": 5242, "name": "Mobile Suit Gundam", "weight": 1, "rank": 23},
+       {"id": 5421, "name": "Tengen Toppa Gurren-Lagann", "weight": 1, "rank": 11},
+       {"id": 1925, "name": "Neon Genesis Evangelion", "weight": 1, "rank": 4},
+       {"id": 5168, "name": "Mobile Suit Gundam: Tekketsu no Orphans", "weight": 1, "rank": 4},
+       {"id": 5241, "name": "Mobile Suit Gundam Wing", "weight": 0.7, "rank": 131},
+       {"id": 61323, "name": "Mobile Suit Gundam: The Witch From Mercury", "weight": 0.7, "rank": 1944},
+       {"id": 36395, "name": "Macross", "weight": 0.7, "rank": 169},
+       {"id": 5285, "name": "Eureka Seven", "weight": 0.7, "rank": 2},
+       {"id": 8235, "name": "Full Metal Panic!", "weight": 0.7, "rank": 48},
+       {"id": 53961, "name": "86", "weight": 0.7, "rank": 4},
+       {"id": 33921, "name": "Darling in the FranXX", "weight": 0.7, "rank": 511},
+       {"id": 1441, "name": "Aldnoah.Zero", "weight": 0.7, "rank": 795},
+       {"id": 9050, "name": "The Big O", "weight": 0.7, "rank": 37}
+      ]
+     },
+     "few_shot": {
+      "n": 50,
+      "filtered": 0,
+      "hr10": 0.16,
+      "hr24": 0.38,
+      "hr100": 0.62,
+      "mrr": 0.063,
+      "median_rank": 52,
+      "draws": [
+       {
+        "profile": [5168, 36395, 9050],
+        "targets": [5242, 5421, 1925, 5241, 61323, 5285, 8235, 53961, 33921, 1441],
+        "ranks": [5, 138, 47, 35, 888, 2, 36, 11, 343, 97]
+       },
+       {
+        "profile": [5421, 1925, 5241],
+        "targets": [5242, 5168, 61323, 36395, 5285, 8235, 53961, 33921, 1441, 9050],
+        "ranks": [20, 69, 1985, 320, 18, 94, 13, 421, 619, 34]
+       },
+       {
+        "profile": [5241, 5285, 1441],
+        "targets": [5242, 5421, 1925, 5168, 61323, 36395, 8235, 53961, 33921, 9050],
+        "ranks": [9, 200, 13, 3, 883, 11, 215, 16, 368, 52]
+       },
+       {
+        "profile": [5285, 8235, 53961],
+        "targets": [5242, 5421, 1925, 5168, 5241, 61323, 36395, 33921, 1441, 9050],
+        "ranks": [103, 18, 16, 3, 210, 2145, 53, 259, 256, 10]
+       },
+       {
+        "profile": [5168, 5241, 53961],
+        "targets": [5242, 5421, 1925, 61323, 36395, 5285, 8235, 33921, 1441, 9050],
+        "ranks": [3, 297, 16, 547, 21, 5, 59, 190, 90, 31]
+       }
+      ]
+     },
+     "dislikes": {"held_out": 0, "held_out_top24": 0, "targets": [], "liked_only_top24": 0, "liked_only_surfaced": []},
+     "picks": [
+      [1926, "Ima, Soko ni Iru Boku"],
+      [27438, "Space Pirate Captain Harlock"],
+      [6278, "Robotech"],
+      [1750, "Black Butler"],
+      [2483, "Darker Than Black"],
+      [35212, "Golden Kamuy"],
+      [4306, "Trigun"],
+      [8238, "Uchuu Senkan Yamato 2199"],
+      [5476, "Bishoujo Senshi Sailor Moon"],
+      [16151, "Katei Kyoshi Hitman Reborn!"],
+      [5363, "After War Gundam X"],
+      [69696, "A Returner's Magic Should Be Special"],
+      [2061, "Elfen Lied"],
+      [8232, "Black Lagoon"],
+      [1935, "Ghost in the Shell: Stand Alone Complex"],
+      [15172, "Yu-Gi-Oh! 5D's"],
+      [43968, "Azur Lane"],
+      [8524, "The Seven Deadly Sins"],
+      [4150, "Gintama"],
+      [4268, "Accel World"],
+      [33562, "Beatless"],
+      [12654, "Basilisk"],
+      [50528, "Our Last Crusade or the Rise of a New World"],
+      [5247, "Mobile Fighter G Gundam"]
+     ],
+     "pick_popularity": 87.62,
+     "adapter_drift": []
+    },
+    "isekai_anime": {
+     "loo": {
+      "n": 13,
+      "filtered": 0,
+      "hr10": 0.4615,
+      "hr24": 0.5385,
+      "hr100": 0.7692,
+      "mrr": 0.1487,
+      "median_rank": 13,
+      "unscored": 0,
+      "targets": [
+       {"id": 14459, "name": "Re:Zero kara Hajimeru Isekai Seikatsu", "weight": 1, "rank": 7},
+       {"id": 38390, "name": "That Time I Got Reincarnated as a Slime", "weight": 1, "rank": 1},
+       {"id": 52279, "name": "Mushoku Tensei: Jobless Reincarnation", "weight": 1, "rank": 7},
+       {"id": 10772, "name": "Kono Subarashii Sekai ni Shukufuku wo!", "weight": 1, "rank": 13},
+       {"id": 4270, "name": "Overlord", "weight": 0.7, "rank": 6},
+       {"id": 2059, "name": "Sword Art Online", "weight": 0.7, "rank": 6},
+       {"id": 40140, "name": "The Rising of the Shield Hero", "weight": 0.7, "rank": 77},
+       {"id": 5470, "name": "No Game No Life", "weight": 0.7, "rank": 184},
+       {"id": 4095, "name": "Log Horizon", "weight": 0.7, "rank": 436},
+       {"id": 22852, "name": "Youjo Senki: Saga of Tanya the Evil", "weight": 0.7, "rank": 6},
+       {"id": 43540, "name": "Ascendance of a Bookworm: I'll Do Anything to Become a Librarian!", "weight": 0.7, "rank": 35},
+       {"id": 63236, "name": "The Eminence in Shadow", "weight": 0.7, "rank": 47},
+       {"id": 6306, "name": "Hataraku Maou-sama!", "weight": 0.7, "rank": 2016}
+      ]
+     },
+     "few_shot": {
+      "n": 50,
+      "filtered": 0,
+      "hr10": 0.3,
+      "hr24": 0.46,
+      "hr100": 0.72,
+      "mrr": 0.1289,
+      "median_rank": 26,
+      "draws": [
+       {
+        "profile": [52279, 4095, 22852],
+        "targets": [14459, 38390, 10772, 4270, 2059, 40140, 5470, 43540, 63236, 6306],
+        "ranks": [6, 1, 16, 7, 20, 39, 108, 65, 34, 1798]
+       },
+       {
+        "profile": [14459, 52279, 40140],
+        "targets": [38390, 10772, 4270, 2059, 5470, 4095, 22852, 43540, 63236, 6306],
+        "ranks": [1, 19, 10, 15, 345, 605, 6, 67, 49, 1927]
+       },
+       {
+        "profile": [14459, 10772, 22852],
+        "targets": [38390, 52279, 4270, 2059, 40140, 5470, 4095, 43540, 63236, 6306],
+        "ranks": [1, 8, 9, 6, 88, 582, 608, 26, 55, 1444]
+       },
+       {
+        "profile": [5470, 4095, 22852],
+        "targets": [14459, 38390, 52279, 10772, 4270, 2059, 40140, 43540, 63236, 6306],
+        "ranks": [4, 21, 61, 167, 19, 25, 30, 273, 9, 2336]
+       },
+       {
+        "profile": [52279, 22852, 43540],
+        "targets": [14459, 38390, 10772, 4270, 2059, 40140, 5470, 4095, 63236, 6306],
+        "ranks": [7, 1, 11, 9, 12, 51, 327, 700, 40, 1721]
+       }
+      ]
+     },
+     "dislikes": {"held_out": 0, "held_out_top24": 0, "targets": [], "liked_only_top24": 0, "liked_only_surfaced": []},
+     "picks": [
+      [8287, "JoJo's Bizarre Adventure"],
+      [919, "Attack on Titan"],
+      [90197, "Daemons of the Shadow Realm"],
+      [64632, "Solo Leveling"],
+      [1536, "Hunter x Hunter"],
+      [1964, "Kiseijuu: Sei no Kakuritsu"],
+      [60258, "Skeleton Knight in Another World"],
+      [41469, "Demon Slayer"],
+      [80316, "Witch Hat Atelier"],
+      [69956, "Frieren: Beyond Journey's End"],
+      [2368, "Dragon Ball Super"],
+      [38610, "Goblin Slayer"],
+      [80375, "Bleach: Thousand-Year Blood War"],
+      [25696, "Sword Oratoria: Dungeon ni Deai wo Motomeru no wa Machigatteiru Darou ka Gaiden"],
+      [2103, "Dragon Ball Z"],
+      [2102, "Dragon Ball"],
+      [92492, "Black Torch"],
+      [42155, "Vinland Saga"],
+      [89106, "Hell Mode: The Hardcore Gamer Dominates in Another World with Garbage Balancing"],
+      [35212, "Golden Kamuy"],
+      [2069, "Fairy Tail"],
+      [2037, "Akame ga Kill!"],
+      [42372, "Dr. Stone"],
+      [42647, "Arifureta: From Commonplace to World's Strongest"]
+     ],
+     "pick_popularity": 95.62,
+     "adapter_drift": []
+    },
+    "chinese_historical": {
+     "loo": {
+      "n": 13,
+      "filtered": 0,
+      "hr10": 0.1538,
+      "hr24": 0.3077,
+      "hr100": 0.6154,
+      "mrr": 0.173,
+      "median_rank": 40,
+      "unscored": 0,
+      "targets": [
+       {"id": 7135, "name": "Nirvana in Fire", "weight": 1, "rank": 16},
+       {"id": 38735, "name": "Story of Yanxi Palace", "weight": 1, "rank": 17},
+       {"id": 3339, "name": "Empresses in the Palace", "weight": 1, "rank": 131},
+       {"id": 40201, "name": "The Story of Ming Lan", "weight": 1, "rank": 47},
+       {"id": 42806, "name": "The Untamed", "weight": 1, "rank": 31},
+       {"id": 39165, "name": "Ruyi's Royal Love in the Palace", "weight": 0.7, "rank": 1},
+       {"id": 62994, "name": "Love Like the Galaxy", "weight": 0.7, "rank": 1472},
+       {"id": 45302, "name": "Joy of Life", "weight": 0.7, "rank": 1},
+       {"id": 28950, "name": "Princess Agents", "weight": 0.7, "rank": 28},
+       {"id": 46037, "name": "Legend of Fei", "weight": 0.7, "rank": 443},
+       {"id": 53806, "name": "Word of Honor", "weight": 0.7, "rank": 582},
+       {"id": 25125, "name": "Eternal Love", "weight": 0.7, "rank": 885},
+       {"id": 63443, "name": "Love Between Fairy and Devil", "weight": 0.7, "rank": 40}
+      ]
+     },
+     "few_shot": {
+      "n": 50,
+      "filtered": 0,
+      "hr10": 0.06,
+      "hr24": 0.16,
+      "hr100": 0.36,
+      "mrr": 0.035,
+      "median_rank": 128,
+      "draws": [
+       {
+        "profile": [38735, 40201, 53806],
+        "targets": [7135, 3339, 42806, 39165, 62994, 45302, 28950, 46037, 25125, 63443],
+        "ranks": [32, 60, 192, 20, 2824, 12, 15, 265, 833, 203]
+       },
+       {
+        "profile": [3339, 40201, 53806],
+        "targets": [7135, 38735, 42806, 39165, 62994, 45302, 28950, 46037, 25125, 63443],
+        "ranks": [123, 105, 251, 11, 1625, 34, 128, 117, 298, 454]
+       },
+       {
+        "profile": [7135, 38735, 28950],
+        "targets": [3339, 40201, 42806, 39165, 62994, 45302, 46037, 53806, 25125, 63443],
+        "ranks": [51, 37, 420, 43, 4359, 2, 442, 1023, 226, 116]
+       },
+       {
+        "profile": [39165, 46037, 25125],
+        "targets": [7135, 38735, 3339, 40201, 42806, 62994, 45302, 28950, 53806, 63443],
+        "ranks": [124, 362, 74, 15, 343, 1318, 5, 123, 912, 851]
+       },
+       {
+        "profile": [7135, 28950, 53806],
+        "targets": [38735, 3339, 40201, 42806, 39165, 62994, 45302, 46037, 25125, 63443],
+        "ranks": [32, 147, 40, 206, 87, 3428, 3, 195, 284, 166]
+       }
+      ]
+     },
+     "dislikes": {"held_out": 0, "held_out_top24": 0, "targets": [], "liked_only_top24": 0, "liked_only_surfaced": []},
+     "picks": [
+      [41071, "Good Bye My Princess"],
+      [46807, "Legend of Lu Zhen"],
+      [15800, "Scarlet Heart"],
+      [31274, "The King's Woman"],
+      [47912, "The Wolf"],
+      [56958, "One and Only"],
+      [38832, "Granting You a Dreamlike Life"],
+      [40023, "The King of Blaze"],
+      [38445, "The Rise of Phoenixes"],
+      [26764, "Palace"],
+      [47964, "Love is All"],
+      [23580, "The Legend of Chusen"],
+      [42103, "Listening Snow Tower"],
+      [39011, "Fights Break Sphere"],
+      [45971, "Eternal Love of Dream"],
+      [75589, "Filter"],
+      [12355, "The Virtuous Queen of Han"],
+      [23996, "Singing All Along"],
+      [51738, "The Legend of Xiao Chuo"],
+      [47364, "Heavenly Sword and Dragon Slaying Saber"],
+      [25906, "The Glory of Tang Dynasty"],
+      [25103, "Schemes of a Beauty"],
+      [74786, "The Double"],
+      [61215, "Red Sorghum"]
+     ],
+     "pick_popularity": 49.25,
+     "adapter_drift": []
+    },
+    "hindi_serials": {
+     "loo": {
+      "n": 11,
+      "filtered": 0,
+      "hr10": 0.3636,
+      "hr24": 0.5455,
+      "hr100": 0.8182,
+      "mrr": 0.2317,
+      "median_rank": 18,
+      "unscored": 0,
+      "targets": [
+       {"id": 55393, "name": "Yeh Rishta Kya Kehlata Hai", "weight": 1, "rank": 6},
+       {"id": 7684, "name": "Kumkum Bhagya", "weight": 1, "rank": 1},
+       {"id": 48320, "name": "Saath Nibhaana Saathiya", "weight": 1, "rank": 43},
+       {"id": 25501, "name": "Ishqbaaz", "weight": 1, "rank": 49},
+       {"id": 14286, "name": "Iss Pyaar Ko Kya Naam Doon...Ek Baar Phir", "weight": 0.7, "rank": 18},
+       {"id": 24906, "name": "Uttaran", "weight": 0.7, "rank": 62},
+       {"id": 25848, "name": "Qubool Hai", "weight": 0.7, "rank": 16},
+       {"id": 54636, "name": "Ek Hazaaron Mein Meri Behna Hai", "weight": 0.7, "rank": 1},
+       {"id": 22268, "name": "Balika Vadhu", "weight": 0.7, "rank": 5},
+       {"id": 60072, "name": "Kasautii Zindagii Kay", "weight": 0.7, "rank": 272},
+       {"id": 18303, "name": "Taarak Mehta Ka Ooltah Chashmah", "weight": 0.7, "rank": 1769}
+      ]
+     },
+     "few_shot": {
+      "n": 40,
+      "filtered": 0,
+      "hr10": 0.35,
+      "hr24": 0.475,
+      "hr100": 0.775,
+      "mrr": 0.1541,
+      "median_rank": 29,
+      "draws": [
+       {
+        "profile": [48320, 14286, 22268],
+        "targets": [55393, 7684, 25501, 24906, 25848, 54636, 60072, 18303],
+        "ranks": [8, 4, 69, 56, 68, 1, 3205, 288]
+       },
+       {
+        "profile": [14286, 25848, 18303],
+        "targets": [55393, 7684, 48320, 25501, 24906, 54636, 22268, 60072],
+        "ranks": [29, 1, 79, 62, 113, 3, 30, 4699]
+       },
+       {
+        "profile": [54636, 22268, 18303],
+        "targets": [55393, 7684, 48320, 25501, 14286, 24906, 25848, 60072],
+        "ranks": [8, 2, 21, 58, 18, 38, 109, 1194]
+       },
+       {
+        "profile": [55393, 24906, 18303],
+        "targets": [7684, 48320, 25501, 14286, 25848, 54636, 22268, 60072],
+        "ranks": [11, 10, 68, 4, 224, 9, 6, 3206]
+       },
+       {
+        "profile": [14286, 54636, 18303],
+        "targets": [55393, 7684, 48320, 25501, 24906, 25848, 22268, 60072],
+        "ranks": [8, 1, 22, 16, 84, 30, 2, 959]
+       }
+      ]
+     },
+     "dislikes": {"held_out": 0, "held_out_top24": 0, "targets": [], "liked_only_top24": 0, "liked_only_surfaced": []},
+     "picks": [
+      [6996, "Swaragini"],
+      [51364, "Yeh Hai Chahatein"],
+      [26773, "Jamai Raja"],
+      [29606, "Dil Boley Oberoi"],
+      [82027, "Aap Ke Aa Jane Se"],
+      [90385, "Seher hone ko hai"],
+      [43264, "Hum: I'm Because of Us"],
+      [51764, "Karrle Tu Bhi Mohabbat"],
+      [40472, "Internet Wala Love"],
+      [74816, "Choti Bahu – Sindoor Bin Suhagan"],
+      [78455, "Iss Pyaar Ko Kya Naam Doon? 3"],
+      [66095, "Aisi Deewangi Dekhi Nahi Kahi"],
+      [42033, "Gathbandhan"],
+      [51765, "Kehne Ko Humsafar Hain"],
+      [51598, "Hum Tum and Them"],
+      [53311, "Bahu Begum"],
+      [78461, "Iss Pyaar Ko Kya Naam Doon?"],
+      [22732, "Meri Saasu Maa"],
+      [44988, "Yehh Jadu Hai Jinn Ka"],
+      [76872, "Dil Diyaan Gallaan"],
+      [32827, "Diya Aur Baati Hum"],
+      [41938, "Dil Toh Happy Hai Ji"],
+      [44989, "Broken But Beautiful"],
+      [89873, "Maryada: Lekin Kab Tak?"]
+     ],
+     "pick_popularity": 36.46,
+     "adapter_drift": []
+    },
+    "latam_crime": {
+     "loo": {
+      "n": 11,
+      "filtered": 0,
+      "hr10": 0.0909,
+      "hr24": 0.1818,
+      "hr100": 0.4545,
+      "mrr": 0.0461,
+      "median_rank": 145,
+      "unscored": 0,
+      "targets": [
+       {"id": 37787, "name": "Narcos: Mexico", "weight": 1, "rank": 157},
+       {"id": 17742, "name": "Pablo Escobar: El Patrón del Mal", "weight": 1, "rank": 1071},
+       {"id": 22557, "name": "El Marginal", "weight": 1, "rank": 145},
+       {"id": 6804, "name": "Historia de un Clan", "weight": 1, "rank": 12},
+       {"id": 26955, "name": "El Chapo", "weight": 0.7, "rank": 3},
+       {"id": 38272, "name": "Distrito Salvaje", "weight": 0.7, "rank": 51},
+       {"id": 18267, "name": "Sr. Avila", "weight": 0.7, "rank": 147},
+       {"id": 34437, "name": "O Mecanismo", "weight": 0.7, "rank": 42},
+       {"id": 54915, "name": "Dom", "weight": 0.7, "rank": 77},
+       {"id": 44901, "name": "Monzón: A Knockout Blow", "weight": 0.7, "rank": 156},
+       {"id": 55561, "name": "Somos.", "weight": 0.7, "rank": 147}
+      ]
+     },
+     "few_shot": {
+      "n": 40,
+      "filtered": 0,
+      "hr10": 0.025,
+      "hr24": 0.075,
+      "hr100": 0.175,
+      "mrr": 0.0121,
+      "median_rank": 219,
+      "draws": [
+       {
+        "profile": [26955, 44901, 55561],
+        "targets": [37787, 17742, 22557, 6804, 38272, 18267, 34437, 54915],
+        "ranks": [128, 159, 227, 5, 162, 905, 3201, 1406]
+       },
+       {
+        "profile": [17742, 26955, 55561],
+        "targets": [37787, 22557, 6804, 38272, 18267, 34437, 54915, 44901],
+        "ranks": [369, 981, 37, 219, 2428, 4284, 1593, 642]
+       },
+       {
+        "profile": [34437, 54915, 44901],
+        "targets": [37787, 17742, 22557, 6804, 26955, 38272, 18267, 55561],
+        "ranks": [1463, 3783, 110, 21, 141, 194, 545, 171]
+       },
+       {
+        "profile": [17742, 22557, 34437],
+        "targets": [37787, 6804, 26955, 38272, 18267, 54915, 44901, 55561],
+        "ranks": [942, 63, 53, 112, 210, 288, 191, 939]
+       },
+       {
+        "profile": [26955, 38272, 55561],
+        "targets": [37787, 17742, 22557, 6804, 18267, 34437, 54915, 44901],
+        "ranks": [98, 153, 382, 19, 152, 1162, 1532, 317]
+       }
+      ]
+     },
+     "dislikes": {
+      "held_out": 3,
+      "held_out_top24": 0,
+      "targets": [
+       {"id": 30295, "name": "Destilando Amor", "weight": -1, "rank": 11224},
+       {"id": 12262, "name": "Triunfo del Amor", "weight": -1, "rank": 1625},
+       {"id": 29905, "name": "Lo que la vida me robó", "weight": -1, "rank": 1655}
+      ],
+      "liked_only_top24": 0,
+      "liked_only_surfaced": []
+     },
+     "picks": [
+      [38377, "Pacto de Sangue"],
+      [49383, "La Venganza de Analía"],
+      [25084, "Ingobernable"],
+      [48367, "Preso No. 1"],
+      [7016, "La Reina del Sur"],
+      [1226, "Profugos"],
+      [2705, "Narcos"],
+      [40618, "Metástasis"],
+      [30731, "El Jardín de Bronce"],
+      [30723, "Alias J.J."],
+      [39908, "La reina del flow"],
+      [48520, "La chica que limpia"],
+      [56199, "El cártel de los Sapos: El origen"],
+      [23098, "El Chema"],
+      [46947, "Aruanas"],
+      [41258, "Palabra de Ladrón"],
+      [45942, "Okupas"],
+      [51965, "Falsa Identidad"],
+      [47501, "Operación Pacífico"],
+      [88514, "Yiya"],
+      [40742, "Irmandade"],
+      [90043, "Dona Beja"],
+      [37608, "1 Contra Todos"],
+      [37868, "Hache"]
+     ],
+     "pick_popularity": 69.0,
+     "adapter_drift": []
+    },
+    "nordic_comedy": {
+     "loo": {
+      "n": 13,
+      "filtered": 0,
+      "hr10": 0.6923,
+      "hr24": 0.6923,
+      "hr100": 0.6923,
+      "mrr": 0.2872,
+      "median_rank": 6,
+      "unscored": 0,
+      "targets": [
+       {"id": 7317, "name": "Klovn", "weight": 1, "rank": 1},
+       {"id": 20974, "name": "Vikingane", "weight": 1, "rank": 10},
+       {"id": 708, "name": "Lilyhammer", "weight": 1, "rank": 681},
+       {"id": 6125, "name": "Dag", "weight": 1, "rank": 2},
+       {"id": 4251, "name": "Rita", "weight": 0.7, "rank": 3},
+       {"id": 25500, "name": "Bonusfamiljen", "weight": 0.7, "rank": 2},
+       {"id": 47113, "name": "Rådebank", "weight": 0.7, "rank": 565},
+       {"id": 7597, "name": "Side om side", "weight": 0.7, "rank": 8},
+       {"id": 43956, "name": "Exit", "weight": 0.7, "rank": 2},
+       {"id": 8333, "name": "Hellfjord", "weight": 0.7, "rank": 248},
+       {"id": 12773, "name": "Kvarteret Skatan", "weight": 0.7, "rank": 6},
+       {"id": 4605, "name": "Solsidan", "weight": 0.7, "rank": 2},
+       {"id": 41489, "name": "Hjem til jul", "weight": 0.7, "rank": 514}
+      ]
+     },
+     "few_shot": {
+      "n": 50,
+      "filtered": 0,
+      "hr10": 0.16,
+      "hr24": 0.22,
+      "hr100": 0.42,
+      "mrr": 0.0909,
+      "median_rank": 238,
+      "draws": [
+       {
+        "profile": [6125, 4251, 25500],
+        "targets": [7317, 20974, 708, 47113, 7597, 43956, 8333, 12773, 4605, 41489],
+        "ranks": [7, 58, 704, 394, 139, 16, 1074, 15, 1, 326]
+       },
+       {
+        "profile": [8333, 12773, 41489],
+        "targets": [7317, 20974, 708, 6125, 4251, 25500, 47113, 7597, 43956, 4605],
+        "ranks": [4056, 331, 17180, 83, 15902, 3341, 974, 215, 84, 53]
+       },
+       {
+        "profile": [4251, 43956, 4605],
+        "targets": [7317, 20974, 708, 6125, 25500, 47113, 7597, 8333, 12773, 41489],
+        "ranks": [16, 46, 281, 9, 1, 368, 81, 962, 69, 423]
+       },
+       {
+        "profile": [7317, 708, 41489],
+        "targets": [20974, 6125, 4251, 25500, 47113, 7597, 43956, 8333, 12773, 4605],
+        "ranks": [63, 8, 1, 1929, 916, 87, 4, 238, 1644, 510]
+       },
+       {
+        "profile": [708, 7597, 43956],
+        "targets": [7317, 20974, 6125, 4251, 25500, 47113, 8333, 12773, 4605, 41489],
+        "ranks": [8076, 33, 2, 3082, 1273, 260, 151, 14911, 623, 322]
+       }
+      ]
+     },
+     "dislikes": {"held_out": 0, "held_out_top24": 0, "targets": [], "liked_only_top24": 0, "liked_only_surfaced": []},
+     "picks": [
+      [45301, "Hjerte til hjerte"],
+      [32188, "Etaten"],
+      [40296, "Magnus"],
+      [35271, "Roeng"],
+      [32658, "Nårje"],
+      [34396, "Hit for Hit"],
+      [26435, "LEIF & BILLY"],
+      [32180, "Borettslaget"],
+      [39221, "Laxbralla"],
+      [12514, "Sjit Happens"],
+      [41729, "Samurai Sikkerhet"],
+      [48472, "Pørni"],
+      [41724, "Tett på tre"],
+      [34076, "Nesten voksen"],
+      [64880, "Lille Lørdag"],
+      [32193, "Fleksnes Fataliteter"],
+      [1392, "Welcome to Sweden"],
+      [36591, "Fallet"],
+      [38732, "Parterapi"],
+      [36136, "Sjölyckan"],
+      [32222, "Bot og bedring"],
+      [28435, "Manden med de gyldne ører"],
+      [24300, "Presten"],
+      [30488, "Våra vänners liv"]
+     ],
+     "pick_popularity": 51.21,
+     "adapter_drift": []
+    },
+    "supernatural_teen": {
+     "loo": {
+      "n": 13,
+      "filtered": 0,
+      "hr10": 0.4615,
+      "hr24": 0.6923,
+      "hr100": 0.9231,
+      "mrr": 0.1769,
+      "median_rank": 16,
+      "unscored": 0,
+      "targets": [
+       {"id": 176, "name": "Teen Wolf", "weight": 1, "rank": 16},
+       {"id": 2158, "name": "Shadowhunters: The Mortal Instruments", "weight": 1, "rank": 9},
+       {"id": 62, "name": "The Originals", "weight": 1, "rank": 1},
+       {"id": 32649, "name": "Chilling Adventures of Sabrina", "weight": 1, "rank": 4},
+       {"id": 53647, "name": "Wednesday", "weight": 1, "rank": 21},
+       {"id": 36708, "name": "Legacies", "weight": 0.7, "rank": 2},
+       {"id": 834, "name": "The Secret Circle", "weight": 0.7, "rank": 35},
+       {"id": 24267, "name": "Charmed", "weight": 0.7, "rank": 47},
+       {"id": 43917, "name": "Fate: The Winx Saga", "weight": 0.7, "rank": 60},
+       {"id": 37031, "name": "Motherland: Fort Salem", "weight": 0.7, "rank": 9},
+       {"id": 36218, "name": "The Order", "weight": 0.7, "rank": 10},
+       {"id": 51305, "name": "First Kill", "weight": 0.7, "rank": 200},
+       {"id": 37883, "name": "Locke & Key", "weight": 0.7, "rank": 22}
+      ]
+     },
+     "few_shot": {
+      "n": 50,
+      "filtered": 0,
+      "hr10": 0.28,
+      "hr24": 0.48,
+      "hr100": 0.88,
+      "mrr": 0.1305,
+      "median_rank": 29,
+      "draws": [
+       {
+        "profile": [62, 43917, 37031],
+        "targets": [176, 2158, 32649, 53647, 36708, 834, 24267, 36218, 51305, 37883],
+        "ranks": [17, 8, 19, 93, 2, 42, 30, 15, 159, 44]
+       },
+       {
+        "profile": [36708, 834, 36218],
+        "targets": [176, 2158, 62, 32649, 53647, 24267, 43917, 37031, 51305, 37883],
+        "ranks": [7, 19, 1, 9, 90, 24, 101, 107, 103, 126]
+       },
+       {
+        "profile": [24267, 36218, 51305],
+        "targets": [176, 2158, 62, 32649, 53647, 36708, 834, 43917, 37031, 37883],
+        "ranks": [40, 29, 1, 5, 20, 4, 42, 81, 35, 13]
+       },
+       {
+        "profile": [43917, 51305, 37883],
+        "targets": [176, 2158, 62, 32649, 53647, 36708, 834, 24267, 37031, 36218],
+        "ranks": [83, 35, 18, 2, 29, 32, 97, 73, 58, 3]
+       },
+       {
+        "profile": [176, 36708, 37883],
+        "targets": [2158, 62, 32649, 53647, 834, 24267, 43917, 37031, 36218, 51305],
+        "ranks": [24, 1, 10, 9, 100, 20, 55, 73, 7, 227]
+       }
+      ]
+     },
+     "dislikes": {"held_out": 0, "held_out_top24": 0, "targets": [], "liked_only_top24": 0, "liked_only_surfaced": []},
+     "picks": [
+      [63, "The Vampire Diaries"],
+      [1859, "Lucifer"],
+      [19, "Supernatural"],
+      [54127, "Let the Right One In"],
+      [506, "Charmed"],
+      [90, "Haven"],
+      [28276, "The Witcher"],
+      [815, "Reaper"],
+      [29191, "The Haunting of Hill House"],
+      [13701, "The Exorcist"],
+      [3144, "Preacher"],
+      [218, "Being Human"],
+      [2993, "Stranger Things"],
+      [111, "Once Upon a Time"],
+      [49673, "The Haunting of Bly Manor"],
+      [10, "Grimm"],
+      [22, "True Blood"],
+      [31339, "A Discovery of Witches"],
+      [6767, "Wynonna Earp"],
+      [428, "Angel"],
+      [46, "Forever"],
+      [57400, "Dead Boy Detectives"],
+      [56093, "The Winchesters"],
+      [15, "Constantine"]
+     ],
+     "pick_popularity": 98.25,
+     "adapter_drift": []
+    },
+    "courtroom_tv": {
+     "loo": {
+      "n": 12,
+      "filtered": 0,
+      "hr10": 0.5,
+      "hr24": 0.5,
+      "hr100": 0.6667,
+      "mrr": 0.14,
+      "median_rank": 10,
+      "unscored": 0,
+      "targets": [
+       {"id": 7364, "name": "Judge Judy", "weight": 1, "rank": 8},
+       {"id": 57806, "name": "Judy Justice", "weight": 1, "rank": 9},
+       {"id": 38930, "name": "Judge Mathis", "weight": 1, "rank": 1},
+       {"id": 10691, "name": "The People's Court", "weight": 1, "rank": 641},
+       {"id": 73909, "name": "Divorce Court", "weight": 0.7, "rank": 8},
+       {"id": 68196, "name": "Tribunal Justice", "weight": 0.7, "rank": 6},
+       {"id": 59226, "name": "Judge Steve Harvey", "weight": 0.7, "rank": 631},
+       {"id": 6279, "name": "Judge Rinder", "weight": 0.7, "rank": 30},
+       {"id": 44682, "name": "Court Cam", "weight": 0.7, "rank": 4408},
+       {"id": 41901, "name": "Lauren Lake's Paternity Court", "weight": 0.7, "rank": 10},
+       {"id": 6062, "name": "Maury", "weight": 0.7, "rank": 200},
+       {"id": 6067, "name": "The Steve Wilkos Show", "weight": 0.7, "rank": 99}
+      ]
+     },
+     "few_shot": {
+      "n": 45,
+      "filtered": 0,
+      "hr10": 0.0889,
+      "hr24": 0.2889,
+      "hr100": 0.4889,
+      "mrr": 0.0472,
+      "median_rank": 139,
+      "draws": [
+       {
+        "profile": [73909, 59226, 6279],
+        "targets": [7364, 57806, 38930, 10691, 68196, 44682, 41901, 6062, 6067],
+        "ranks": [12, 50, 2, 2164, 76, 10330, 23, 40021, 44127]
+       },
+       {
+        "profile": [10691, 73909, 59226],
+        "targets": [7364, 57806, 38930, 68196, 6279, 44682, 41901, 6062, 6067],
+        "ranks": [11, 30, 6, 410, 24, 12300, 21, 36656, 46027]
+       },
+       {
+        "profile": [57806, 59226, 44682],
+        "targets": [7364, 38930, 10691, 73909, 68196, 6279, 41901, 6062, 6067],
+        "ranks": [15, 21, 5304, 34, 59, 43, 139, 40215, 41496]
+       },
+       {
+        "profile": [68196, 59226, 6067],
+        "targets": [7364, 57806, 38930, 10691, 73909, 6279, 44682, 41901, 6062],
+        "ranks": [7039, 7341, 3, 26258, 4000, 1761, 27199, 998, 1623]
+       },
+       {
+        "profile": [57806, 38930, 6062],
+        "targets": [7364, 10691, 73909, 68196, 59226, 6279, 44682, 41901, 6067],
+        "ranks": [16, 6615, 12, 3, 9849, 37, 8851, 47, 38]
+       }
+      ]
+     },
+     "dislikes": {"held_out": 0, "held_out_top24": 0, "targets": [], "liked_only_top24": 0, "liked_only_surfaced": []},
+     "picks": [
+      [73910, "Justice for All with Cristina Perez"],
+      [68065, "Mathis Court with Judge Mathis"],
+      [46596, "Chrissy's Court"],
+      [63011, "We the People with Judge Lauren Lake"],
+      [15066, "Justice with Judge Mablean"],
+      [71209, "Equal Justice with Judge Eboni K. Williams"],
+      [68031, "Justice for the People with Judge Milian"],
+      [18082, "Judge Faith"],
+      [81521, "Ozark Law"],
+      [73911, "Supreme Justice with Judge Karen"],
+      [73907, "America's Court with Judge Ross"],
+      [5603, "Crime & Punishment"],
+      [89182, "Desert Law"],
+      [63519, "Court Night Live"],
+      [34874, "Grace vs. Abrams"],
+      [38263, "The Law Firm"],
+      [2341, "Justice with Judge Jeanine"],
+      [17495, "RBT"],
+      [1314, "Cold Justice"],
+      [10182, "Stossel"],
+      [1872, "Cold Justice: Sex Crimes"],
+      [52482, "Night Court"],
+      [907, "The Practice"],
+      [34570, "Judge Romesh"]
+     ],
+     "pick_popularity": 62.25,
+     "adapter_drift": []
+    },
+    "political_satire": {
+     "loo": {
+      "n": 12,
+      "filtered": 0,
+      "hr10": 0.25,
+      "hr24": 0.25,
+      "hr100": 0.4167,
+      "mrr": 0.133,
+      "median_rank": 121,
+      "unscored": 0,
+      "targets": [
+       {"id": 1667, "name": "The Thick of It", "weight": 1, "rank": 170},
+       {"id": 142, "name": "Veep", "weight": 1, "rank": 166},
+       {"id": 1606, "name": "Yes Minister", "weight": 1, "rank": 1},
+       {"id": 6647, "name": "Yes, Prime Minister", "weight": 1, "rank": 6},
+       {"id": 63267, "name": "The Regime", "weight": 0.7, "rank": 2248},
+       {"id": 332, "name": "Alpha House", "weight": 0.7, "rank": 1742},
+       {"id": 4792, "name": "Spitting Image", "weight": 0.7, "rank": 121},
+       {"id": 2576, "name": "Brass Eye", "weight": 0.7, "rank": 3723},
+       {"id": 32263, "name": "Avenue 5", "weight": 0.7, "rank": 2317},
+       {"id": 2362, "name": "Twenty Twelve", "weight": 0.7, "rank": 27},
+       {"id": 3375, "name": "W1A", "weight": 0.7, "rank": 27},
+       {"id": 13357, "name": "The New Statesman", "weight": 0.7, "rank": 3}
+      ]
+     },
+     "few_shot": {
+      "n": 45,
+      "filtered": 0,
+      "hr10": 0.1556,
+      "hr24": 0.3556,
+      "hr100": 0.5778,
+      "mrr": 0.1093,
+      "median_rank": 65,
+      "draws": [
+       {
+        "profile": [63267, 4792, 32263],
+        "targets": [1667, 142, 1606, 6647, 332, 2576, 2362, 3375, 13357],
+        "ranks": [4, 12, 1, 3, 23, 4280, 263, 247, 20]
+       },
+       {
+        "profile": [332, 2576, 32263],
+        "targets": [1667, 142, 1606, 6647, 63267, 4792, 2362, 3375, 13357],
+        "ranks": [19, 24, 42, 84, 519, 1504, 1161, 1145, 1255]
+       },
+       {
+        "profile": [1606, 63267, 2576],
+        "targets": [1667, 142, 6647, 332, 4792, 32263, 2362, 3375, 13357],
+        "ranks": [50, 92, 1, 265, 68, 2917, 64, 65, 18]
+       },
+       {
+        "profile": [6647, 3375, 13357],
+        "targets": [1667, 142, 1606, 63267, 332, 4792, 2576, 32263, 2362],
+        "ranks": [65, 597, 1, 1541, 761, 33, 3534, 7722, 13]
+       },
+       {
+        "profile": [332, 32263, 2362],
+        "targets": [1667, 142, 1606, 6647, 63267, 4792, 2576, 3375, 13357],
+        "ranks": [19, 17, 2, 28, 303, 813, 4648, 10, 428]
+       }
+      ]
+     },
+     "dislikes": {
+      "held_out": 2,
+      "held_out_top24": 0,
+      "targets": [
+       {"id": 8167, "name": "Designated Survivor", "weight": -1, "rank": 14380},
+       {"id": 48, "name": "Madam Secretary", "weight": -1, "rank": 11123}
+      ],
+      "liked_only_top24": 0,
+      "liked_only_surfaced": []
+     },
+     "picks": [
+      [1151, "The Young Ones"],
+      [7622, "Hi-de-Hi!"],
+      [1720, "The League of Gentlemen"],
+      [6492, "Drop the Dead Donkey"],
+      [1598, "A Bit of Fry and Laurie"],
+      [4292, "Game On!"],
+      [2343, "Rev."],
+      [3719, "Toast of London"],
+      [1292, "The Office"],
+      [6081, "Bottom"],
+      [13344, "Filthy Rich & Catflap"],
+      [16058, "dinnerladies"],
+      [1065, "Spaced"],
+      [9815, "Upstart Crow"],
+      [539, "The IT Crowd"],
+      [16531, "You Rang, M'Lord?"],
+      [4030, "The Royle Family"],
+      [7043, "Saxondale"],
+      [2779, "The Fast Show"],
+      [2356, "Up the Women"],
+      [7040, "Sorry!"],
+      [1530, "The Vicar of Dibley"],
+      [2094, "Only Fools and Horses...."],
+      [11094, "The Comic Strip Presents..."]
+     ],
+     "pick_popularity": 90.54,
+     "adapter_drift": []
+    },
+    "cult_adult_animation": {
+     "loo": {
+      "n": 13,
+      "filtered": 0,
+      "hr10": 0.3077,
+      "hr24": 0.4615,
+      "hr100": 0.6923,
+      "mrr": 0.0838,
+      "median_rank": 29,
+      "unscored": 0,
+      "targets": [
+       {"id": 304, "name": "The Venture Bros.", "weight": 1, "rank": 4},
+       {"id": 382, "name": "Aqua Teen Hunger Force", "weight": 1, "rank": 14},
+       {"id": 1810, "name": "Harvey Birdman, Attorney at Law", "weight": 1, "rank": 17},
+       {"id": 47182, "name": "Smiling Friends", "weight": 1, "rank": 3},
+       {"id": 6239, "name": "Space Ghost Coast to Coast", "weight": 0.7, "rank": 148},
+       {"id": 7366, "name": "Sealab 2021", "weight": 0.7, "rank": 53},
+       {"id": 1000, "name": "Squidbillies", "weight": 0.7, "rank": 29},
+       {"id": 7760, "name": "Home Movies", "weight": 0.7, "rank": 349},
+       {"id": 1960, "name": "Moral Orel", "weight": 0.7, "rank": 8907},
+       {"id": 2579, "name": "Frisky Dingo", "weight": 0.7, "rank": 6},
+       {"id": 928, "name": "Metalocalypse", "weight": 0.7, "rank": 39},
+       {"id": 2554, "name": "Daria", "weight": 0.7, "rank": 9},
+       {"id": 910, "name": "Beavis and Butt-Head", "weight": 0.7, "rank": 111}
+      ]
+     },
+     "few_shot": {
+      "n": 50,
+      "filtered": 0,
+      "hr10": 0.1,
+      "hr24": 0.18,
+      "hr100": 0.5,
+      "mrr": 0.0626,
+      "median_rank": 98,
+      "draws": [
+       {
+        "profile": [47182, 1000, 7760],
+        "targets": [304, 382, 1810, 6239, 7366, 1960, 2579, 928, 2554, 910],
+        "ranks": [42, 155, 67, 41, 529, 43906, 46, 31, 98, 696]
+       },
+       {
+        "profile": [304, 1000, 1960],
+        "targets": [382, 1810, 47182, 6239, 7366, 7760, 2579, 928, 2554, 910],
+        "ranks": [2, 4033, 127, 1963, 1513, 1707, 54, 16, 116, 1183]
+       },
+       {
+        "profile": [382, 1000, 928],
+        "targets": [304, 1810, 47182, 6239, 7366, 7760, 1960, 2579, 2554, 910],
+        "ranks": [1, 1274, 19, 322, 578, 1231, 41375, 36, 819, 241]
+       },
+       {
+        "profile": [6239, 928, 910],
+        "targets": [304, 382, 1810, 47182, 7366, 1000, 7760, 1960, 2579, 2554],
+        "ranks": [11, 33, 150, 3, 587, 69, 1417, 40239, 45, 28]
+       },
+       {
+        "profile": [47182, 7366, 2554],
+        "targets": [304, 382, 1810, 6239, 1000, 7760, 1960, 2579, 928, 910],
+        "ranks": [12, 182, 10, 57, 144, 95, 26725, 2, 36, 84]
+       }
+      ]
+     },
+     "dislikes": {"held_out": 0, "held_out_top24": 0, "targets": [], "liked_only_top24": 0, "liked_only_surfaced": []},
+     "picks": [
+      [686, "Robot Chicken"],
+      [112, "South Park"],
+      [713, "SpongeBob SquarePants"],
+      [216, "Rick and Morty"],
+      [6240, "Lucy, The Daughter of the Devil"],
+      [115, "King of the Hill"],
+      [315, "Archer"],
+      [912, "The Boondocks"],
+      [538, "Futurama"],
+      [4221, "The Head"],
+      [16574, "The Garfield Show"],
+      [215, "American Dad!"],
+      [3135, "Mike Tyson Mysteries"],
+      [86177, "President Curtis"],
+      [84, "Family Guy"],
+      [41933, "Inside Job"],
+      [1615, "Steven Universe"],
+      [3134, "The Amazing World of Gumball"],
+      [69327, "Common Side Effects"],
+      [6234, "The Brak Show"],
+      [30170, "Soul Quest Overdrive"],
+      [5041, "The Angry Beavers"],
+      [5022, "The Drinky Crow Show"],
+      [27080, "3-South"]
+     ],
+     "pick_popularity": 89.67,
+     "adapter_drift": []
+    },
+    "network_2000s": {
+     "loo": {
+      "n": 13,
+      "filtered": 0,
+      "hr10": 0.3846,
+      "hr24": 0.3846,
+      "hr100": 0.6154,
+      "mrr": 0.1717,
+      "median_rank": 44,
+      "unscored": 0,
+      "targets": [
+       {"id": 123, "name": "Lost", "weight": 1, "rank": 6},
+       {"id": 134, "name": "Heroes", "weight": 1, "rank": 1},
+       {"id": 541, "name": "Prison Break", "weight": 1, "rank": 163},
+       {"id": 550, "name": "Desperate Housewives", "weight": 1, "rank": 139},
+       {"id": 796, "name": "Ugly Betty", "weight": 0.7, "rank": 130},
+       {"id": 918, "name": "Pushing Daisies", "weight": 0.7, "rank": 2},
+       {"id": 795, "name": "Jericho", "weight": 0.7, "rank": 3},
+       {"id": 458, "name": "FlashForward", "weight": 0.7, "rank": 7},
+       {"id": 168, "name": "Chuck", "weight": 0.7, "rank": 36},
+       {"id": 566, "name": "Ghost Whisperer", "weight": 0.7, "rank": 44},
+       {"id": 861, "name": "Dirty Sexy Money", "weight": 0.7, "rank": 189},
+       {"id": 457, "name": "The Event", "weight": 0.7, "rank": 95},
+       {"id": 1477, "name": "Invasion", "weight": 0.7, "rank": 441}
+      ]
+     },
+     "few_shot": {
+      "n": 50,
+      "filtered": 0,
+      "hr10": 0.1,
+      "hr24": 0.24,
+      "hr100": 0.46,
+      "mrr": 0.0596,
+      "median_rank": 125,
+      "draws": [
+       {
+        "profile": [123, 796, 458],
+        "targets": [134, 541, 550, 918, 795, 168, 566, 861, 457, 1477],
+        "ranks": [20, 75, 140, 2, 35, 444, 279, 70, 463, 374]
+       },
+       {
+        "profile": [566, 861, 457],
+        "targets": [123, 134, 541, 550, 796, 918, 795, 458, 168, 1477],
+        "ranks": [70, 1, 194, 747, 87, 42, 14, 16, 44, 7627]
+       },
+       {
+        "profile": [541, 795, 457],
+        "targets": [123, 134, 550, 796, 918, 458, 168, 566, 861, 1477],
+        "ranks": [68, 5, 1551, 5197, 501, 71, 36, 188, 2279, 1379]
+       },
+       {
+        "profile": [134, 168, 861],
+        "targets": [123, 541, 550, 796, 918, 795, 458, 566, 457, 1477],
+        "ranks": [17, 208, 352, 151, 90, 18, 9, 113, 24, 4075]
+       },
+       {
+        "profile": [541, 918, 168],
+        "targets": [123, 134, 550, 796, 795, 458, 566, 861, 457, 1477],
+        "ranks": [2, 125, 20, 628, 254, 495, 136, 867, 597, 1882]
+       }
+      ]
+     },
+     "dislikes": {"held_out": 0, "held_out_top24": 0, "targets": [], "liked_only_top24": 0, "liked_only_surfaced": []},
+     "picks": [
+      [478, "Terminator: The Sarah Connor Chronicles"],
+      [158, "Fringe"],
+      [167, "24"],
+      [19, "Supernatural"],
+      [434, "Warehouse 13"],
+      [46, "Forever"],
+      [432, "Dollhouse"],
+      [154, "Sanctuary"],
+      [435, "Smallville"],
+      [1478, "Jeremiah"],
+      [557, "Alias"],
+      [815, "Reaper"],
+      [494, "V"],
+      [584, "Las Vegas"],
+      [1098, "Early Edition"],
+      [1130, "Journeyman"],
+      [800, "Kyle XY"],
+      [1867, "Second Chance"],
+      [483, "The 4400"],
+      [485, "Day Break"],
+      [542, "Eureka"],
+      [1963, "Threshold"],
+      [1063, "Studio 60 on the Sunset Strip"],
+      [1483, "Irwin Allen's Lost in Space"]
+     ],
+     "pick_popularity": 96.62,
+     "adapter_drift": []
+    },
+    "craft_competition": {
+     "loo": {
+      "n": 11,
+      "filtered": 0,
+      "hr10": 0.1818,
+      "hr24": 0.2727,
+      "hr100": 0.3636,
+      "mrr": 0.1291,
+      "median_rank": 192,
+      "unscored": 1,
+      "targets": [
+       {"id": 7520, "name": "The Great Pottery Throw Down", "weight": 1, "rank": 85},
+       {"id": 3909, "name": "The Great British Sewing Bee", "weight": 1, "rank": 1595},
+       {"id": 2950, "name": "The Great British Bake Off", "weight": 1, "rank": 590},
+       {"id": 6310, "name": "Portrait Artist of the Year", "weight": 1, "rank": 1},
+       {"id": 9324, "name": "Landscape Artist of the Year", "weight": 0.7, "rank": 3},
+       {"id": 43250, "name": "Interior Design Masters with Alan Carr", "weight": 0.7, "rank": 237},
+       {"id": 40390, "name": "Glow Up: Britain's Next Make-Up Star", "weight": 0.7, "rank": 18},
+       {"id": 37329, "name": "Blown Away", "weight": 0.7, "rank": 525},
+       {"id": 35248, "name": "Making It", "weight": 0.7, "rank": 192},
+       {"id": 48165, "name": "The Big Flower Fight", "weight": 0.7, "rank": 79560, "unscored": true},
+       {"id": 58448, "name": "Handmade: Britain's Best Woodworker", "weight": 0.7, "rank": 160}
+      ]
+     },
+     "few_shot": {
+      "n": 40,
+      "filtered": 0,
+      "hr10": 0.125,
+      "hr24": 0.175,
+      "hr100": 0.275,
+      "mrr": 0.0679,
+      "median_rank": 291,
+      "draws": [
+       {
+        "profile": [43250, 40390, 58448],
+        "targets": [7520, 3909, 2950, 6310, 9324, 37329, 35248, 48165],
+        "ranks": [12, 1333, 4299, 10, 65, 180, 114, 7027]
+       },
+       {
+        "profile": [7520, 9324, 58448],
+        "targets": [3909, 2950, 6310, 43250, 40390, 37329, 35248, 48165],
+        "ranks": [288, 2183, 1, 457, 6, 177, 291, 79570]
+       },
+       {
+        "profile": [37329, 35248, 48165],
+        "targets": [7520, 3909, 2950, 6310, 9324, 43250, 40390, 58448],
+        "ranks": [606, 30721, 28999, 32, 30, 3867, 13, 4467]
+       },
+       {
+        "profile": [3909, 2950, 48165],
+        "targets": [7520, 6310, 9324, 43250, 40390, 37329, 35248, 58448],
+        "ranks": [1, 24082, 26940, 15036, 25085, 14477, 24664, 144]
+       },
+       {
+        "profile": [43250, 40390, 48165],
+        "targets": [7520, 3909, 2950, 6310, 9324, 37329, 35248, 58448],
+        "ranks": [279, 17498, 16827, 9, 29, 117, 123, 509]
+       }
+      ]
+     },
+     "dislikes": {
+      "held_out": 3,
+      "held_out_top24": 0,
+      "targets": [
+       {"id": 1011, "name": "Vanderpump Rules", "weight": -1, "rank": 38898},
+       {"id": 2900, "name": "Below Deck", "weight": -1, "rank": 79560, "unscored": true},
+       {"id": 521, "name": "The Real Housewives of New Jersey", "weight": -1, "rank": 23698}
+      ],
+      "liked_only_top24": 0,
+      "liked_only_surfaced": []
+     },
+     "picks": [
+      [28251, "Cabins in the Wild with Dick Strawbridge"],
+      [38112, "Celebs on the Farm"],
+      [8540, "Four in a Bed"],
+      [2958, "The Apprentice"],
+      [14078, "Britain's Missing Top Model"],
+      [59604, "RuPaul's Drag Race UK vs The World"],
+      [37842, "The Circle"],
+      [2055, "71 Degrees North"],
+      [41616, "Home Is Where the Art Is"],
+      [25089, "The Big Painting Challenge"],
+      [25268, "Queer Eye"],
+      [15284, "Asia's Next Top Model"],
+      [70184, "Alone"],
+      [20812, "Master of Photography"],
+      [5115, "Best Ink"],
+      [29278, "Hair"],
+      [7062, "The Glass House"],
+      [26230, "Comic Relief Does Fame Academy"],
+      [5108, "Jim Henson's Creature Shop Challenge"],
+      [7200, "Ellen's Design Challenge"],
+      [26315, "Scruffts: Britain's Favourite Dog"],
+      [13434, "Great British Hairdresser"],
+      [38803, "Battlefish"],
+      [11604, "Ultimate Big Brother"]
+     ],
+     "pick_popularity": 69.92,
+     "adapter_drift": []
+    },
+    "science_docs": {
+     "loo": {
+      "n": 11,
+      "filtered": 0,
+      "hr10": 0.3636,
+      "hr24": 0.3636,
+      "hr100": 0.3636,
+      "mrr": 0.2429,
+      "median_rank": 626,
+      "unscored": 1,
+      "targets": [
+       {"id": 1128, "name": "Cosmos", "weight": 1, "rank": 3},
+       {"id": 2481, "name": "How the Universe Works", "weight": 1, "rank": 8882},
+       {"id": 3321, "name": "NOVA", "weight": 1, "rank": 1},
+       {"id": 1605, "name": "Through the Wormhole", "weight": 1, "rank": 1},
+       {"id": 5095, "name": "Wonders of the Universe", "weight": 0.7, "rank": 626},
+       {"id": 42228, "name": "The Planets", "weight": 0.7, "rank": 2255},
+       {"id": 33738, "name": "One Strange Rock", "weight": 0.7, "rank": 2165},
+       {"id": 379, "name": "Mythbusters", "weight": 0.7, "rank": 3},
+       {"id": 3209, "name": "Brain Games", "weight": 0.7, "rank": 79560, "unscored": true},
+       {"id": 448, "name": "The Universe", "weight": 0.7, "rank": 419},
+       {"id": 5075, "name": "Into the Universe with Stephen Hawking", "weight": 0.7, "rank": 3576}
+      ]
+     },
+     "few_shot": {
+      "n": 40,
+      "filtered": 0,
+      "hr10": 0.25,
+      "hr24": 0.275,
+      "hr100": 0.325,
+      "mrr": 0.1487,
+      "median_rank": 259,
+      "draws": [
+       {
+        "profile": [1128, 379, 448],
+        "targets": [2481, 3321, 1605, 5095, 42228, 33738, 3209, 5075],
+        "ranks": [1865, 2, 1, 391, 351, 902, 36747, 355]
+       },
+       {
+        "profile": [3321, 1605, 5095],
+        "targets": [1128, 2481, 42228, 33738, 379, 3209, 448, 5075],
+        "ranks": [1, 1380, 259, 16573, 2, 79570, 108, 531]
+       },
+       {
+        "profile": [1128, 42228, 5075],
+        "targets": [2481, 3321, 1605, 5095, 33738, 379, 3209, 448],
+        "ranks": [1044, 1, 4, 81, 169, 21, 38654, 224]
+       },
+       {
+        "profile": [1128, 1605, 3209],
+        "targets": [2481, 3321, 5095, 42228, 33738, 379, 448, 5075],
+        "ranks": [3983, 1, 3997, 4938, 14291, 6, 2745, 4125]
+       },
+       {
+        "profile": [2481, 33738, 448],
+        "targets": [1128, 3321, 1605, 5095, 42228, 379, 3209, 5075],
+        "ranks": [136, 212, 7, 3400, 4, 254, 79570, 45]
+       }
+      ]
+     },
+     "dislikes": {
+      "held_out": 3,
+      "held_out_top24": 0,
+      "targets": [
+       {"id": 675, "name": "Ancient Aliens", "weight": -1, "rank": 14942},
+       {"id": 926, "name": "Ghost Adventures", "weight": -1, "rank": 12958},
+       {"id": 1209, "name": "The Curse of Oak Island", "weight": -1, "rank": 15045}
+      ],
+      "liked_only_top24": 0,
+      "liked_only_surfaced": []
+     },
+     "picks": [
+      [77692, "Walking with Dinosaurs"],
+      [4975, "Clash of the Dinosaurs"],
+      [36937, "Drain the Oceans"],
+      [1449, "Life Below Zero°"],
+      [5066, "Life on Earth"],
+      [68696, "The Americas"],
+      [768, "Planet Earth"],
+      [22036, "Planet Earth II"],
+      [3330, "Nature"],
+      [40918, "Planet Earth III"],
+      [51927, "Alien Worlds"],
+      [41251, "Lost Treasures of Egypt"],
+      [33952, "Big Cats"],
+      [15139, "The Eighties"],
+      [25853, "Origins of Us"],
+      [3335, "Coast"],
+      [19147, "New Zealand: Earth's Mythical Islands"],
+      [5503, "David Attenborough's First Life"],
+      [1654, "Human Planet"],
+      [46678, "Mysteries of the Deep"],
+      [7103, "The Blue Planet"],
+      [29854, "Great Migrations"],
+      [13668, "Head Rush"],
+      [4660, "Explorer"]
+     ],
+     "pick_popularity": 80.0,
+     "adapter_drift": []
+    },
+    "military_drama": {
+     "loo": {
+      "n": 13,
+      "filtered": 0,
+      "hr10": 0.3077,
+      "hr24": 0.3846,
+      "hr100": 0.6923,
+      "mrr": 0.1466,
+      "median_rank": 29,
+      "unscored": 0,
+      "targets": [
+       {"id": 465, "name": "Band of Brothers", "weight": 1, "rank": 1},
+       {"id": 1240, "name": "Generation Kill", "weight": 1, "rank": 2},
+       {"id": 28160, "name": "SEAL Team", "weight": 1, "rank": 55},
+       {"id": 44388, "name": "Masters of the Air", "weight": 1, "rank": 29},
+       {"id": 790, "name": "The Unit", "weight": 0.7, "rank": 14},
+       {"id": 804, "name": "Strike Back", "weight": 0.7, "rank": 9},
+       {"id": 11311, "name": "SIX", "weight": 0.7, "rank": 28},
+       {"id": 43539, "name": "SAS: Rogue Heroes", "weight": 0.7, "rank": 116},
+       {"id": 4402, "name": "China Beach", "weight": 0.7, "rank": 126},
+       {"id": 1765, "name": "Tour of Duty", "weight": 0.7, "rank": 10},
+       {"id": 581, "name": "JAG", "weight": 0.7, "rank": 647},
+       {"id": 3287, "name": "Over There", "weight": 0.7, "rank": 69},
+       {"id": 9329, "name": "The Long Road Home", "weight": 0.7, "rank": 482}
+      ]
+     },
+     "few_shot": {
+      "n": 50,
+      "filtered": 0,
+      "hr10": 0.3,
+      "hr24": 0.44,
+      "hr100": 0.78,
+      "mrr": 0.1342,
+      "median_rank": 27,
+      "draws": [
+       {
+        "profile": [465, 790, 4402],
+        "targets": [1240, 28160, 44388, 804, 11311, 43539, 1765, 581, 3287, 9329],
+        "ranks": [3, 32, 8, 9, 26, 77, 2, 456, 20, 248]
+       },
+       {
+        "profile": [11311, 1765, 581],
+        "targets": [465, 1240, 28160, 44388, 790, 804, 43539, 4402, 3287, 9329],
+        "ranks": [1, 11, 38, 20, 41, 18, 111, 84, 88, 294]
+       },
+       {
+        "profile": [1240, 44388, 11311],
+        "targets": [465, 28160, 790, 804, 43539, 4402, 1765, 581, 3287, 9329],
+        "ranks": [1, 10, 335, 4, 5, 202, 27, 636, 73, 67]
+       },
+       {
+        "profile": [804, 11311, 9329],
+        "targets": [465, 1240, 28160, 44388, 790, 43539, 4402, 1765, 581, 3287],
+        "ranks": [1, 3, 11, 4, 83, 13, 277, 18, 1635, 96]
+       },
+       {
+        "profile": [804, 4402, 1765],
+        "targets": [465, 1240, 28160, 44388, 790, 11311, 43539, 581, 3287, 9329],
+        "ranks": [3, 7, 30, 8, 27, 31, 55, 1025, 35, 105]
+       }
+      ]
+     },
+     "dislikes": {"held_out": 0, "held_out_top24": 0, "targets": [], "liked_only_top24": 0, "liked_only_surfaced": []},
+     "picks": [
+      [464, "The Pacific"],
+      [72, "NCIS: Los Angeles"],
+      [1157, "North and South"],
+      [677, "Rome"],
+      [164, "Banshee"],
+      [166, "Battlestar Galactica"],
+      [101, "The Good Wife"],
+      [34685, "The Gilded Age"],
+      [30770, "Chernobyl"],
+      [716, "Spartacus"],
+      [358, "Spartacus: Gods of the Arena"],
+      [2315, "Shark"],
+      [29, "Vikings"],
+      [1462, "Combat!"],
+      [5818, "Space: Above and Beyond"],
+      [1435, "Herman Wouk's The Winds of War"],
+      [32491, "World on Fire"],
+      [618, "Better Call Saul"],
+      [24623, "The Brave"],
+      [475, "Babylon 5"],
+      [60548, "A Small Light"],
+      [748, "Oz"],
+      [1748, "Matlock"],
+      [20651, "Warrior"]
+     ],
+     "pick_popularity": 95.67,
+     "adapter_drift": []
+    },
+    "true_story_drama": {
+     "loo": {
+      "n": 13,
+      "filtered": 0,
+      "hr10": 0.2308,
+      "hr24": 0.3077,
+      "hr100": 0.3077,
+      "mrr": 0.1158,
+      "median_rank": 194,
+      "unscored": 0,
+      "targets": [
+       {"id": 34649, "name": "Dirty John", "weight": 1, "rank": 507},
+       {"id": 41736, "name": "The Dropout", "weight": 1, "rank": 194},
+       {"id": 43875, "name": "Dr. Death", "weight": 1, "rank": 148},
+       {"id": 54439, "name": "The Staircase", "weight": 1, "rank": 16},
+       {"id": 53182, "name": "WeCrashed", "weight": 0.7, "rank": 184},
+       {"id": 49925, "name": "Joe vs Carole", "weight": 0.7, "rank": 2121},
+       {"id": 52202, "name": "Candy", "weight": 0.7, "rank": 1},
+       {"id": 53730, "name": "Gaslit", "weight": 0.7, "rank": 881},
+       {"id": 47477, "name": "The Shrink Next Door", "weight": 0.7, "rank": 1424},
+       {"id": 44818, "name": "Inventing Anna", "weight": 0.7, "rank": 904},
+       {"id": 60196, "name": "Welcome to Chippendales", "weight": 0.7, "rank": 246},
+       {"id": 30659, "name": "The Act", "weight": 0.7, "rank": 6},
+       {"id": 55085, "name": "Love & Death", "weight": 0.7, "rank": 4}
+      ]
+     },
+     "few_shot": {
+      "n": 50,
+      "filtered": 0,
+      "hr10": 0.08,
+      "hr24": 0.16,
+      "hr100": 0.26,
+      "mrr": 0.0469,
+      "median_rank": 500,
+      "draws": [
+       {
+        "profile": [41736, 49925, 55085],
+        "targets": [34649, 43875, 54439, 53182, 52202, 53730, 47477, 44818, 60196, 30659],
+        "ranks": [4890, 93, 42, 675, 1, 650, 2625, 2059, 110, 23]
+       },
+       {
+        "profile": [49925, 53730, 30659],
+        "targets": [34649, 41736, 43875, 54439, 53182, 52202, 47477, 44818, 60196, 55085],
+        "ranks": [500, 51, 313, 16, 684, 14, 4971, 4423, 167, 265]
+       },
+       {
+        "profile": [43875, 53182, 47477],
+        "targets": [34649, 41736, 54439, 49925, 52202, 53730, 44818, 60196, 30659, 55085],
+        "ranks": [2241, 181, 849, 1613, 201, 302, 1802, 860, 1209, 776]
+       },
+       {
+        "profile": [34649, 41736, 52202],
+        "targets": [43875, 54439, 53182, 49925, 53730, 47477, 44818, 60196, 30659, 55085],
+        "ranks": [269, 19, 589, 5941, 1047, 5224, 1290, 180, 2, 9]
+       },
+       {
+        "profile": [34649, 53182, 60196],
+        "targets": [41736, 43875, 54439, 49925, 52202, 53730, 47477, 44818, 30659, 55085],
+        "ranks": [217, 1116, 56, 5625, 63, 1241, 1012, 805, 3, 114]
+       }
+      ]
+     },
+     "dislikes": {"held_out": 0, "held_out_top24": 0, "targets": [], "liked_only_top24": 0, "liked_only_surfaced": []},
+     "picks": [
+      [87753, "Furious"],
+      [64641, "Under the Bridge"],
+      [47259, "Duster"],
+      [81110, "Harlan Coben's I Will Find You"],
+      [79127, "M.I.A."],
+      [46213, "Power Book IV: Force"],
+      [78570, "Adolescence"],
+      [83331, "The Westies"],
+      [75030, "Paradise"],
+      [74670, "All Her Fault"],
+      [13417, "Ozark"],
+      [75026, "MobLand"],
+      [527, "The Sopranos"],
+      [68408, "Dept. Q"],
+      [473, "Veronica Mars"],
+      [45500, "Landscapers"],
+      [68752, "High Potential"],
+      [80725, "Task"],
+      [10822, "MINDHUNTER"],
+      [54829, "Culprits"],
+      [175, "House of Cards"],
+      [50907, "DAHMER - Monster: The Jeffrey Dahmer Story"],
+      [299, "Power"],
+      [748, "Oz"]
+     ],
+     "pick_popularity": 98.58,
+     "adapter_drift": []
+    },
+    "eighties_action": {
+     "loo": {
+      "n": 11,
+      "filtered": 0,
+      "hr10": 0.2727,
+      "hr24": 0.3636,
+      "hr100": 0.8182,
+      "mrr": 0.1251,
+      "median_rank": 43,
+      "unscored": 0,
+      "targets": [
+       {"id": 825, "name": "Knight Rider", "weight": 1, "rank": 19},
+       {"id": 1058, "name": "The A-Team", "weight": 1, "rank": 9},
+       {"id": 680, "name": "Airwolf", "weight": 1, "rank": 104},
+       {"id": 821, "name": "MacGyver", "weight": 1, "rank": 1},
+       {"id": 760, "name": "Miami Vice", "weight": 0.7, "rank": 29},
+       {"id": 956, "name": "Magnum, P.I.", "weight": 0.7, "rank": 43},
+       {"id": 8736, "name": "Street Hawk", "weight": 0.7, "rank": 64},
+       {"id": 2031, "name": "The Fall Guy", "weight": 0.7, "rank": 10},
+       {"id": 1499, "name": "Simon & Simon", "weight": 0.7, "rank": 68},
+       {"id": 1496, "name": "Remington Steele", "weight": 0.7, "rank": 82},
+       {"id": 7051, "name": "The Greatest American Hero", "weight": 0.7, "rank": 446}
+      ]
+     },
+     "few_shot": {
+      "n": 40,
+      "filtered": 0,
+      "hr10": 0.2,
+      "hr24": 0.275,
+      "hr100": 0.475,
+      "mrr": 0.119,
+      "median_rank": 103,
+      "draws": [
+       {
+        "profile": [760, 1499, 1496],
+        "targets": [825, 1058, 680, 821, 956, 8736, 2031, 7051],
+        "ranks": [7, 847, 696, 397, 2, 948, 507, 4536]
+       },
+       {
+        "profile": [1058, 821, 8736],
+        "targets": [825, 680, 760, 956, 2031, 1499, 1496, 7051],
+        "ranks": [16, 60, 115, 1582, 7, 2644, 320, 169]
+       },
+       {
+        "profile": [8736, 2031, 1496],
+        "targets": [825, 1058, 680, 821, 760, 956, 1499, 7051],
+        "ranks": [5, 3, 36, 1, 53, 150, 226, 50]
+       },
+       {
+        "profile": [821, 956, 7051],
+        "targets": [825, 1058, 680, 760, 8736, 2031, 1499, 1496],
+        "ranks": [679, 1, 45, 397, 103, 12, 15, 929]
+       },
+       {
+        "profile": [760, 1496, 7051],
+        "targets": [825, 1058, 680, 821, 956, 8736, 2031, 1499],
+        "ranks": [1, 112, 577, 52, 66, 82, 128, 162]
+       }
+      ]
+     },
+     "dislikes": {
+      "held_out": 3,
+      "held_out_top24": 0,
+      "targets": [
+       {"id": 5511, "name": "MacGyver", "weight": -1, "rank": 58},
+       {"id": 451, "name": "Knight Rider", "weight": -1, "rank": 51},
+       {"id": 32819, "name": "Magnum P.I.", "weight": -1, "rank": 74}
+      ],
+      "liked_only_top24": 0,
+      "liked_only_surfaced": []
+     },
+     "picks": [
+      [13102, "Hardcastle and McCormick"],
+      [31, "Marvel's Agents of S.H.I.E.L.D."],
+      [8733, "Automan"],
+      [8127, "S.W.A.T."],
+      [3741, "Hill Street Blues"],
+      [8864, "The Highwayman"],
+      [4948, "Hart to Hart"],
+      [975, "Batman"],
+      [109, "CSI: Crime Scene Investigation"],
+      [832, "The Rockford Files"],
+      [474, "Charlie's Angels"],
+      [336, "Marvel's Agent Carter"],
+      [490, "Star Trek"],
+      [3620, "Mission: Impossible"],
+      [7150, "The Fugitive"],
+      [3621, "Mission: Impossible"],
+      [53629, "NCIS: Hawaiʻi"],
+      [749, "CSI: NY"],
+      [4467, "T. J. Hooker"],
+      [1309, "Boomtown"],
+      [528, "The Flash"],
+      [4652, "Hunter"],
+      [2, "Person of Interest"],
+      [68, "Castle"]
+     ],
+     "pick_popularity": 92.88,
+     "adapter_drift": []
+    }
+   }
+  }
+ }
+}

@@ -4,6 +4,14 @@ Three apps over the TVmaze catalogue of TV series. Next Watch and Couchside read
 a model rebuilt every night; the research site keeps the 89,594-show snapshot it
 was published with.
 
+Both apps share one recommender. A pick has to sit close to shows you liked (plot,
+themes, genres, and a shared franchise or maker from Wikidata) and fit what your
+whole list leans toward: its languages, formats, networks, eras, subgenres, and how
+well known and well rated its shows are, learned from your ratings and dislikes.
+A list with several tastes gets picks for each. [scripts/bench](scripts/bench/)
+measures it against 71 viewer personas: on the 20 nobody tuned on, a held-out
+favourite lands in the top 24 picks 44% of the time, up from 10%.
+
 **[app/](app/) is Next Watch**, the web app: rate what you have watched, get
 ranked picks with the reason each one surfaced, and see your taste drawn against
 them. Three screens, light by default, under 50 KB on first load, works on a
@@ -50,6 +58,13 @@ the live build, recent runs and the next one, with a *Rebuild now* button. It
 rebuilds on deploy whenever the pipeline changes, and seeds itself from the frozen
 model the first time it starts.
 
+Each build also adds taste facets from Wikidata, whose data is CC0 and so may
+shape the ranking: genres, creators and writers, cast, franchise and spin-off
+links, subjects and settings, and awards, for the shows Wikidata can match by
+TVmaze or IMDb id, beside TVmaze's networks for every show, plus each show's names
+in other languages for search. The Wikidata cache is fetched again once it is a
+week old; when Wikidata is down, the last cache serves, so it never fails a build.
+
 With `TMDB_API_KEY` set, each build also fetches TMDB's US age ratings, streaming
 services, trailers and backdrops for the 23,000 or so best-known shows, 6,000 a
 night, keeping each for at most TMDB's six months. Couchside shows them, credited
@@ -60,6 +75,7 @@ goes in the GitHub connection's runtime secrets as `TMDB_READ_API=...`.
 MODEL_ROOT=/tmp/tv-model SEED_MODEL_DIR=model RAW_SOURCE_DIR=data/raw \
   .venv/bin/python scripts/refresher.py    # http://localhost:8083
 .venv/bin/python scripts/test_refresher.py
+.venv/bin/python scripts/test_facets.py
 ```
 
 ## Deploy
@@ -70,5 +86,7 @@ repository. It is connected to Rigbox through the GitHub app, so a push to
 secrets changed.
 
 Data from [TVmaze](https://www.tvmaze.com/),
-[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Similarity is
-not a guarantee of enjoyment.
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/), and
+[Wikidata](https://www.wikidata.org/),
+[CC0](https://creativecommons.org/publicdomain/zero/1.0/). Similarity is not a
+guarantee of enjoyment.

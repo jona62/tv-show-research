@@ -8,7 +8,6 @@ between requests.
 """
 from array import array
 from datetime import date
-from functools import lru_cache
 import gzip
 import struct
 import sys
@@ -96,16 +95,18 @@ class Taste:
         self.lib, self.e = library, library.e
         self.positives, self.negatives, self.settings = positives, negatives, settings
         self.candidates = candidates
-        key = (settings['text'], settings['themes'], settings['genres'])
-        self.affinities = {p['id']: library.blend(self.e.by_id[p['id']], *key) for p in positives + negatives}
-        self.scores = self.e.rank(candidates, positives, negatives, self.affinities, settings)
+        self.affinities = {p['id']: self.e.blend(self.e.by_id[p['id']], settings) for p in positives + negatives}
+        # Kept for the request, so a show scored later (score_others) sits on the same scale.
+        self.ranking = self.e.ranking(positives, negatives, self.affinities, settings)
+        self.scores = self.ranking.score(candidates)
         self.best = max((self.scores[i] for i in candidates), default=0.0)
         self.extra = {}
 
     def ranked(self, scoring=None):
-        """Candidates in order for the whole list, or for a few of its shows."""
+        """Candidates in order for the whole list, or for a few of its shows. A few are
+        still judged by the taste of the interest they belong to across the whole list."""
         scores = self.scores if scoring is None else self.e.rank(
-            self.candidates, scoring, self.negatives, self.affinities, self.settings)
+            self.candidates, scoring, self.negatives, self.affinities, self.settings, self.positives)
         return sorted((i for i in self.candidates if scores[i] > 0), key=lambda i: (-scores[i], self.e.shows[i]['id']))
 
     def score_others(self, indices):
@@ -113,7 +114,7 @@ class Taste:
         in one pass so a match can be shown for anything on screen."""
         missing = [i for i in dict.fromkeys(indices) if i not in self.extra]
         if missing and self.positives:
-            scores = self.e.rank(missing, self.positives, self.negatives, self.affinities, self.settings)
+            scores = self.ranking.score(missing)
             self.extra.update((i, scores[i]) for i in missing)
 
     def match(self, i):
@@ -135,7 +136,8 @@ class Taste:
                 seen.add(label.lower())
                 labels.append(label)
         return {'id': source['id'], 'name': self.e.shows[self.e.by_id[source['id']]]['name'],
-                'loved': source['weight'] == 1, 'shared': labels[:3]}
+                'loved': source['weight'] == 1, 'shared': labels[:3],
+                'fits': [f['label'] for f in self.ranking.fits(i)]}
 
 
 class Library:
@@ -156,7 +158,6 @@ class Library:
             self.images.byteswap()
             self.ended.byteswap()
         self.year = int(e.date[:4])
-        self.blend = lru_cache(maxsize=96)(self._blend)
 
         # Everything below is the same for everyone, so it is worked out once.
         rating = lambda i: e.shows[i]['rating'] or 0
@@ -198,9 +199,6 @@ class Library:
                 self.genres.append({'key': key, 'label': label, 'poster': self.poster(top)})
 
     # ------------------------------------------------------------ shapes
-
-    def _blend(self, index, text, themes, genres):
-        return self.e.blend(index, {'text': text, 'themes': themes, 'genres': genres})
 
     def poster(self, i, size='medium_portrait'):
         image = self.images[i]
@@ -274,9 +272,13 @@ class Library:
         out = Rows(self, taste)
         add = out.add
 
-        # Seeds for "Because you loved": loved before liked, newest first.
+        # Seeds for "Because you loved": one from each interest, heaviest first, so the
+        # rows cover what the list is about; within an interest, loved before liked and
+        # newest first. A list with fewer interests than rows fills up the same way.
         order = {p['id']: n for n, p in enumerate(profile)}
-        seeds = sorted(positives, key=lambda p: (-p['weight'], -order[p['id']]))[:SEEDS]
+        favourite = lambda p: (-p['weight'], -order[p['id']])
+        seeds = [min(interest, key=favourite) for interest in taste.ranking.interests][:SEEDS]
+        seeds += sorted((p for p in positives if p not in seeds), key=favourite)[:SEEDS - len(seeds)]
         seed_rows = []
         for seed in seeds:
             verb = 'loved' if seed['weight'] == 1 else 'liked'
@@ -385,13 +387,13 @@ class Library:
         profile, settings, positives, negatives, rated, candidates = self.prepare(body)
         e, i = self.e, self.e.by_id[show_id]
         taste = Taste(self, positives, negatives, settings, candidates) if positives else None
-        key = (settings['text'], settings['themes'], settings['genres'])
-        # More like this: closeness to this one show, less the pull of anything disliked.
-        affinities = {show_id: self.blend(i, *key)}
+        # More like this: closeness to this one show, less the pull of anything disliked,
+        # and when the show is one you liked, the taste of the interest it belongs to.
+        affinities = {show_id: e.blend(i, settings)}
         affinities.update(taste.affinities if taste else
-                          {p['id']: self.blend(e.by_id[p['id']], *key) for p in negatives})
+                          {p['id']: e.blend(e.by_id[p['id']], settings) for p in negatives})
         pool = [j for j in candidates if j != i]
-        near = e.rank(pool, [{'id': show_id, 'weight': 1}], negatives, affinities, settings)
+        near = e.rank(pool, [{'id': show_id, 'weight': 1}], negatives, affinities, settings, positives or None)
         more = sorted((j for j in pool if near[j] > 0), key=lambda j: (-near[j], e.shows[j]['id']))[:MORE]
         if taste:
             taste.score_others([i, *more])

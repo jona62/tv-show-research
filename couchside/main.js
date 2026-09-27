@@ -8,9 +8,12 @@ const $ = id => document.getElementById(id);
 const KEY = 'couchside-v1';
 const DEFAULTS = {
   text: 40, themes: 35, genres: 25, closest: .3, dislike: .35, language: 'all', type: 'all',
-  status: 'all', year_min: 1990, runtime_min: 0, rating_min: 0, known_min: 85,
+  status: 'all', year_min: 1900, runtime_min: 0, rating_min: 0, known_min: 60,
 };
 const REACH = [85, 60, 0];
+// Version 2 widened the default reach to fairly known shows of any year, once the ranking
+// learned which eras and how well known a list likes.
+const VERSION = 2;
 const MAX_RATED = 60;
 const WEIGHTS = [1, .7, .35, 0, -1];
 const RATES = [
@@ -47,7 +50,7 @@ const ICONS = {
 };
 
 /* ------------------------------------------------------------- storage */
-const fresh = () => ({ profile: [], saved: [], settings: { ...DEFAULTS }, onboarded: false });
+const fresh = () => ({ version: VERSION, profile: [], saved: [], settings: { ...DEFAULTS }, onboarded: false });
 const tidy = s => ({
   id: s.id, name: typeof s.name === 'string' ? s.name : '', year: Number.isInteger(s.year) ? s.year : null,
   poster: typeof s.poster === 'string' && s.poster.startsWith('https://static.tvmaze.com/') ? s.poster : null,
@@ -69,9 +72,13 @@ function sanitize(raw) {
       saved.push(tidy(s));
     }
   }
-  const reach = raw.settings?.known_min;
+  // A list saved before version 2 reached only well known shows because that was the
+  // default, so it moves to the new one once.
+  let reach = raw.settings?.known_min;
+  if (!(raw.version >= 2) && reach === 85) reach = DEFAULTS.known_min;
   return {
-    profile, saved, settings: { ...DEFAULTS, known_min: REACH.includes(reach) ? reach : 85 },
+    version: VERSION,
+    profile, saved, settings: { ...DEFAULTS, known_min: REACH.includes(reach) ? reach : DEFAULTS.known_min },
     onboarded: raw.onboarded === true || profile.length > 0,
   };
 }
@@ -1436,8 +1443,8 @@ async function apply(incoming, replace) {
   if (replace) {
     const reach = incoming.settings.known_min;
     state = {
-      profile: ratings.slice(0, MAX_RATED), saved: kept.slice(0, LIMITS.saved),
-      settings: { ...DEFAULTS, known_min: REACH.includes(reach) ? reach : 85 }, onboarded: true,
+      version: VERSION, profile: ratings.slice(0, MAX_RATED), saved: kept.slice(0, LIMITS.saved),
+      settings: { ...DEFAULTS, known_min: REACH.includes(reach) ? reach : DEFAULTS.known_min }, onboarded: true,
     };
   } else {
     // Your own ratings win, so bringing the same list in twice changes nothing.

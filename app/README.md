@@ -6,7 +6,8 @@ up against it.
 
 Four screens and nothing else:
 
-- **Watch next** shows ranked picks as cards. Each one carries a match score,
+- **Watch next** shows ranked picks as cards, shared out across the interests
+  your list holds. Each one carries a match score,
   the liked show it sits closest to, the signals they share, and *Why this?* for
   the full reasoning. *Seen it* and *Not for me* feed straight back into the ranking.
   A line above the cards says what they are matched to; *Narrow it down* takes
@@ -174,13 +175,37 @@ the model without a rebuild. `follow.py` does the watching; Couchside carries a 
 
 ## How it is put together
 
-`engine.py` loads the catalog and the sparse TF-IDF, genre and theme vectors
-once, then scores candidates against your ratings: a weighted mean across
-everything you liked, blended with your single strongest match, minus a penalty
-for looking like what you disliked. When a request names shows to match
-(`similar_to`), the mean and the blend run over those alone; dislikes still
-count and every rated show stays out of the pool. Feature families are weighted
-by the *Tune* preset. Missing data contributes zero rather than being guessed at.
+`engine.py` loads the catalog, the sparse TF-IDF, genre and theme vectors, and
+the model's facets (Wikidata's genres, makers, cast, franchises and subjects, and
+TVmaze's networks, read by `facets.py`) once. A pick has to do two things.
+
+- **Sit close to shows you liked.** Closeness to one show blends plot wording,
+  themes and genres as the *Tune* preset weighs them, plus a bonus for sharing a
+  franchise (a spin-off, sequel or shared universe) or a maker. Candidates are
+  scored with a weighted mean across your liked shows, blended with the single
+  strongest match, less a penalty for looking like what you disliked.
+- **Fit what your whole list leans toward.** `taste.py` compares how often your
+  liked shows carry each attribute (language, format, network country, network,
+  decade, episode length, how well known and how well rated, TVmaze genres and
+  Wikidata subgenres) with how often shows in general do, as a smoothed log
+  ratio, and dislikes count against what they carry. A short list barely moves
+  it; a long one moves it a lot. A pick's closeness is multiplied by how well it
+  fits, and by a small pull toward well-rated shows.
+
+A list can hold several tastes, so liked shows are first grouped into interests by
+how close they sit to one another. Each candidate is scored against the interest
+it is closest to, with that interest's taste, and measured against the
+interest's best pick, so each interest gets picks in proportion to its share of
+the list instead of the tightest-knit one taking them all. When a request names
+shows to match (`similar_to`), the scoring runs over those alone while taste
+still comes from the whole list; dislikes still count and every rated show stays
+out of the pool. Each pick says what it fits (`fits`) and what it concretely
+shares with the show it came from (`ties`: a franchise, a maker, cast), and the
+answer says what the list leans toward and away from (`taste`) and its interests.
+Missing data contributes zero rather than being guessed at.
+
+`scripts/bench` measures all of this against 71 viewer personas; its README has
+the numbers and how the constants were chosen.
 
 `titles.py` is search. It indexes every show's titles once at startup, as flat
 arrays and byte strings rather than an object per title, and answers

@@ -3,11 +3,13 @@
     .venv/bin/python couchside/build.py
 
 The engine is Next Watch's own, copied in so this app deploys by itself, and so are
-its search (titles.py), the TVmaze fallback for that search (fallback.py) and
-follow.py, which restarts the server when the model is replaced; test_couchside.py
-fails if any copy ever drifts apart. The transfer codec and QR encoder come from Next
-Watch too, so a list moves between the two apps. Icons and the share image are
-rendered once by brand/make.py and copied from brand/, beside TMDB's own logo.
+taste.py, its model of what a list leans toward, its search (titles.py) and the
+TVmaze fallback for that search (fallback.py), follow.py, which restarts the server
+when the model is replaced, and facets.py, which reads the model's Wikidata and
+network facets; test_couchside.py fails if any of them ever drifts apart. The
+transfer codec and QR encoder come from Next Watch too, so a list moves between the
+two apps. Icons and the share image are rendered once by brand/make.py and copied
+from brand/, beside TMDB's own logo.
 
 The page keeps placeholders for the catalogue's count and date and the first-visit
 posters, which server.py fills from whichever model it loads, so a build needs no
@@ -25,7 +27,7 @@ PUBLIC = HERE / 'public'
 OWN = ('style.css', 'main.js', 'format.js')
 SHARED = ('transfer.js', 'qr.js')
 # Next Watch's server modules, copied beside this server so it deploys by itself.
-MODULES = ('engine.py', 'titles.py', 'fallback.py', 'follow.py')
+MODULES = ('engine.py', 'taste.py', 'titles.py', 'fallback.py', 'follow.py', 'facets.py')
 BRAND = ('favicon.ico', 'favicon.svg', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png',
          'icon-maskable-512.png', 'og.jpg', 'tmdb.svg')
 def manifest(description):
