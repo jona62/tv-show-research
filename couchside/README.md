@@ -11,11 +11,17 @@ snapshot of 89,594 shows. Nothing plays. It is for finding your next show.
   *Top 10 shows today*, your strongest genre and theme, *New for you*,
   *Critically acclaimed* and *Popular right now*. A first visit picks three or
   more shows from forty posters, or skips and gets rows by popularity.
-- **A title page** opens over any screen with the match, years, seasons, why it
-  surfaced (the liked show it sits closest to and what they share), the summary,
-  cast, genres, themes and network, every season's episodes with stills, twelve
-  more like it, and links to TVmaze, IMDb and the official site. Rate it *Not
-  for me*, *I like this* or *Love this*, or add it to My List.
+- **A title page** opens over any screen with the match, years, age rating,
+  seasons, why it surfaced (the liked show it sits closest to and what they
+  share), where to watch it, the summary, cast, genres, themes and network, every
+  season's episodes with stills, its trailers, twelve more like it, and links to
+  TVmaze, IMDb and the official site. *Trailer* plays it right there. Rate it
+  *Not for me*, *I like this* or *Love this*, or add it to My List.
+- **Posters** wear *Top 10* and *New* badges. On a mouse, hovering one lifts it
+  and shows its match with quick buttons for My List, *I like this*, *Love this*
+  and more info.
+- **Browse** opens every genre and format as a poster tile, and each one as rows
+  ranked for you: top picks, new, acclaimed, popular and deeper cuts.
 - **New & Popular** has the Top 10, new shows this year ranked for you, and
   premieres coming soon with their dates.
 - **My List** holds what you saved, and every show you rated, filterable by
@@ -40,7 +46,7 @@ A match uses Next Watch's scale: 99% is your best pick and everything else is
 measured against it. It says how alike the stories, themes and genres are, not
 that you will enjoy the show.
 
-## Where the pictures and live details come from
+## Where the pictures, trailers and live details come from
 
 TVmaze keeps every poster at a URL built from its image id, so
 `scripts/build_art.py` stores one integer per show, plus the year it ended, in
@@ -52,7 +58,24 @@ Cast, seasons, episodes and widescreen backdrops are not in the snapshot.
 trims them, caches them for six hours, and stays inside TVmaze's rate limit of
 20 calls every 10 seconds, backing off after a 429 and serving a stale answer
 rather than none. When TVmaze is unreachable a title page simply shows
-everything else. TVmaze records no age ratings, so Couchside shows none.
+everything else.
+
+- **Trailers** come from [KinoCheck](https://api.kinocheck.com/), a free API
+  of official trailers, looked up by the IMDb id TVmaze keeps. It covers most
+  recent shows and few older ones; without one, *Trailer* becomes a YouTube
+  search. Trailers play in YouTube's no-cookie player, which loads only when
+  someone presses play.
+- **Age ratings** are the US ratings iTunes lists on the seasons it sells, matched
+  by exact name and the show's own years. Shows iTunes does not sell, which
+  includes most streaming originals, have none; TVmaze records none at all.
+  The same match gives an Apple TV link.
+- **Where to watch** is TVmaze's web channel or network, linked to the show's own
+  page on that service when TVmaze has it. It is where a show first streamed or
+  aired, not a guide to every service in every country. Each service's small
+  icon is fetched through DuckDuckGo's icon service by the server.
+
+KinoCheck allows 1,000 calls a day and iTunes about 20 a minute, so answers are
+cached for days and a show with nothing is cached as nothing.
 
 ## Run it
 
@@ -71,9 +94,10 @@ Python 3.10+ and no packages. The model is read from `MODEL_DIR`, or from
 node couchside/test_format.mjs
 ```
 
-The first covers the rows, title pages and validation, the live client against a
-fake TVmaze (trimming, caching, stale answers, 429s, the rate window), and the
-HTTP server end to end. It also fails if `engine.py` here ever differs from
+The first covers the rows, browsing, badges, title pages and validation, the live
+sources against fakes (trimming, trailer and rating matching, caching, stale
+answers, 404s as answers, 429s, the rate window, icon host checks), and the HTTP
+server end to end. It also fails if `engine.py` here ever differs from
 Next Watch's. The second covers the page's small helpers.
 
 ## Deploy

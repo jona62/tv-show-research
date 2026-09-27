@@ -1,6 +1,7 @@
 import { encode, decode, LIMITS } from './transfer.js';
 import { matrix, svgPath } from './qr.js';
-import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere, longDate, airs } from './format.js';
+import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere, longDate, airs,
+  watchLinks, trailerSearch } from './format.js';
 
 const boot = JSON.parse(document.getElementById('boot').textContent);
 const $ = id => document.getElementById(id);
@@ -17,10 +18,10 @@ const RATES = [
   { weight: .7, label: 'I like this', icon: 'up', said: 'Liked. Your rows will lean toward it.' },
   { weight: 1, label: 'Love this!', icon: 'heart', said: 'Loved. Your rows will lean hard toward it.' },
 ];
-const VIEWS = ['home', 'welcome', 'new', 'list', 'search'];
+const VIEWS = ['home', 'welcome', 'browse', 'new', 'list', 'search'];
 const TITLES = {
   home: 'Couchside', welcome: 'Welcome · Couchside', new: 'New & Popular · Couchside',
-  list: 'My List · Couchside', search: 'Search · Couchside',
+  list: 'My List · Couchside', search: 'Search · Couchside', browse: 'Browse · Couchside',
 };
 // Thumb, heart, search and navigation shapes follow Feather icons (MIT, Cole Bemis).
 const ICONS = {
@@ -39,6 +40,9 @@ const ICONS = {
   spark: '<path d="M23 6l-9.5 9.5-5-5L1 18M17 6h6v6"/>',
   saved: '<path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/>',
   smile: '<circle cx="12" cy="12" r="9.5"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/>',
+  play: '<path d="M7 4.5v15l12.5-7.5z" fill="currentColor"/>',
+  more: '<path d="M6 9l6 6 6-6"/>',
+  grid: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>',
 };
 
 /* ------------------------------------------------------------- storage */
@@ -173,9 +177,16 @@ async function call(path, options = {}) {
   const res = await fetch(path, options);
   let body = {};
   try { body = await res.json(); } catch { /* not JSON */ }
-  if (!res.ok) throw new Error(body.error || 'Something went wrong. Try again in a moment.');
+  if (!res.ok) {
+    const error = new Error(body.error || 'Something went wrong. Try again in a moment.');
+    error.status = res.status;
+    throw error;
+  }
   return body;
 }
+const wait = ms => new Promise(done => setTimeout(done, ms));
+// Live lookups can find the server busy for a moment; one quiet retry covers that.
+const patient = path => call(path).catch(e => (e.status === 503 ? wait(1500).then(() => call(path)) : Promise.reject(e)));
 const post = (path, body, signal) => call(path, {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal,
 });
@@ -185,12 +196,33 @@ const taste = () => ({ profile: state.profile.map(({ id, weight }) => ({ id, wei
 const extras = new Map();
 function details(id) {
   if (!extras.has(id)) {
-    extras.set(id, call(`/api/extra?id=${id}`).then(r => r.details).catch(() => {
+    extras.set(id, patient(`/api/extra?id=${id}`).then(r => r.details).catch(() => {
       extras.delete(id);
       return null;
     }));
   }
   return extras.get(id);
+}
+
+// Trailers and age ratings, once per show. A failure reads as none, and is asked again later.
+const trailerCache = new Map(), ageCache = new Map();
+function trailersOf(id) {
+  if (!trailerCache.has(id)) {
+    trailerCache.set(id, patient(`/api/trailer?id=${id}`).then(r => r.videos).catch(() => {
+      trailerCache.delete(id);
+      return [];
+    }));
+  }
+  return trailerCache.get(id);
+}
+function ageOf(id) {
+  if (!ageCache.has(id)) {
+    ageCache.set(id, patient(`/api/rating?id=${id}`).catch(() => {
+      ageCache.delete(id);
+      return { rating: null, apple: null };
+    }));
+  }
+  return ageCache.get(id);
 }
 
 /* -------------------------------------------------------------- routing */
@@ -206,6 +238,7 @@ function route() {
   const { page, q, show } = where();
   const name = page === 'home' && !state.profile.length && !state.onboarded ? 'welcome' : page;
   if (name !== view) showView(name);
+  else if (name === 'browse') renderBrowse();
   if (name === 'search') search(q, false);
   if (show) {
     if (!$('title').open || titleId !== show) showTitle(show);
@@ -227,6 +260,7 @@ function showView(name) {
   if (name === 'welcome') renderWelcome();
   if (name === 'list') renderList();
   if (name === 'new') renderNew();
+  if (name === 'browse') renderBrowse();
   if (name === 'search') $('q-page').value = where().q;
 }
 
@@ -334,11 +368,21 @@ function renderHero(s) {
   const copy = el('div', '', 'hero-copy');
   copy.append(el('h1', s.name, 'hero-title'));
   if (s.because) copy.append(el('p', `Because you ${s.because.loved ? 'loved' : 'liked'} ${s.because.name}`, 'hero-why'));
-  copy.append(metaEl(s, null, true));
+  const meta = metaEl(s, null, true);
+  copy.append(meta);
   if (s.summary) copy.append(el('p', s.summary, 'hero-summary'));
   const acts = el('div', '', 'hero-acts');
-  acts.append(button('btn primary', 'More info', () => openTitle(s.id), 'info'), listButton(s, 'btn'));
+  const more = button('btn primary', 'More info', () => openTitle(s.id), 'info');
+  acts.append(more, listButton(s, 'btn'));
   copy.append(acts);
+  trailersOf(s.id).then(videos => {
+    if (!videos.length || !hero.contains(acts)) return;
+    more.className = 'btn';
+    acts.prepend(button('btn primary', 'Trailer', () => openTitle(s.id, { play: true }), 'play'));
+  });
+  ageOf(s.id).then(age => {
+    if (age.rating && hero.contains(meta)) meta.insertBefore(el('span', age.rating, 'badge age'), meta.querySelector('.dot-list'));
+  });
   const body = el('div', '', 'hero-body');
   body.append(poster, copy);
   hero.replaceChildren(bg, el('div', '', 'hero-shade'), body);
@@ -348,11 +392,12 @@ function renderHero(s) {
 }
 
 // "98% match · 2008–2013 · 5 Seasons", with genres instead of length over the hero.
-function metaEl(s, live, hero = false) {
+function metaEl(s, live, hero = false, age = null) {
   const p = el('p', '', 'meta');
   if (s.match) p.append(el('b', `${s.match}% match`, 'match'));
   const span = years(s.year, s.ended);
   if (span) p.append(el('span', span));
+  if (age) p.append(el('span', age, 'badge age'));
   const n = live?.seasons?.length;
   if (n) p.append(el('span', seasons(n), 'badge'));
   else if (!hero && s.runtime) p.append(el('span', `${runtime(s.runtime)} episodes`));
@@ -406,23 +451,48 @@ function rowEl(r) {
 }
 window.addEventListener('resize', () => { for (const sync of [...syncers]) sync(); });
 
+// A poster that opens the title page. On a mouse, hovering shows its match and quick
+// buttons for My List and a rating; those skip the tab order, since the title page
+// offers the same actions to everyone.
 function cardEl(c, { rank = 0, soon = false, note = '' } = {}) {
-  const b = button('card', '', () => openTitle(c.id));
-  b.dataset.id = c.id;
-  b.setAttribute('aria-label', [
-    c.name, c.year, c.match ? `${c.match}% match` : '', rank ? `number ${rank} in the Top 10 today` : '',
-    soon && c.premiered ? `premieres ${premiere(c.premiered)}` : '', note,
+  const card = el('div', '', 'card');
+  card.dataset.id = c.id;
+  const hit = button('card-hit', '', () => openTitle(c.id));
+  hit.setAttribute('aria-label', [
+    c.name, c.year, c.match ? `${c.match}% match` : '',
+    rank ? `number ${rank} in the Top 10 today` : c.badge === 'top10' ? 'in the Top 10 today' : '',
+    c.badge === 'new' ? 'new' : '', soon && c.premiered ? `premieres ${premiere(c.premiered)}` : '', note,
   ].filter(Boolean).join(', '));
-  b.append(artEl(c));
-  const meta = el('span', '', 'card-meta');
-  meta.setAttribute('aria-hidden', 'true');
-  meta.append(el('span', c.name, 'card-name'));
-  if (c.match) meta.append(el('b', `${c.match}% match`, 'match'));
-  if (c.year) meta.append(el('span', String(c.year)));
-  if (c.genres?.length) meta.append(el('span', c.genres.slice(0, 2).join(', ')));
-  b.append(meta);
-  if (soon && c.premiered) b.append(el('span', `Premieres ${premiere(c.premiered)}`, 'soon-date'));
-  return b;
+  hit.append(artEl(c));
+  if (c.badge === 'top10' && !rank) {
+    const top = el('span', '', 'badge-top');
+    top.setAttribute('aria-hidden', 'true');
+    top.append(el('small', 'TOP'), el('b', '10'));
+    hit.append(top);
+  } else if (c.badge === 'new' && !soon) {
+    const fresh = el('span', 'New', 'badge-new');
+    fresh.setAttribute('aria-hidden', 'true');
+    hit.append(fresh);
+  }
+  card.append(hit);
+  const meta = el('div', '', 'card-meta');
+  const quick = el('div', '', 'quick');
+  const full = { ...c, ...(known.get(c.id) || {}) };
+  quick.append(listButton(full, 'tiny'), ...rateButtons(full, [.7, 1], 'tiny'));
+  const open = button('round tiny push', '', () => openTitle(c.id), 'more');
+  open.setAttribute('aria-label', `More about ${c.name}`);
+  quick.append(open);
+  const words = el('div', '', 'card-words');
+  words.setAttribute('aria-hidden', 'true');
+  words.append(el('span', c.name, 'card-name'));
+  if (c.match) words.append(el('b', `${c.match}% match`, 'match'));
+  if (c.year) words.append(el('span', String(c.year)));
+  if (c.genres?.length) words.append(el('span', c.genres.slice(0, 2).join(', '), 'card-genres'));
+  meta.append(quick, words);
+  for (const b of quick.querySelectorAll('button')) b.tabIndex = -1;
+  card.append(meta);
+  if (soon && c.premiered) card.append(el('span', `Premieres ${premiere(c.premiered)}`, 'soon-date'));
+  return card;
 }
 
 function listRow() {
@@ -438,7 +508,7 @@ function updateListRow() {
 
 /* ------------------------------------------------------ list and ratings */
 function listButton(c, kind) {
-  const cls = kind === 'btn' ? 'btn' : kind === 'wide' ? 'btn primary' : 'round small';
+  const cls = kind === 'btn' ? 'btn' : kind === 'wide' ? 'btn primary' : kind === 'tiny' ? 'round tiny' : 'round small';
   const b = el('button', '', cls);
   b.type = 'button';
   b.dataset.list = c.id;
@@ -473,19 +543,22 @@ function toggleList(c) {
   if (view === 'list') renderList();
 }
 
+function rateButtons(c, weights = RATES.map(r => r.weight), size = '') {
+  return RATES.filter(r => weights.includes(r.weight)).map(r => {
+    const b = button(`round ${r.icon}${size ? ` ${size}` : ''}`, '', () => rate({ ...c, ...info(c.id) }, r.weight), r.icon);
+    b.dataset.rate = c.id;
+    b.dataset.weight = String(r.weight);
+    b.setAttribute('aria-label', size ? `${r.label}: ${c.name}` : r.label);
+    b.title = r.label;
+    b.setAttribute('aria-pressed', String(rated(c.id) === r.weight));
+    return b;
+  });
+}
 function rateGroup(c) {
   const group = el('div', '', 'rates');
   group.setAttribute('role', 'group');
   group.setAttribute('aria-label', `Rate ${c.name}`);
-  for (const r of RATES) {
-    const b = button(`round ${r.icon}`, '', () => rate({ ...c, ...info(c.id) }, r.weight), r.icon);
-    b.dataset.rate = c.id;
-    b.dataset.weight = String(r.weight);
-    b.setAttribute('aria-label', r.label);
-    b.title = r.label;
-    b.setAttribute('aria-pressed', String(rated(c.id) === r.weight));
-    group.append(b);
-  }
+  group.append(...rateButtons(c));
   return group;
 }
 function paintRates(id) {
@@ -521,11 +594,11 @@ function rate(c, weight) {
 /* ----------------------------------------------------------- title page */
 let T = null, titleId = null, titleToken = 0, seasonToken = 0;
 
-function openTitle(id) {
+function openTitle(id, { play = false } = {}) {
   const url = withShow(location.pathname, location.search, id);
   if ($('title').open) history.replaceState(history.state, '', url);
   else history.pushState({ modal: true }, '', url);
-  showTitle(id);
+  showTitle(id, play);
 }
 function closeTitle() {
   if (history.state?.modal) history.back();
@@ -539,13 +612,15 @@ function hideTitle() {
   titleId = null;
   T = null;
   if ($('title').open) $('title').close();
+  // Emptying the page also stops a trailer that is still playing.
+  $('t-sheet').replaceChildren();
   document.documentElement.classList.remove('modal-open');
   document.title = TITLES[view] || 'Couchside';
 }
 $('title').addEventListener('cancel', e => { e.preventDefault(); closeTitle(); });
 $('title').addEventListener('click', e => { if (e.target === $('title')) closeTitle(); });
 
-function showTitle(id) {
+function showTitle(id, play = false) {
   const token = ++titleToken;
   titleId = id;
   T = buildTitle({ ...info(id), id });
@@ -576,6 +651,18 @@ function showTitle(id) {
     if (live.backdrop) T.backdrop.src = live.backdrop;
     paintEpisodes();
   });
+  trailersOf(id).then(videos => {
+    if (token !== titleToken) return;
+    T.videos = videos;
+    paintTrailerButton();
+    paintVideos();
+    if (play && videos.length) playVideo(videos[0]);
+  });
+  ageOf(id).then(age => {
+    if (token !== titleToken) return;
+    T.age = age;
+    paintTitle();
+  });
 }
 
 function buildTitle(c) {
@@ -596,7 +683,8 @@ function buildTitle(c) {
   out.title = 'Open on TVmaze';
   out.append(icon('out'));
   const acts = el('div', '', 't-acts');
-  acts.append(listButton(c, 'wide'), rateGroup(c), out);
+  const listed = listButton(c, 'wide');
+  acts.append(listed, rateGroup(c), out);
   const head = el('div', '', 't-head');
   head.append(name, acts);
   hero.append(backdrop, poster, el('div', '', 't-fade'), head);
@@ -608,6 +696,9 @@ function buildTitle(c) {
   const episodes = el('section', '', 't-section');
   episodes.hidden = true;
   episodes.setAttribute('aria-label', 'Episodes');
+  const videos = el('section', '', 't-section');
+  videos.hidden = true;
+  videos.setAttribute('aria-label', 'Trailers and more');
   const more = el('section', '', 't-section');
   const moreH = el('h3', 'More like this');
   moreH.id = 't-more-h';
@@ -620,9 +711,9 @@ function buildTitle(c) {
   }
   more.append(moreH, moreList);
   const about = el('section', '', 't-section about');
-  $('t-sheet').replaceChildren(close, hero, body, episodes, more, about);
-  const t = { id: c.id, card: c, hero, backdrop, name, out, acts, main, side, episodes, moreList, about, close,
-              data: null, live: null, error: '', eps: null };
+  $('t-sheet').replaceChildren(close, hero, body, episodes, videos, more, about);
+  const t = { id: c.id, card: c, hero, backdrop, name, out, acts, listed, main, side, episodes, clips: videos, moreList,
+              about, close, data: null, live: null, age: null, videos: null, error: '', eps: null };
   paintOut(t, c);
   return t;
 }
@@ -642,7 +733,7 @@ function paintTitle() {
   paintOut(T, s);
   syncList(s.id);
 
-  const main = [metaEl(s, live)];
+  const main = [metaEl(s, live, false, T.age?.rating)];
   if (s.because) {
     const why = el('p', `Because you ${s.because.loved ? 'loved' : 'liked'} ${s.because.name}`, 't-why');
     if (s.because.shared?.length) why.append(el('span', ` · shares ${s.because.shared.join(', ').toLowerCase()}`));
@@ -650,6 +741,8 @@ function paintTitle() {
   }
   const airing = live?.status === 'Running' ? airs(live.days) : '';
   if (airing) main.push(el('p', airing, 't-airs'));
+  const watch = watchEl(s, live, T.age);
+  if (watch) main.push(watch);
   if (T.data) main.push(el('p', s.summary || 'TVmaze has no summary for this show yet.', 't-summary'));
   else if (T.error) main.push(el('p', T.error, 't-summary muted'));
   else main.push(skelLines(4));
@@ -692,6 +785,105 @@ function paintTitle() {
   if (live?.site) links.append(document.createTextNode(' · '), link(live.site, 'Official site'));
   about.push(links);
   T.about.replaceChildren(...about);
+}
+
+// Where it streams or airs, from TVmaze, and Apple TV when iTunes sells it, each with
+// the service's own small icon.
+function watchEl(s, live, age) {
+  const links = watchLinks(live?.site, live?.channels, age?.apple);
+  if (!links.length) return null;
+  const box = el('div', '', 'watch');
+  box.append(el('span', 'Where to watch', 'k'));
+  const list = el('div', '', 'watch-list');
+  for (const w of links) {
+    const a = el('a', '', 'watch-link');
+    a.href = w.href;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    const what = w.kind === 'stream' ? `Stream ${s.name} on ${w.name}` : w.kind === 'buy' ? `Buy ${s.name} on Apple TV`
+      : `${s.name} on ${w.name}`;
+    a.title = what;
+    a.setAttribute('aria-label', `${what}, opens in a new tab`);
+    const logo = picture(`/api/icon?host=${encodeURIComponent(w.host)}`, 'watch-icon');
+    logo.width = 16;
+    logo.height = 16;
+    logo.addEventListener('error', () => logo.replaceWith(icon('out')), { once: true });
+    a.append(logo, el('span', w.name));
+    if (w.kind === 'buy') a.append(el('small', 'Buy'));
+    list.append(a);
+  }
+  box.append(list);
+  return box;
+}
+
+// With a trailer, Trailer leads and My List steps back; without one, a search on YouTube.
+function paintTrailerButton() {
+  const s = { ...T.card, ...(T.data?.show || {}) };
+  T.acts.querySelector('.trailer')?.remove();
+  if (T.videos.length) {
+    T.listed.className = 'btn';
+    const b = button('btn primary trailer', 'Trailer', () => playVideo(T.videos[0]), 'play');
+    T.acts.prepend(b);
+  } else {
+    const a = el('a', '', 'round trailer');
+    a.href = trailerSearch(s.name, s.year);
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.title = 'Find a trailer on YouTube';
+    a.setAttribute('aria-label', `Find a trailer for ${s.name} on YouTube, opens in a new tab`);
+    a.append(icon('play'));
+    T.acts.insertBefore(a, T.out);
+  }
+}
+
+function paintVideos() {
+  if (!T.videos.length) return;
+  const list = el('ul', '', 'clips');
+  for (const v of T.videos) {
+    const li = el('li');
+    const b = button('clip', '', () => playVideo(v));
+    b.setAttribute('aria-label', `Play ${v.title || v.kind}`);
+    const thumb = el('span', '', 'clip-thumb');
+    const img = picture(null);
+    img.loading = 'lazy';
+    img.src = `https://i.ytimg.com/vi/${v.youtube}/mqdefault.jpg`;
+    thumb.append(img, icon('play'));
+    b.append(thumb, el('b', v.title || v.kind), el('small', [v.kind, v.published ? longDate(v.published) : ''].filter(Boolean).join(' · ')));
+    li.append(b);
+    list.append(li);
+  }
+  T.clips.replaceChildren(el('h3', 'Trailers & more'), list);
+  T.clips.hidden = false;
+}
+
+// YouTube's no-cookie player, loaded only now. It takes the top of the title page, and
+// the title and buttons move beneath it so nothing covers the player.
+function playVideo(v) {
+  if (!T) return;
+  T.hero.querySelector('.t-player')?.remove();
+  const frame = document.createElement('iframe');
+  frame.src = `https://www.youtube-nocookie.com/embed/${v.youtube}?autoplay=1&rel=0&playsinline=1`;
+  frame.title = v.title || 'Trailer';
+  frame.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+  frame.allowFullscreen = true;
+  // The page sends no referrer, but YouTube's player refuses to start without one.
+  frame.referrerPolicy = 'strict-origin-when-cross-origin';
+  const box = el('div', '', 't-player');
+  box.append(frame);
+  T.hero.prepend(box);
+  T.hero.classList.add('playing');
+  const stop = T.acts.querySelector('.trailer');
+  if (stop?.tagName === 'BUTTON') {
+    stop.replaceChildren(icon('close'), document.createTextNode('Stop trailer'));
+    stop.onclick = stopVideo;
+  }
+  $('title').scrollTo({ top: 0, behavior: motion() ? 'smooth' : 'auto' });
+}
+function stopVideo() {
+  if (!T) return;
+  T.hero.querySelector('.t-player')?.remove();
+  T.hero.classList.remove('playing');
+  paintTrailerButton();
 }
 
 function castEl(cast) {
@@ -765,7 +957,7 @@ async function loadSeason(number) {
   };
   t.eps.replaceChildren(skeleton(), skeleton(), skeleton());
   try {
-    const { episodes } = await call(`/api/episodes?id=${t.id}&season=${number}`);
+    const { episodes } = await patient(`/api/episodes?id=${t.id}&season=${number}`);
     if (token !== seasonToken || T !== t) return;
     t.eps.replaceChildren(...(episodes.length ? episodes.map(episodeEl)
       : [el('li', 'No episodes are listed for this season yet.', 'muted')]));
@@ -793,6 +985,66 @@ function episodeEl(ep) {
   li.append(still, text);
   return li;
 }
+
+/* --------------------------------------------------------------- browse */
+let browseKey = null, browseReq = 0;
+const genreLabel = key => boot.genres.find(g => g.key === key)?.label;
+
+function renderBrowse() {
+  const { genre } = where();
+  const valid = genreLabel(genre) ? genre : '';
+  const pick = $('genre-pick');
+  if (!pick.options.length) {
+    const all = el('option', 'All genres');
+    all.value = '';
+    pick.append(all, ...boot.genres.map(g => {
+      const option = el('option', g.label);
+      option.value = g.key;
+      return option;
+    }));
+  }
+  pick.value = valid;
+  $('browse-h').textContent = valid ? genreLabel(valid) : 'Browse';
+  if (!valid) {
+    browseKey = '';
+    const tiles = el('ul', '', 'tiles');
+    tiles.append(...boot.genres.map(g => {
+      const li = el('li');
+      const a = el('a', '', 'tile');
+      a.href = `/browse?genre=${encodeURIComponent(g.key)}`;
+      a.dataset.link = '';
+      a.append(artEl({ id: g.key.length * 97, name: '', poster: g.poster }), el('span', g.label, 'tile-name'));
+      li.append(a);
+      return li;
+    }));
+    $('browse-body').replaceChildren(tiles);
+    return;
+  }
+  const key = `${valid}|${JSON.stringify(taste())}`;
+  if (key === browseKey) return;
+  browseKey = key;
+  loadBrowse(valid);
+}
+
+async function loadBrowse(genre) {
+  const id = ++browseReq;
+  $('browse-body').replaceChildren(skelRow(), skelRow(), skelRow());
+  try {
+    const data = await post('/api/browse', { ...taste(), genre });
+    if (id !== browseReq) return;
+    for (const r of data.rows) r.items.forEach(remember);
+    $('browse-body').replaceChildren(...(data.rows.length ? data.rows.map(rowEl)
+      : [el('p', 'Nothing in this genre fits your settings yet.', 'row-empty')]));
+  } catch (e) {
+    if (id !== browseReq) return;
+    browseKey = null;
+    $('browse-body').replaceChildren(el('p', e.message, 'row-empty'));
+  }
+}
+$('genre-pick').addEventListener('change', () => {
+  const g = $('genre-pick').value;
+  go(g ? `/browse?genre=${encodeURIComponent(g)}` : '/browse');
+});
 
 /* ----------------------------------------------------------- new & popular */
 function renderNew() {

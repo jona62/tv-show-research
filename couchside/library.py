@@ -186,11 +186,14 @@ class Library:
                 title = FORMAT_ROWS[value]
             self.cold.append((f'{kind}-{value}'.lower(), title, items))
         self.starters = self._starters()
-        # Everything a person can browse by, each with the poster of its best-known show.
-        self.genres = []
+        # Everything a person can browse by, each fronted by its best-known show that no
+        # earlier tile already uses, so the grid does not repeat one poster.
+        self.genres, fronted = [], set()
         for key, label in [*GENRE_ROWS.items(), *FORMAT_ROWS.items()]:
-            top = next((i for i in shelf if self._fits(key, i)), None)
+            fits = [i for i in shelf if self._fits(key, i)]
+            top = next((i for i in fits if i not in fronted), fits[0] if fits else None)
             if top is not None:
+                fronted.add(top)
                 self.genres.append({'key': key, 'label': label, 'poster': self.poster(top)})
 
     # ------------------------------------------------------------ shapes

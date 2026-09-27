@@ -118,6 +118,7 @@ check('formats browse too', not cartoons['personal'] and cartoons['rows']
 rejects('an unknown genre', lambda: lib.browse({'profile': [], 'genre': 'Klingon'}), 'Choose a genre')
 rejects('a missing genre', lambda: lib.browse({'profile': []}), 'Choose a genre')
 check('every browsable genre has a poster for its tile', len(lib.genres) >= 20 and all(g['poster'] for g in lib.genres))
+check('no two genre tiles share a poster', len({g['poster'] for g in lib.genres}) == len(lib.genres))
 check('labels lower-case without breaking acronyms',
       lower_first('Crime TV shows') == 'crime TV shows' and lower_first('DIY and makeovers') == 'DIY and makeovers')
 

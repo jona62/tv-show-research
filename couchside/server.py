@@ -15,7 +15,9 @@ from live import (Live, LiveError, Icons, KINOCHECK, ITUNES, trim_videos, trim_s
 HERE = Path(__file__).resolve().parent
 PUBLIC = HERE / 'public'
 SLOTS = threading.BoundedSemaphore(3)
-LIVE_SLOTS = threading.BoundedSemaphore(4)
+# A title page asks for details, trailers and a rating at once while the hero behind it
+# asks for its own, so this holds a dozen; each source still keeps its own rate limit.
+LIVE_SLOTS = threading.BoundedSemaphore(12)
 # The app keeps its page in the path, so these are the page too and a refresh stays put.
 PAGES = ('/new', '/list', '/search', '/browse')
 POSTS = ('/api/home', '/api/title', '/api/shows', '/api/browse')
