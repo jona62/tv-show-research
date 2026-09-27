@@ -60,3 +60,34 @@ apps:
       kind: git
       repo: https://github.com/jona62/tv-show-research.git
       branch: main
+
+  # Rebuilds a live model from fresh TVmaze data every night at 04:30 UTC, adding TMDB's
+  # where to watch, ratings and trailers when TMDB_API_KEY is set, into
+  # /home/developer/tv-model, then repoints tv-model/current. It rebuilds on deploy when
+  # the pipeline changes. Private, with a status page and a Rebuild now button; see
+  # scripts/refresher.py. The build peaks near 1.1 GB, so it is capped below the servers.
+  model-refresher:
+    path: ./scripts
+    port: 8083
+    install: python3 -m venv --copies .venv && .venv/bin/pip install --no-cache-dir -r requirements-refresher.txt
+    dependencyInputs: [requirements-refresher.txt]
+    start: .venv/bin/python refresher.py
+    health:
+      path: /healthz
+      timeoutSeconds: 60
+    restartPolicy: always
+    limits:
+      memoryMaxMb: 1500
+      cpuPercent: 60
+    secrets:
+      - name: TMDB_API_KEY
+        optional: true
+    env:
+      PORT: "8083"
+      MODEL_ROOT: /home/developer/tv-model
+      SEED_MODEL_DIR: /home/developer/model
+      REFRESH_AT_UTC: "04:30"
+    source:
+      kind: git
+      repo: https://github.com/jona62/tv-show-research.git
+      branch: main
