@@ -1,0 +1,14 @@
+{
+  "Crime / illicit enterprise": "\\b(crim\\w*|drug\\w*|cartel\\w*|kingpin\\w*|gang(?:s|ster\\w*)?|mafia|mobster\\w*|launder\\w*|smuggl\\w*|heist\\w*|outlaw\\w*|lawless|pirac\\w*|pirate\\w*|dirty money)\\b",
+  "Money / class": "\\b(money|financ\\w*|wealth\\w*|rich|poor|poverty|working.class|class.divide|fortune\\w*|treasure\\w*|gold|ends meet|hustl\\w*)\\b",
+  "Family ties": "\\b(famil\\w*|father\\w*|mother\\w*|parent\\w*|daughter\\w*|son|sons|sibling\\w*|brother\\w*|sister\\w*|wife|husband)\\b",
+  "Power / ambition": "\\b(power\\w*|ambiti\\w*|rival\\w*|throne\\w*|kingdom\\w*|empire\\w*|conquest\\w*|domina\\w*|control\\w*|kingpin\\w*|politic\\w*)\\b",
+  "Deception / secrets": "\\b(secret\\w*|betray\\w*|treacher\\w*|duplicity|schem\\w*|dece\\w*|corrupt\\w*|conspir\\w*|double.life|undercover|lies|lying|lie|hustl\\w*)\\b",
+  "Danger / survival": "\\b(danger\\w*|surviv\\w*|threat\\w*|deadly|fatal|risk\\w*|desperat\\w*|ruthless|violent|violence|murder\\w*|kill\\w*|battle\\w*)\\b",
+  "Adventure / quest": "\\b(adventur\\w*|treasure\\w*|quest\\w*|hunt\\w*|expedit\\w*|voyage\\w*|pirate\\w*|pirac\\w*|sailor\\w*|island\\w*|uncharted)\\b",
+  "Law / investigation": "\\b(lawyer\\w*|legal|police|detective\\w*|investigat\\w*|attorney\\w*|justice|court\\w*|marshal\\w*|sheriff\\w*|fbi)\\b",
+  "Friendship / youth": "\\b(friend\\w*|teen\\w*|adolescen\\w*|coming.of.age|young.adult\\w*|high.school)\\b",
+  "Romance": "\\b(romanc\\w*|romantic|love|lover\\w*|dating|affair\\w*)\\b",
+  "Supernatural / fantasy": "\\b(supernatural|magic\\w*|dragon\\w*|fantasy|vampire\\w*|witch\\w*|ghost\\w*|demon\\w*)\\b",
+  "Humor": "\\b(comed\\w*|funny|hilarious|sitcom|humor\\w*|humour\\w*)\\b"
+}

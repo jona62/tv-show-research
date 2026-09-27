@@ -1,0 +1,198 @@
+{
+  "retrieved": "2026-09-07",
+  "raw_records": 89594,
+  "english_scripted": 12933,
+  "analysis_records": 11320,
+  "candidates": 7445,
+  "tfidf_features": 18000,
+  "genres": 26,
+  "theme_features": 12,
+  "english_summary_under15": 967,
+  "english_missing_premiere": 677,
+  "analysis_rating_missing_pct": 57.24,
+  "analysis_runtime_missing_pct": 1.28,
+  "seed_ids": {
+    "Ozark": 13417,
+    "Breaking Bad": 169,
+    "Better Call Saul": 618,
+    "Outer Banks": 42062,
+    "Black Sails": 182,
+    "Game of Thrones": 82
+  },
+  "seed_weights": {
+    "Ozark": 1.0,
+    "Breaking Bad": 1.0,
+    "Better Call Saul": 1.0,
+    "Outer Banks": 1.0,
+    "Black Sails": 1.0,
+    "Game of Thrones": 0.35
+  },
+  "seed_theme_hits": {
+    "Ozark": {
+      "Crime / illicit enterprise": [
+        "dirty money"
+      ],
+      "Money / class": [
+        "money"
+      ],
+      "Family ties": [
+        "family"
+      ],
+      "Power / ambition": [],
+      "Deception / secrets": [],
+      "Danger / survival": [
+        "dangerous"
+      ],
+      "Adventure / quest": [],
+      "Law / investigation": [],
+      "Friendship / youth": [],
+      "Romance": [],
+      "Supernatural / fantasy": [],
+      "Humor": []
+    },
+    "Breaking Bad": {
+      "Crime / illicit enterprise": [
+        "crime",
+        "drug",
+        "drugs",
+        "kingpin"
+      ],
+      "Money / class": [
+        "financial"
+      ],
+      "Family ties": [
+        "family",
+        "son",
+        "wife"
+      ],
+      "Power / ambition": [
+        "kingpin",
+        "power"
+      ],
+      "Deception / secrets": [],
+      "Danger / survival": [
+        "dangerous",
+        "fatal"
+      ],
+      "Adventure / quest": [],
+      "Law / investigation": [],
+      "Friendship / youth": [
+        "teenage"
+      ],
+      "Romance": [],
+      "Supernatural / fantasy": [],
+      "Humor": []
+    },
+    "Better Call Saul": {
+      "Crime / illicit enterprise": [
+        "criminal"
+      ],
+      "Money / class": [
+        "ends meet",
+        "hustling"
+      ],
+      "Family ties": [],
+      "Power / ambition": [],
+      "Deception / secrets": [
+        "hustling"
+      ],
+      "Danger / survival": [],
+      "Adventure / quest": [],
+      "Law / investigation": [
+        "lawyer"
+      ],
+      "Friendship / youth": [],
+      "Romance": [],
+      "Supernatural / fantasy": [],
+      "Humor": []
+    },
+    "Outer Banks": {
+      "Crime / illicit enterprise": [],
+      "Money / class": [
+        "treasure"
+      ],
+      "Family ties": [
+        "father"
+      ],
+      "Power / ambition": [],
+      "Deception / secrets": [],
+      "Danger / survival": [],
+      "Adventure / quest": [
+        "hunt",
+        "island",
+        "treasure"
+      ],
+      "Law / investigation": [],
+      "Friendship / youth": [
+        "friends",
+        "teen"
+      ],
+      "Romance": [],
+      "Supernatural / fantasy": [],
+      "Humor": []
+    },
+    "Black Sails": {
+      "Crime / illicit enterprise": [
+        "Piracy",
+        "kingpin",
+        "lawless",
+        "pirate"
+      ],
+      "Money / class": [],
+      "Family ties": [
+        "daughter",
+        "father"
+      ],
+      "Power / ambition": [
+        "ambitious",
+        "controlled",
+        "kingpin",
+        "power",
+        "rival"
+      ],
+      "Deception / secrets": [],
+      "Danger / survival": [
+        "survival"
+      ],
+      "Adventure / quest": [
+        "Island",
+        "Piracy",
+        "hunt",
+        "pirate",
+        "sailor"
+      ],
+      "Law / investigation": [],
+      "Friendship / youth": [],
+      "Romance": [],
+      "Supernatural / fantasy": [],
+      "Humor": []
+    },
+    "Game of Thrones": {
+      "Crime / illicit enterprise": [],
+      "Money / class": [],
+      "Family ties": [
+        "families"
+      ],
+      "Power / ambition": [
+        "Kingdoms",
+        "Throne",
+        "conquest",
+        "powerful"
+      ],
+      "Deception / secrets": [
+        "duplicity",
+        "scheming",
+        "treachery"
+      ],
+      "Danger / survival": [
+        "battle"
+      ],
+      "Adventure / quest": [],
+      "Law / investigation": [],
+      "Friendship / youth": [],
+      "Romance": [],
+      "Supernatural / fantasy": [],
+      "Humor": []
+    }
+  }
+}
