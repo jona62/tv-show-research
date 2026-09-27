@@ -137,7 +137,7 @@ class Taste:
                 labels.append(label)
         return {'id': source['id'], 'name': self.e.shows[self.e.by_id[source['id']]]['name'],
                 'loved': source['weight'] == 1, 'shared': labels[:3],
-                'fits': [f['label'] for f in self.ranking.fits(i)],
+                'fits': self.ranking.fits(i),
                 'ties': self.e.ties(i, self.e.by_id[source['id']])}
 
 

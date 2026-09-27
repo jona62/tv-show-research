@@ -129,6 +129,7 @@
   </div>
   <a class="menu-item" href="/list" data-link>My List and ratings</a>
   <a class="menu-item" href="/welcome" data-link>Pick shows you like</a>
+  <button class="menu-item" id="open-taste" type="button">Your taste</button>
   <label class="menu-item menu-field" for="reach">What to recommend
     <select id="reach">
       <option value="85">Well-known shows</option>
@@ -169,11 +170,17 @@
   </div>
 </div></dialog>
 
+<dialog id="taste" class="modal small" aria-labelledby="taste-h"><div class="sheet pad">
+  <button class="icon-btn close-btn corner" type="button" data-close aria-label="Close"></button>
+  <h2 id="taste-h" class="sheet-h">Your taste</h2>
+  <div id="taste-body"></div>
+</div></dialog>
+
 <dialog id="about" class="modal small" aria-labelledby="about-h"><div class="sheet pad">
   <button class="icon-btn close-btn corner" type="button" data-close aria-label="Close"></button>
   <h2 id="about-h" class="sheet-h">How Couchside works</h2>
-  <p>Every row is built from the shows you rate. <b>Love this</b> pulls hardest, <b>I like this</b> pulls a little less, and anything close to what you marked <b>Not for me</b> is pushed back. Rows called <i>Because you loved</i> follow one show at a time.</p>
-  <p>A match compares a show with your single best pick, so 99% is as close to your taste as anything gets. It measures how alike the stories, themes and genres are, not a promise you will enjoy it.</p>
+  <p>Every row is built from the shows you rate. <b>Love this</b> pulls hardest, <b>I like this</b> pulls a little less, and anything close to what you marked <b>Not for me</b> is pushed back. Your ratings also teach it what your list leans toward, such as languages, networks, decades and kinds of show, and a list with more than one taste gets rows for each; <b>Your taste</b> in your profile shows what it has learned. Rows called <i>Because you loved</i> follow one favourite from each of your interests.</p>
+  <p>A match compares a show with your single best pick, so 99% is as close to your taste as anything gets. It measures how close a show sits to what you like and how well it fits your leanings, not a promise you will enjoy it.</p>
   <!--tmdb-->
   <p>For shows TMDB knows, the US age rating, trailers, backdrop and where to watch come from TMDB first. Where to watch lists the services that stream, rent or sell a show in the US and links to TMDB's page for it; that streaming data comes from JustWatch. Whatever TMDB lacks comes from the sources below.</p>
   <!--/tmdb-->

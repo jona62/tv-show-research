@@ -1,5 +1,6 @@
 import { encode, decode, LIMITS } from './transfer.js';
 import { matrix, svgPath } from './qr.js';
+import { tieText, leaning, leaningHeading } from './format.js';
 import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere, longDate, airs,
   whereToWatch, trailerSearch } from './format.js';
 
@@ -393,7 +394,13 @@ function renderHero(s) {
   poster.classList.add('hero-poster');
   const copy = el('div', '', 'hero-copy');
   copy.append(el('h1', s.name, 'hero-title'));
-  if (s.because) copy.append(el('p', `Because you ${s.because.loved ? 'loved' : 'liked'} ${s.because.name}`, 'hero-why'));
+  if (s.because) {
+    const why = el('p', `Because you ${s.because.loved ? 'loved' : 'liked'} ${s.because.name}`, 'hero-why');
+    // A franchise or a maker in common is the strongest reason there is, so the hero says it.
+    const tie = s.because.ties?.find(t => t.family === 'franchise' || t.family === 'maker');
+    if (tie) why.append(document.createTextNode(` · ${tieText(tie)}`));
+    copy.append(why);
+  }
   const meta = metaEl(s, null, true);
   copy.append(meta);
   if (s.summary) copy.append(el('p', s.summary, 'hero-summary'));
@@ -782,8 +789,10 @@ function paintTitle() {
   const main = [metaEl(s, live, false, T.age?.rating)];
   if (s.because) {
     const why = el('p', `Because you ${s.because.loved ? 'loved' : 'liked'} ${s.because.name}`, 't-why');
-    if (s.because.shared?.length) why.append(el('span', ` · shares ${s.because.shared.join(', ').toLowerCase()}`));
+    if (s.because.ties?.length) why.append(el('span', ` · ${joinNames(s.because.ties.slice(0, 3).map(tieText))}`));
+    else if (s.because.shared?.length) why.append(el('span', ` · shares ${s.because.shared.join(', ').toLowerCase()}`));
     main.push(why);
+    if (s.because.fits?.length) main.push(el('p', `Fits your taste for ${joinNames(s.because.fits.map(leaning))}.`, 't-fits'));
   }
   const airing = live?.status === 'Running' ? airs(live.days) : '';
   if (airing) main.push(el('p', airing, 't-airs'));
@@ -1324,10 +1333,44 @@ $('reset').addEventListener('click', () => {
   toast('Everything is cleared. Pick a few shows to start again.');
 });
 for (const b of document.querySelectorAll('[data-close]')) b.addEventListener('click', () => b.closest('dialog').close());
-for (const d of [$('account'), $('move'), $('about')]) {
+for (const d of [$('account'), $('move'), $('about'), $('taste')]) {
   d.addEventListener('click', e => { if (e.target === d) d.close(); });
 }
 $('open-about').addEventListener('click', () => $('about').showModal());
+$('open-taste').addEventListener('click', () => { $('account').close(); paintTaste(); $('taste').showModal(); });
+
+// What the list leans toward and away from, and its interests, from the last home answer.
+function paintTaste() {
+  const body = $('taste-body');
+  body.replaceChildren();
+  const taste = home?.personal ? home.taste : null;
+  const interests = home?.personal ? home.interests || [] : [];
+  if (!taste || (!taste.leans.length && !taste.avoids.length && interests.length < 2)) {
+    body.append(el('p', 'Rate a few more shows and what they lean toward will show up here.'));
+    return;
+  }
+  const section = (title, rows) => {
+    if (!rows.length) return;
+    body.append(el('h3', title, 'leanings-h'));
+    const list = el('ul', '', 'leanings');
+    for (const [head, detail] of rows) {
+      const item = el('li');
+      item.append(el('b', head), el('span', detail));
+      list.append(item);
+    }
+    body.append(list);
+  };
+  section('What your list leans toward',
+    taste.leans.map(f => [leaningHeading(f), `${f.shows} of your liked shows · ${f.base}% of all shows`]));
+  section('What you steer clear of',
+    taste.avoids.map(f => [leaningHeading(f), f.why === 'disliked' ? `You marked ${f.shows} not for you` : 'None on your list']));
+  if (interests.length > 1) {
+    section('Your interests', interests.map(it => [
+      it.leans.length ? it.leans.map(l => leaningHeading({ family: '', label: l.split(' / ')[0] })).join(' · ') : `Like ${it.names[0]}`,
+      it.names.join(', ')]));
+    body.append(el('p', 'Your rows are shared out across these, and each Because you loved row follows one of them.', 'leanings-note'));
+  }
+}
 $('open-about-2').addEventListener('click', () => { $('account').close(); $('about').showModal(); });
 
 /* ------------------------------------------------------- moving devices */

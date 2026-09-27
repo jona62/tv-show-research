@@ -14,6 +14,26 @@ export const seasons = n => !n ? '' : `${n} Season${n === 1 ? '' : 's'}`;
 export const joinNames = names => names.length < 2 ? (names[0] || '')
   : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
 
+// What two shows concretely share, as a phrase: part of Breaking Bad, by Vince Gilligan.
+const TIES = { franchise: l => `part of ${l}`, maker: l => `by ${l}`, cast: l => `with ${l}`, network: l => `also on ${l}` };
+export const tieText = t => (TIES[t.family] || (l => l))(t.label);
+
+const decade = l => l.startsWith('before') ? l : `the ${l}`;
+const theme = l => l.split(' / ')[0];
+// A leaning inside a sentence: "fits your taste for crime, HBO and the 2000s".
+const WITHIN = {
+  language: l => `shows in ${l}`, country: l => `${l} shows`, decade, length: l => `${l} episodes`,
+  theme: l => theme(l).toLowerCase(), format: l => l.toLowerCase(), genre: l => l.toLowerCase(),
+};
+export const leaning = f => (WITHIN[f.family] || (l => l))(f.label);
+// A leaning as a heading: "On HBO", "In Korean", "From the 2000s".
+const cap = s => s ? s[0].toUpperCase() + s.slice(1) : s;
+const HEADING = {
+  language: l => `In ${l}`, network: l => `On ${l}`, decade: l => `From ${decade(l)}`,
+  length: l => `${cap(l)} episodes`, country: l => `${l} shows`, theme: l => theme(l),
+};
+export const leaningHeading = f => (HEADING[f.family] || cap)(f.label);
+
 // Where the page is: which view, the search terms, and the title open over it.
 export function parseRoute(pathname, search) {
   const params = new URLSearchParams(search);
