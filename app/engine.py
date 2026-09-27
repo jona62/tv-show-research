@@ -240,6 +240,31 @@ class Engine:
                                for i, s in enumerate(self.shows)))
         return text, bits('theme_bits', self.theme_counts), bits('genre_bits', self.genre_counts)
 
+    def blend(self, index, settings):
+        """How close every show in the catalog sits to one show, with story, themes and
+        genres weighted as the settings ask."""
+        total = settings['text'] + settings['themes'] + settings['genres']
+        a, b, c = (settings[k] / total for k in ('text', 'themes', 'genres'))
+        t, h, g = self.components(index)
+        return array('f', (min(1.0, a * x + b * y + c * z) for x, y, z in zip(t, h, g)))
+
+    def rank(self, candidates, scoring, negatives, affinities, settings):
+        """Scores for the candidates, in an array over the whole catalog: a weighted mean
+        across the scoring shows blended with the closest of them, minus a penalty for
+        looking like what you disliked. Affinities are keyed by show id."""
+        norm = sum(p['weight'] for p in scoring)
+        top_weight = max(p['weight'] for p in scoring)
+        closest, dislike = settings['closest'], settings['dislike']
+        scores = array('f', [0]) * self.n
+        for i in candidates:
+            mean = sum(p['weight'] * affinities[p['id']][i] for p in scoring) / norm
+            best = max(p['weight'] / top_weight * affinities[p['id']][i] for p in scoring)
+            hit = (1 - closest) * mean + closest * best
+            if negatives:
+                hit -= dislike * sum(affinities[p['id']][i] for p in negatives) / len(negatives)
+            scores[i] = max(0.0, hit)
+        return scores
+
     def signals(self, i):
         """Theme and genre names a show actually records."""
         s = self.shows[i]
@@ -283,24 +308,9 @@ class Engine:
         elif thin:
             base['warning'] = 'Some of the shows you chose have very little plot text, so their matches lean on genres alone.'
 
-        total = settings['text'] + settings['themes'] + settings['genres']
-        a, b, c = (settings[k] / total for k in ('text', 'themes', 'genres'))
-        affinities = {}
-        for p in positives + negatives:
-            t, h, g = self.components(self.by_id[p['id']])
-            affinities[p['id']] = array('f', (min(1.0, a * x + b * y + c * z) for x, y, z in zip(t, h, g)))
-
-        norm = sum(p['weight'] for p in scoring)
-        top_weight = max(p['weight'] for p in scoring)
-        closest, dislike = settings['closest'], settings['dislike']
-        scores = array('f', [0]) * self.n
-        for i in candidates:
-            mean = sum(p['weight'] * affinities[p['id']][i] for p in scoring) / norm
-            best = max(p['weight'] / top_weight * affinities[p['id']][i] for p in scoring)
-            hit = (1 - closest) * mean + closest * best
-            if negatives:
-                hit -= dislike * sum(affinities[p['id']][i] for p in negatives) / len(negatives)
-            scores[i] = max(0.0, hit)
+        affinities = {p['id']: self.blend(self.by_id[p['id']], settings) for p in positives + negatives}
+        scores = self.rank(candidates, scoring, negatives, affinities, settings)
+        dislike = settings['dislike']
         ordered = sorted((i for i in candidates if scores[i] > 0), key=lambda i: (-scores[i], self.shows[i]['id']))
 
         liked_indices = [self.by_id[p['id']] for p in positives]
