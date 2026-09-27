@@ -76,9 +76,9 @@ Couchside takes the rest), asks only once the last word looks finished rather
 than for every half-typed one, and treats any failure as no extra answer. Only a
 search that found nothing anywhere suggests checking the spelling.
 
-On an M3 Pro a search takes a millisecond or two and rarely ten. The index costs
-about 0.35 s and 6 MB at startup over the catalogue alone, and about 1.3 s and 30
-MB with 224,000 other titles.
+On an M3 Pro a search takes a millisecond or two and rarely ten. With the 143,000
+other titles Wikidata gives today, the index costs about a second and under 25 MB
+at startup (0.35 s and 6 MB over the catalogue alone).
 
 ## Moving a list between devices
 

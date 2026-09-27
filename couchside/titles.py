@@ -272,16 +272,17 @@ class Titles:
 
         # One line per distinct title, and the lines using each word, in line order. A
         # show's name always has a line; another title that reads the same as the name,
-        # or as an earlier title, adds nothing. What lasts is flat, and the few small
-        # objects that last are made once the scaffolding is gone, so the memory it
-        # borrowed is not pinned between them.
+        # or as an earlier title, adds nothing, and nor does one that is only an article
+        # (Wikidata has The for at least one show). What lasts is flat, and the few
+        # small objects that last are made once the scaffolding is gone, so the memory
+        # it borrowed is not pinned between them.
         kept, akas, post, seen = [], [], defaultdict(partial(array, 'I')), set()
-        owner, first = [], self.first
+        owner, first, lone = [], self.first, {a.decode() for a in ARTICLES}
         for line, who, title in zip(lines, owners, raw):
             if who >= 0:
                 seen = {line}
                 first[who] = len(kept)
-            elif not line or line in seen:
+            elif not line or line in seen or line in lone:
                 continue
             else:
                 seen.add(line)

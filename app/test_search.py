@@ -91,7 +91,7 @@ KNOWN = {1: 99, 2: 97, 3: 40, 4: 60, 5: 98, 6: 99, 7: 70, 8: 100, 9: 99, 10: 99,
          28: 100, 29: 97, 30: 98, 31: 99, 32: 90, 33: 60, 34: 60, 35: 60, 36: 10, 37: 85, 38: 100, 39: 70}
 ALIASES = {18: ['Money Heist', 'La casa de papel', 'LA CASA DE PAPEL', 'Haus des Geldes'],
            19: ['Shingeki no Kyojin', '進撃の巨人'], 11: ['Law & Order: SVU'], 6: ['Breaking Bad', 'Во все тяжкие'],
-           3: ['The Office'], 999: ['Nowhere']}
+           3: ['The Office'], 23: ['The', 'La'], 999: ['Nowhere']}
 popularity = array('B', [KNOWN[s['id']] for s in SHOWS])
 index = Titles(SHOWS, popularity, ALIASES)
 at = {s['id']: i for i, s in enumerate(SHOWS)}
@@ -147,6 +147,7 @@ check('an alias shared with another show\'s name ranks by popularity', ids('the 
 check('titles that read the same as the name are kept once', index.n == len(SHOWS) + 7)
 check('typos reach other titles too', aka('mony heist')[:1] == [(18, 'Money Heist')])
 check('an alias for a show not in the catalogue is ignored', ids('nowhere') == [])
+check('an other title that is only an article is no title', 23 not in ids('the') and 23 not in ids('la'))
 strong = lambda q: index.find(q).strong
 check('exact, prefix and word matches answer a search by themselves',
       strong('office') and strong('breaking b') and strong('us last') and strong('v'))
