@@ -283,13 +283,17 @@ class Taste:
                         found.append((weight * delta[bit], family, a.labels[family][bit]))
         found.sort(key=lambda f: -f[0])
         out, seen = [], set()
+        subgenres = 0
         for _score, family, label in found:
             # TVmaze's Crime, the Crime / illicit enterprise theme and Wikidata's crime
-            # are one reason.
+            # are one reason, and one Wikidata subgenre says enough: the next is usually
+            # its parent (mockumentary, then pseudo documentary).
             key = label.split(' / ')[0].casefold()
-            if key not in seen:
-                seen.add(key)
-                out.append({'family': family, 'label': label})
+            if key in seen or (family == 'subgenre' and subgenres):
+                continue
+            seen.add(key)
+            subgenres += family == 'subgenre'
+            out.append({'family': family, 'label': label})
         return out[:limit]
 
     def summary(self, limit=6):

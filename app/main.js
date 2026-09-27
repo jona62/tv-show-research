@@ -365,6 +365,30 @@ function sharedLabels(pick) {
   return out;
 }
 
+const cap = s => s ? s[0].toUpperCase() + s.slice(1) : s;
+const decadeOf = l => l.startsWith('before') ? l : `the ${l}`;
+// A leaning as a heading: networks, languages and decades read as they would aloud.
+const HEADING = {
+  language: l => `In ${l}`, network: l => `On ${l}`, decade: l => `From ${decadeOf(l)}`,
+  length: l => `${cap(l)} episodes`, country: l => `${l} shows`, theme: l => short(l),
+};
+const heading = f => (HEADING[f.family] || cap)(f.label);
+// The same, inside a sentence: "fits your taste for crime, HBO and the 2000s".
+const WITHIN = {
+  language: l => `shows in ${l}`, network: l => l, decade: l => decadeOf(l), country: l => `${l} shows`,
+  length: l => `${l} episodes`, theme: l => short(l).toLowerCase(), format: l => l.toLowerCase(),
+  genre: l => l.toLowerCase(),
+};
+const within = f => (WITHIN[f.family] || (l => l))(f.label);
+const listed = words => words.length > 1 ? `${words.slice(0, -1).join(', ')} and ${words.at(-1)}` : words[0] || '';
+// What two shows concretely share, as it would be said.
+const TIE = {
+  franchise: l => `Part of ${l}`, maker: l => `By ${l}`, cast: l => `With ${l}`,
+  network: l => `Also on ${l}`, genre: l => cap(l), subject: l => cap(l),
+};
+const tie = t => (TIE[t.family] || cap)(t.label);
+const interestName = (it, names) => it.leans.length ? it.leans.map(l => cap(short(l))).join(' · ') : `Like ${names[0]}`;
+
 function matchOf(pick) {
   const best = data.picks[0]?.score || 1;
   return Math.max(1, Math.min(99, Math.round(pick.score / best * 99)));
@@ -396,6 +420,7 @@ function renderCards() {
 
     const because = el('p', '', 'because');
     because.append(document.createTextNode('Closest to '), el('b', pick.because));
+    if (pick.ties?.length) because.append(el('span', ` · ${pick.ties.slice(0, 2).map(tie).join(' · ')}`, 'ties'));
     const tags = el('div', '', 'tags');
     for (const name of sharedLabels(pick).slice(0, 3)) tags.append(el('span', name, 'tag'));
     if (!tags.childElementCount) tags.append(el('span', 'a close match on plot wording', 'tag plain'));
@@ -412,6 +437,7 @@ function renderCards() {
     );
 
     card.append(top, because, tags);
+    if (pick.fits?.length) card.append(el('p', `Fits your taste for ${listed(pick.fits.map(within))}.`, 'fits'));
     if (pick.summary) card.append(el('p', pick.summary, 'blurb'));
     card.append(acts);
     holder.append(card);
@@ -430,6 +456,19 @@ function openWhy(pick) {
   block.append(el('p', shared.length
     ? `It sits closest to ${pick.because}, sharing ${shared.join(', ').toLowerCase()}.`
     : `It sits closest to ${pick.because} on plot wording rather than on shared themes or genres.`));
+  if (pick.ties?.length) {
+    block.append(el('p', `Shared with ${pick.because}: ${pick.ties.map(tie).join(' · ')}.`));
+  }
+  if (pick.fits?.length) {
+    block.append(el('p', `It fits what your list leans toward: ${listed(pick.fits.map(within))}.`));
+  }
+  const interest = data.interests?.length > 1 && pick.interest != null ? data.interests[pick.interest] : null;
+  if (interest) {
+    const names = interest.shows.map(id => data.liked.find(s => s.id === id)?.name).filter(Boolean);
+    const who = `${listed(names.slice(0, 3))}${names.length > 3 ? ` and ${names.length - 3} more` : ''}`;
+    block.append(el('p', `Your list holds more than one interest, and this pick is for the one ${who} `
+      + `${names.length > 1 ? 'share' : 'stands for'}: ${interestName(interest, names)}.`));
+  }
   body.append(block);
 
   if (pick.keywords.length) {
@@ -482,6 +521,7 @@ function renderTaste() {
     `spanning ${tn} of ${tt} themes and ${gn} of ${gt} genres`,
   ].join(' · ');
   renderSignals();
+  renderLeanings();
 
   const select = $('fit-pick');
   select.replaceChildren();
@@ -510,6 +550,39 @@ function renderTaste() {
   against.value = [...against.options].some(o => o.value === previous) ? previous : 'closest';
 
   if (tab === 'taste') renderFit();
+}
+
+// What the list leans toward and away from, and the interests it holds.
+function renderLeanings() {
+  const taste = data.taste || { leans: [], avoids: [] };
+  const leans = $('leans');
+  leans.replaceChildren();
+  for (const f of taste.leans) {
+    const item = el('li');
+    item.append(el('b', heading(f)), el('span', `${f.shows} of your liked shows · ${f.base}% of all shows`));
+    leans.append(item);
+  }
+  $('leans-none').hidden = taste.leans.length > 0;
+
+  const avoids = $('avoids');
+  avoids.replaceChildren();
+  for (const f of taste.avoids) {
+    const item = el('li');
+    item.append(el('b', heading(f)), el('span', f.why === 'disliked' ? `You disliked ${f.shows}` : 'None on your list'));
+    avoids.append(item);
+  }
+  $('avoids-box').hidden = taste.avoids.length === 0;
+
+  const interests = $('interests');
+  interests.replaceChildren();
+  const found = data.interests || [];
+  for (const it of found) {
+    const names = it.shows.map(id => data.liked.find(s => s.id === id)?.name).filter(Boolean);
+    const item = el('li');
+    item.append(el('b', interestName(it, names)), el('span', names.join(', ')));
+    interests.append(item);
+  }
+  $('interests-box').hidden = found.length < 2;
 }
 
 function renderSignals() {
