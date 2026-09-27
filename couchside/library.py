@@ -137,7 +137,8 @@ class Taste:
                 labels.append(label)
         return {'id': source['id'], 'name': self.e.shows[self.e.by_id[source['id']]]['name'],
                 'loved': source['weight'] == 1, 'shared': labels[:3],
-                'fits': [f['label'] for f in self.ranking.fits(i)]}
+                'fits': self.ranking.fits(i),
+                'ties': self.e.ties(i, self.e.by_id[source['id']])}
 
 
 class Library:
@@ -318,10 +319,16 @@ class Library:
 
         hero = top[0] if top else self.top10[0]
         taste.score_others([hero])
+        names = {p['id']: e.shows[e.by_id[p['id']]]['name'] for p in positives}
         return {
             'personal': True, 'date': e.date,
             'hero': {**self.detail(hero, taste), 'because': taste.closest(hero) if top else None},
             'rows': out.rows,
+            # What the list leans toward and away from, and the interests it holds, for
+            # showing a person their own taste.
+            'taste': e.taste(profile).summary(),
+            'interests': [{**interest, 'names': [names[i] for i in interest['shows']]}
+                          for interest in taste.ranking.describe()],
             'top10': [self.card(i, taste) for i in self.top10],
             'fresh': [self.card(i, taste) for i in by_taste(unrated(self.fresh))[:ROW]],
             'soon': [{**self.card(i), 'premiered': e.shows[i]['premiered']} for i in self.soon],
@@ -348,6 +355,7 @@ class Library:
             'soon': [{**self.card(i), 'premiered': self.e.shows[i]['premiered']} for i in self.soon],
             'list': [self.card(i) for i in saved],
             'message': '',
+            'taste': {'leans': [], 'avoids': []}, 'interests': [],
         }
 
     def browse(self, body):

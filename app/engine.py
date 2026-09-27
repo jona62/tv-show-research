@@ -284,9 +284,12 @@ class Engine:
         out, seen = [], set()
         for _order, _strength, c in shared:
             family, label = f.families[f.token_family[c]], f.labels[c]
-            if (family, label) not in seen:
-                seen.add((family, label))
-                out.append({'family': family, 'label': label})
+            # One Wikidata genre says enough: the next is usually its parent
+            # (police procedural, then procedural).
+            if (family, label) in seen or (family == 'genre' and any(t['family'] == 'genre' for t in out)):
+                continue
+            seen.add((family, label))
+            out.append({'family': family, 'label': label})
         return out[:4]
 
     @lru_cache(maxsize=32)

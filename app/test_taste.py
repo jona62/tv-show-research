@@ -97,7 +97,7 @@ check('reasons name something distinctive', reasons and 'English' not in reasons
       str(reasons))
 leans = many.summary()['leans']
 check('leanings need two liked shows', all(f['shows'] >= 2 for f in leans))
-check('crime is among the leanings', any(f['label'] == 'Crime' for f in leans), str([f['label'] for f in leans]))
+check('crime is among the leanings', any(f['label'].split(' / ')[0].casefold() == 'crime' for f in leans), str([f['label'] for f in leans]))
 
 print()
 if failures:

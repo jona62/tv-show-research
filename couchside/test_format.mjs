@@ -1,9 +1,21 @@
+import { tieText, leaning, leaningHeading } from './format.js';
 import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere, longDate, airs,
   hostOf, sameService, watchLinks, whereToWatch, trailerSearch, searchNote } from './format.js';
 let fails = 0;
 const check = (name, ok, extra = '') => { console.log(`${ok ? 'pass' : 'FAIL'}  ${name}${ok ? '' : '  ' + extra}`); if (!ok) fails++; };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
+check('a franchise tie reads as belonging', tieText({ family: 'franchise', label: 'Breaking Bad' }) === 'part of Breaking Bad');
+check('a maker tie reads as authorship', tieText({ family: 'maker', label: 'Vince Gilligan' }) === 'by Vince Gilligan');
+check('a network tie reads as a channel', tieText({ family: 'network', label: 'HBO' }) === 'also on HBO');
+check('any other tie is its label', tieText({ family: 'genre', label: 'mockumentary' }) === 'mockumentary');
+check('a decade leaning reads in a sentence', leaning({ family: 'decade', label: '2000s' }) === 'the 2000s');
+check('the earliest decade has no article', leaning({ family: 'decade', label: 'before 1960' }) === 'before 1960');
+check('a language leaning names shows', leaning({ family: 'language', label: 'Korean' }) === 'shows in Korean');
+check('a theme leaning is its short name', leaning({ family: 'theme', label: 'Crime / illicit enterprise' }) === 'crime');
+check('a network keeps its case', leaning({ family: 'network', label: 'HBO' }) === 'HBO');
+check('a network heading says on', leaningHeading({ family: 'network', label: 'HBO' }) === 'On HBO');
+check('a subgenre heading is capitalised', leaningHeading({ family: 'subgenre', label: 'police procedural' }) === 'Police procedural');
 check('a running show shows its first year', years(2008, null) === '2008');
 check('an ended show shows its span', years(2008, 2013) === '2008–2013');
 check('a one-year show shows one year', years(2019, 2019) === '2019');
