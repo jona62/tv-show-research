@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="glow" x1="0.12" y1="0.08" x2="0.88" y2="0.96">
+      <stop offset="0" stop-color="#ffc53d"/>
+      <stop offset="1" stop-color="#ff6a3d"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="#141414"/>
+  <g transform="translate(256 256) scale(0.96) translate(-256 -256)">
+  <g fill="url(#glow)" stroke="#141414" stroke-width="14" stroke-linejoin="round">
+    <rect x="116" y="156" width="280" height="136" rx="42"/>
+    <rect x="116" y="258" width="280" height="98" rx="20"/>
+    <rect x="58" y="218" width="100" height="152" rx="46"/>
+    <rect x="354" y="218" width="100" height="152" rx="46"/>
+  </g>
+  <path d="M256 268v80" stroke="#141414" stroke-width="12" stroke-linecap="round"/>
+  <g fill="url(#glow)">
+    <rect x="88" y="362" width="36" height="44" rx="11"/>
+    <rect x="388" y="362" width="36" height="44" rx="11"/>
+  </g>
+  </g>
+</svg>

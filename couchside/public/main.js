@@ -42,6 +42,7 @@ const ICONS = {
   smile: '<circle cx="12" cy="12" r="9.5"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/>',
   play: '<path d="M7 4.5v15l12.5-7.5z" fill="currentColor"/>',
   more: '<path d="M6 9l6 6 6-6"/>',
+  share: '<path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"/>',
   grid: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>',
 };
 
@@ -174,7 +175,17 @@ if (!POPOVER) $('toast').hidden = true;
 
 /* ----------------------------------------------------------------- api */
 async function call(path, options = {}) {
-  const res = await fetch(path, options);
+  let res;
+  try {
+    res = await fetch(path, options);
+  } catch (e) {
+    if (e.name === 'AbortError') throw e;
+    const error = new Error(navigator.onLine === false
+      ? 'You are offline. Couchside needs a connection to find shows.'
+      : 'Couchside could not be reached. Try again in a moment.');
+    error.status = 0;
+    throw error;
+  }
   let body = {};
   try { body = await res.json(); } catch { /* not JSON */ }
   if (!res.ok) {
@@ -684,7 +695,10 @@ function buildTitle(c) {
   out.append(icon('out'));
   const acts = el('div', '', 't-acts');
   const listed = listButton(c, 'wide');
-  acts.append(listed, rateGroup(c), out);
+  const share = button('round', '', shareTitle, 'share');
+  share.setAttribute('aria-label', 'Share');
+  share.title = 'Share';
+  acts.append(listed, rateGroup(c), share, out);
   const head = el('div', '', 't-head');
   head.append(name, acts);
   hero.append(backdrop, poster, el('div', '', 't-fade'), head);
@@ -884,6 +898,25 @@ function stopVideo() {
   T.hero.querySelector('.t-player')?.remove();
   T.hero.classList.remove('playing');
   paintTrailerButton();
+}
+
+// A shared link opens straight to this title, and its preview shows the poster.
+async function shareTitle() {
+  if (!T) return;
+  const s = { ...T.card, ...(T.data?.show || {}) };
+  const url = `${location.origin}/?show=${s.id}`;
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: `${s.name} on Couchside`, text: `${s.name}${s.year ? ` (${s.year})` : ''}`, url });
+    } catch { /* closed without sharing */ }
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    toast('Link copied. It opens straight to this show.');
+  } catch {
+    toast(`Copy this link to share it: ${url}`);
+  }
 }
 
 function castEl(cast) {
@@ -1389,6 +1422,19 @@ async function readLink() {
   $('move-paste').value = raw;
   $('move-status').textContent = `This link holds ${incoming.profile.length} rated and ${incoming.saved.length} saved. `
     + 'You already have a list here, so choose what to do with it.';
+}
+
+/* ------------------------------------------------------------ connection */
+window.addEventListener('offline', () => toast('You are offline. Couchside will catch up when you are back.'));
+window.addEventListener('online', () => {
+  toast('Back online.');
+  if (!home) loadHome();
+  if (view === 'browse') { browseKey = null; renderBrowse(); }
+});
+// Offline, the service worker serves a page asking for the connection back.
+if ('serviceWorker' in navigator && window.isSecureContext) {
+  const register = () => navigator.serviceWorker.register('/sw.js').catch(() => {});
+  if (document.readyState === 'complete') register(); else window.addEventListener('load', register);
 }
 
 /* ---------------------------------------------------------------- start */

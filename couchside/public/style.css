@@ -430,6 +430,15 @@ dialog.small .sheet{max-width:560px}
 .foot a,.foot .link{color:var(--muted)}
 @media(min-width:760px){.foot{padding-bottom:40px}}
 
+/* without JavaScript, and the pages served without the app ------------- */
+.noscript{margin:0;padding:14px var(--gutter);background:#3a2a0a;color:#fff;font-weight:700;text-align:center}
+body.loose{display:grid;place-items:center;min-height:100vh;min-height:100dvh;
+  background:radial-gradient(ellipse at 28% 18%,#2d2213,#141414 62%)}
+.lost{max-width:520px;padding:32px var(--gutter);text-align:center}
+.lost .brand{display:inline-block;margin-bottom:30px;font-size:28px}
+.lost h1{margin:0 0 12px;font:800 clamp(30px,6vw,44px)/1.1 -apple-system,BlinkMacSystemFont,sans-serif}
+.lost p{margin:0 0 26px;font-size:17px;line-height:1.5;color:var(--ink-2)}
+
 /* iOS zooms into any focused field under 16px and stays there. */
 @media(max-width:1024px),(pointer:coarse){
   input,select,textarea,.field input,.field textarea,.find.open input{font-size:16px}

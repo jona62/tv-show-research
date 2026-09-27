@@ -56,6 +56,7 @@ COLD_ROWS = [('genre', 'Drama'), ('genre', 'Comedy'), ('genre', 'Crime'), ('genr
              ('genre', 'Fantasy'), ('format', 'unscripted'), ('genre', 'Anime')]
 FORMAT_ROWS = {'animation': 'Animated series', 'documentary': 'Documentaries', 'unscripted': 'Reality and competition'}
 NEW_DAYS = 150      # a show premiered this recently before the snapshot wears a New badge
+DESCRIPTION = 'Rows of TV shows picked for your taste, with trailers, where to watch and My List.'
 
 
 def lower_first(label):

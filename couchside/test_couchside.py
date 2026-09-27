@@ -48,6 +48,19 @@ def rejects(label, fn, said):
 check('the engine is Next Watch\'s, unchanged',
       (ROOT / 'app' / 'engine.py').read_bytes() == (ROOT / 'couchside' / 'engine.py').read_bytes())
 
+# 1b. Icons at the sizes each platform asks for.
+def png_size(path):
+    head = (ROOT / 'couchside' / 'public' / path).read_bytes()[:24]
+    return (int.from_bytes(head[16:20], 'big'), int.from_bytes(head[20:24], 'big')) if head[:8] == b'\x89PNG\r\n\x1a\n' else None
+
+
+check('icons are the sizes they claim', png_size('apple-touch-icon.png') == (180, 180) and png_size('icon-192.png') == (192, 192)
+      and png_size('icon-512.png') == (512, 512) and png_size('icon-maskable-512.png') == (512, 512))
+ico = (ROOT / 'couchside' / 'public' / 'favicon.ico').read_bytes()
+check('favicon.ico holds 16, 32 and 48 pixel images', ico[:4] == b'\x00\x00\x01\x00' and int.from_bytes(ico[4:6], 'little') == 3
+      and sorted(ico[6 + 16 * n] for n in range(3)) == [16, 32, 48])
+check('the Apple icon has no transparent corners', (lambda b: b[25] in (2, 6))((ROOT / 'couchside' / 'public' / 'apple-touch-icon.png').read_bytes()))
+
 # 2. The art track lines up with the catalog.
 poster = lib.poster(engine.by_id[169])
 check('posters rebuild to TVmaze image URLs',
@@ -293,14 +306,15 @@ threading.Thread(target=httpd.serve_forever, daemon=True).start()
 base = f'http://127.0.0.1:{httpd.server_address[1]}'
 
 
-def fetch(path, body=None, kind='application/json'):
+def fetch(path, body=None, kind='application/json', headers=None, method=None):
     data = None if body is None else (body if isinstance(body, bytes) else json.dumps(body).encode())
-    request = Request(base + path, data=data, headers={'Content-Type': kind} if data is not None else {})
+    request = Request(base + path, data=data, method=method,
+                      headers={**({'Content-Type': kind} if data is not None else {}), **(headers or {})})
     try:
         with urlopen(request, timeout=30) as response:
-            return response.status, dict(response.headers), response.read()
+            return response.status, response.headers, response.read()
     except HTTPError as exc:
-        return exc.code, dict(exc.headers), exc.read()
+        return exc.code, exc.headers, exc.read()
 
 
 status, headers, page_root = fetch('/')
@@ -310,10 +324,54 @@ check('images come only from TVmaze and YouTube thumbnails',
       "img-src 'self' data: https://static.tvmaze.com https://i.ytimg.com;" in policy)
 check('trailers play only in the no-cookie player', "frame-src https://www.youtube-nocookie.com;" in policy)
 check('no referrer goes to the image server', headers.get('Referrer-Policy') == 'no-referrer')
-for path in ('/new', '/list', '/search', '/browse'):
+for path in ('/new', '/list', '/search', '/browse', '/welcome'):
     status, _headers, body = fetch(path)
     check(f'{path} is the page too', status == 200 and body == page_root)
-check('an unknown path is a 404', fetch('/nope')[0] == 404 and fetch('/list/')[0] == 404)
+status, headers, body = fetch('/nope')
+check('an unknown path is a 404 with the app\'s own page', status == 404 and b'Lost your way?' in body
+      and headers.get('Content-Type', '').startswith('text/html'))
+check('a trailing slash leads nowhere too', fetch('/list/')[0] == 404)
+check('an unknown api path stays JSON', fetch('/api/nope')[2].startswith(b'{'))
+status, headers, body = fetch('/nope', method='HEAD')
+check('a HEAD for nothing is a bodiless 404', status == 404 and body == b'')
+status, headers, body = fetch('/', method='HEAD')
+check('a HEAD for the page answers without a body', status == 200 and body == b'' and int(headers['Content-Length']) > 1000)
+check('the page links its icons and manifest', all(tag in page_root for tag in (
+    b'rel="manifest" href="/manifest.webmanifest"', b'rel="apple-touch-icon" href="/apple-touch-icon.png"',
+    b'href="/favicon.ico"', b'name="apple-mobile-web-app-capable" content="yes"')))
+check('no build placeholder survives', not re.search(rb'__[A-Z_]+__', page_root))
+check('the home preview uses the share image at this address',
+      f'content="{base}/og.jpg"'.encode() in page_root and b'content="summary_large_image"' in page_root)
+status, _headers, titled = fetch('/?show=169')
+art = lib.poster(engine.by_id[169], 'original_untouched')
+check('a shared title previews itself', status == 200 and b'content="Breaking Bad (2008) on Couchside"' in titled
+      and f'content="{art}"'.encode() in titled and b'<title>Breaking Bad \xc2\xb7 Couchside</title>' in titled
+      and f'content="{base}/?show=169"'.encode() in titled)
+tricky = next(i for i, show in enumerate(engine.shows) if '&' in show['name'] and '"' not in show['name'] and show['recommendable'])
+tricky_id, tricky_name = engine.shows[tricky]['id'], engine.shows[tricky]['name']
+body = fetch(f'/?show={tricky_id}')[2].decode()
+check('titles are escaped in previews', f'content="{tricky_name.replace("&", "&amp;")}' in body and f'content="{tricky_name} (' not in body)
+check('an unknown title previews the app', b'content="Couchside"' in fetch('/?show=999999999')[2])
+check('https is kept behind a proxy', f'content="https://127.0.0.1:{httpd.server_address[1]}/og.jpg"'.encode()
+      in fetch('/', headers={'X-Forwarded-Proto': 'https'})[2])
+body = fetch('/', headers={'Host': 'evil.example"><script>x</script>'})[2]
+check('a hostile Host header is not echoed', b'<script>x' not in body and b'evil.example' not in body)
+status, headers, body = fetch('/manifest.webmanifest')
+manifest = json.loads(body)
+check('the manifest is served as one', status == 200 and headers.get('Content-Type') == 'application/manifest+json')
+check('the manifest can be installed', manifest['display'] == 'standalone' and manifest['start_url'] == '/'
+      and {'192x192', '512x512'} <= {i['sizes'] for i in manifest['icons']}
+      and any(i.get('purpose') == 'maskable' for i in manifest['icons']))
+check('every manifest icon and shortcut resolves', all(fetch(i['src'])[0] == 200 for i in manifest['icons'])
+      and all(fetch(sc['url'])[0] == 200 for sc in manifest['shortcuts']))
+for path, kind in [('/favicon.ico', 'image/x-icon'), ('/favicon.svg', 'image/svg+xml'), ('/apple-touch-icon.png', 'image/png'),
+                   ('/og.jpg', 'image/jpeg'), ('/sw.js', 'text/javascript'), ('/robots.txt', 'text/plain; charset=utf-8'),
+                   ('/offline.html', 'text/html; charset=utf-8')]:
+    status, headers, _body = fetch(path)
+    check(f'{path} is served as {kind}', status == 200 and headers.get('Content-Type') == kind, headers.get('Content-Type'))
+check('the service worker carries this build', b'__BUILD__' not in fetch('/sw.js')[2])
+check('robots stay out of the api', b'Disallow: /api/' in fetch('/robots.txt')[2])
+check('powerful features are switched off', 'camera=()' in fetch('/')[1].get('Permissions-Policy', ''))
 check('the engine sources are not served', fetch('/engine.py')[0] == 404 and fetch('/art.bin.gz')[0] == 404)
 status, _headers, body = fetch('/api/search?q=breaking%20bad')
 found = json.loads(body)['shows']

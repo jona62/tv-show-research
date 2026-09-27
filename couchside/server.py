@@ -3,12 +3,14 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit, parse_qs
+import html
 import json
 import os
+import re
 import threading
 
 from engine import Engine
-from library import Library
+from library import Library, DESCRIPTION
 from live import (Live, LiveError, Icons, KINOCHECK, ITUNES, trim_videos, trim_seasons,
                   match_rating, itunes_search)
 
@@ -19,7 +21,7 @@ SLOTS = threading.BoundedSemaphore(3)
 # asks for its own, so this holds a dozen; each source still keeps its own rate limit.
 LIVE_SLOTS = threading.BoundedSemaphore(12)
 # The app keeps its page in the path, so these are the page too and a refresh stays put.
-PAGES = ('/new', '/list', '/search', '/browse')
+PAGES = ('/', '/index.html', '/new', '/list', '/search', '/browse', '/welcome')
 POSTS = ('/api/home', '/api/title', '/api/shows', '/api/browse')
 LIVE_ROUTES = ('/api/extra', '/api/episodes', '/api/trailer', '/api/rating')
 # Posters come from TVmaze, trailer thumbnails from YouTube's image server, and a
@@ -28,6 +30,8 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; "
        "img-src 'self' data: https://static.tvmaze.com https://i.ytimg.com; "
        "frame-src https://www.youtube-nocookie.com; connect-src 'self'; "
        "object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+SHARE = re.compile(r'<!--share.*?<!--/share-->', re.S)
+HOST = re.compile(r'[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?(?::\d{1,5})?', re.I)
 
 
 def model_dir():
@@ -42,6 +46,8 @@ def model_dir():
 ENGINE = Engine(model_dir())
 LIBRARY = Library(ENGINE, HERE / 'art.bin.gz')
 LIVE = Live()
+PAGE = (PUBLIC / 'index.html').read_text() if (PUBLIC / 'index.html').exists() else ''
+LOST = (PUBLIC / '404.html').read_bytes() if (PUBLIC / '404.html').exists() else b''
 # KinoCheck allows 1,000 calls a day and iTunes about 20 a minute, so both cache for days.
 KINO = Live(base=KINOCHECK, ttl=3 * 86400, size=3000, calls=20, period=60)
 STORE = Live(base=ITUNES, ttl=7 * 86400, size=3000, calls=15, period=60)
@@ -60,6 +66,50 @@ def age(show_id):
     show = ENGINE.shows[i]
     seasons = STORE.get(itunes_search(show['name']), trim_seasons, missing=[])
     return match_rating(seasons, show['name'], show['year'], LIBRARY.ended[i] or None)
+
+
+def origin(headers):
+    """This site's own address, for share tags, which need absolute URLs."""
+    host = headers.get('Host', '')
+    if not HOST.fullmatch(host):
+        return ''
+    scheme = headers.get('X-Forwarded-Proto', '')
+    if scheme not in ('http', 'https'):
+        scheme = 'http' if host.split(':')[0] in ('localhost', '127.0.0.1') else 'https'
+    return f'{scheme}://{host}'
+
+
+def share_tags(site, show_id):
+    """What a link preview shows: the app itself, or the title a link opens."""
+    i = ENGINE.by_id.get(show_id) if show_id is not None else None
+    if i is None:
+        return 'Couchside', [
+            ('og:title', 'Couchside'), ('og:description', DESCRIPTION),
+            ('og:image', f'{site}/og.jpg' if site else '/og.jpg'), ('og:image:width', '1200'), ('og:image:height', '630'),
+            ('og:image:alt', 'The Couchside wordmark beside a wall of TV show posters'),
+            ('og:url', f'{site}/' if site else ''), ('twitter:card', 'summary_large_image')]
+    show = ENGINE.shows[i]
+    summary = show['summary'] or DESCRIPTION
+    if len(summary) > 200:
+        summary = summary[:200].rsplit(' ', 1)[0] + '…'
+    year = f" ({show['year']})" if show['year'] else ''
+    return f"{show['name']} · Couchside", [
+        ('og:title', f"{show['name']}{year} on Couchside"), ('og:description', summary),
+        ('og:image', LIBRARY.poster(i, 'original_untouched') or (f'{site}/og.jpg' if site else '')),
+        ('og:image:alt', f"Poster for {show['name']}"),
+        ('og:url', f'{site}/?show={show_id}' if site else ''), ('twitter:card', 'summary')]
+
+
+def render_page(headers, query):
+    raw = query.get('show', [''])[0]
+    title, tags = share_tags(origin(headers), int(raw) if raw.isdigit() and len(raw) < 10 else None)
+    lines = ['<meta property="og:site_name" content="Couchside">', '<meta property="og:type" content="website">']
+    for key, value in tags:
+        if value:
+            kind = 'name' if key.startswith('twitter:') else 'property'
+            lines.append(f'<meta {kind}="{key}" content="{html.escape(value, quote=True)}">')
+    page = SHARE.sub(lambda _m: '<!--share-->\n' + '\n'.join(lines) + '\n<!--/share-->', PAGE, count=1)
+    return page.replace('<title>Couchside</title>', f'<title>{html.escape(title)}</title>', 1).encode()
 
 
 def number(query, key, label):
@@ -82,8 +132,10 @@ def read_ids(payload):
 
 class Handler(SimpleHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
-
     cache_control = None
+    extensions_map = {**SimpleHTTPRequestHandler.extensions_map, '.webmanifest': 'application/manifest+json',
+                      '.ico': 'image/x-icon', '.js': 'text/javascript', '.svg': 'image/svg+xml',
+                      '.txt': 'text/plain; charset=utf-8', '.html': 'text/html; charset=utf-8'}
 
     def end_headers(self):
         self.send_header('X-Content-Type-Options', 'nosniff')
@@ -92,7 +144,38 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header('Content-Security-Policy', CSP)
         self.send_header('Cache-Control', self.cache_control
                          or ('no-store' if self.path.startswith('/api/') else 'no-cache'))
+        self.send_header('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()')
         super().end_headers()
+
+    def send_error(self, code, message=None, explain=None):
+        """A path that leads nowhere gets the app's own page rather than a bare error."""
+        if code != 404 or not LOST or urlsplit(self.path).path.startswith('/api/'):
+            super().send_error(code, message, explain)
+            return
+        self.cache_control = None
+        self.send_response(404)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.send_header('Content-Length', str(len(LOST)))
+        self.end_headers()
+        if self.command != 'HEAD':
+            self.wfile.write(LOST)
+
+    def send_page(self, query, head=False):
+        body = render_page(self.headers, query)
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        if not head:
+            self.wfile.write(body)
+
+    def do_HEAD(self):
+        self.cache_control = None
+        parts = urlsplit(self.path)
+        if parts.path in PAGES:
+            self.send_page(parse_qs(parts.query), head=True)
+        else:
+            super().do_HEAD()
 
     def send_json(self, value, status=200):
         body = json.dumps(value, ensure_ascii=False, separators=(',', ':'), allow_nan=False).encode()
@@ -126,7 +209,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json({'error': 'Not found.'}, 404)
             return
         if path in PAGES:
-            self.path = '/'
+            self.send_page(query)
+            return
         super().do_GET()
 
     def live(self, path, query):

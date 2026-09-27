@@ -6,13 +6,30 @@
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#141414">
 <meta name="description" content="Rows of TV shows picked for your taste, across 89,594 series. Rate what you have seen and every row leans your way.">
+<meta name="application-name" content="Couchside">
+<meta name="apple-mobile-web-app-title" content="Couchside">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Couchside</title>
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<!--share: the server rewrites this block for each request, so a shared title shows its own poster-->
+<meta property="og:site_name" content="Couchside">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Couchside">
+<meta property="og:description" content="Rows of TV shows picked for your taste, with trailers, where to watch and My List.">
+<meta property="og:image" content="/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<!--/share-->
 <link rel="stylesheet" href="/style.css">
 <script type="module" src="/main.js"></script>
 </head>
 <body>
 <a class="skip" href="#page">Skip to content</a>
+<noscript><p class="noscript">Couchside needs JavaScript to pick shows for you. Turn it on and reload.</p></noscript>
 
 <header class="nav" id="nav">
   <a class="brand" href="/" data-link aria-label="Couchside, home">Couchside</a>

@@ -32,6 +32,27 @@ The page and any open title live in the URL (`/new`, `/list`, `/search?q=`,
 stay in the browser. *Move your list to another device* uses the same code as
 Next Watch, so a list moves between the two apps as well as between devices.
 
+## An app on your phone
+
+Couchside installs like an app. On an iPhone, Safari's *Add to Home Screen*
+gives it the sofa icon and opens it full screen with no browser bar; on Android,
+Chrome offers to install it from the web app manifest, with shortcuts to My
+List, Browse, New & Popular and Search on a long press. Title pages have *Share*,
+and a shared link opens straight to that title: the server writes each link's
+preview, so it shows the show's own poster, name and summary in Messages, Slack
+or WhatsApp, and the home page previews as the wordmark over a wall of posters.
+
+A small service worker takes the network first for everything, so a deploy is
+never hidden behind an old copy, and serves a page asking for the connection
+back when there is none. A path that leads nowhere gets the app's own *Lost your
+way?* page.
+
+`brand/` holds the icon as SVG, drawn twice: an outline sofa for 16 to 48 pixels
+and a fuller one for home screens. `brand/make.py` renders the favicon, Apple and
+Android icons, the maskable icon and the share image, which lays real posters out
+in headless Chrome. It needs rsvg-convert, ImageMagick and Chrome, and runs by
+hand; the outputs are committed and `build.py` copies them into `public/`.
+
 ## How the rows are built
 
 `library.py` wraps the Next Watch engine. For each request it works out once how
@@ -82,6 +103,7 @@ cached for days and a show with nothing is cached as nothing.
 ```sh
 .venv/bin/python couchside/build.py     # copies the engine, writes public/
 .venv/bin/python couchside/server.py    # http://localhost:8082
+.venv/bin/python couchside/brand/make.py    # only when the icon or share image changes
 ```
 
 Python 3.10+ and no packages. The model is read from `MODEL_DIR`, or from
@@ -97,7 +119,8 @@ node couchside/test_format.mjs
 The first covers the rows, browsing, badges, title pages and validation, the live
 sources against fakes (trimming, trailer and rating matching, caching, stale
 answers, 404s as answers, 429s, the rate window, icon host checks), and the HTTP
-server end to end. It also fails if `engine.py` here ever differs from
+server end to end: pages and their previews, the 404 page, the manifest, icon
+sizes and file types. It also fails if `engine.py` here ever differs from
 Next Watch's. The second covers the page's small helpers.
 
 ## Deploy
