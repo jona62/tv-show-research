@@ -10,7 +10,7 @@ visibility: public
 workspace:
   image: base
   # Two engines hold about 500MB resident each.
-  resources: { ramMb: 3072, vcpuCount: 2, diskSizeMb: 8192 }
+  resources: { ramMb: 3072, vcpuCount: 1, diskSizeMb: 5120 }
   deployment:
     strategy: incremental
 apps:
