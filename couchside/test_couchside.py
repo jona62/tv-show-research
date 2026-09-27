@@ -124,6 +124,8 @@ check('the engine is Next Watch\'s, unchanged',
       (ROOT / 'app' / 'engine.py').read_bytes() == (ROOT / 'couchside' / 'engine.py').read_bytes())
 check('so is the model follower',
       (ROOT / 'app' / 'follow.py').read_bytes() == (ROOT / 'couchside' / 'follow.py').read_bytes())
+check('and the facet reader',
+      (ROOT / 'app' / 'facets.py').read_bytes() == (ROOT / 'couchside' / 'facets.py').read_bytes())
 
 # 1b. Icons at the sizes each platform asks for.
 def png_size(path):
@@ -616,7 +618,8 @@ check('TMDB\'s logo is served as TMDB publishes it', status == 200 and headers.g
 check('the 404 and offline pages stay as built', fetch('/nope')[2] == (ROOT / 'couchside' / 'public' / '404.html').read_bytes()
       and fetch('/offline.html')[2] == (ROOT / 'couchside' / 'public' / 'offline.html').read_bytes())
 check('the new sources and model files are not served',
-      all(fetch(path)[0] == 404 for path in ('/tmdb.py', '/follow.py', '/tmdb.json.gz', '/build.json')))
+      all(fetch(path)[0] == 404 for path in ('/tmdb.py', '/follow.py', '/facets.py', '/tmdb.json.gz', '/build.json',
+                                             '/facets.bin.gz', '/facets.json.gz', '/search.json.gz')))
 httpd.shutdown()
 
 # 8. Following the model: leave for a complete new one, and for nothing else.
