@@ -1,7 +1,14 @@
-"""Build the expanded catalog and compact sparse vectors; preserve the original study."""
+"""Build the expanded catalog and compact sparse vectors; preserve the original study.
+
+Paths default to the repository's own and each can be moved with an environment
+variable: TV_RAW_DIR (data/raw), TV_MANIFEST (data/manifest.json), TV_STUDY_DIR
+(output, read for theme_rules.json and audit.json), TV_MODEL_OUT (model) and
+TV_AUDIT_DIR (output, written with catalog-audit.json and expanded_theme_rules.json).
+"""
 import gzip
 import html
 import json
+import os
 import re
 import struct
 from collections import Counter
@@ -10,10 +17,13 @@ import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer, ENGLISH_STOP_WORDS
 
 ROOT=Path(__file__).resolve().parents[1]
-OUT=ROOT/'output'
-TARGET=ROOT/'model'
-TARGET.mkdir(exist_ok=True)
-rules=json.loads((OUT/'theme_rules.json').read_text())
+RAW=Path(os.environ.get('TV_RAW_DIR') or ROOT/'data/raw')
+MANIFEST=Path(os.environ.get('TV_MANIFEST') or ROOT/'data/manifest.json')
+STUDY=Path(os.environ.get('TV_STUDY_DIR') or ROOT/'output')
+AUDIT=Path(os.environ.get('TV_AUDIT_DIR') or ROOT/'output')
+TARGET=Path(os.environ.get('TV_MODEL_OUT') or ROOT/'model')
+TARGET.mkdir(parents=True,exist_ok=True)
+rules=json.loads((STUDY/'theme_rules.json').read_text())
 rules.update({
  'Science / technology':r'\b(scien\w*|technolog\w*|robot\w*|artificial intelligence|inventor\w*|laborator\w*|cyber\w*)\b',
  'Space / other worlds':r'\b(spacecraft|spaceship\w*|astronaut\w*|galax\w*|interstellar|alien\w*|outer space|space station|planet\w*)\b',
@@ -37,13 +47,13 @@ rules.update({
  'Mystery / puzzles':r'\b(myster\w*|puzzle\w*|enigma\w*|clue\w*|unsolved|disappear\w*|missing person\w*)\b',
 })
 patterns=[re.compile(p,re.I) for p in rules.values()]
-manifest=json.loads((ROOT/'data/manifest.json').read_text())
+manifest=json.loads(MANIFEST.read_text())
 date=manifest['retrieved_utc'][:10]
-raw=[s for p in sorted((ROOT/'data/raw').glob('page-*.json')) for s in json.loads(p.read_text())]
+raw=[s for p in sorted(RAW.glob('page-*.json')) for s in json.loads(p.read_text())]
 assert len({s['id'] for s in raw})==len(raw)
 raw.sort(key=lambda s:s['id'])
 genres=sorted({g for s in raw for g in s['genres']})
-seed_names=json.loads((OUT/'audit.json').read_text())['seed_ids']
+seed_names=json.loads((STUDY/'audit.json').read_text())['seed_ids']
 texts=[];shows=[]
 for s in raw:
     summary=re.sub(r'\s+',' ',html.unescape(re.sub('<[^>]+>',' ',s.get('summary') or ''))).strip()
@@ -97,7 +107,8 @@ audit={'version':data['version'],'retrieved':date,'searchable_shows':len(shows),
     'country_meaning':'Country of listed network/web channel; not necessarily production origin or streaming availability.',
     'themes_method':'Analyst-authored English regex proxies over summaries, with own title and example titles removed. No translations or human annotations.',
     'source':'https://www.tvmaze.com/api','license':'https://creativecommons.org/licenses/by-sa/4.0/'}
-(OUT/'catalog-audit.json').write_text(json.dumps(audit,indent=2,ensure_ascii=False)+'\n')
-(OUT/'expanded_theme_rules.json').write_text(json.dumps(rules,indent=2)+'\n')
+AUDIT.mkdir(parents=True,exist_ok=True)
+(AUDIT/'catalog-audit.json').write_text(json.dumps(audit,indent=2,ensure_ascii=False)+'\n')
+(AUDIT/'expanded_theme_rules.json').write_text(json.dumps(rules,indent=2)+'\n')
 print(json.dumps(audit,indent=2))
 print('Model bytes',sum(p.stat().st_size for p in TARGET.glob('*.gz')))
