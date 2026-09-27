@@ -18,8 +18,10 @@ sys.path.insert(0, str(ROOT / 'couchside'))
 
 import server                                                    # noqa: E402
 from engine import DEFAULT_SETTINGS                              # noqa: E402
-from library import ROW, MORE, GLANCE, SHORTEST, GENRE_ROWS      # noqa: E402
-from live import Live, LiveError, trim_show, trim_episodes, IMAGES  # noqa: E402
+from library import ROW, MORE, GLANCE, SHORTEST, GENRE_ROWS, NEW_DAYS, lower_first  # noqa: E402
+from live import (Live, LiveError, Icons, trim_show, trim_episodes, trim_videos,        # noqa: E402
+                  trim_seasons, match_rating, IMAGES)
+from datetime import date                                        # noqa: E402
 
 engine, lib = server.ENGINE, server.LIBRARY
 PROFILE = [{'id': 169, 'weight': 1}, {'id': 82, 'weight': .7}, {'id': 44933, 'weight': 1},
@@ -97,6 +99,28 @@ rejects('an oversized list', lambda: lib.home({'profile': [], 'list': list(range
 rejects('a list of strings', lambda: lib.home({'profile': [], 'list': ['169']}), 'whole numbers')
 rejects('a bad rating', lambda: lib.home({'profile': [{'id': 169, 'weight': 2}]}), 'rating')
 
+# 4b. Badges, and browsing by genre or format.
+genres_of = lambda c: engine.shows[engine.by_id[c['id']]]['genres']
+check('top 10 cards wear their badge', all(c['badge'] == 'top10' for c in cold['top10']))
+news = [c for r in cold['rows'] for c in r['items'] if c['badge'] == 'new']
+snapshot = date.fromisoformat(engine.date)
+check('new badges go only to recent premieres', news and all(
+    0 <= (snapshot - date.fromisoformat(engine.shows[engine.by_id[c['id']]]['premiered'])).days <= NEW_DAYS for c in news))
+crime = lib.browse({'profile': PROFILE, 'settings': {}, 'genre': 'Crime'})
+check('browsing a genre keeps to it', crime['rows'] and all('Crime' in genres_of(c) for r in crime['rows'] for c in r['items']))
+check('browsing is personal once rated', crime['personal'] and crime['rows'][0]['title'] == 'Top crime TV shows for you')
+check('browsing leaves rated shows out', not RATED & {c['id'] for r in crime['rows'] for c in r['items']})
+check('browse rows open without repeating each other',
+      len([c['id'] for r in crime['rows'] for c in r['items'][:GLANCE]]) == len({c['id'] for r in crime['rows'] for c in r['items'][:GLANCE]}))
+cartoons = lib.browse({'profile': [], 'settings': {}, 'genre': 'animation'})
+check('formats browse too', not cartoons['personal'] and cartoons['rows']
+      and all(engine.shows[engine.by_id[c['id']]]['type'] == 'Animation' for r in cartoons['rows'] for c in r['items']))
+rejects('an unknown genre', lambda: lib.browse({'profile': [], 'genre': 'Klingon'}), 'Choose a genre')
+rejects('a missing genre', lambda: lib.browse({'profile': []}), 'Choose a genre')
+check('every browsable genre has a poster for its tile', len(lib.genres) >= 20 and all(g['poster'] for g in lib.genres))
+check('labels lower-case without breaking acronyms',
+      lower_first('Crime TV shows') == 'crime TV shows' and lower_first('DIY and makeovers') == 'DIY and makeovers')
+
 # 5. A title page explains itself and finds what is like it.
 page = lib.title({'profile': PROFILE, 'settings': {}, 'id': reference['picks'][0]['id']})
 check('a title page carries its details', {'summary', 'genres', 'themes', 'art', 'poster', 'channel'} <= set(page['show']))
@@ -143,6 +167,43 @@ episodes = trim_episodes([{'number': 1, 'name': 'Pilot', 'runtime': 58, 'airdate
                           {'number': None, 'name': 'Special', 'runtime': None, 'summary': None}, 'junk'])
 check('episode summaries lose their HTML', episodes[0]['summary'] == 'A & B go.')
 check('specials are kept and junk dropped', len(episodes) == 2 and episodes[1]['number'] is None)
+
+check('where it streams and where it airs are both kept',
+      trim_show({**RAW, 'webChannel': {'name': 'Netflix', 'officialSite': 'https://www.netflix.com/'},
+                 'network': {'name': 'AMC', 'officialSite': 'javascript:alert(1)'}})['channels']
+      == [{'name': 'Netflix', 'kind': 'stream', 'site': 'https://www.netflix.com/'},
+          {'name': 'AMC', 'kind': 'network', 'site': None}])
+videos = trim_videos({'trailer': {'youtube_video_id': 'AAAAAAAAAAA', 'title': 'Trailer', 'categories': ['Trailer'],
+                                  'published': '2025-01-02T10:00:00+01:00'},
+                      'videos': [{'youtube_video_id': 'AAAAAAAAAAA'}, {'youtube_video_id': 'bad id!'},
+                                 {'youtube_video_id': 'BBBBBBBBBBB', 'categories': ['Clip']}, 'junk']})
+check('the chosen trailer leads and repeats go', [v['youtube'] for v in videos] == ['AAAAAAAAAAA', 'BBBBBBBBBBB'])
+check('videos carry kind and date', videos[0]['kind'] == 'Trailer' and videos[0]['published'] == '2025-01-02'
+      and videos[1]['kind'] == 'Clip')
+seasons = trim_seasons({'results': [
+    {'artistName': 'The Office', 'contentAdvisoryRating': 'TV-14', 'releaseDate': '2009-09-17T07:00:00Z',
+     'collectionViewUrl': 'https://itunes.apple.com/us/tv-season/a/id1'},
+    {'artistName': 'The Office', 'contentAdvisoryRating': 'TV-14', 'releaseDate': '2012-09-20T07:00:00Z',
+     'collectionViewUrl': 'https://itunes.apple.com/us/tv-season/b/id2'},
+    {'artistName': 'The Office', 'contentAdvisoryRating': 'TV-PG', 'releaseDate': '2006-01-01T00:00:00Z',
+     'collectionViewUrl': 'https://evil.example/x'},
+    {'artistName': 'Not The Office', 'contentAdvisoryRating': 'TV-G', 'releaseDate': '2010-01-01T00:00:00Z'}, 'junk']})
+check('the commonest rating in the run wins, with the newest store link when no season is numbered',
+      match_rating(seasons, 'The Office', 2005, 2013) == {'rating': 'TV-14', 'apple': 'https://itunes.apple.com/us/tv-season/b/id2'})
+check('store links elsewhere are dropped', [x['link'] for x in seasons][2] is None)
+boxed = trim_seasons({'results': [
+    {'artistName': 'Breaking Bad', 'collectionName': 'Breaking Bad, Deluxe Edition: Seasons 1-2', 'contentAdvisoryRating': 'TV-MA',
+     'releaseDate': '2013-01-01T00:00:00Z', 'collectionViewUrl': 'https://itunes.apple.com/us/tv-season/deluxe/id9'},
+    {'artistName': 'Breaking Bad', 'collectionName': 'Breaking Bad, Season 2', 'contentAdvisoryRating': 'TV-MA',
+     'releaseDate': '2009-03-08T00:00:00Z', 'collectionViewUrl': 'https://itunes.apple.com/us/tv-season/s2/id2'},
+    {'artistName': 'Breaking Bad', 'collectionName': 'Breaking Bad, Season 1', 'contentAdvisoryRating': 'TV-MA',
+     'releaseDate': '2008-01-20T00:00:00Z', 'collectionViewUrl': 'https://itunes.apple.com/us/tv-season/s1/id1'}]})
+check('the store link opens season one, not a box set',
+      match_rating(boxed, 'Breaking Bad', 2008, 2013)['apple'] == 'https://itunes.apple.com/us/tv-season/s1/id1')
+check('a namesake outside the run lends nothing', match_rating(seasons, 'The Office', 1990, 1995)['rating'] is None)
+check('a running show matches up to now', match_rating(seasons, 'The Office', 2005, None)['rating'] == 'TV-14')
+check('unknown rating codes are ignored',
+      match_rating([{'artist': 'X', 'rating': 'NR', 'year': 2010, 'link': None}], 'X', 2010, None)['rating'] is None)
 
 now = [0.0]
 calls = []
@@ -196,8 +257,36 @@ try:
 except LiveError as exc:
     check('calls stay inside the rate window', exc.status == 503)
 
-# 7. The server end to end, with TVmaze faked out.
+misses = []
+
+
+def nothing(path):
+    misses.append(path)
+    raise HTTPError(path, 404, 'none', {}, None)
+
+
+kino = Live(fetch=nothing, clock=lambda: now[0])
+check('a 404 can be an answer', kino.get('/shows?imdb_id=tt1', trim_videos, missing=[]) == [])
+kino.get('/shows?imdb_id=tt1', trim_videos, missing=[])
+check('and is not asked about again', len(misses) == 1)
+icon_calls = []
+icons = Icons(fetch=lambda host: icon_calls.append(host) or ('image/png', b'png'))
+check('icons are fetched once per host', icons.get('www.Netflix.com') == icons.get('netflix.com') and icon_calls == ['netflix.com'])
+for bad in ('localhost', '127.0.0.1', 'netflix.com/x', 'a b.com', '', 'x' * 300 + '.com'):
+    try:
+        icons.get(bad)
+        check(f'icon host {bad[:20]!r} is refused', False)
+    except ValueError:
+        check(f'icon host {bad[:20]!r} is refused', True)
+
+# 7. The server end to end, with every outside service faked.
 server.LIVE = Live(fetch=fake)
+server.KINO = Live(fetch=lambda path: {'trailer': {'youtube_video_id': 'CCCCCCCCCCC', 'categories': ['Trailer']}}
+                   if 'tt0903747' in path else {'trailer': None, 'videos': []})
+server.STORE = Live(fetch=lambda path: {'results': [
+    {'artistName': 'Breaking Bad', 'contentAdvisoryRating': 'TV-MA', 'releaseDate': '2012-07-15T07:00:00Z',
+     'collectionViewUrl': 'https://itunes.apple.com/us/tv-season/breaking-bad-season-5/id533936970'}]})
+server.ICONS = Icons(fetch=lambda host: ('image/png', b'\x89PNG fake'))
 httpd = ThreadingHTTPServer(('127.0.0.1', 0), partial(server.Handler, directory=str(server.PUBLIC)))
 threading.Thread(target=httpd.serve_forever, daemon=True).start()
 base = f'http://127.0.0.1:{httpd.server_address[1]}'
@@ -215,10 +304,12 @@ def fetch(path, body=None, kind='application/json'):
 
 status, headers, page_root = fetch('/')
 check('the page is served', status == 200 and b'id="boot"' in page_root)
-check('posters are allowed from TVmaze and nowhere else',
-      "img-src 'self' data: https://static.tvmaze.com;" in headers.get('Content-Security-Policy', ''))
+policy = headers.get('Content-Security-Policy', '')
+check('images come only from TVmaze and YouTube thumbnails',
+      "img-src 'self' data: https://static.tvmaze.com https://i.ytimg.com;" in policy)
+check('trailers play only in the no-cookie player', "frame-src https://www.youtube-nocookie.com;" in policy)
 check('no referrer goes to the image server', headers.get('Referrer-Policy') == 'no-referrer')
-for path in ('/new', '/list', '/search'):
+for path in ('/new', '/list', '/search', '/browse'):
     status, _headers, body = fetch(path)
     check(f'{path} is the page too', status == 200 and body == page_root)
 check('an unknown path is a 404', fetch('/nope')[0] == 404 and fetch('/list/')[0] == 404)
@@ -242,6 +333,20 @@ check('a show outside the catalog is a 400', fetch('/api/extra?id=999999999')[0]
 check('episodes need a season', fetch('/api/episodes?id=169')[0] == 400)
 status, _headers, body = fetch('/api/episodes?id=169&season=1')
 check('episodes come through', status == 200 and json.loads(body)['episodes'][0]['name'] == 'Pilot')
+status, _headers, body = fetch('/api/trailer?id=169')
+check('trailers come through', status == 200 and json.loads(body)['videos'][0]['youtube'] == 'CCCCCCCCCCC')
+status, _headers, body = fetch('/api/rating?id=169')
+check('age ratings come through', status == 200 and json.loads(body) == {
+    'rating': 'TV-MA', 'apple': 'https://itunes.apple.com/us/tv-season/breaking-bad-season-5/id533936970'})
+check('a trailer needs a show id', fetch('/api/trailer?id=')[0] == 400)
+status, headers, body = fetch('/api/icon?host=www.netflix.com')
+check('icons are served as images and cached a week', status == 200 and headers.get('Content-Type') == 'image/png'
+      and headers.get('Cache-Control') == 'public, max-age=604800' and body.startswith(b'\x89PNG'))
+check('an icon for a non-host is a 400', fetch('/api/icon?host=127.0.0.1')[0] == 400)
+check('api answers after an icon are not cached', fetch('/api/extra?id=169')[1].get('Cache-Control') == 'no-store')
+status, _headers, body = fetch('/api/browse', {'profile': PROFILE, 'settings': {}, 'genre': 'Crime'})
+check('browse answers over HTTP', status == 200 and json.loads(body)['rows'])
+check('browsing nowhere is a 400', fetch('/api/browse', {'profile': [], 'genre': 'Nowhere'})[0] == 400)
 check('an unknown api path is a 404', fetch('/api/nope')[0] == 404)
 httpd.shutdown()
 

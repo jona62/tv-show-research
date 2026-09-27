@@ -7,6 +7,7 @@ once per request and cuts every row from that. Nothing about a person is kept
 between requests.
 """
 from array import array
+from datetime import date
 from functools import lru_cache
 import gzip
 import struct
@@ -54,6 +55,36 @@ COLD_ROWS = [('genre', 'Drama'), ('genre', 'Comedy'), ('genre', 'Crime'), ('genr
              ('format', 'animation'), ('genre', 'Thriller'), ('format', 'documentary'),
              ('genre', 'Fantasy'), ('format', 'unscripted'), ('genre', 'Anime')]
 FORMAT_ROWS = {'animation': 'Animated series', 'documentary': 'Documentaries', 'unscripted': 'Reality and competition'}
+NEW_DAYS = 150      # a show premiered this recently before the snapshot wears a New badge
+
+
+def lower_first(label):
+    """'Crime TV shows' as 'crime TV shows', leaving 'DIY and makeovers' alone."""
+    return label[0].lower() + label[1:] if label[1:2].islower() else label
+
+
+class Rows:
+    """Rows being cut for one page. The first cards of a row are the ones a screen shows
+    at a glance, so those skip anything an earlier row already opened with. The rest
+    keep their own order: a row about Breaking Bad should still hold the shows closest
+    to it."""
+
+    def __init__(self, library, taste):
+        self.lib, self.taste, self.used, self.rows = library, taste, set(), []
+
+    def add(self, key, title, items, kind='row', fresh=True):
+        if fresh:
+            head = [i for i in items if i not in self.used][:GLANCE]
+            items = head + [i for i in items if i not in head][:ROW - len(head)]
+            self.used.update(head)
+        else:
+            items = items[:ROW]
+        if len(items) >= SHORTEST:
+            self.fixed(key, title, items, kind)
+
+    def fixed(self, key, title, items, kind='row'):
+        self.rows.append({'key': key, 'title': title, 'kind': kind,
+                          'items': [self.lib.card(i, self.taste) for i in items]})
 
 
 class Taste:
@@ -134,6 +165,10 @@ class Library:
         current = [i for i in shelf if e.shows[i]['year'] >= self.year - 1
                    or (e.shows[i]['status'] == 'Running' and e.shows[i]['year'] >= self.year - 5)]
         self.top10 = current[:10]
+        self.top10_set = set(self.top10)
+        today = date.fromisoformat(e.date)
+        self.recent = {i for i in shelf if e.shows[i]['premiered']
+                       and 0 <= (today - date.fromisoformat(e.shows[i]['premiered'])).days <= NEW_DAYS}
         self.popular = [i for i in shelf if i not in set(self.top10)][:ROW]
         self.acclaimed = sorted((i for i in shelf if rating(i) >= 8.5), key=lambda i: (-rating(i), e.shows[i]['id']))
         self.fresh = [i for i in shelf if e.shows[i]['year'] == self.year]
@@ -151,6 +186,12 @@ class Library:
                 title = FORMAT_ROWS[value]
             self.cold.append((f'{kind}-{value}'.lower(), title, items))
         self.starters = self._starters()
+        # Everything a person can browse by, each with the poster of its best-known show.
+        self.genres = []
+        for key, label in [*GENRE_ROWS.items(), *FORMAT_ROWS.items()]:
+            top = next((i for i in shelf if self._fits(key, i)), None)
+            if top is not None:
+                self.genres.append({'key': key, 'label': label, 'poster': self.poster(top)})
 
     # ------------------------------------------------------------ shapes
 
@@ -165,7 +206,14 @@ class Library:
         s = self.e.shows[i]
         return {'id': s['id'], 'name': s['name'], 'year': s['year'], 'poster': self.poster(i),
                 'genres': s['genres'][:3], 'runtime': s['runtime'], 'type': s['type'],
-                'match': taste.match(i) if taste else None}
+                'match': taste.match(i) if taste else None,
+                'badge': 'top10' if i in self.top10_set else 'new' if i in self.recent else None}
+
+    def _fits(self, key, i):
+        """Whether show i belongs under a genre, or under a format such as animation."""
+        if key in FORMAT_ROWS:
+            return self.e.shows[i]['type'] in FORMAT_GROUPS[key]
+        return key in self.e.shows[i]['genres']
 
     def detail(self, i, taste=None):
         themes, _genres = self.e.signals(i)
@@ -219,25 +267,8 @@ class Library:
         fixed = self.top10 + unrated(self.acclaimed) + unrated(self.popular) + unrated(self.fresh) + saved
         taste.score_others(fixed)
 
-        used = set()
-
-        def cut(items, fresh=True):
-            """The first cards of a row are the ones a screen shows at a glance, so those
-            skip anything an earlier row already opened with. The rest keep their own
-            order: a row about Breaking Bad should still hold the shows closest to it."""
-            if not fresh:
-                return items[:ROW]
-            head = [i for i in items if i not in used][:GLANCE]
-            picked = head + [i for i in items if i not in head][:ROW - len(head)]
-            used.update(head)
-            return picked
-
-        rows = []
-
-        def add(key, title, items, kind='row', fresh=True):
-            items = cut(items, fresh)
-            if len(items) >= SHORTEST:
-                rows.append({'key': key, 'title': title, 'kind': kind, 'items': [self.card(i, taste) for i in items]})
+        out = Rows(self, taste)
+        add = out.add
 
         # Seeds for "Because you loved": loved before liked, newest first.
         order = {p['id']: n for n, p in enumerate(profile)}
@@ -262,8 +293,7 @@ class Library:
         add('top', 'Top picks for you', top)
         if seed_rows:
             add(*seed_rows[0])
-        rows.append({'key': 'top10', 'title': 'Top 10 shows today', 'kind': 'top10',
-                     'items': [self.card(i, taste) for i in self.top10]})
+        out.fixed('top10', 'Top 10 shows today', self.top10, 'top10')
         for g in genres[:1]:
             add(f'genre-{g}'.lower(), GENRE_ROWS[g], [i for i in top if g in e.shows[i]['genres']])
         if len(seed_rows) > 1:
@@ -285,7 +315,7 @@ class Library:
         return {
             'personal': True, 'date': e.date,
             'hero': {**self.detail(hero, taste), 'because': taste.closest(hero) if top else None},
-            'rows': rows,
+            'rows': out.rows,
             'top10': [self.card(i, taste) for i in self.top10],
             'fresh': [self.card(i, taste) for i in by_taste(unrated(self.fresh))[:ROW]],
             'soon': [{**self.card(i), 'premiered': e.shows[i]['premiered']} for i in self.soon],
@@ -313,6 +343,36 @@ class Library:
             'list': [self.card(i) for i in saved],
             'message': '',
         }
+
+    def browse(self, body):
+        """Rows for one genre or format: ranked for you once you have rated something,
+        by popularity before that."""
+        key = body.get('genre') if isinstance(body, dict) else None
+        if not isinstance(key, str) or (key not in GENRE_ROWS and key not in FORMAT_ROWS):
+            raise ValueError('Choose a genre to browse.')
+        profile, settings, positives, negatives, rated, candidates = self.prepare(body)
+        e = self.e
+        label = GENRE_ROWS.get(key) or FORMAT_ROWS[key]
+        noun = lower_first(label)
+        shelf = [i for i in self.shelf if self._fits(key, i) and e.shows[i]['id'] not in rated]
+        taste = Taste(self, positives, negatives, settings, candidates) if positives else None
+        out = Rows(self, taste)
+        rating = lambda i: e.shows[i]['rating'] or 0
+        acclaimed = [i for i in shelf if rating(i) >= 8]
+        if taste:
+            taste.score_others(shelf)
+            top = [i for i in taste.ranked() if self._fits(key, i)]
+            out.add('top', f'Top {noun} for you', top)
+            out.add('new', f'New {noun} for you', [i for i in top if e.shows[i]['year'] >= self.year - 1])
+            out.add('acclaimed', f'Acclaimed {noun}', sorted(acclaimed, key=lambda i: (-(taste.match(i) or 0), e.shows[i]['id'])))
+            out.add('popular', f'Popular {noun}', shelf)
+            out.add('more', f'More {noun} you might like', top[ROW:])
+        else:
+            out.add('popular', f'Popular {noun}', shelf)
+            out.add('new', f'New {noun}', [i for i in shelf if e.shows[i]['year'] >= self.year - 1])
+            out.add('acclaimed', f'Acclaimed {noun}', sorted(acclaimed, key=lambda i: (-rating(i), e.shows[i]['id'])))
+            out.add('more', f'More {noun}', shelf[ROW:])
+        return {'genre': key, 'title': label, 'personal': bool(taste), 'rows': out.rows}
 
     def title(self, body):
         show_id = body.get('id') if isinstance(body, dict) else None

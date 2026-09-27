@@ -9,17 +9,23 @@ import threading
 
 from engine import Engine
 from library import Library
-from live import Live, LiveError
+from live import (Live, LiveError, Icons, KINOCHECK, ITUNES, trim_videos, trim_seasons,
+                  match_rating, itunes_search)
 
 HERE = Path(__file__).resolve().parent
 PUBLIC = HERE / 'public'
 SLOTS = threading.BoundedSemaphore(3)
 LIVE_SLOTS = threading.BoundedSemaphore(4)
 # The app keeps its page in the path, so these are the page too and a refresh stays put.
-PAGES = ('/new', '/list', '/search')
-POSTS = ('/api/home', '/api/title', '/api/shows')
-CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://static.tvmaze.com; "
-       "connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+PAGES = ('/new', '/list', '/search', '/browse')
+POSTS = ('/api/home', '/api/title', '/api/shows', '/api/browse')
+LIVE_ROUTES = ('/api/extra', '/api/episodes', '/api/trailer', '/api/rating')
+# Posters come from TVmaze, trailer thumbnails from YouTube's image server, and a
+# trailer plays in YouTube's no-cookie player only once someone presses play.
+CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; "
+       "img-src 'self' data: https://static.tvmaze.com https://i.ytimg.com; "
+       "frame-src https://www.youtube-nocookie.com; connect-src 'self'; "
+       "object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
 
 
 def model_dir():
@@ -34,6 +40,24 @@ def model_dir():
 ENGINE = Engine(model_dir())
 LIBRARY = Library(ENGINE, HERE / 'art.bin.gz')
 LIVE = Live()
+# KinoCheck allows 1,000 calls a day and iTunes about 20 a minute, so both cache for days.
+KINO = Live(base=KINOCHECK, ttl=3 * 86400, size=3000, calls=20, period=60)
+STORE = Live(base=ITUNES, ttl=7 * 86400, size=3000, calls=15, period=60)
+ICONS = Icons()
+
+
+def trailers(show_id):
+    """Official trailers for a show, found by the IMDb id TVmaze keeps for it."""
+    imdb = LIVE.show(show_id)['imdb']
+    return KINO.get(f'/shows?imdb_id={imdb}&language=en', trim_videos, missing=[]) if imdb else []
+
+
+def age(show_id):
+    """The US age rating and Apple TV link, for shows sold on iTunes."""
+    i = ENGINE.by_id[show_id]
+    show = ENGINE.shows[i]
+    seasons = STORE.get(itunes_search(show['name']), trim_seasons, missing=[])
+    return match_rating(seasons, show['name'], show['year'], LIBRARY.ended[i] or None)
 
 
 def number(query, key, label):
@@ -57,12 +81,15 @@ def read_ids(payload):
 class Handler(SimpleHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
 
+    cache_control = None
+
     def end_headers(self):
         self.send_header('X-Content-Type-Options', 'nosniff')
         # Posters come from TVmaze's image server; it needs no referrer to serve them.
         self.send_header('Referrer-Policy', 'no-referrer')
         self.send_header('Content-Security-Policy', CSP)
-        self.send_header('Cache-Control', 'no-store' if self.path.startswith('/api/') else 'no-cache')
+        self.send_header('Cache-Control', self.cache_control
+                         or ('no-store' if self.path.startswith('/api/') else 'no-cache'))
         super().end_headers()
 
     def send_json(self, value, status=200):
@@ -74,6 +101,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        self.cache_control = None
         parts = urlsplit(self.path)
         path, query = parts.path, parse_qs(parts.query)
         if path == '/healthz':
@@ -86,8 +114,11 @@ class Handler(SimpleHTTPRequestHandler):
             else:
                 self.send_json({'shows': LIBRARY.search(q)})
             return
-        if path in ('/api/extra', '/api/episodes'):
+        if path in LIVE_ROUTES:
             self.live(path, query)
+            return
+        if path == '/api/icon':
+            self.icon(query.get('host', [''])[0])
             return
         if path.startswith('/api/'):
             self.send_json({'error': 'Not found.'}, 404)
@@ -109,10 +140,14 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json({'error': 'Busy right now. Try again in a moment.'}, 503)
             return
         try:
-            if season is None:
+            if path == '/api/extra':
                 self.send_json({'details': LIVE.show(show_id)})
-            else:
+            elif path == '/api/episodes':
                 self.send_json({'episodes': LIVE.episodes(show_id, season)})
+            elif path == '/api/trailer':
+                self.send_json({'videos': trailers(show_id)})
+            else:
+                self.send_json(age(show_id))
         except LiveError as exc:
             self.send_json({'error': str(exc)}, exc.status)
         except (BrokenPipeError, ConnectionResetError, TimeoutError):
@@ -120,7 +155,32 @@ class Handler(SimpleHTTPRequestHandler):
         finally:
             LIVE_SLOTS.release()
 
+    def icon(self, host):
+        if not LIVE_SLOTS.acquire(blocking=False):
+            self.send_json({'error': 'Busy right now. Try again in a moment.'}, 503)
+            return
+        try:
+            kind, body = ICONS.get(host)
+        except ValueError as exc:
+            self.send_json({'error': str(exc)}, 400)
+            return
+        except LiveError as exc:
+            self.send_json({'error': str(exc)}, exc.status)
+            return
+        finally:
+            LIVE_SLOTS.release()
+        self.cache_control = 'public, max-age=604800'
+        self.send_response(200)
+        self.send_header('Content-Type', kind)
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError, TimeoutError):
+            pass
+
     def do_POST(self):
+        self.cache_control = None
         route = urlsplit(self.path).path
         if route not in POSTS:
             self.send_json({'error': 'Not found.'}, 404)
@@ -147,6 +207,8 @@ class Handler(SimpleHTTPRequestHandler):
                 raise ValueError('Send your list and settings as an object.')
             elif route == '/api/home':
                 self.send_json(LIBRARY.home(payload))
+            elif route == '/api/browse':
+                self.send_json(LIBRARY.browse(payload))
             else:
                 self.send_json(LIBRARY.title(payload))
         except (json.JSONDecodeError, UnicodeDecodeError, RecursionError):

@@ -39,7 +39,7 @@ def main():
         shutil.copyfile(APP / name, PUBLIC / name)
     (PUBLIC / 'favicon.svg').write_text(FAVICON)
 
-    boot = {'date': engine.date, 'count': engine.n, 'starters': library.starters}
+    boot = {'date': engine.date, 'count': engine.n, 'starters': library.starters, 'genres': library.genres}
     payload = json.dumps(boot, ensure_ascii=False, separators=(',', ':')).replace('</', '<\\/')
     page = (HERE / 'index.template.html').read_text() \
         .replace('__BOOTSTRAP__', payload) \
