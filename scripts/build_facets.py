@@ -163,8 +163,9 @@ def read_channels(raw_dir):
             for field, kind in (('network', 'network'), ('webChannel', 'web')):
                 channel = show.get(field)
                 if isinstance(channel, dict) and type(channel.get('id')) is int:
+                    key = f"tvmaze-{kind}-{channel['id']}"
                     name = channel.get('name') if isinstance(channel.get('name'), str) else ''
-                    channels.append((f"tvmaze-{kind}-{channel['id']}", ' '.join(name.split()) or f"TVmaze {kind} {channel['id']}"))
+                    channels.append((key, ' '.join(name.split()) or key))
             found[show['id']] = channels
     return found
 
