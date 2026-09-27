@@ -8,24 +8,34 @@ import os
 import threading
 
 from engine import Engine
+from page import fill
+import follow
 
 HERE = Path(__file__).resolve().parent
 PUBLIC = HERE / 'public'
 SLOTS = threading.BoundedSemaphore(3)
 # The app keeps its tab in the path, so these are the page too and a refresh keeps the tab.
-TAB_PATHS = ('/saved', '/taste', '/shows')
+PAGES = ('/', '/index.html', '/saved', '/taste', '/shows')
 
 
 def model_dir():
-    """One model copy serves both apps. Deployed, MODEL_DIR points at the sibling
-    app's directory; locally the research copy or a build of our own is used."""
+    """One model copy serves every app. Deployed, MODEL_DIR names it, and may be a link
+    the refresher moves to each new model; locally a build of our own or the repository's
+    model/ is used."""
     for candidate in (os.environ.get('MODEL_DIR'), HERE / 'model', HERE.parent / 'model'):
         if candidate and (Path(candidate) / 'catalog.json.gz').exists():
             return Path(candidate)
     raise SystemExit('No model found. Set MODEL_DIR, or run python3 app/build.py locally.')
 
 
-ENGINE = Engine(model_dir())
+SOURCE = model_dir()
+# Read from wherever the link led at startup, so a model replaced mid-load cannot mix
+# two versions; follow.py notices the move and the restart loads the new one whole.
+MODEL = Path(os.path.realpath(SOURCE))
+ENGINE = Engine(MODEL)
+# The built page leaves this model's count, date and first-visit data to be filled here.
+TEMPLATE = PUBLIC / 'index.html'
+PAGE = fill(TEMPLATE.read_text(), ENGINE).encode() if TEMPLATE.exists() else b''
 
 
 def read_ids(payload):
@@ -52,6 +62,20 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header('Cache-Control', 'no-store' if self.path.startswith('/api/') else 'no-cache')
         super().end_headers()
 
+    def send_page(self, head=False):
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.send_header('Content-Length', str(len(PAGE)))
+        self.end_headers()
+        if not head:
+            self.wfile.write(PAGE)
+
+    def do_HEAD(self):
+        if PAGE and urlsplit(self.path).path in PAGES:
+            self.send_page(head=True)
+        else:
+            super().do_HEAD()
+
     def send_json(self, value, status=200):
         body = json.dumps(value, ensure_ascii=False, separators=(',', ':'), allow_nan=False).encode()
         self.send_response(status)
@@ -75,8 +99,9 @@ class Handler(SimpleHTTPRequestHandler):
         if path.startswith('/api/'):
             self.send_json({'error': 'Not found.'}, 404)
             return
-        if path in TAB_PATHS:
-            self.path = '/'
+        if PAGE and path in PAGES:
+            self.send_page()
+            return
         super().do_GET()
 
     def do_POST(self):
@@ -122,5 +147,6 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 if __name__ == '__main__':
+    follow.start(os.environ.get('MODEL_DIR') or SOURCE, MODEL)
     port = int(os.environ.get('PORT', '8080'))
     ThreadingHTTPServer(('0.0.0.0', port), partial(Handler, directory=str(PUBLIC))).serve_forever()

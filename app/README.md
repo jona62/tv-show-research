@@ -72,7 +72,7 @@ re-checking with a real scanner.
 ## Run it
 
 ```sh
-python3 app/build.py      # writes app/public, links the model from site/model
+python3 app/build.py      # writes app/public, links the model from model/
 python3 app/server.py     # http://localhost:8080
 ```
 
@@ -83,6 +83,7 @@ crosses 512 KB.
 
 ```sh
 .venv/bin/python app/test_engine.py
+.venv/bin/python app/test_server.py
 node app/test_similar.mjs
 node app/test_transfer.mjs
 node app/test_qr.mjs
@@ -91,10 +92,15 @@ node app/test_qr.mjs
 The first verifies the app engine ranks identically to the research recommender under
 matched settings, that rated shows never come back as picks, that matching to
 chosen shows changes only the ranking and equals re-rating the rest as neutral,
-that bad input is rejected, and that search and plot terms behave. The second pins which chosen
-shows survive a change to the list and how they are named. The third round-trips transfer
+that bad input is rejected, and that search and plot terms behave. The second runs
+the server over a temporary model laid out the way the refresher leaves one, dated
+a day after the real one: the page and its tab paths carry that model's date,
+count and first-visit data, assets are still served as files, and the follower
+leaves only for a complete new model, never for one still being written or a link
+to nothing. The third pins which chosen
+shows survive a change to the list and how they are named. The fourth round-trips transfer
 codes, including a full 60-plus-200 list, and checks that damaged, truncated and
-wrong-version codes are refused rather than half-applied. The fourth holds the QR
+wrong-version codes are refused rather than half-applied. The fifth holds the QR
 encoder to its recorded matrices, its version boundaries, and the structure a
 scanner depends on.
 
@@ -125,6 +131,19 @@ with 3 GB.
 Only `app/public/` is served as files. The model and the Python sources sit
 outside the document root and return 404.
 
+### Following a new model
+
+`MODEL_DIR` may name a link that the refresher moves to each day's model: a
+directory of its own under `versions/`, with `build.json` written last. The server
+loads whatever the link leads to at startup, then checks every `MODEL_POLL_SECONDS`
+(60) where it leads now. Once that is a different directory holding `build.json`,
+it waits `RELOAD_DELAY_SECONDS` (0), checks again, logs one line and exits with
+status 0, and the host's restart brings it back on the new model. A link to a
+directory without `build.json`, or to nothing, is never a reason to leave, and a
+plain directory never moves. `MODEL_POLL_SECONDS=0` turns following off. The page's
+count, snapshot date and first-visit data are filled in at startup, so they follow
+the model without a rebuild. `follow.py` does the watching; Couchside carries a copy.
+
 ## How it is put together
 
 `engine.py` loads the catalog and the sparse TF-IDF, genre and theme vectors
@@ -138,15 +157,18 @@ by the *Tune* preset. Missing data contributes zero rather than being guessed at
 `server.py` is a standard-library HTTP server with `GET /api/search` and
 `POST /api/recommend`. Both are stateless: your list lives in your browser and is
 posted with each request, never stored. Three concurrent calculations at most.
-It also answers the three tab paths with the page, so a refresh keeps the tab.
+It renders the page once at startup and answers `/` and the three tab paths with
+it, so a refresh keeps the tab; everything else in `public/` is served as files.
 
 `main.js` renders; `fit.js` holds the taste chart and its pure value maths;
 `similar.js` holds the rules for which chosen shows the picks are matched to.
-`build.py` inlines the catalog metadata and starter titles into the page so a
-first visit needs no round trip.
+The catalog metadata and starter titles ride in the page, so a first visit needs
+no round trip. `build.py` leaves them, with the count and snapshot date, as
+placeholders that `server.py` fills from the model it loaded (`page.py`), and
+fills them itself only to measure the page for its size badge and the 512 KB check.
 
-The model is a hard link to `site/model/`, which the research pipeline in
-`scripts/` produces. Rebuild it there, then rerun `app/build.py`.
+The model is a hard link to the repository's `model/`, which the research pipeline
+in `scripts/` produces. Rebuild it there, then rerun `app/build.py`.
 
 Data from [TVmaze](https://www.tvmaze.com/), [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
 A match score is content similarity, not a prediction that you will enjoy something.

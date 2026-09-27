@@ -1,5 +1,9 @@
-"""Build the public app bundle. No dependencies beyond the standard library."""
-import json
+"""Build the public app bundle. No dependencies beyond the standard library.
+
+The page keeps placeholders for the catalogue's count and date and the first-visit
+data, which server.py fills from the model it loads (see page.py). This build fills
+them with its own model only to measure the page for its size badge and the budget.
+"""
 import shutil
 import sys
 from pathlib import Path
@@ -40,6 +44,7 @@ def main():
     ensure_model()
     sys.path.insert(0, str(HERE))
     from engine import Engine
+    from page import fill
     engine = Engine(MODEL)
 
     PUBLIC.mkdir(exist_ok=True)
@@ -47,30 +52,19 @@ def main():
         shutil.copyfile(HERE / name, PUBLIC / name)
     (PUBLIC / 'favicon.svg').write_text(FAVICON)
 
-    boot = {
-        'catalog_count': engine.n,
-        'date': engine.date,
-        'meta': {k: engine.metadata[k] for k in ('language', 'type', 'status')},
-        'themes': engine.themes,
-        'genres': engine.genres,
-        'picks': engine.quick_picks,
-    }
-    payload = json.dumps(boot, ensure_ascii=False, separators=(',', ':')).replace('</', '<\\/')
-    template = (HERE / 'index.template.html').read_text() \
-        .replace('__BOOTSTRAP__', payload) \
-        .replace('__CATALOG_COUNT__', f'{engine.n:,}') \
-        .replace('__DATASET_DATE__', engine.date)
-
-    # The badge states the page's own size, so settle on a figure that includes itself.
+    # The badge states the page's own size as served, filled in, so settle on a figure
+    # that includes itself. The server fills in its own model later; this one measures.
+    template = (HERE / 'index.template.html').read_text()
     others = sum((PUBLIC / name).stat().st_size for name in (*ASSETS, 'favicon.svg'))
-    label, total = '00.0 KB', 0
+    label = '00.0 KB'
     for _ in range(4):
-        page = template.replace('__PAGE_SIZE__', label)
-        total = len(page.encode()) + others
-        label = f'{total / 1000:.1f} KB'
-    (PUBLIC / 'index.html').write_text(page)
+        badge = label
+        page = fill(template.replace('__PAGE_SIZE__', badge), engine)
+        label = f'{(len(page.encode()) + others) / 1000:.1f} KB'
+    (PUBLIC / 'index.html').write_text(template.replace('__PAGE_SIZE__', badge))
 
-    sizes = {name: (PUBLIC / name).stat().st_size for name in ('index.html', *ASSETS, 'favicon.svg')}
+    sizes = {'index.html': len(page.encode()),
+             **{name: (PUBLIC / name).stat().st_size for name in (*ASSETS, 'favicon.svg')}}
     total = sum(sizes.values())
     for name, size in sizes.items():
         print(f'  {name:<14} {size / 1000:7.1f} KB')
