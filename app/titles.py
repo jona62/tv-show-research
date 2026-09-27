@@ -30,12 +30,13 @@ for the year as a word. A show found only through another of its titles carries
 that title as aka.
 
 A quarter of a million titles are held as flat arrays and byte strings rather than
-a Python object each, which keeps them to tens of megabytes:
+a Python object each, which keeps them to a few tens of megabytes:
 
   text   every title's words, one title per line in UTF-8, each show's name followed
          by its other titles, best-known show first, so a line's number is its rank
-  vocab  every distinct word, sorted; post holds the lines using each word in one run,
-         so the words sharing a prefix share one slice of it
+  vocab  every distinct word, sorted and packed into one byte string (see Words);
+         post holds the lines using each word in one run, so the words sharing a
+         prefix share one slice of it
   order  the titles' compact forms, sorted: spaces removed, and also without a
          leading article or with number words as digits; each is read back from text
 """

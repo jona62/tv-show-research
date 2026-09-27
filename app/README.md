@@ -76,8 +76,8 @@ than for every half-typed one, and treats any failure as no extra answer. Only a
 search that found nothing anywhere suggests checking the spelling.
 
 On an M3 Pro a search takes a millisecond or two and rarely ten. The index costs
-about 0.4 s and 15 MB at startup over the catalogue alone, and about 1.7 s and 40
-MB with a quarter of a million other titles.
+about 0.35 s and 6 MB at startup over the catalogue alone, and about 1.3 s and 30
+MB with 224,000 other titles.
 
 ## Moving a list between devices
 
