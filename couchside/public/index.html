@@ -105,6 +105,9 @@
 <footer class="foot">
   <p><button class="link" id="open-about" type="button">How Couchside works</button></p>
   <p>Shows, images and details from <a href="https://www.tvmaze.com/">TVmaze</a>, <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. Catalogue snapshot __DATASET_DATE__.</p>
+  <!--tmdb: the server keeps this only when the model carries TMDB data-->
+  <p class="tmdb"><a class="tmdb-logo" href="https://www.themoviedb.org"><img src="/tmdb.svg" alt="TMDB" width="85" height="11"></a> This website uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.</p>
+  <!--/tmdb-->
   <p>Nothing plays here: Couchside is for finding your next show.</p>
 </footer>
 
@@ -171,9 +174,15 @@
   <h2 id="about-h" class="sheet-h">How Couchside works</h2>
   <p>Every row is built from the shows you rate. <b>Love this</b> pulls hardest, <b>I like this</b> pulls a little less, and anything close to what you marked <b>Not for me</b> is pushed back. Rows called <i>Because you loved</i> follow one show at a time.</p>
   <p>A match compares a show with your single best pick, so 99% is as close to your taste as anything gets. It measures how alike the stories, themes and genres are, not a promise you will enjoy it.</p>
+  <!--tmdb-->
+  <p>For shows TMDB knows, the US age rating, trailers, backdrop and where to watch come from TMDB first. Where to watch lists the services that stream, rent or sell a show in the US and links to TMDB's page for it; that streaming data comes from JustWatch. Whatever TMDB lacks comes from the sources below.</p>
+  <!--/tmdb-->
   <p>The catalogue is a TVmaze snapshot of __CATALOG_COUNT__ series from __DATASET_DATE__. Cast, seasons, episodes, backdrops and where a show streams or airs are fetched from TVmaze when you open a title, and posters load from TVmaze's image server.</p>
   <p>Trailers come from KinoCheck, which has official ones for most recent shows, and play in YouTube's no-cookie player only when you press play; their thumbnails load from YouTube's image server. Age ratings are the US ratings iTunes lists for the shows it sells, so shows iTunes does not sell have none. Service icons are fetched through DuckDuckGo by this server. Where to watch shows where a show first streams or airs; it may stream somewhere else in your country.</p>
   <p>Your ratings and My List stay in this browser. There is no account, and nothing about you is stored on a server. Nothing plays here: open a title on TVmaze to see where it airs.</p>
+  <!--tmdb-->
+  <p class="tmdb"><a class="tmdb-logo" href="https://www.themoviedb.org"><img src="/tmdb.svg" alt="TMDB" width="92" height="12"></a> This website uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.</p>
+  <!--/tmdb-->
 </div></dialog>
 
 <div id="toast" class="toast" role="status" aria-live="polite" popover="manual"></div>

@@ -48,6 +48,45 @@ export function watchLinks(site, channels, apple) {
   return out.filter((w, n) => out.findIndex(x => x.href === w.href) === n);
 }
 
+// How a service offers a show, from TMDB's kinds: the word its pill carries, if any,
+// and the sentence its link reads out.
+function offer(kinds, show, service) {
+  const has = kind => kinds.includes(kind);
+  if (has('flatrate')) return ['', `Stream ${show} on ${service}`];
+  if (has('free')) return ['Free', `Watch ${show} free on ${service}`];
+  if (has('ads')) return ['With ads', `Watch ${show} free with ads on ${service}`];
+  if (has('rent') && has('buy')) return ['Rent or buy', `Rent or buy ${show} on ${service}`];
+  if (has('rent')) return ['Rent', `Rent ${show} on ${service}`];
+  return ['Buy', `Buy ${show} on ${service}`];
+}
+
+// Where to watch. TMDB's services when it lists any, in the server's order (streaming
+// first), each with its own logo and linking to TMDB's page for the show, since the
+// data is JustWatch's and must be credited and linked there. Otherwise TVmaze's
+// channels and Apple TV, each with the icon this server fetches for its host.
+export function whereToWatch(show, tmdb, site, channels, apple) {
+  const listed = tmdb?.link && Array.isArray(tmdb.providers) ? tmdb.providers : [];
+  if (listed.length) {
+    return {
+      credit: true,
+      links: listed.map(p => {
+        const [note, said] = offer(p.kinds || [], show, p.name);
+        return { name: p.name, href: tmdb.link, logo: p.logo || null, note, title: said,
+          label: `${said}, listed on TMDB, opens in a new tab` };
+      }),
+    };
+  }
+  return {
+    credit: false,
+    links: watchLinks(site, channels, apple).map(w => {
+      const said = w.kind === 'stream' ? `Stream ${show} on ${w.name}`
+        : w.kind === 'buy' ? `Buy ${show} on ${w.name}` : `${show} on ${w.name}`;
+      return { name: w.name, href: w.href, logo: `/api/icon?host=${encodeURIComponent(w.host)}`,
+        note: w.kind === 'buy' ? 'Buy' : '', title: said, label: `${said}, opens in a new tab` };
+    }),
+  };
+}
+
 // A YouTube search for the trailer, for shows no trailer service knows.
 export const trailerSearch = (name, year) =>
   `https://www.youtube.com/results?search_query=${encodeURIComponent(`${name}${year ? ` ${year}` : ''} official trailer`)}`;

@@ -52,6 +52,8 @@ and a fuller one for home screens. `brand/make.py` renders the favicon, Apple an
 Android icons, the maskable icon and the share image, which lays real posters out
 in headless Chrome. It needs rsvg-convert, ImageMagick and Chrome, and runs by
 hand; the outputs are committed and `build.py` copies them into `public/`.
+`brand/tmdb.svg` is TMDB's own logo, fetched unchanged from themoviedb.org for
+the credit TMDB asks for, and copied the same way.
 
 ## How the rows are built
 
@@ -75,6 +77,27 @@ TVmaze keeps every poster at a URL built from its image id, so
 TVmaze allows; the page sends no referrer. The server reads `art.bin.gz` from
 the model directory when the model carries one, as each refreshed model does, and
 otherwise the copy here, which matches the frozen snapshot.
+
+### TMDB first
+
+When the model carries `tmdb.json.gz`, which the refresher fetches from TMDB
+with each new model, a title's US age rating, trailers, widescreen backdrop and
+where to watch come from it. They arrive with the title itself, as `tmdb` in the
+`/api/title` answer (and on the hero in `/api/home`), so the page makes no extra
+calls for them. Where to watch then lists every US service TMDB has for the show,
+streaming first and renting or buying after, marked as such, each with its TMDB
+logo and linking to TMDB's watch page for the show, as TMDB requires for
+JustWatch's data, with *Streaming data from JustWatch* beside them.
+
+Whatever TMDB lacks falls back to the live sources below, item by item: the
+rating to iTunes, trailers to KinoCheck, the backdrop to TVmaze, and where to
+watch to TVmaze's channel and Apple TV. `/api/rating` and `/api/trailer` answer
+TMDB first too. iTunes is asked only when TMDB has no rating, or lists nowhere to
+watch, since the Apple TV link shows only then. A missing or unreadable file
+means no TMDB data, never a failure. TMDB's logo and notice sit in the footer and
+in *How Couchside works* only when there is TMDB data to credit.
+
+### Live from TVmaze, KinoCheck and iTunes
 
 Cast, seasons, episodes and widescreen backdrops are not in the snapshot.
 `live.py` fetches them from the TVmaze API on the server when a title opens,
@@ -121,15 +144,17 @@ node couchside/test_format.mjs
 ```
 
 The first runs everything over a temporary model laid out the way the refresher
-leaves one: the repository's model dated a day later, with a poster moved. It
-covers the rows, browsing, badges, title pages and validation; that the catalog
-and posters come from `MODEL_DIR`; the live sources against fakes (trimming,
-trailer and rating matching, caching, stale answers, 404s as answers, 429s, the
-rate window, icon host checks); the HTTP server end to end: pages and their
-previews, the loaded model's date and count on the page, the 404 page, the
-manifest, icon sizes and file types; and the follower's decisions. It also fails
-if `engine.py` or `follow.py` here ever differs from Next Watch's. The second
-covers the page's small helpers.
+leaves one: the repository's model dated a day later, with a poster moved and
+hand-made TMDB data. It covers the rows, browsing, badges, title pages and
+validation; that the catalog, posters and TMDB data come from `MODEL_DIR`; TMDB's
+trimming, and that a bad or missing file means no TMDB data; TMDB first and every
+fallback, over HTTP; the live sources against fakes (trimming, trailer and rating
+matching, caching, stale answers, 404s as answers, 429s, the rate window, icon
+host checks); the HTTP server end to end: pages and their previews, the loaded
+model's date and count on the page, TMDB's credit only with TMDB data, the policy,
+the 404 page, the manifest, icon sizes and file types; and the follower's
+decisions. It also fails if `engine.py` or `follow.py` here ever differs from
+Next Watch's. The second covers the page's small helpers, where to watch among them.
 
 ## Deploy
 
@@ -146,4 +171,7 @@ restart it on the new model. An incomplete or missing target is never a reason
 to leave, and `MODEL_POLL_SECONDS=0` turns following off.
 
 Data and images from [TVmaze](https://www.tvmaze.com/),
-[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). With TMDB data,
+ratings, trailers, backdrops and where to watch from [TMDB](https://www.themoviedb.org),
+with streaming data from JustWatch. This website uses TMDB and the TMDB APIs but is
+not endorsed, certified, or otherwise approved by TMDB.

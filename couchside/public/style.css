@@ -308,6 +308,7 @@ dialog.modal::backdrop{background:#000000b8}
 .watch-link small{font-size:12px;font-weight:400;color:var(--muted)}
 .watch-icon{flex:none;width:16px;height:16px;border-radius:3px;object-fit:contain}
 .watch-link .i svg{width:15px;height:15px}
+.watch-credit{font-size:12px;color:var(--dim)}
 /* A trailer takes the top of the title page; the title and buttons move beneath it. */
 .t-hero.playing{aspect-ratio:auto;height:auto;min-height:0;max-height:none;padding-top:58px;background:#000}
 .t-hero.playing>:not(.t-player):not(.t-head){display:none}
@@ -429,6 +430,11 @@ dialog.small .sheet{max-width:560px}
 .foot p{margin:6px 0}
 .foot a,.foot .link{color:var(--muted)}
 @media(min-width:760px){.foot{padding-bottom:40px}}
+/* TMDB's credit, in the footer and in How Couchside works: its logo sits smaller than the wordmark. */
+.tmdb{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.tmdb-logo{display:inline-flex;flex:none}
+.tmdb-logo img{display:block}
+.sheet.pad .tmdb{margin-top:18px;font-size:13px;line-height:1.45;color:var(--muted)}
 
 /* without JavaScript, and the pages served without the app ------------- */
 .noscript{margin:0;padding:14px var(--gutter);background:#3a2a0a;color:#fff;font-weight:700;text-align:center}

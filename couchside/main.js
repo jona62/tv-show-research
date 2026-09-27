@@ -1,7 +1,7 @@
 import { encode, decode, LIMITS } from './transfer.js';
 import { matrix, svgPath } from './qr.js';
 import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere, longDate, airs,
-  watchLinks, trailerSearch } from './format.js';
+  whereToWatch, trailerSearch } from './format.js';
 
 const boot = JSON.parse(document.getElementById('boot').textContent);
 const $ = id => document.getElementById(id);
@@ -236,6 +236,14 @@ function ageOf(id) {
   return ageCache.get(id);
 }
 
+// TMDB's data comes with a title, and with the hero, so those lookups are asked only for
+// what it lacks. The Apple TV link matters only where TMDB lists nowhere to watch.
+const videosOf = (id, tm) => (tm?.videos?.length ? Promise.resolve(tm.videos) : trailersOf(id));
+function ratingOf(id, tm, watching = false) {
+  if (tm?.rating && (!watching || tm.providers?.length)) return Promise.resolve({ rating: tm.rating, apple: null });
+  return ageOf(id).then(age => ({ ...age, rating: tm?.rating || age.rating }));
+}
+
 /* -------------------------------------------------------------- routing */
 let view = null;
 const where = () => parseRoute(location.pathname, location.search);
@@ -386,20 +394,24 @@ function renderHero(s) {
   const more = button('btn primary', 'More info', () => openTitle(s.id), 'info');
   acts.append(more, listButton(s, 'btn'));
   copy.append(acts);
-  trailersOf(s.id).then(videos => {
+  videosOf(s.id, s.tmdb).then(videos => {
     if (!videos.length || !hero.contains(acts)) return;
     more.className = 'btn';
     acts.prepend(button('btn primary', 'Trailer', () => openTitle(s.id, { play: true }), 'play'));
   });
-  ageOf(s.id).then(age => {
+  ratingOf(s.id, s.tmdb).then(age => {
     if (age.rating && hero.contains(meta)) meta.insertBefore(el('span', age.rating, 'badge age'), meta.querySelector('.dot-list'));
   });
   const body = el('div', '', 'hero-body');
   body.append(poster, copy);
   hero.replaceChildren(bg, el('div', '', 'hero-shade'), body);
-  details(s.id).then(d => {
-    if (d?.backdrop && hero.contains(backdrop)) backdrop.src = d.backdrop;
-  });
+  // TMDB's backdrop when it has one, else TVmaze's.
+  if (s.tmdb?.backdrop) backdrop.src = s.tmdb.backdrop;
+  else {
+    details(s.id).then(d => {
+      if (d?.backdrop && hero.contains(backdrop)) backdrop.src = d.backdrop;
+    });
+  }
 }
 
 // "98% match · 2008–2013 · 5 Seasons", with genres instead of length over the hero.
@@ -643,37 +655,50 @@ function showTitle(id, play = false) {
   dialog.scrollTop = 0;
   T.close.focus({ preventScroll: true });
   document.title = `${T.card.name || 'Show'} · Couchside`;
-  post('/api/title', { ...taste(), id }).then(data => {
+  const loaded = post('/api/title', { ...taste(), id });
+  loaded.then(data => {
     if (token !== titleToken) return;
     remember(data.show);
     data.more.forEach(remember);
     T.data = data;
     paintTitle();
+    paintBackdrop();
     paintMore();
   }).catch(e => {
     if (token !== titleToken) return;
     T.error = e.message;
     paintTitle();
+    paintBackdrop();
   });
   details(id).then(live => {
     if (token !== titleToken || !live) return;
     T.live = live;
     paintTitle();
-    if (live.backdrop) T.backdrop.src = live.backdrop;
+    paintBackdrop();
     paintEpisodes();
   });
-  trailersOf(id).then(videos => {
+  // TMDB's trailers and rating arrive with the title; the live lookups fill in what it lacks.
+  const tm = loaded.then(data => data.tmdb, () => null);
+  tm.then(known => videosOf(id, known)).then(videos => {
     if (token !== titleToken) return;
     T.videos = videos;
     paintTrailerButton();
     paintVideos();
     if (play && videos.length) playVideo(videos[0]);
   });
-  ageOf(id).then(age => {
+  tm.then(known => ratingOf(id, known, true)).then(age => {
     if (token !== titleToken) return;
     T.age = age;
     paintTitle();
   });
+}
+
+// TMDB's backdrop when it has one, else TVmaze's, chosen once the title has loaded so
+// one never replaces the other on screen.
+function paintBackdrop() {
+  if (!T || (!T.data && !T.error)) return;
+  const src = T.data?.tmdb?.backdrop || T.live?.backdrop;
+  if (src && T.backdrop.getAttribute('src') !== src) T.backdrop.src = src;
 }
 
 function buildTitle(c) {
@@ -755,7 +780,8 @@ function paintTitle() {
   }
   const airing = live?.status === 'Running' ? airs(live.days) : '';
   if (airing) main.push(el('p', airing, 't-airs'));
-  const watch = watchEl(s, live, T.age);
+  // Once the title has loaded, so TVmaze's channels never stand in for TMDB's services.
+  const watch = T.data || T.error ? watchEl(s, live, T.age, T.data?.tmdb) : null;
   if (watch) main.push(watch);
   if (T.data) main.push(el('p', s.summary || 'TVmaze has no summary for this show yet.', 't-summary'));
   else if (T.error) main.push(el('p', T.error, 't-summary muted'));
@@ -801,10 +827,11 @@ function paintTitle() {
   T.about.replaceChildren(...about);
 }
 
-// Where it streams or airs, from TVmaze, and Apple TV when iTunes sells it, each with
-// the service's own small icon.
-function watchEl(s, live, age) {
-  const links = watchLinks(live?.site, live?.channels, age?.apple);
+// Where to watch: TMDB's services with their own logos, linking to TMDB's page for the
+// show and credited to JustWatch; without them, where TVmaze says it streams or airs and
+// Apple TV when iTunes sells it, each with the service's own small icon.
+function watchEl(s, live, age, tm) {
+  const { links, credit } = whereToWatch(s.name, tm, live?.site, live?.channels, age?.apple);
   if (!links.length) return null;
   const box = el('div', '', 'watch');
   box.append(el('span', 'Where to watch', 'k'));
@@ -814,19 +841,21 @@ function watchEl(s, live, age) {
     a.href = w.href;
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
-    const what = w.kind === 'stream' ? `Stream ${s.name} on ${w.name}` : w.kind === 'buy' ? `Buy ${s.name} on Apple TV`
-      : `${s.name} on ${w.name}`;
-    a.title = what;
-    a.setAttribute('aria-label', `${what}, opens in a new tab`);
-    const logo = picture(`/api/icon?host=${encodeURIComponent(w.host)}`, 'watch-icon');
-    logo.width = 16;
-    logo.height = 16;
-    logo.addEventListener('error', () => logo.replaceWith(icon('out')), { once: true });
-    a.append(logo, el('span', w.name));
-    if (w.kind === 'buy') a.append(el('small', 'Buy'));
+    a.title = w.title;
+    a.setAttribute('aria-label', w.label);
+    if (w.logo) {
+      const logo = picture(w.logo, 'watch-icon');
+      logo.width = 16;
+      logo.height = 16;
+      logo.addEventListener('error', () => logo.replaceWith(icon('out')), { once: true });
+      a.append(logo);
+    } else a.append(icon('out'));
+    a.append(el('span', w.name));
+    if (w.note) a.append(el('small', w.note));
     list.append(a);
   }
   box.append(list);
+  if (credit) box.append(el('span', 'Streaming data from JustWatch', 'watch-credit'));
   return box;
 }
 

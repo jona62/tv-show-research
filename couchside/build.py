@@ -6,7 +6,7 @@ The engine is Next Watch's own, copied in so this app deploys by itself, and so 
 follow.py, which restarts the server when the model is replaced; test_couchside.py
 fails if either ever drifts apart. The transfer codec and QR encoder come from Next
 Watch too, so a list moves between the two apps. Icons and the share image are
-rendered once by brand/make.py and copied from brand/.
+rendered once by brand/make.py and copied from brand/, beside TMDB's own logo.
 
 The page keeps placeholders for the catalogue's count and date and the first-visit
 posters, which server.py fills from whichever model it loads, so a build needs no
@@ -26,7 +26,7 @@ SHARED = ('transfer.js', 'qr.js')
 # Next Watch's server modules, copied beside this server so it deploys by itself.
 MODULES = ('engine.py', 'follow.py')
 BRAND = ('favicon.ico', 'favicon.svg', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png',
-         'icon-maskable-512.png', 'og.jpg')
+         'icon-maskable-512.png', 'og.jpg', 'tmdb.svg')
 def manifest(description):
     return {
     'id': '/', 'name': 'Couchside', 'short_name': 'Couchside', 'description': description,

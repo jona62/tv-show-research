@@ -14,6 +14,7 @@ from library import Library, DESCRIPTION
 from live import (Live, LiveError, Icons, KINOCHECK, ITUNES, trim_videos, trim_seasons,
                   match_rating, itunes_search)
 import follow
+import tmdb
 
 HERE = Path(__file__).resolve().parent
 PUBLIC = HERE / 'public'
@@ -25,15 +26,17 @@ LIVE_SLOTS = threading.BoundedSemaphore(12)
 PAGES = ('/', '/index.html', '/new', '/list', '/search', '/browse', '/welcome')
 POSTS = ('/api/home', '/api/title', '/api/shows', '/api/browse')
 LIVE_ROUTES = ('/api/extra', '/api/episodes', '/api/trailer', '/api/rating')
-# Posters come from TVmaze, trailer thumbnails from YouTube's image server, and a
-# trailer plays in YouTube's no-cookie player only once someone presses play.
+# Posters come from TVmaze, trailer thumbnails from YouTube's image server, backdrops
+# and service logos from TMDB's, and a trailer plays in YouTube's no-cookie player only
+# once someone presses play.
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; "
-       "img-src 'self' data: https://static.tvmaze.com https://i.ytimg.com; "
+       "img-src 'self' data: https://static.tvmaze.com https://i.ytimg.com https://image.tmdb.org; "
        "frame-src https://www.youtube-nocookie.com; connect-src 'self'; "
        "object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
 SHARE = re.compile(r'<!--share.*?<!--/share-->', re.S)
 HOST = re.compile(r'[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?(?::\d{1,5})?', re.I)
 HOLES = re.compile(r'__(BOOTSTRAP|CATALOG_COUNT|DATASET_DATE)__')
+CREDIT = re.compile(r'[ \t]*<!--tmdb\b.*?-->\n?(.*?)[ \t]*<!--/tmdb-->\n?', re.S)
 
 
 def model_dir():
@@ -52,14 +55,15 @@ def art_file(model):
     return model / 'art.bin.gz' if (model / 'art.bin.gz').is_file() else HERE / 'art.bin.gz'
 
 
-def fill(template, engine, library):
+def fill(template, engine, library, credit):
     """The page with this model's count, date and first-visit posters, filled once at
-    startup."""
+    startup. TMDB's credit stays only when there is TMDB data to credit."""
     boot = {'date': engine.date, 'count': engine.n, 'starters': library.starters, 'genres': library.genres}
     # Every < in the data is escaped, so no show's name can close or confuse the script block.
     payload = json.dumps(boot, ensure_ascii=False, separators=(',', ':')).replace('<', '\\u003c')
     values = {'BOOTSTRAP': payload, 'CATALOG_COUNT': f'{engine.n:,}', 'DATASET_DATE': html.escape(engine.date)}
-    return HOLES.sub(lambda m: values[m[1]], template)
+    page = HOLES.sub(lambda m: values[m[1]], template)
+    return CREDIT.sub(lambda m: m[1] if credit else '', page)
 
 
 SOURCE = model_dir()
@@ -68,9 +72,10 @@ SOURCE = model_dir()
 MODEL = Path(os.path.realpath(SOURCE))
 ENGINE = Engine(MODEL)
 LIBRARY = Library(ENGINE, art_file(MODEL))
+TMDB = tmdb.load(MODEL / 'tmdb.json.gz', ENGINE.by_id)
 LIVE = Live()
 TEMPLATE = PUBLIC / 'index.html'
-PAGE = fill(TEMPLATE.read_text(), ENGINE, LIBRARY) if TEMPLATE.exists() else ''
+PAGE = fill(TEMPLATE.read_text(), ENGINE, LIBRARY, bool(TMDB)) if TEMPLATE.exists() else ''
 LOST = (PUBLIC / '404.html').read_bytes() if (PUBLIC / '404.html').exists() else b''
 # KinoCheck allows 1,000 calls a day and iTunes about 20 a minute, so both cache for days.
 KINO = Live(base=KINOCHECK, ttl=3 * 86400, size=3000, calls=20, period=60)
@@ -79,17 +84,33 @@ ICONS = Icons()
 
 
 def trailers(show_id):
-    """Official trailers for a show, found by the IMDb id TVmaze keeps for it."""
+    """A show's trailers from TMDB when it has any, else KinoCheck's official ones, found
+    by the IMDb id TVmaze keeps for it."""
+    known = TMDB.get(show_id)
+    if known and known['videos']:
+        return known['videos']
     imdb = LIVE.show(show_id)['imdb']
     return KINO.get(f'/shows?imdb_id={imdb}&language=en', trim_videos, missing=[]) if imdb else []
 
 
 def age(show_id):
-    """The US age rating and Apple TV link, for shows sold on iTunes."""
+    """The US age rating, TMDB's first, and the Apple TV link for shows sold on iTunes.
+    iTunes is asked only for what TMDB lacks: a rating, or anywhere to watch, since the
+    page shows Apple TV only when TMDB lists no services."""
+    known = TMDB.get(show_id) or {}
+    rating = known.get('rating')
+    if rating and known.get('providers'):
+        return {'rating': rating, 'apple': None}
     i = ENGINE.by_id[show_id]
     show = ENGINE.shows[i]
-    seasons = STORE.get(itunes_search(show['name']), trim_seasons, missing=[])
-    return match_rating(seasons, show['name'], show['year'], LIBRARY.ended[i] or None)
+    try:
+        seasons = STORE.get(itunes_search(show['name']), trim_seasons, missing=[])
+    except LiveError:
+        if rating:
+            return {'rating': rating, 'apple': None}
+        raise
+    found = match_rating(seasons, show['name'], show['year'], LIBRARY.ended[i] or None)
+    return {'rating': rating or found['rating'], 'apple': found['apple']}
 
 
 def origin(headers):
@@ -317,11 +338,17 @@ class Handler(SimpleHTTPRequestHandler):
             elif not isinstance(payload, dict):
                 raise ValueError('Send your list and settings as an object.')
             elif route == '/api/home':
-                self.send_json(LIBRARY.home(payload))
+                home = LIBRARY.home(payload)
+                home['hero']['tmdb'] = TMDB.get(home['hero']['id'])
+                self.send_json(home)
             elif route == '/api/browse':
                 self.send_json(LIBRARY.browse(payload))
             else:
-                self.send_json(LIBRARY.title(payload))
+                # TMDB's rating, trailers, backdrop and where to watch come with the title,
+                # so the page asks the live sources only for what TMDB lacks.
+                title = LIBRARY.title(payload)
+                title['tmdb'] = TMDB.get(title['show']['id'])
+                self.send_json(title)
         except (json.JSONDecodeError, UnicodeDecodeError, RecursionError):
             self.send_json({'error': 'Send valid JSON.'}, 400)
         except ValueError as exc:

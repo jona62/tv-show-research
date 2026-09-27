@@ -1,7 +1,7 @@
-"""Check Couchside's shelves, title pages, live details and server.
+"""Check Couchside's shelves, title pages, live details, TMDB data and server.
 
 Run from the repository root:  .venv/bin/python couchside/test_couchside.py
-Nothing here reaches TVmaze or anything else: live clients are driven by fakes,
+Nothing here reaches TVmaze, TMDB or anything else: live clients are driven by fakes,
 and the server reads a temporary model laid out the way the refresher leaves one.
 """
 from datetime import date, timedelta
@@ -11,7 +11,10 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 import atexit
+import contextlib
 import gzip
+import hashlib
+import io
 import json
 import os
 import re
@@ -26,8 +29,8 @@ sys.path.insert(0, str(ROOT / 'couchside'))
 
 # A model the way the refresher leaves one: a version directory with build.json written
 # last, and a current link to it. It is the repository's model dated a day later, with
-# one poster moved, so whatever the server shows from it can only have come from
-# MODEL_DIR.
+# one poster moved and TMDB data for a few shows, so whatever the server shows from it
+# can only have come from MODEL_DIR.
 TMP = Path(tempfile.mkdtemp(prefix='couchside-test-'))
 atexit.register(shutil.rmtree, TMP, ignore_errors=True)
 VERSION = TMP / 'versions' / '2026-09-08T040000Z'
@@ -51,14 +54,45 @@ with gzip.open(ROOT / 'couchside' / 'art.bin.gz', 'rb') as f:
 struct.pack_into('<I', art_track, 8 + 4 * position[2993], MOVED_POSTER)
 with gzip.open(VERSION / 'art.bin.gz', 'wb') as f:
     f.write(art_track)
+TMDB_FILE = {'fetched_at': '2026-09-08T04:10:00Z', 'region': 'US', 'shows': {
+    # Stranger Things: everything, with junk to drop and one service twice.
+    '2993': {'tmdb_id': 66732, 'fetched_at': '2026-09-08T04:10:00Z', 'rating': 'TV-14',
+             'watch_link': 'https://www.themoviedb.org/tv/66732/watch?locale=US',
+             'providers': [{'name': 'Apple TV', 'logo': '/apple.jpg', 'kind': 'buy'},
+                           {'name': 'Netflix', 'logo': '/netflix.jpg', 'kind': 'flatrate'},
+                           {'name': 'Apple TV', 'logo': '/apple.jpg', 'kind': 'rent'},
+                           {'name': 'Tubi', 'logo': '/tubi.jpg', 'kind': 'ads'},
+                           {'name': 'Odd One', 'logo': 'javascript:alert(1)', 'kind': 'flatrate'},
+                           {'name': 'Cinema', 'logo': '/c.jpg', 'kind': 'theatre'}, {'kind': 'buy'}, 'junk'],
+             'trailers': [{'key': 'TEASER00001', 'name': 'Teaser', 'type': 'Teaser', 'official': True, 'published': '2016-07-01'},
+                          {'key': 'TRAILER0001', 'name': 'Season 1 Trailer', 'type': 'Trailer', 'official': True,
+                           'published': '2016-07-07T12:00:00.000Z'},
+                          {'key': 'FANMADE0001', 'name': 'Fan trailer', 'type': 'Trailer', 'official': False, 'published': '2025-01-01'},
+                          {'key': 'TRAILER0005', 'name': 'Season 5 Trailer', 'type': 'Trailer', 'official': True, 'published': '2025-10-30'},
+                          {'key': 'not a key!', 'name': 'Broken', 'type': 'Trailer', 'official': True},
+                          {'key': 'TRAILER0001', 'name': 'Again', 'type': 'Trailer', 'official': True}],
+             'backdrop': '/stranger.jpg', 'vote_average': 8.6, 'vote_count': 19000},
+    # Game of Thrones: a rating, and nowhere to watch.
+    '82': {'tmdb_id': 1399, 'rating': 'TV-MA', 'watch_link': None, 'providers': [], 'trailers': [], 'backdrop': None},
+    # Severance: a backdrop, a rating TV does not use and a link that is not TMDB's.
+    '44933': {'tmdb_id': 95396, 'rating': 'NR', 'watch_link': 'javascript:alert(1)', 'providers': [], 'trailers': [],
+              'backdrop': '/severance.jpg'},
+    # The Office: a service, but no TMDB page to link it to, so nothing at all.
+    '526': {'rating': None, 'watch_link': None, 'providers': [{'name': 'Peacock', 'logo': '/p.jpg', 'kind': 'flatrate'}]},
+    '999999999': {'tmdb_id': 1, 'rating': 'TV-G'},
+    'Breaking Bad': {'tmdb_id': 1396, 'rating': 'TV-MA'},
+}}
+with gzip.open(VERSION / 'tmdb.json.gz', 'wt') as f:
+    json.dump(TMDB_FILE, f)
 (VERSION / 'build.json').write_text(json.dumps({
     'version': VERSION.name, 'built_at': '2026-09-08T04:20:00Z', 'snapshot_date': MODEL_DATE, 'shows': len(position),
-    'pipeline': 'test', 'seeded_from': None}))
+    'pipeline': 'test', 'seeded_from': None, 'tmdb': {'fetched_at': TMDB_FILE['fetched_at'], 'shows': 3}}))
 os.symlink(VERSION.relative_to(TMP), TMP / 'current')
 os.environ['MODEL_DIR'] = str(TMP / 'current')
 
 import server                                                    # noqa: E402
 import follow                                                    # noqa: E402
+import tmdb                                                      # noqa: E402
 from engine import DEFAULT_SETTINGS                              # noqa: E402
 from library import ROW, MORE, GLANCE, SHORTEST, GENRE_ROWS, NEW_DAYS, lower_first  # noqa: E402
 from live import (Live, LiveError, Icons, trim_show, trim_episodes, trim_videos,        # noqa: E402
@@ -112,14 +146,53 @@ check('originals share the id and bucket', lib.poster(engine.by_id[169], 'origin
 check('most shows have a poster', sum(1 for i in lib.images if i) / engine.n > .85)
 check('an ended show knows when it ended', lib.ended[engine.by_id[169]] >= 2013)
 
-# 2b. Everything comes from the model MODEL_DIR leads to: its catalog and its posters.
-# The frozen layout, a plain directory, carries no posters and uses ours.
+# 2b. Everything comes from the model MODEL_DIR leads to: its catalog, its posters and its
+# TMDB data. The frozen layout, a plain directory, carries no posters and uses ours.
+IMAGE_URL = 'https://image.tmdb.org/t/p/'
 check('the server reads the version the link leads to', server.MODEL == Path(os.path.realpath(VERSION)))
 check('the catalog is that model\'s', engine.date == MODEL_DATE != FROZEN_DATE)
 check('posters come from that model\'s art',
       lib.poster(engine.by_id[2993]).endswith(f'/{MOVED_POSTER // 2500}/{MOVED_POSTER}.jpg'))
 check('a model without art uses the copy kept here', server.art_file(ROOT / 'model') == ROOT / 'couchside' / 'art.bin.gz'
       and server.art_file(server.MODEL) == server.MODEL / 'art.bin.gz')
+
+# 2c. TMDB's data, trimmed to what a title page shows and never a reason to fail.
+known = server.TMDB
+check('TMDB data loads for the catalog\'s shows that have some', sorted(known) == [82, 2993, 44933], sorted(known))
+things = known[2993]
+check('services are merged, streaming first, with TMDB\'s logos', things['providers'] == [
+    {'name': 'Netflix', 'logo': IMAGE_URL + 'w92/netflix.jpg', 'kinds': ['flatrate']},
+    {'name': 'Odd One', 'logo': None, 'kinds': ['flatrate']},
+    {'name': 'Tubi', 'logo': IMAGE_URL + 'w92/tubi.jpg', 'kinds': ['ads']},
+    {'name': 'Apple TV', 'logo': IMAGE_URL + 'w92/apple.jpg', 'kinds': ['rent', 'buy']}], things['providers'])
+check('official trailers lead, trailers before teasers, newest first',
+      [v['youtube'] for v in things['videos']] == ['TRAILER0005', 'TRAILER0001', 'TEASER00001', 'FANMADE0001'])
+check('trailers take the shape the page plays', things['videos'][1] == {
+    'youtube': 'TRAILER0001', 'title': 'Season 1 Trailer', 'kind': 'Trailer', 'published': '2016-07-07'})
+check('the rating, watch page and backdrop come through', things['rating'] == 'TV-14'
+      and things['link'] == 'https://www.themoviedb.org/tv/66732/watch?locale=US'
+      and things['backdrop'] == IMAGE_URL + 'w1280/stranger.jpg')
+check('a show without a usable watch link gets TMDB\'s own',
+      known[82]['link'] == 'https://www.themoviedb.org/tv/1399/watch?locale=US'
+      and known[44933]['link'] == 'https://www.themoviedb.org/tv/95396/watch?locale=US')
+check('a rating TV does not use counts as none', known[44933]['rating'] is None and known[82]['rating'] == 'TV-MA')
+check('every TMDB image comes from TMDB\'s image server', all(
+    url.startswith(IMAGE_URL) for block in known.values()
+    for url in [block['backdrop'], *(p['logo'] for p in block['providers'])] if url))
+bad = TMP / 'bad'
+bad.mkdir()
+(bad / 'plain.json.gz').write_bytes(b'not gzip at all')
+(bad / 'cut.json.gz').write_bytes(gzip.compress(json.dumps(TMDB_FILE).encode())[:200])
+for name, text in (('text', '{"shows": '), ('list', '[1, 2]'), ('shows', '{"shows": [1, 2]}'),
+                   ('deep', '[' * 100_000 + ']' * 100_000)):
+    (bad / f'{name}.json.gz').write_bytes(gzip.compress(text.encode()))
+said = io.StringIO()
+with contextlib.redirect_stderr(said):
+    for name, what in (('missing', 'no TMDB file'), ('plain', 'a TMDB file that is not gzip'), ('cut', 'a cut-off TMDB file'),
+                       ('text', 'a TMDB file of broken JSON'), ('list', 'a TMDB file holding a list'),
+                       ('shows', 'a TMDB file whose shows are a list'), ('deep', 'a TMDB file nested too deep')):
+        check(f'{what} means no TMDB data, not a failure', tmdb.load(bad / f'{name}.json.gz', engine.by_id) == {})
+check('each unreadable one says so, and a missing one does not', said.getvalue().count('Ignoring') == 6, said.getvalue())
 
 # 3. A first visit gets rows without any ratings.
 cold = lib.home({'profile': [], 'settings': {}})
@@ -346,12 +419,33 @@ for bad in ('localhost', '127.0.0.1', 'netflix.com/x', 'a b.com', '', 'x' * 300 
         check(f'icon host {bad[:20]!r} is refused', True)
 
 # 7. The server end to end, with every outside service faked.
+asked = {'kino': [], 'store': []}
+# iTunes seasons by a word of the name searched for. Game of Thrones's rating here differs
+# from TMDB's on purpose, so an answer shows which source it came from.
+SEASONS = {
+    'Breaking': ('Breaking Bad', 'TV-MA', '2012-07-15T07:00:00Z',
+                 'https://itunes.apple.com/us/tv-season/breaking-bad-season-5/id533936970'),
+    'Thrones': ('Game of Thrones', 'TV-14', '2011-04-17T07:00:00Z',
+                'https://itunes.apple.com/us/tv-season/game-of-thrones-season-1/id1'),
+    'Severance': ('Severance', 'TV-MA', '2022-02-18T07:00:00Z', 'https://itunes.apple.com/us/tv-season/severance-season-1/id2'),
+}
+
+
+def kinocheck(path):
+    asked['kino'].append(path)
+    return ({'trailer': {'youtube_video_id': 'CCCCCCCCCCC', 'categories': ['Trailer']}}
+            if 'tt0903747' in path else {'trailer': None, 'videos': []})
+
+
+def itunes(path):
+    asked['store'].append(path)
+    return {'results': [{'artistName': name, 'contentAdvisoryRating': rating, 'releaseDate': day, 'collectionViewUrl': link}
+                        for word, (name, rating, day, link) in SEASONS.items() if word in path]}
+
+
 server.LIVE = Live(fetch=fake)
-server.KINO = Live(fetch=lambda path: {'trailer': {'youtube_video_id': 'CCCCCCCCCCC', 'categories': ['Trailer']}}
-                   if 'tt0903747' in path else {'trailer': None, 'videos': []})
-server.STORE = Live(fetch=lambda path: {'results': [
-    {'artistName': 'Breaking Bad', 'contentAdvisoryRating': 'TV-MA', 'releaseDate': '2012-07-15T07:00:00Z',
-     'collectionViewUrl': 'https://itunes.apple.com/us/tv-season/breaking-bad-season-5/id533936970'}]})
+server.KINO = Live(fetch=kinocheck)
+server.STORE = Live(fetch=itunes)
 server.ICONS = Icons(fetch=lambda host: ('image/png', b'\x89PNG fake'))
 httpd = ThreadingHTTPServer(('127.0.0.1', 0), partial(server.Handler, directory=str(server.PUBLIC)))
 threading.Thread(target=httpd.serve_forever, daemon=True).start()
@@ -372,8 +466,8 @@ def fetch(path, body=None, kind='application/json', headers=None, method=None):
 status, headers, page_root = fetch('/')
 check('the page is served', status == 200 and b'id="boot"' in page_root)
 policy = headers.get('Content-Security-Policy', '')
-check('images come only from TVmaze and YouTube thumbnails',
-      "img-src 'self' data: https://static.tvmaze.com https://i.ytimg.com;" in policy)
+check('images come only from TVmaze, YouTube thumbnails and TMDB',
+      "img-src 'self' data: https://static.tvmaze.com https://i.ytimg.com https://image.tmdb.org;" in policy)
 check('trailers play only in the no-cookie player', "frame-src https://www.youtube-nocookie.com;" in policy)
 check('no referrer goes to the image server', headers.get('Referrer-Policy') == 'no-referrer')
 for path in ('/new', '/list', '/search', '/browse', '/welcome'):
@@ -462,6 +556,36 @@ check('browse answers over HTTP', status == 200 and json.loads(body)['rows'])
 check('browsing nowhere is a 400', fetch('/api/browse', {'profile': [], 'genre': 'Nowhere'})[0] == 400)
 check('an unknown api path is a 404', fetch('/api/nope')[0] == 404)
 
+# 7b. TMDB first, and the live sources asked only for what it lacks.
+before = len(asked['kino'])
+status, _headers, body = fetch('/api/trailer?id=2993')
+check('TMDB\'s trailers come first, without asking KinoCheck',
+      status == 200 and json.loads(body)['videos'] == known[2993]['videos'] and len(asked['kino']) == before)
+status, _headers, body = fetch('/api/trailer?id=44933')
+check('without TMDB trailers, KinoCheck\'s', status == 200 and json.loads(body)['videos'][0]['youtube'] == 'CCCCCCCCCCC')
+before = len(asked['store'])
+status, _headers, body = fetch('/api/rating?id=2993')
+check('TMDB\'s rating comes first, and iTunes is not asked while TMDB lists where to watch',
+      status == 200 and json.loads(body) == {'rating': 'TV-14', 'apple': None} and len(asked['store']) == before)
+status, _headers, body = fetch('/api/rating?id=82')
+check('with nowhere to watch on TMDB, iTunes gives the Apple TV link but not the rating',
+      status == 200 and json.loads(body) == {'rating': 'TV-MA', 'apple': SEASONS['Thrones'][3]})
+status, _headers, body = fetch('/api/rating?id=44933')
+check('without a TMDB rating, iTunes gives both', status == 200
+      and json.loads(body) == {'rating': 'TV-MA', 'apple': SEASONS['Severance'][3]})
+store = server.STORE
+server.STORE = Live(fetch=lambda path: (_ for _ in ()).throw(HTTPError(path, 500, 'boom', {}, None)))
+check('a TMDB rating survives iTunes being down', server.age(82) == {'rating': 'TV-MA', 'apple': None})
+check('without one, iTunes being down is still an error', fetch('/api/rating?id=526')[0] == 502)
+server.STORE = store
+status, _headers, body = fetch('/api/title', {'profile': PROFILE, 'settings': {}, 'id': 2993})
+check('a title carries TMDB\'s data with it', status == 200 and json.loads(body)['tmdb'] == known[2993])
+status, _headers, body = fetch('/api/title', {'profile': [], 'settings': {}, 'id': 169})
+check('a title TMDB lacks carries none', status == 200 and json.loads(body)['tmdb'] is None)
+status, _headers, body = fetch('/api/home', {'profile': PROFILE, 'settings': {}})
+hero = json.loads(body)['hero']
+check('the hero carries TMDB\'s data too', status == 200 and 'tmdb' in hero and hero['tmdb'] == known.get(hero['id']))
+
 # 7c. The page states the model the server loaded, not the one it was built beside.
 built = (ROOT / 'couchside' / 'public' / 'index.html').read_text()
 check('the built page leaves the model to the server',
@@ -472,15 +596,27 @@ check('the page carries the loaded model\'s date and count', boot['date'] == MOD
       and f'{engine.n:,} series from {MODEL_DATE}.'.encode() in page_root)
 check('and its first-visit posters', [c['id'] for c in boot['starters']] == [c['id'] for c in lib.starters]
       and any(str(MOVED_POSTER) in (c['poster'] or '') for c in boot['starters']))
+NOTICE = b'This website uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.'
+check('TMDB is credited in the footer and in How Couchside works', page_root.count(NOTICE) == 2
+      and page_root.count(b'<a class="tmdb-logo" href="https://www.themoviedb.org"><img src="/tmdb.svg"') == 2)
+check('How Couchside works says what TMDB supplies', b'that streaming data comes from JustWatch' in page_root)
+check('no credit marker reaches the page', b'<!--tmdb' not in page_root and b'<!--/tmdb' not in page_root)
+plain = server.fill(server.TEMPLATE.read_text(), engine, lib, False)
+check('without TMDB data there is no TMDB credit', 'TMDB' not in plain and 'tmdb' not in plain)
 stand_in = type('Model', (), {'date': '2031-02-03', 'n': 12345})()
 odd = type('Shelves', (), {'starters': [{'id': 1, 'name': '</script><!--<script>'}], 'genres': []})()
-filled = server.fill(server.TEMPLATE.read_text(), stand_in, odd)
+filled = server.fill(server.TEMPLATE.read_text(), stand_in, odd, False)
 check('whatever model is loaded fills the page', 'Catalogue snapshot 2031-02-03.' in filled and '12,345 series' in filled
       and json.loads(re.search(r'id="boot">(.*?)</script>', filled, re.S)[1])['starters'][0]['name'] == '</script><!--<script>')
+logo = (ROOT / 'couchside' / 'brand' / 'tmdb.svg').read_bytes()
+status, headers, body = fetch('/tmdb.svg')
+check('TMDB\'s logo is served as TMDB publishes it', status == 200 and headers.get('Content-Type') == 'image/svg+xml'
+      and body == logo and hashlib.sha256(logo).hexdigest()
+      == '8e7b30f73a4020692ccca9c88bafe5dcb6f8a62a4c6bc55cd9ba82bb2cd95f6c')
 check('the 404 and offline pages stay as built', fetch('/nope')[2] == (ROOT / 'couchside' / 'public' / '404.html').read_bytes()
       and fetch('/offline.html')[2] == (ROOT / 'couchside' / 'public' / 'offline.html').read_bytes())
 check('the new sources and model files are not served',
-      all(fetch(path)[0] == 404 for path in ('/follow.py', '/build.json')))
+      all(fetch(path)[0] == 404 for path in ('/tmdb.py', '/follow.py', '/tmdb.json.gz', '/build.json')))
 httpd.shutdown()
 
 # 8. Following the model: leave for a complete new one, and for nothing else.
