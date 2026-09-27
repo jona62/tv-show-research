@@ -85,6 +85,22 @@ PARENT_SHARE = 0.5          # a genre's superclass, and what a franchise target 
 PARENT_LEVELS = 2
 MIN_DF = 2
 MAX_ALIASES = 12
+# Two of those are kept for names in other scripts, the show's own language first, so a
+# popular show's many Latin-script names cannot crowd out 進撃の巨人; other scripts also
+# take any places the Latin-script names leave.
+SCRIPT_SLOTS = 2
+# TVmaze's language names as the Wikidata language codes their titles are tagged with.
+LANGUAGE_CODES = {
+    'Japanese': 'ja', 'Korean': 'ko', 'Chinese': 'zh', 'Russian': 'ru', 'Thai': 'th', 'Hindi': 'hi',
+    'Arabic': 'ar', 'Greek': 'el', 'Hebrew': 'he', 'Turkish': 'tr', 'Ukrainian': 'uk', 'Persian': 'fa',
+    'Bengali': 'bn', 'Tamil': 'ta', 'Telugu': 'te', 'Malayalam': 'ml', 'Marathi': 'mr', 'Urdu': 'ur',
+    'Kannada': 'kn', 'Punjabi': 'pa', 'Georgian': 'ka', 'Armenian': 'hy', 'Mongolian': 'mn',
+    'Bulgarian': 'bg', 'Serbian': 'sr', 'Kazakh': 'kk', 'Belarusian': 'be', 'Macedonian': 'mk',
+    'Spanish': 'es', 'French': 'fr', 'German': 'de', 'Italian': 'it', 'Portuguese': 'pt', 'Dutch': 'nl',
+    'Swedish': 'sv', 'Danish': 'da', 'Norwegian': 'nb', 'Finnish': 'fi', 'Polish': 'pl', 'Czech': 'cs',
+    'Hungarian': 'hu', 'Romanian': 'ro', 'Croatian': 'hr', 'Vietnamese': 'vi', 'Indonesian': 'id',
+    'Tagalog': 'tl', 'Malay': 'ms', 'Icelandic': 'is',
+}
 ALIAS_LENGTH = (2, 80)
 
 # Genre labels name a medium as often as a genre. These go, wherever they stand as
@@ -135,13 +151,16 @@ def canonical_genre(label):
 
 # Reading the inputs -----------------------------------------------------------------
 
-def read_catalog(model):
+def read_catalog(model, languages=None):
     """The catalog's date and its shows as (id, name) pairs, in order, without keeping
-    every show object: each is reduced as it is parsed."""
+    every show object: each is reduced as it is parsed. A dict passed as languages
+    collects each show's TVmaze language on the way."""
     def compact(pairs):
         keys = {k for k, _v in pairs}
         if {'id', 'name', 'genres'} <= keys:
             found = dict(pairs)
+            if languages is not None and found.get('language'):
+                languages[found['id']] = found['language']
             return (found['id'], found['name'])
         return dict(pairs)
     with gzip.open(Path(model) / 'catalog.json.gz', 'rt', encoding='utf-8') as f:
@@ -325,10 +344,13 @@ def english(lang):
     return lang == 'en' or lang.startswith('en-')
 
 
-def aliases(name, names):
+def aliases(name, names, language=None):
     """Up to 12 other names for a show, from [(language, text)] pairs. A trailing
     qualifier in brackets, such as "(TV series)" or "(anime)", is dropped first: it tells
-    a show from others of the same name and is no part of the name."""
+    a show from others of the same name and is no part of the name. English names come
+    first, then other Latin-script ones, then two in other scripts; names in the show's
+    own TVmaze language lead their group."""
+    own_code = LANGUAGE_CODES.get(language)
     own = fold(name)
     groups = {}
     for lang, text in names:
@@ -344,18 +366,24 @@ def aliases(name, names):
             return 0 if any(english(lang) for lang in texts[text]) else 1 if latin(text) else 2
         languages = set().union(*texts.values())
         best = min(texts, key=lambda t: (rank(t), -len(texts[t]), t))
-        ranked.append((rank(best), -len(languages), best.casefold(), best))
+        mine = bool(own_code) and any(lang == own_code or lang.startswith(own_code + '-') for lang in languages)
+        ranked.append((rank(best), not mine, -len(languages), best.casefold(), best))
     ranked.sort()
-    return [text for *_order, text in ranked[:MAX_ALIASES]]
+    latin_names = [entry for entry in ranked if entry[0] < 2]
+    other_names = [entry for entry in ranked if entry[0] == 2]
+    # Other scripts are sure of two places and take any the Latin names leave.
+    chosen = latin_names[:MAX_ALIASES - min(len(other_names), SCRIPT_SLOTS)]
+    chosen += other_names[:MAX_ALIASES - len(chosen)]
+    return [entry[-1] for entry in chosen]
 
 
-def search_aliases(shows, cache):
+def search_aliases(shows, cache, languages=None):
     entries = cache['shows'] if cache else {}
     found = {}
     for show_id, name in sorted(shows):
         entry = entries.get(str(show_id))
         if entry and entry.get('names'):
-            names = aliases(name, entry['names'])
+            names = aliases(name, entry['names'], (languages or {}).get(show_id))
             if names:
                 found[str(show_id)] = names
     return found
@@ -398,7 +426,8 @@ def main():
     raw_dir = Path(os.environ.get('TV_RAW_DIR') or ROOT / 'data' / 'raw')
     source = os.environ.get('TV_WIKIDATA')
     # The catalog first: parsing it is the peak, and it is over before the cache loads.
-    date, shows = read_catalog(model)
+    languages = {}
+    date, shows = read_catalog(model, languages)
     channels = read_channels(raw_dir)
     cache = None
     if source:
@@ -411,7 +440,7 @@ def main():
     else:
         print('TV_WIKIDATA is not set; building from TVmaze alone.', flush=True)
     facets = build(shows, channels, cache)
-    found = search_aliases(shows, cache)
+    found = search_aliases(shows, cache, languages)
     sizes = write(model, date, facets, found, cache['fetched_at'] if cache else None)
     rows, cols = facets['shape']
     print(f"{rows:,} shows, {cols:,} tokens, {len(facets['csr'][1]):,} nonzeros; "

@@ -10,7 +10,8 @@ build.py copies this file, like engine.py.
 
     facets = load(model_dir, engine.n)       # None when the model has no facets
     scores = facets.similarity(i, {'franchise': 3, 'maker': 2, 'genre': 1})
-    names = aliases(model_dir)               # {TVmaze id: [names]}, {} without them
+
+search.json.gz, the other names, is read by titles.py for search.
 """
 from array import array
 from pathlib import Path
@@ -181,22 +182,3 @@ def load(model_dir, n):
     return Facets(meta, arrays)
 
 
-def aliases(model_dir):
-    """{TVmaze id: [other names]} from search.json.gz, or {} when the model has none."""
-    path = Path(model_dir) / 'search.json.gz'
-    if not path.exists():
-        return {}
-    try:
-        with gzip.open(path, 'rt', encoding='utf-8') as f:
-            data = json.load(f)
-    except (OSError, EOFError, UnicodeDecodeError, ValueError, zlib.error) as exc:
-        raise ValueError(f'search.json.gz does not read: {exc}') from None
-    found = data.get('aliases') if isinstance(data, dict) and data.get('version') == VERSION else None
-    if not isinstance(found, dict):
-        raise ValueError(f'search.json.gz is not version {VERSION} search data.')
-    names = {}
-    for key, values in found.items():
-        if not key.isdigit() or not isinstance(values, list) or not all(isinstance(v, str) for v in values):
-            raise ValueError('search.json.gz holds a malformed entry.')
-        names[int(key)] = values
-    return names

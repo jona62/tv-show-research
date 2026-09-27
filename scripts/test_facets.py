@@ -26,6 +26,7 @@ sys.path.insert(0, str(ROOT / 'app'))
 
 import build_facets                                             # noqa: E402
 import facets as reader                                         # noqa: E402
+import titles                                                    # noqa: E402
 import wikidata                                                 # noqa: E402
 
 TMP = Path(tempfile.mkdtemp(prefix='facets-test-'))
@@ -194,6 +195,15 @@ check('at most 12 aliases a show', len(build_facets.aliases('Show', many)) == 12
 shared = [['de', 'Gemeinsam'], ['nl', 'Gemeinsam'], ['sv', 'Gemeinsam'], ['da', 'Alleen']]
 check('among Latin names, the ones more languages use come first',
       build_facets.aliases('Show', shared) == ['Gemeinsam', 'Alleen'])
+crowded = [['en', f'Name number {i:02d}'] for i in range(20)] + [['ru', 'Атака титанов'], ['ko', '진격의 거인'], ['ja', '進撃の巨人']]
+kept = build_facets.aliases('Attack on Titan', crowded, 'Japanese')
+check('two names in other scripts survive a crowd of Latin ones, the show\'s own language first',
+      len(kept) == 12 and kept[-2:][0] == '進撃の巨人' and len(kept[-2:]) == 2, kept[-3:])
+few = build_facets.aliases('Show', [['en', 'One'], ['ja', 'ショー'], ['ko', '쇼타임'], ['ru', 'Шоу'], ['th', 'โชว์']])
+check('other scripts fill the places Latin names leave', len(few) == 5 and few[0] == 'One', few)
+plain = build_facets.aliases('Attack on Titan', crowded)
+check('without a language, other scripts still keep their two places',
+      len(plain) == 12 and all(not build_facets.latin(name) for name in plain[-2:]), plain[-3:])
 
 # 3. The builder, end to end ---------------------------------------------------------------------
 
@@ -351,8 +361,7 @@ check('similarity is an array over every show', len(loaded.similarity(3, weights
 rejects('an unknown family is refused', lambda: loaded.similarity(0, {'mood': 1}), 'Unknown facet families')
 rejects('a sequence of the wrong length is refused', lambda: loaded.similarity(0, [1, 2]), 'one per family')
 rejects('a weight that is not a number is refused', lambda: loaded.similarity(0, {'genre': float('nan')}), 'finite')
-check('aliases() reads search.json.gz', reader.aliases(model) == {1: ['BG'], 12: search['aliases']['12']})
-check('a model without facets loads as None', reader.load(TMP / 'nowhere', 5) is None and reader.aliases(TMP / 'nowhere') == {})
+check('a model without facets loads as None', reader.load(TMP / 'nowhere', 5) is None)
 rejects('facets for another catalog size are refused', lambda: reader.load(model, len(SHOWS) + 1), 'rows where the catalog has')
 half = TMP / 'half'
 half.mkdir()
@@ -365,8 +374,6 @@ rejects('a file that does not decompress is refused', lambda: reader.load(half, 
 (half / 'facets.bin.gz').write_bytes(gzip.compress(gzip.decompress((model / 'facets.bin.gz').read_bytes())[:-4]))
 shutil.copyfile(model / 'facets.json.gz', half / 'facets.json.gz')
 rejects('a truncated matrix is refused', lambda: reader.load(half, len(SHOWS)), 'truncated')
-(half / 'search.json.gz').write_bytes(gzip.compress(b'{"version": 1, "aliases": {"x": ["y"]}}'))
-rejects('malformed aliases are refused', lambda: reader.aliases(half), 'malformed')
 
 # 5. The committed model --------------------------------------------------------------------------
 
@@ -414,7 +421,7 @@ if (MODEL / 'facets.bin.gz').exists():
     check('The Office and Parks and Recreation share makers', real_cosine(526, 174, 'maker') > 0.2)
     anime = {live.keys[c] for c, _v in live.row(by_id[919]) if live.families[live.token_family[c]] == 'genre'}
     check('Attack on Titan has anime genres', {'anime', 'dark fantasy', 'post apocalyptic'} <= anime, anime)
-    names = reader.aliases(MODEL)
+    names = titles.load_aliases(MODEL / 'search.json.gz')
     check('Money Heist finds La Casa de Papel', 'Money Heist' in names.get(27436, []))
     check('Shingeki no Kyojin finds Attack on Titan', 'Shingeki no Kyojin' in names.get(919, []))
     check('Brooklyn 99 finds Brooklyn Nine-Nine', 'Brooklyn 99' in names.get(49, []))

@@ -17,7 +17,6 @@ import math
 import re
 import struct
 import sys
-import unicodedata
 
 import facets
 from taste import Attributes, Taste
@@ -64,10 +63,6 @@ QUICK_PICKS = [169, 82, 526, 2993, 44933, 23470, 431, 44458, 54198, 919,
                43687, 46562, 269, 16149, 305, 216]
 
 
-def folded(s):
-    return ''.join(c for c in unicodedata.normalize('NFKD', s.casefold()) if not unicodedata.combining(c))
-
-
 class Engine:
     def __init__(self, path=None):
         model = Path(path) if path else Path(__file__).resolve().parent / 'model'
@@ -81,7 +76,6 @@ class Engine:
         self.date = data['date']
         self.metadata = data['metadata']
         self.n = len(self.shows)
-        self.names = [folded(s['name']) for s in self.shows]
         with gzip.open(model / 'vectors.bin.gz', 'rb') as f:
             rows, cols, nnz = struct.unpack('<III', f.read(12))
             if rows != self.n or cols != data['text_features']:

@@ -14,7 +14,7 @@ favourite lands in the top 24 picks 44% of the time, up from 10%.
 
 **[app/](app/) is Next Watch**, the web app: rate what you have watched, get
 ranked picks with the reason each one surfaced, and see your taste drawn against
-them. Three screens, light by default, under 50 KB on first load, works on a
+them. Four screens, light by default, about 100 KB on first load, works on a
 phone. [Read more](app/README.md).
 
 ```sh

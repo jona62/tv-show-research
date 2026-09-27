@@ -30,7 +30,7 @@ Four screens and nothing else:
 The tab you are on sits in the path (`/saved`, `/taste`, `/shows`), so a refresh or
 a bookmark lands on the same one. Light by default, dark on request, one layout
 that works at 375px and on a desktop.
-First load is under 50 KB of HTML, CSS and JS; the 512 KB ceiling is enforced by
+First load is about 100 KB of HTML, CSS and JS, as the page's own badge states; the 512 KB ceiling is enforced by
 the build.
 
 ## What is in the catalogue
