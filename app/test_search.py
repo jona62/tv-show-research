@@ -150,6 +150,11 @@ check('exact, prefix and word matches answer a search by themselves',
       strong('office') and strong('breaking b') and strong('us last') and strong('v'))
 check('guesses do not', not strong('sucession') and not strong('demon slayer kimetsu no yaiba')
       and not strong('bob hearts abishola netflix') and not strong('zzzqqq'))
+typing = lambda q: index.find(q).typing
+check('a last word too short, or the start of a longer one, is still being typed',
+      typing('breaking b') and typing('the la') and typing('the las') and typing('demon slayer kimetsu no ya'))
+check('a whole word, or one no title starts with, is finished',
+      not typing('the last') and not typing('sucession') and not typing('the office') and not typing('zzzqqq'))
 
 # 3. Other titles, as the model carries them.
 TMP = Path(tempfile.mkdtemp(prefix='titles-test-'))
@@ -286,6 +291,10 @@ check('TVmaze down leaves the local answer as it was', answer(engine, 'sucession
     'shows': [{'id': 9, 'name': 'Succession'}], 'missing': [], 'missing_first': False})
 said.clear()
 check('a search too short is never sent', answer(engine, 'zq', tvmaze)['shows'] == [] and said == [])
+out = answer(engine, 'demon slayer kimetsu no ya', tvmaze)
+check('nor is one whose last word is still being typed', said == [] and out['shows'][0]['id'] == 17)
+answer(engine, 'demon slayer kimetsu no yaiba', tvmaze)
+check('until the word is finished', said == ['demon slayer kimetsu no yaiba'])
 check('nothing found anywhere is an empty answer',
       answer(engine, 'zzzqqq', Stub([])) == {'shows': [], 'missing': [], 'missing_first': False})
 many = Stub([{**new, 'id': 500 + k} for k in range(8)])

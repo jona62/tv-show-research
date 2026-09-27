@@ -203,11 +203,13 @@ def load_aliases(path):
 
 
 class Found:
-    """What a search turned up: (show index, aka) pairs, best first, and whether the
-    best of them matched well enough that looking further afield would add nothing."""
+    """What a search turned up: (show index, aka) pairs, best first; whether the best
+    of them matched well enough that looking further afield would add nothing; and
+    whether its last word is plainly still being typed, too short yet or the start of
+    a longer word, so looking further afield can wait."""
 
-    def __init__(self, hits, strong):
-        self.hits, self.strong = hits, strong
+    def __init__(self, hits, strong, typing=False):
+        self.hits, self.strong, self.typing = hits, strong, typing
 
 
 class Titles:
@@ -367,7 +369,9 @@ class Titles:
         else:
             self.match(words, tokens, None, best, limit, deep=True)
         top = sorted(best.values())[:limit]
-        return Found([(self.owner[d], self.aka_of(d)) for _key, d in top], bool(top) and top[0][0][0] <= STRONG)
+        lo, hi = self.span(tokens[-1])
+        typing = len(words[-1]) < 3 or (hi > lo and self.vocab[lo] != tokens[-1])
+        return Found([(self.owner[d], self.aka_of(d)) for _key, d in top], bool(top) and top[0][0][0] <= STRONG, typing)
 
     def match(self, words, tokens, year, best, limit, deep):
         """Add the shows the tokens match to best, tier by tier, until a page is full."""

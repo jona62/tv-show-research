@@ -71,7 +71,8 @@ and a show it has that the catalogue does not yet is named with a link to its
 TVmaze page and a note that new shows arrive with the nightly refresh. The browser
 never talks to TVmaze. The server caches its answers, waits at most 3 seconds,
 keeps to 4 calls every 10 seconds (TVmaze allows 20 from one address, and
-Couchside takes the rest), and treats any failure as no extra answer. Only a
+Couchside takes the rest), asks only once the last word looks finished rather
+than for every half-typed one, and treats any failure as no extra answer. Only a
 search that found nothing anywhere suggests checking the spelling.
 
 On an M3 Pro a search takes a millisecond or two and rarely ten. The index costs

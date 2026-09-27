@@ -11,8 +11,9 @@ refresh, and put them first when TVmaze ranks one of them first. The browser nev
 talks to TVmaze for this.
 
 TVmaze allows about 20 calls every 10 seconds from one address, and every app on this
-host shares it. So answers are cached, each app keeps to a small window of its own, a
-429 pauses the calls, and a slow or failed call is simply no extra answer.
+host shares it. So answers are cached, each app keeps to a small window of its own,
+searches wait for a finished last word, a 429 pauses the calls, and a slow or failed
+call is simply no extra answer.
 """
 from collections import OrderedDict, deque
 from urllib.error import HTTPError, URLError
@@ -105,7 +106,9 @@ def answer(engine, q, remote=None, card=None):
     card = card or engine.card
     found = engine.titles.find(q)
     hits, missing, first = found.hits, [], False
-    if not found.strong and remote and len(''.join(q.split())) >= SHORTEST:
+    # Searches arrive as someone types, so TVmaze waits for a finished last word
+    # rather than spend its few calls on half of one.
+    if not found.strong and not found.typing and remote and len(''.join(q.split())) >= SHORTEST:
         wider = remote.search(q) or []
         aka = dict(hits)
         merged = {}
