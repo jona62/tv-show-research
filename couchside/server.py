@@ -10,6 +10,7 @@ import re
 import threading
 
 from engine import Engine
+from fallback import Remote, answer
 from library import Library, DESCRIPTION
 from live import (Live, LiveError, Icons, KINOCHECK, ITUNES, trim_videos, trim_seasons,
                   match_rating, itunes_search)
@@ -73,7 +74,10 @@ MODEL = Path(os.path.realpath(SOURCE))
 ENGINE = Engine(MODEL)
 LIBRARY = Library(ENGINE, art_file(MODEL))
 TMDB = tmdb.load(MODEL / 'tmdb.json.gz', ENGINE.by_id)
-LIVE = Live()
+# TVmaze allows about 20 calls every 10 seconds from this host, shared with Next Watch:
+# 12 for title pages here, 4 for this app's search and 4 for Next Watch's.
+LIVE = Live(calls=12)
+TVMAZE = Remote(calls=4)
 TEMPLATE = PUBLIC / 'index.html'
 PAGE = fill(TEMPLATE.read_text(), ENGINE, LIBRARY, bool(TMDB)) if TEMPLATE.exists() else ''
 LOST = (PUBLIC / '404.html').read_bytes() if (PUBLIC / '404.html').exists() else b''
@@ -242,8 +246,11 @@ class Handler(SimpleHTTPRequestHandler):
             q = query.get('q', [''])[0]
             if len(q) > 100:
                 self.send_json({'error': 'Search terms must be 100 characters or fewer.'}, 400)
-            else:
-                self.send_json({'shows': LIBRARY.search(q)})
+                return
+            try:
+                self.send_json(answer(ENGINE, q, TVMAZE, LIBRARY.card))
+            except (BrokenPipeError, ConnectionResetError, TimeoutError):
+                pass    # the page moved on to a longer search while TVmaze answered
             return
         if path in LIVE_ROUTES:
             self.live(path, query)

@@ -8,12 +8,16 @@ import os
 import threading
 
 from engine import Engine
+from fallback import Remote, answer
 from page import fill
 import follow
 
 HERE = Path(__file__).resolve().parent
 PUBLIC = HERE / 'public'
 SLOTS = threading.BoundedSemaphore(3)
+# TVmaze's search, asked when the catalogue's comes up short. TVmaze allows about 20
+# calls every 10 seconds from this host, which Couchside shares: this app takes 4.
+TVMAZE = Remote(calls=4)
 # The app keeps its tab in the path, so these are the page too and a refresh keeps the tab.
 PAGES = ('/', '/index.html', '/saved', '/taste', '/shows')
 
@@ -93,8 +97,11 @@ class Handler(SimpleHTTPRequestHandler):
             query = parse_qs(urlsplit(self.path).query).get('q', [''])[0]
             if len(query) > 100:
                 self.send_json({'error': 'Search terms must be 100 characters or fewer.'}, 400)
-            else:
-                self.send_json({'shows': ENGINE.search(query)})
+                return
+            try:
+                self.send_json(answer(ENGINE, query, TVMAZE))
+            except (BrokenPipeError, ConnectionResetError, TimeoutError):
+                pass    # the page moved on to a longer search while TVmaze answered
             return
         if path.startswith('/api/'):
             self.send_json({'error': 'Not found.'}, 404)

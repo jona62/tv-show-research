@@ -4,6 +4,7 @@ Run from the repository root:  .venv/bin/python app/test_engine.py
 """
 from pathlib import Path
 import sys
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'app'))
@@ -113,11 +114,46 @@ unscripted = app.calculate({'profile': PROFILE, 'settings': {'type': 'unscripted
 check('format group unscripted excludes scripted drama',
       unscripted and all(p['type'] not in ('Scripted', 'Animation', 'Documentary') for p in unscripted))
 
-# 9. Search puts the best-known title first and stays inside its bounds.
-check('search prefers the best-known match', app.search('the office')[0]['id'] == 526)
-check('search finds the original Friends', app.search('friends')[0]['id'] == 431)
-check('search needs two characters', app.search('a') == [])
-check('search caps its results', len(app.search('the')) <= 12)
+# 9. Search finds the show a person means, however it is typed, on the real catalogue
+# (titles.py says how; test_search.py checks each tier on its own).
+SEARCHES = {
+    'punctuation and spacing': [('greys anatomy', 67), ("grey's anatomy", 67), ('mr robot', 1871),
+                                ('law and order svu', 103), ('law & order svu', 103), ('sponge bob', 713),
+                                ('spongebob', 713), ('spongebob squarepants', 713)],
+    'typos': [('breaking bda', 169), ('stranger thigns', 2993), ('sucession', 23470), ('sucesion', 23470),
+              ('the wirre', 179), ('game of throne', 82), ('brooklyn nine nine', 49), ('brekaing bad', 169)],
+    'numbers and short titles': [('brooklyn 99', 49), ('911', 28152), ('9-1-1', 28152), ('nine one one', 28152),
+                                 ('24', 167), ('Lost', 123), ('You', 26856), ('Ted', 55832), ('ER', 547), ('v', 494),
+                                 ('thirteen reasons why', 7194)],
+    'ranking': [('office', 526), ('the office', 526), ('friends', 431), ('doctor who', 210)],
+    'titles as they are typed': [('breaking b', 169), ('the last of', 46562), ('stranger thi', 2993), ('grey', 67)],
+    'more words than the title': [('Demon Slayer: Kimetsu no Yaiba', 41469), ('stranger things season 4', 2993),
+                                  ('the office us', 526), ('breaking bad amc series', 169)],
+    'a year at the end': [('the office 2005', 526), ('the office 2001', 1292), ('doctor who 2005', 210),
+                          ('doctor who 1963', 766), ('doctor who 2023', 72724), ('shogun 2024', 37336),
+                          ('shogun 1980', 10460), ('space 1999', 5920)],
+}
+slowest = 0.0
+for kind, cases in SEARCHES.items():
+    wrong = []
+    for q, want in cases:
+        started = time.perf_counter()
+        found = app.search(q)
+        slowest = max(slowest, time.perf_counter() - started)
+        if not found or found[0]['id'] != want:
+            wrong.append((q, [(c['name'], c['year']) for c in found[:2]]))
+    check(f'search copes with {kind}', not wrong, wrong)
+spider = app.search('spider man')
+check('spider man finds Spider-Man, best known first', spider[0]['name'] == 'Spider-Man'
+      and [c['id'] for c in spider[:2]] == [c['id'] for c in app.search('Spider-Man')[:2]])
+check('search returns each show once, a page at most',
+      all(len({c['id'] for c in app.search(q)}) == len(app.search(q)) <= 12 for q in ('the', 'love', 'office', 'lost')))
+check('a single character finds only titles of that one character',
+      [c['id'] for c in app.search('v')] == [494, 1039] and all(c['name'] in ('A', 'A+', 'A.') for c in app.search('a')))
+check('nothing to search for finds nothing', app.search('') == [] and app.search(' ?! ') == [])
+check('search keeps the card shape', set(app.search('lost')[0]) == {'id', 'name', 'year', 'channel', 'rating',
+                                                                    'language', 'type', 'known'})
+check('every search here answers in well under a second', slowest < .25, f'{slowest * 1000:.0f} ms')
 
 # 10. Character names stay out of the plot terms.
 gangs = app.shows[app.by_id[next(h['id'] for h in app.search('Gangs of London') if h['name'] == 'Gangs of London')]]

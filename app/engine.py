@@ -15,6 +15,8 @@ import struct
 import sys
 import unicodedata
 
+from titles import Titles, load_aliases
+
 RATINGS = (-1, 0, .35, .7, 1)
 MAX_LIST = 60
 TOP_PICKS = 24
@@ -98,6 +100,7 @@ class Engine:
         self.theme_counts = [s['theme_bits'].bit_count() for s in self.shows]
         self.genre_counts = [s['genre_bits'].bit_count() for s in self.shows]
         self.quick_picks = [self.card(self.by_id[i]) for i in QUICK_PICKS if i in self.by_id]
+        self.titles = Titles(self.shows, self.popularity, load_aliases(model / 'search.json.gz'))
 
     # ---------------------------------------------------------------- shapes
 
@@ -123,22 +126,9 @@ class Engine:
     # ---------------------------------------------------------------- search
 
     def search(self, q):
-        query = folded(q.strip())
-        if len(query) < 2:
-            return []
-        tokens = query.split()
-        matches = [i for i, name in enumerate(self.names) if all(t in name for t in tokens)]
-        # Best-known first: exact title, then prefix, then public rating. Year only breaks ties.
-        matches.sort(key=lambda i: (
-            self.names[i].removeprefix('the ') != query,
-            self.names[i] != query,
-            not self.names[i].startswith(query),
-            -(self.shows[i]['rating'] or 0),
-            -(self.shows[i]['year'] or 0),
-            len(self.names[i]),
-            self.shows[i]['id'],
-        ))
-        return [self.card(i) for i in matches[:12]]
+        """Cards for the shows q most likely means, best first; titles.py says how. A
+        show found only through another of its titles carries that title as aka."""
+        return [{**self.card(i), 'aka': aka} if aka else self.card(i) for i, aka in self.titles.find(q).hits]
 
     def cards(self, ids):
         """Short records for ids, in the order asked. Unknown ids are dropped, which

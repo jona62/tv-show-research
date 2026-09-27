@@ -400,8 +400,5 @@ class Library:
         show['summary'] = show['summary'] or ''
         return {'show': show, 'more': [{**self.card(j, taste), 'summary': e.shows[j]['summary'] or ''} for j in more]}
 
-    def search(self, query):
-        return [self.card(self.e.by_id[c['id']]) for c in self.e.search(query)]
-
     def cards(self, ids):
         return [self.card(self.e.by_id[i]) for i in ids if i in self.e.by_id]

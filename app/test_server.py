@@ -1,14 +1,17 @@
 """Check Next Watch's server: the page it fills in from the model it loads, the paths
-that serve it, and how it follows a model replaced while it runs.
+that serve it, search with its TVmaze fallback, and how it follows a model replaced
+while it runs.
 
 Run from the repository root:  .venv/bin/python app/test_server.py
-The server reads a temporary model laid out the way the refresher leaves one.
+The server reads a temporary model laid out the way the refresher leaves one, and a
+fake stands in for TVmaze: nothing here reaches the network.
 """
 from datetime import date, timedelta
 from functools import partial
 from http.server import ThreadingHTTPServer
 from pathlib import Path
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 import atexit
 import gzip
@@ -42,13 +45,39 @@ for name in ('vectors.bin.gz', 'popularity.bin.gz'):
         os.link(ROOT / 'model' / name, VERSION / name)
     except OSError:
         shutil.copyfile(ROOT / 'model' / name, VERSION / name)
+# Other titles, the way the model carries Wikidata's labels and aliases.
+ALIASES = {'27436': ['Money Heist', 'Haus des Geldes'], '919': ['Shingeki no Kyojin', '進撃の巨人'],
+           '103': ['Law & Order: SVU']}
+with gzip.open(VERSION / 'search.json.gz', 'wt', encoding='utf-8') as f:
+    json.dump({'version': 1, 'aliases': ALIASES}, f, ensure_ascii=False)
 (VERSION / 'build.json').write_text(json.dumps({'version': VERSION.name, 'snapshot_date': MODEL_DATE}))
 os.symlink(VERSION.relative_to(TMP), TMP / 'current')
 os.environ['MODEL_DIR'] = str(TMP / 'current')
 
 import server                                                    # noqa: E402
 import follow                                                    # noqa: E402
+from fallback import Remote                                      # noqa: E402
 from page import boot, fill                                      # noqa: E402
+
+# TVmaze's search, faked: Demon Slayer by its Japanese name, and a show too new for
+# the catalogue.
+NEW_SHOW = {'id': 900000001, 'name': 'Kimetsu Academy', 'premiered': '2026-09-26',
+            'url': 'https://www.tvmaze.com/shows/900000001/kimetsu-academy'}
+tvmaze_asked = []
+
+
+def tvmaze(path):
+    tvmaze_asked.append(path)
+    if 'xyzzyq' in path:
+        raise URLError('TVmaze is down')
+    if 'kimetsu' not in path:
+        return []
+    return [{'score': 9, 'show': {'id': 41469, 'name': 'Demon Slayer', 'premiered': '2019-04-06',
+                                  'url': 'https://www.tvmaze.com/shows/41469/demon-slayer'}},
+            {'score': 5, 'show': NEW_SHOW}]
+
+
+server.TVMAZE = Remote(fetch=tvmaze)
 
 failures = []
 
@@ -114,9 +143,44 @@ for name in ASSETS:
 check('a tab path with a trailing slash leads nowhere', fetch('/saved/')[0] == 404)
 check('an unknown path is a 404', fetch('/nope')[0] == 404)
 check('sources and the model are not served', all(fetch(path)[0] == 404 for path in (
-    '/server.py', '/page.py', '/follow.py', '/engine.py', '/model/catalog.json.gz', '/build.json')))
+    '/server.py', '/page.py', '/follow.py', '/engine.py', '/titles.py', '/fallback.py', '/model/catalog.json.gz',
+    '/model/search.json.gz', '/build.json')))
 check('the health check answers', json.loads(fetch('/healthz')[2]) == {'status': 'ok'})
 check('search answers from the loaded model', json.loads(fetch('/api/search?q=breaking%20bad')[2])['shows'][0]['id'] == 169)
+
+
+def search(q):
+    status, headers, body = fetch('/api/search?q=' + quote(q))
+    return status, headers, json.loads(body)
+
+
+status, headers, found = search('money heist')
+check('search finds a show by another of its titles, and says which',
+      status == 200 and found['shows'][0]['id'] == 27436 and found['shows'][0]['aka'] == 'Money Heist'
+      and found['missing'] == [])
+check('search answers are never cached', headers.get('Cache-Control') == 'no-store')
+check('a show found by its own name carries no aka', 'aka' not in search('la casa de papel')[2]['shows'][0])
+check('other titles in any script', search('進撃の巨人')[2]['shows'][0]['id'] == 919
+      and search('law and order svu')[2]['shows'][0]['aka'] == 'Law & Order: SVU')
+for q, want in [('greys anatomy', 67), ('sucession', 23470), ('brooklyn 99', 49), ('the last of', 46562),
+                ('Demon Slayer: Kimetsu no Yaiba', 41469), ('doctor who 1963', 766)]:
+    check(f'search finds {q!r}', search(q)[2]['shows'][0]['id'] == want)
+tvmaze_asked.clear()
+search('the office')
+search('breaking b')
+check('a search the catalogue answers well never asks TVmaze', tvmaze_asked == [])
+status, _headers, found = search('kimetsu no yaiba')
+check('a search it cannot place asks TVmaze once', len(tvmaze_asked) == 1 and 'kimetsu' in tvmaze_asked[0])
+check("TVmaze's match in the catalogue leads, as an ordinary card", status == 200 and found['shows'][0]['id'] == 41469
+      and set(found['shows'][0]) >= {'id', 'name', 'year', 'channel', 'known'})
+check('a show TVmaze has and the catalogue does not yet comes back as missing, with its page', found['missing'] == [
+    {'id': 900000001, 'name': 'Kimetsu Academy', 'year': 2026, 'url': NEW_SHOW['url']}])
+search('kimetsu no yaiba')
+check('the same search again is answered from the cache', len(tvmaze_asked) == 1)
+status, _headers, found = search('xyzzyq')
+check('TVmaze down is an empty answer, not an error', status == 200 and found == {'shows': [], 'missing': []})
+check('an overlong search is refused', fetch('/api/search?q=' + 'x' * 101)[0] == 400)
+check('an empty search finds nothing', search('')[2] == {'shows': [], 'missing': []})
 first_load = len(page) + sum((PUBLIC / name).stat().st_size for name in ASSETS)
 badge = float(re.search(rb'loads (\d+\.\d) KB', page)[1])
 check('the size badge states the page as served, under the budget',

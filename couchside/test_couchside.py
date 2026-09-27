@@ -84,6 +84,10 @@ TMDB_FILE = {'fetched_at': '2026-09-08T04:10:00Z', 'region': 'US', 'shows': {
 }}
 with gzip.open(VERSION / 'tmdb.json.gz', 'wt') as f:
     json.dump(TMDB_FILE, f)
+# Other titles, the way the model carries Wikidata's labels and aliases.
+with gzip.open(VERSION / 'search.json.gz', 'wt', encoding='utf-8') as f:
+    json.dump({'version': 1, 'aliases': {'27436': ['Money Heist'], '919': ['Shingeki no Kyojin', '進撃の巨人']}}, f,
+              ensure_ascii=False)
 (VERSION / 'build.json').write_text(json.dumps({
     'version': VERSION.name, 'built_at': '2026-09-08T04:20:00Z', 'snapshot_date': MODEL_DATE, 'shows': len(position),
     'pipeline': 'test', 'seeded_from': None, 'tmdb': {'fetched_at': TMDB_FILE['fetched_at'], 'shows': 3}}))
@@ -93,7 +97,9 @@ os.environ['MODEL_DIR'] = str(TMP / 'current')
 import server                                                    # noqa: E402
 import follow                                                    # noqa: E402
 import tmdb                                                      # noqa: E402
+from build import MODULES                                        # noqa: E402
 from engine import DEFAULT_SETTINGS                              # noqa: E402
+from fallback import Remote                                      # noqa: E402
 from library import ROW, MORE, GLANCE, SHORTEST, GENRE_ROWS, NEW_DAYS, lower_first  # noqa: E402
 from live import (Live, LiveError, Icons, trim_show, trim_episodes, trim_videos,        # noqa: E402
                   trim_seasons, match_rating, IMAGES)
@@ -119,11 +125,13 @@ def rejects(label, fn, said):
         check(f'rejects {label}', said in str(exc), str(exc))
 
 
-# 1. One engine for both apps.
-check('the engine is Next Watch\'s, unchanged',
-      (ROOT / 'app' / 'engine.py').read_bytes() == (ROOT / 'couchside' / 'engine.py').read_bytes())
-check('so is the model follower',
-      (ROOT / 'app' / 'follow.py').read_bytes() == (ROOT / 'couchside' / 'follow.py').read_bytes())
+# 1. One engine for both apps, with its search, the search's TVmaze fallback and the
+# model follower, each copied unchanged.
+check('the build copies the engine, its search, the fallback and the follower',
+      {'engine.py', 'titles.py', 'fallback.py', 'follow.py'} <= set(MODULES))
+for name in MODULES:
+    check(f'{name} is Next Watch\'s, unchanged',
+          (ROOT / 'app' / name).read_bytes() == (ROOT / 'couchside' / name).read_bytes())
 
 # 1b. Icons at the sizes each platform asks for.
 def png_size(path):
@@ -443,10 +451,25 @@ def itunes(path):
                         for word, (name, rating, day, link) in SEASONS.items() if word in path]}
 
 
+tvmaze_asked = []
+NEW_SHOW = {'id': 900000001, 'name': 'Kimetsu Academy', 'premiered': '2026-09-26',
+            'url': 'https://www.tvmaze.com/shows/900000001/kimetsu-academy'}
+
+
+def tvmaze(path):
+    """TVmaze's search: Demon Slayer by its Japanese name, and a show too new for the catalogue."""
+    tvmaze_asked.append(path)
+    if 'kimetsu' not in path:
+        raise HTTPError(path, 500, 'boom', {}, None)
+    return [{'show': {'id': 41469, 'name': 'Demon Slayer', 'premiered': '2019-04-06',
+                      'url': 'https://www.tvmaze.com/shows/41469/demon-slayer'}}, {'show': NEW_SHOW}]
+
+
 server.LIVE = Live(fetch=fake)
 server.KINO = Live(fetch=kinocheck)
 server.STORE = Live(fetch=itunes)
 server.ICONS = Icons(fetch=lambda host: ('image/png', b'\x89PNG fake'))
+server.TVMAZE = Remote(fetch=tvmaze)
 httpd = ThreadingHTTPServer(('127.0.0.1', 0), partial(server.Handler, directory=str(server.PUBLIC)))
 threading.Thread(target=httpd.serve_forever, daemon=True).start()
 base = f'http://127.0.0.1:{httpd.server_address[1]}'
@@ -524,6 +547,25 @@ check('the engine sources are not served', fetch('/engine.py')[0] == 404 and fet
 status, _headers, body = fetch('/api/search?q=breaking%20bad')
 found = json.loads(body)['shows']
 check('search returns cards with posters', status == 200 and found[0]['id'] == 169 and found[0]['poster'])
+status, _headers, body = fetch('/api/search?q=money%20heist')
+found = json.loads(body)
+check('search finds a show by another of its titles, as a card that says which',
+      status == 200 and found['shows'][0]['id'] == 27436 and found['shows'][0]['aka'] == 'Money Heist'
+      and found['shows'][0]['poster'] and found['missing'] == [] and tvmaze_asked == [])
+check('typos, spacing and longer titles all find their show', [
+    json.loads(fetch('/api/search?q=' + q)[2])['shows'][0]['id']
+    for q in ('stranger%20thigns', 'sponge%20bob', 'Demon%20Slayer%3A%20Kimetsu%20no%20Yaiba', 'shogun%201980')]
+    == [2993, 713, 41469, 10460])
+tvmaze_asked.clear()
+status, _headers, body = fetch('/api/search?q=kimetsu%20no%20yaiba')
+found = json.loads(body)
+check("a search the catalogue cannot place asks TVmaze, whose match leads as a card",
+      status == 200 and len(tvmaze_asked) == 1 and found['shows'][0]['id'] == 41469 and found['shows'][0]['poster'])
+check('a show too new for the catalogue comes back as missing, with its TVmaze page', found['missing'] == [
+    {'id': 900000001, 'name': 'Kimetsu Academy', 'year': 2026, 'url': NEW_SHOW['url']}])
+status, _headers, body = fetch('/api/search?q=xyzzyq')
+check('TVmaze failing is an empty answer, not an error', status == 200
+      and json.loads(body) == {'shows': [], 'missing': []})
 status, _headers, body = fetch('/api/home', {'profile': PROFILE, 'settings': DEFAULT_SETTINGS})
 check('home answers over HTTP', status == 200 and json.loads(body)['personal'] is True)
 check('a bad title id is a 400', fetch('/api/title', {'profile': [], 'id': -1})[0] == 400)
@@ -616,7 +658,8 @@ check('TMDB\'s logo is served as TMDB publishes it', status == 200 and headers.g
 check('the 404 and offline pages stay as built', fetch('/nope')[2] == (ROOT / 'couchside' / 'public' / '404.html').read_bytes()
       and fetch('/offline.html')[2] == (ROOT / 'couchside' / 'public' / 'offline.html').read_bytes())
 check('the new sources and model files are not served',
-      all(fetch(path)[0] == 404 for path in ('/tmdb.py', '/follow.py', '/tmdb.json.gz', '/build.json')))
+      all(fetch(path)[0] == 404 for path in ('/tmdb.py', '/follow.py', '/titles.py', '/fallback.py', '/tmdb.json.gz',
+                                             '/search.json.gz', '/build.json')))
 httpd.shutdown()
 
 # 8. Following the model: leave for a complete new one, and for nothing else.
