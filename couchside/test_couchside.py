@@ -124,6 +124,8 @@ check('the engine is Next Watch\'s, unchanged',
       (ROOT / 'app' / 'engine.py').read_bytes() == (ROOT / 'couchside' / 'engine.py').read_bytes())
 check('so is the model follower',
       (ROOT / 'app' / 'follow.py').read_bytes() == (ROOT / 'couchside' / 'follow.py').read_bytes())
+check('and the taste model',
+      (ROOT / 'app' / 'taste.py').read_bytes() == (ROOT / 'couchside' / 'taste.py').read_bytes())
 
 # 1b. Icons at the sizes each platform asks for.
 def png_size(path):
@@ -218,7 +220,15 @@ personal = [r for r in home['rows'] if r['key'] != 'top10']
 check('nothing rated comes back in a row', not RATED & {c['id'] for r in personal for c in r['items']})
 check('matches sit between 1 and 99', all(c['match'] is None or 1 <= c['match'] <= 99 for r in home['rows'] for c in r['items']))
 seeds = [r['title'] for r in home['rows'] if r['key'].startswith('seed-')]
-check('rows follow the shows you loved first', seeds[:2] == ['Because you loved Severance', 'Because you loved Breaking Bad'], seeds)
+positives = [p for p in PROFILE if p['weight'] > 0]
+negatives = [p for p in PROFILE if p['weight'] < 0]
+closeness = {p['id']: engine.blend(engine.by_id[p['id']], engine.validate({'profile': PROFILE})[1]) for p in PROFILE}
+interests = engine.ranking(positives, negatives, closeness, engine.validate({'profile': PROFILE})[1]).interests
+owner = {p['id']: n for n, group in enumerate(interests) for p in group}
+seed_owners = [owner[int(r['key'][5:])] for r in home['rows'] if r['key'].startswith('seed-')]
+check('seed rows take one show from each interest, heaviest first',
+      seed_owners[:len(interests)] == list(range(min(len(interests), len(seed_owners)))), seeds)
+check('a loved show fronts the heaviest interest', seeds[0] == 'Because you loved Breaking Bad', seeds)
 check('a liked seed says liked', any(t == 'Because you liked Peaky Blinders' for t in seeds), seeds)
 for r in home['rows']:
     if r['key'].startswith('genre-'):

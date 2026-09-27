@@ -1,11 +1,15 @@
-"""Similarity engine over the frozen TVmaze text, genre, and theme vectors.
+"""The recommender: closeness over TVmaze plot text, themes and genres, and taste.
 
-Trimmed for the consumer app: it answers what to watch next, what a taste
-profile looks like, and how a recommendation connects to it. The research-only
-outputs (scatter axes, pairwise matrices, catalog correlations) are gone.
+It answers what to watch next, what a taste profile looks like, and how a pick
+connects to it. A pick has to sit close to shows you liked (plot wording, themes,
+genres) and fit what your whole list leans toward (taste.py); a list that holds
+several interests has each scored on its own and given its share (Ranking). The
+research-only outputs (scatter axes, pairwise matrices, catalog correlations) live
+in site/.
 """
 from array import array
 from functools import lru_cache
+from operator import itemgetter
 from pathlib import Path
 import gzip
 import json
@@ -14,6 +18,8 @@ import re
 import struct
 import sys
 import unicodedata
+
+from taste import Attributes, Taste
 
 RATINGS = (-1, 0, .35, .7, 1)
 MAX_LIST = 60
@@ -97,6 +103,10 @@ class Engine:
             raise ValueError('Popularity track does not match the catalog.')
         self.theme_counts = [s['theme_bits'].bit_count() for s in self.shows]
         self.genre_counts = [s['genre_bits'].bit_count() for s in self.shows]
+        # Shows share far fewer theme and genre combinations than there are shows (about
+        # 17,000 and 1,300 across 90,000), so closeness is worked out once per combination.
+        self.combos = {field: self.combinations(field) for field in ('theme_bits', 'genre_bits')}
+        self.attributes = Attributes(self)
         self.quick_picks = [self.card(self.by_id[i]) for i in QUICK_PICKS if i in self.by_id]
 
     # ---------------------------------------------------------------- shapes
@@ -224,6 +234,13 @@ class Engine:
         return all(settings[key] == 0 or (show[field] is not None and show[field] >= settings[key])
                    for key, field in [('runtime_min', 'runtime'), ('rating_min', 'rating')])
 
+    def combinations(self, field):
+        seen, index = {}, array('I', bytes(4 * self.n))
+        for i, show in enumerate(self.shows):
+            index[i] = seen.setdefault(show[field], len(seen))
+        masks = list(seen)
+        return masks, [m.bit_count() for m in masks], index
+
     @lru_cache(maxsize=48)
     def components(self, index):
         """Cached catalog-to-show similarities. No user profile is ever cached."""
@@ -233,37 +250,42 @@ class Engine:
             for k in range(self.col_ptr[term], self.col_ptr[term + 1]):
                 text[self.post_rows[k]] += value * self.post_values[k]
 
-        def bits(field, counts):
-            source_bits = source[field]
-            n = source_bits.bit_count()
-            return array('f', ((source_bits & s[field]).bit_count() / math.sqrt(n * counts[i]) if n and counts[i] else 0.0
-                               for i, s in enumerate(self.shows)))
-        return text, bits('theme_bits', self.theme_counts), bits('genre_bits', self.genre_counts)
+        def bits(field):
+            masks, counts, where = self.combos[field]
+            mine = source[field]
+            n = mine.bit_count()
+            if not n:
+                return array('f', bytes(4 * self.n))
+            table = [(mine & m).bit_count() / math.sqrt(n * c) if c else 0.0 for m, c in zip(masks, counts)]
+            return array('f', map(table.__getitem__, where))
+        return text, bits('theme_bits'), bits('genre_bits')
 
     def blend(self, index, settings):
         """How close every show in the catalog sits to one show, with story, themes and
         genres weighted as the settings ask."""
-        total = settings['text'] + settings['themes'] + settings['genres']
-        a, b, c = (settings[k] / total for k in ('text', 'themes', 'genres'))
-        t, h, g = self.components(index)
-        return array('f', (min(1.0, a * x + b * y + c * z) for x, y, z in zip(t, h, g)))
+        return self.blended(index, settings['text'], settings['themes'], settings['genres'])
 
-    def rank(self, candidates, scoring, negatives, affinities, settings):
-        """Scores for the candidates, in an array over the whole catalog: a weighted mean
-        across the scoring shows blended with the closest of them, minus a penalty for
-        looking like what you disliked. Affinities are keyed by show id."""
-        norm = sum(p['weight'] for p in scoring)
-        top_weight = max(p['weight'] for p in scoring)
-        closest, dislike = settings['closest'], settings['dislike']
-        scores = array('f', [0]) * self.n
-        for i in candidates:
-            mean = sum(p['weight'] * affinities[p['id']][i] for p in scoring) / norm
-            best = max(p['weight'] / top_weight * affinities[p['id']][i] for p in scoring)
-            hit = (1 - closest) * mean + closest * best
-            if negatives:
-                hit -= dislike * sum(affinities[p['id']][i] for p in negatives) / len(negatives)
-            scores[i] = max(0.0, hit)
-        return scores
+    @lru_cache(maxsize=96)
+    def blended(self, index, text, themes, genres):
+        total = text + themes + genres
+        a, b, c = text / total, themes / total, genres / total
+        t, h, g = self.components(index)
+        return array('f', [a * x + b * y + c * z for x, y, z in zip(t, h, g)])
+
+    def taste(self, profile):
+        """The leanings of a whole list, liked and disliked shows alike."""
+        return Taste(self.attributes,
+                     [(self.by_id[p['id']], p['weight']) for p in profile if p['weight'] > 0],
+                     [self.by_id[p['id']] for p in profile if p['weight'] < 0])
+
+    def ranking(self, scoring, negatives, affinities, settings, liked=None):
+        """How one request scores candidates: see Ranking."""
+        return Ranking(self, scoring, negatives, affinities, settings, liked)
+
+    def rank(self, candidates, scoring, negatives, affinities, settings, liked=None):
+        """Scores for the candidates, in an array over the whole catalog. Affinities are
+        keyed by show id. See Ranking for how they are made."""
+        return self.ranking(scoring, negatives, affinities, settings, liked).score(candidates)
 
     def signals(self, i):
         """Theme and genre names a show actually records."""
@@ -288,6 +310,7 @@ class Engine:
             'settings': settings, 'positive_count': len(positives), 'negative_count': len(negatives),
             'similar_to': chosen,
             'picks': [], 'liked': [], 'features': [], 'context': [], 'message': '', 'warning': '',
+            'taste': {'leans': [], 'avoids': []}, 'interests': [],
             'breadth': {'themes': [0, len(self.themes)], 'genres': [0, len(self.genres)]},
         }
         if not positives:
@@ -309,7 +332,10 @@ class Engine:
             base['warning'] = 'Some of the shows you chose have very little plot text, so their matches lean on genres alone.'
 
         affinities = {p['id']: self.blend(self.by_id[p['id']], settings) for p in positives + negatives}
-        scores = self.rank(candidates, scoring, negatives, affinities, settings)
+        ranking = self.ranking(scoring, negatives, affinities, settings, positives)
+        scores = ranking.score(candidates)
+        base['taste'] = self.taste(profile).summary()
+        base['interests'] = ranking.describe()
         dislike = settings['dislike']
         ordered = sorted((i for i in candidates if scores[i] > 0), key=lambda i: (-scores[i], self.shows[i]['id']))
 
@@ -343,6 +369,8 @@ class Engine:
                 'penalised': round(penalty * 100, 1) if penalty > 0 else 0,
                 'links': [round(affinities[pid][i] * 100, 1) for pid in liked_order],
                 'known': self.popularity[i],
+                'fits': ranking.fits(i),
+                'interest': ranking.interest_of(i),
             }
         base['picks'] = [pick(i, rank + 1) for rank, i in enumerate(ordered[:TOP_PICKS])]
 
@@ -388,3 +416,136 @@ class Engine:
                                else 'No positive matches for the shows you chose. Choose others, or use all your shows.' if chosen
                                else 'No positive matches under these settings. Add another show you liked.')
         return base
+
+
+INTEREST_JOIN = 0.12   # average closeness at which two groups of liked shows are one interest
+INTEREST_SHARE = 0.5   # how much a bigger interest outranks a smaller one: its share of the list to this power
+
+
+class Ranking:
+    """One request's scoring. A list can hold several tastes (anime and British panel
+    shows, say), and averaging across them favours whichever kind sits closest to
+    itself. So the scoring shows are first grouped into interests by how close they
+    sit to one another, and each candidate is scored against the interest it is
+    closest to: a weighted mean across that interest's shows blended with the closest
+    of them, less a penalty for looking like what you disliked, times how well it fits
+    that interest's taste (taste.py). Scores are then measured against each interest's
+    best candidate and scaled by the interest's share of the list, so every interest
+    gets picks in proportion to it, and a list with one interest ranks exactly as
+    closeness times taste would."""
+
+    def __init__(self, engine, scoring, negatives, affinities, settings, liked=None):
+        """liked is the whole list's liked shows when scoring is only some of them (a
+        row about one show, or shows chosen to match): interests and their tastes come
+        from the whole list, and scoring picks out its part of each."""
+        self.e, self.negatives, self.affinities, self.settings = engine, negatives, affinities, settings
+        liked = liked or scoring
+        disliked = [engine.by_id[p['id']] for p in negatives]
+        taste = lambda shows: Taste(engine.attributes, [(engine.by_id[p['id']], p['weight']) for p in shows], disliked)
+        # Heaviest interest first, so interest 0 is the one a list is mostly about.
+        order = {p['id']: n for n, p in enumerate(liked)}
+        self.interests = sorted(self.cluster(liked) if liked else [],
+                                key=lambda g: (-sum(p['weight'] for p in g), order[g[0]['id']]))
+        self.interest_tastes = [taste(interest) for interest in self.interests]
+        self.groups, self.tastes, self.origin = [], [], []
+        wanted = {p['id'] for p in scoring}
+        for n, interest in enumerate(self.interests):
+            group = [p for p in interest if p['id'] in wanted]
+            if group:
+                self.groups.append(group)
+                self.tastes.append(self.interest_tastes[n])
+                self.origin.append(n)
+        known = {p['id'] for p in liked}
+        for p in scoring:
+            if p['id'] not in known:
+                # A show outside the list (a title page's more like this) is its own interest.
+                self.groups.append([p])
+                self.tastes.append(taste([p]))
+                self.origin.append(None)
+        total = sum(p['weight'] for g in self.groups for p in g) or 1
+        self.share = [(sum(p['weight'] for p in g) / total) ** INTEREST_SHARE for g in self.groups]
+        self.best = None
+        self.group = {}
+
+    def describe(self):
+        """The list's interests, heaviest first: their shows and what each leans toward."""
+        out = []
+        for interest, taste in zip(self.interests, self.interest_tastes):
+            leans = [f['label'] for f in taste.summary(limit=3)['leans']]
+            out.append({'shows': [p['id'] for p in interest],
+                        'weight': round(sum(p['weight'] for p in interest), 2), 'leans': leans[:3]})
+        return out
+
+    def fits(self, i):
+        """What about show i fits the taste of the interest it was scored for."""
+        k = self.group.get(i)
+        return self.tastes[k].reasons(i) if k is not None else []
+
+    def interest_of(self, i):
+        k = self.group.get(i)
+        return self.origin[k] if k is not None else None
+
+    def cluster(self, scoring):
+        """Average-linkage clustering of liked shows on their mutual closeness."""
+        e, aff = self.e, self.affinities
+        index = [e.by_id[p['id']] for p in scoring]
+        n = len(scoring)
+        sim = [[(aff[scoring[a]['id']][index[b]] + aff[scoring[b]['id']][index[a]]) / 2 for b in range(n)] for a in range(n)]
+        groups = [[a] for a in range(n)]
+        while len(groups) > 1:
+            best, pair = -1.0, None
+            for x in range(len(groups)):
+                for y in range(x + 1, len(groups)):
+                    link = sum(sim[a][b] for a in groups[x] for b in groups[y]) / (len(groups[x]) * len(groups[y]))
+                    if link > best:
+                        best, pair = link, (x, y)
+            if best < INTEREST_JOIN:
+                break
+            x, y = pair
+            groups[x] = groups[x] + groups.pop(y)
+        return [[scoring[a] for a in sorted(g)] for g in groups]
+
+    def score(self, candidates):
+        scores = array('f', [0]) * self.e.n
+        m = len(candidates)
+        if not self.groups or not m:
+            return scores
+        gather = itemgetter(*candidates) if m > 1 else (lambda values: (values[candidates[0]],))
+        closest, aff = self.settings['closest'], self.affinities
+        hits = []
+        for group in self.groups:
+            norm = sum(p['weight'] for p in group)
+            top = max(p['weight'] for p in group)
+            mean, near = [0.0] * m, [0.0] * m
+            for p in group:
+                values = gather(aff[p['id']])
+                share, scale = p['weight'] / norm, p['weight'] / top
+                mean = [a + share * x for a, x in zip(mean, values)]
+                near = [b if b > scale * x else scale * x for b, x in zip(near, values)]
+            hits.append([(1 - closest) * a + closest * b for a, b in zip(mean, near)])
+        penalty = [0.0] * m
+        if self.negatives:
+            share = self.settings['dislike'] / len(self.negatives)
+            for p in self.negatives:
+                penalty = [a + share * x for a, x in zip(penalty, gather(aff[p['id']]))]
+        raw = []
+        single = len(self.groups) == 1
+        for n, i in enumerate(candidates):
+            if single:
+                k, hit = 0, hits[0][n]
+            else:
+                k, hit = max(enumerate(h[n] for h in hits), key=lambda kv: kv[1])
+            hit -= penalty[n]
+            raw.append((i, k, hit * self.tastes[k].factor(i) if hit > 0 else 0.0))
+        if self.best is None:
+            # Each interest's best among the first candidates scored sets its scale for
+            # the whole request, so shows scored later are measured the same way.
+            self.best = [0.0] * len(self.groups)
+            for _i, k, value in raw:
+                if value > self.best[k]:
+                    self.best[k] = value
+        for i, k, value in raw:
+            self.group[i] = k
+            if value > 0 and self.best[k] > 0:
+                scores[i] = value / self.best[k] * self.share[k]
+        return scores
