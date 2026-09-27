@@ -1,27 +1,68 @@
 """Check Couchside's shelves, title pages, live details and server.
 
 Run from the repository root:  .venv/bin/python couchside/test_couchside.py
-Nothing here reaches TVmaze: the live client is driven by a fake.
+Nothing here reaches TVmaze or anything else: live clients are driven by fakes,
+and the server reads a temporary model laid out the way the refresher leaves one.
 """
+from datetime import date, timedelta
 from http.server import ThreadingHTTPServer
 from functools import partial
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+import atexit
+import gzip
 import json
+import os
 import re
+import shutil
+import struct
 import sys
+import tempfile
 import threading
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'couchside'))
 
+# A model the way the refresher leaves one: a version directory with build.json written
+# last, and a current link to it. It is the repository's model dated a day later, with
+# one poster moved, so whatever the server shows from it can only have come from
+# MODEL_DIR.
+TMP = Path(tempfile.mkdtemp(prefix='couchside-test-'))
+atexit.register(shutil.rmtree, TMP, ignore_errors=True)
+VERSION = TMP / 'versions' / '2026-09-08T040000Z'
+VERSION.mkdir(parents=True)
+with gzip.open(ROOT / 'model' / 'catalog.json.gz', 'rt') as f:
+    catalog = json.load(f)
+FROZEN_DATE = catalog['date']
+MODEL_DATE = catalog['date'] = (date.fromisoformat(FROZEN_DATE) + timedelta(days=1)).isoformat()
+with gzip.open(VERSION / 'catalog.json.gz', 'wt', compresslevel=1) as f:
+    json.dump(catalog, f, separators=(',', ':'))
+position = {s['id']: n for n, s in enumerate(catalog['shows'])}
+del catalog
+for name in ('vectors.bin.gz', 'popularity.bin.gz'):
+    try:
+        os.link(ROOT / 'model' / name, VERSION / name)
+    except OSError:
+        shutil.copyfile(ROOT / 'model' / name, VERSION / name)
+MOVED_POSTER = 987654
+with gzip.open(ROOT / 'couchside' / 'art.bin.gz', 'rb') as f:
+    art_track = bytearray(f.read())
+struct.pack_into('<I', art_track, 8 + 4 * position[2993], MOVED_POSTER)
+with gzip.open(VERSION / 'art.bin.gz', 'wb') as f:
+    f.write(art_track)
+(VERSION / 'build.json').write_text(json.dumps({
+    'version': VERSION.name, 'built_at': '2026-09-08T04:20:00Z', 'snapshot_date': MODEL_DATE, 'shows': len(position),
+    'pipeline': 'test', 'seeded_from': None}))
+os.symlink(VERSION.relative_to(TMP), TMP / 'current')
+os.environ['MODEL_DIR'] = str(TMP / 'current')
+
 import server                                                    # noqa: E402
+import follow                                                    # noqa: E402
 from engine import DEFAULT_SETTINGS                              # noqa: E402
 from library import ROW, MORE, GLANCE, SHORTEST, GENRE_ROWS, NEW_DAYS, lower_first  # noqa: E402
 from live import (Live, LiveError, Icons, trim_show, trim_episodes, trim_videos,        # noqa: E402
                   trim_seasons, match_rating, IMAGES)
-from datetime import date                                        # noqa: E402
 
 engine, lib = server.ENGINE, server.LIBRARY
 PROFILE = [{'id': 169, 'weight': 1}, {'id': 82, 'weight': .7}, {'id': 44933, 'weight': 1},
@@ -47,6 +88,8 @@ def rejects(label, fn, said):
 # 1. One engine for both apps.
 check('the engine is Next Watch\'s, unchanged',
       (ROOT / 'app' / 'engine.py').read_bytes() == (ROOT / 'couchside' / 'engine.py').read_bytes())
+check('so is the model follower',
+      (ROOT / 'app' / 'follow.py').read_bytes() == (ROOT / 'couchside' / 'follow.py').read_bytes())
 
 # 1b. Icons at the sizes each platform asks for.
 def png_size(path):
@@ -68,6 +111,15 @@ check('posters rebuild to TVmaze image URLs',
 check('originals share the id and bucket', lib.poster(engine.by_id[169], 'original_untouched') == poster.replace('medium_portrait', 'original_untouched'))
 check('most shows have a poster', sum(1 for i in lib.images if i) / engine.n > .85)
 check('an ended show knows when it ended', lib.ended[engine.by_id[169]] >= 2013)
+
+# 2b. Everything comes from the model MODEL_DIR leads to: its catalog and its posters.
+# The frozen layout, a plain directory, carries no posters and uses ours.
+check('the server reads the version the link leads to', server.MODEL == Path(os.path.realpath(VERSION)))
+check('the catalog is that model\'s', engine.date == MODEL_DATE != FROZEN_DATE)
+check('posters come from that model\'s art',
+      lib.poster(engine.by_id[2993]).endswith(f'/{MOVED_POSTER // 2500}/{MOVED_POSTER}.jpg'))
+check('a model without art uses the copy kept here', server.art_file(ROOT / 'model') == ROOT / 'couchside' / 'art.bin.gz'
+      and server.art_file(server.MODEL) == server.MODEL / 'art.bin.gz')
 
 # 3. A first visit gets rows without any ratings.
 cold = lib.home({'profile': [], 'settings': {}})
@@ -409,7 +461,91 @@ status, _headers, body = fetch('/api/browse', {'profile': PROFILE, 'settings': {
 check('browse answers over HTTP', status == 200 and json.loads(body)['rows'])
 check('browsing nowhere is a 400', fetch('/api/browse', {'profile': [], 'genre': 'Nowhere'})[0] == 400)
 check('an unknown api path is a 404', fetch('/api/nope')[0] == 404)
+
+# 7c. The page states the model the server loaded, not the one it was built beside.
+built = (ROOT / 'couchside' / 'public' / 'index.html').read_text()
+check('the built page leaves the model to the server',
+      {'__BOOTSTRAP__', '__CATALOG_COUNT__', '__DATASET_DATE__'} <= set(re.findall(r'__[A-Z_]+__', built)))
+boot = json.loads(re.search(rb'<script type="application/json" id="boot">(.*?)</script>', page_root, re.S)[1])
+check('the page carries the loaded model\'s date and count', boot['date'] == MODEL_DATE and boot['count'] == engine.n
+      and f'Catalogue snapshot {MODEL_DATE}.'.encode() in page_root
+      and f'{engine.n:,} series from {MODEL_DATE}.'.encode() in page_root)
+check('and its first-visit posters', [c['id'] for c in boot['starters']] == [c['id'] for c in lib.starters]
+      and any(str(MOVED_POSTER) in (c['poster'] or '') for c in boot['starters']))
+stand_in = type('Model', (), {'date': '2031-02-03', 'n': 12345})()
+odd = type('Shelves', (), {'starters': [{'id': 1, 'name': '</script><!--<script>'}], 'genres': []})()
+filled = server.fill(server.TEMPLATE.read_text(), stand_in, odd)
+check('whatever model is loaded fills the page', 'Catalogue snapshot 2031-02-03.' in filled and '12,345 series' in filled
+      and json.loads(re.search(r'id="boot">(.*?)</script>', filled, re.S)[1])['starters'][0]['name'] == '</script><!--<script>')
+check('the 404 and offline pages stay as built', fetch('/nope')[2] == (ROOT / 'couchside' / 'public' / '404.html').read_bytes()
+      and fetch('/offline.html')[2] == (ROOT / 'couchside' / 'public' / 'offline.html').read_bytes())
+check('the new sources and model files are not served',
+      all(fetch(path)[0] == 404 for path in ('/follow.py', '/build.json')))
 httpd.shutdown()
+
+# 8. Following the model: leave for a complete new one, and for nothing else.
+current, loaded = TMP / 'current', server.MODEL
+NEXT = TMP / 'versions' / '2026-09-09T040000Z'
+HALF = TMP / 'versions' / '2026-09-10T040000Z'
+NEXT.mkdir()
+HALF.mkdir()
+
+
+def point(link, target):
+    """Move a link the way the refresher does: a new one beside it, renamed over it."""
+    spare = link.with_name(link.name + '.next')
+    os.symlink(target, spare)
+    os.replace(spare, link)
+
+
+class Stop(Exception):
+    pass
+
+
+def follow_through(moves, delay=5):
+    """Run the follower with a sleep that makes one of the refresher's moves per nap,
+    and stops it once the moves run out."""
+    naps, said, left = [], [], []
+
+    def nap(seconds):
+        naps.append(seconds)
+        if len(naps) > len(moves):
+            raise Stop
+        if moves[len(naps) - 1]:
+            point(current, moves[len(naps) - 1])
+    try:
+        result = follow.watch(current, loaded, poll=60, delay=delay, sleep=nap, leave=left.append, say=said.append)
+    except Stop:
+        result = None
+    point(current, VERSION)
+    return naps, said, left, result
+
+
+check('an unmoved model is no reason to leave', follow.moved(current, loaded) is None)
+point(current, HALF)
+check('a model still being written is no reason to leave', follow.moved(current, loaded) is None)
+(NEXT / 'build.json').write_text('{}')
+point(current, NEXT)
+check('a complete new model is', follow.moved(current, loaded) == os.path.realpath(NEXT))
+point(current, TMP / 'versions' / 'gone')
+check('a link to nothing is no reason to leave', follow.moved(current, loaded) is None)
+point(current, VERSION)
+check('a plain directory never moves', follow.moved(VERSION, loaded) is None)
+naps, said, left, result = follow_through([None, NEXT, None])
+check('the follower polls, waits out the delay, then leaves once', naps == [60, 60, 5] and left == [0]
+      and result == os.path.realpath(NEXT), naps)
+check('and says so in one line', len(said) == 1 and '\n' not in said[0] and NEXT.name in said[0], said)
+naps, said, left, result = follow_through([NEXT, VERSION, None])
+check('a move undone during the delay is no reason to leave', left == [] and said == [] and naps == [60, 5, 60, 60], naps)
+naps, said, left, result = follow_through([HALF, None, None])
+check('a model that never completes is waited out, not left for', left == [] and naps == [60, 60, 60, 60], naps)
+naps, said, left, result = follow_through([NEXT, None], delay=0)
+check('with no delay it leaves at once', naps == [60, 0] and left == [0], naps)
+check('durations come from the environment', follow.seconds('90', 60.0) == 90 and follow.seconds('2.5', 0.0) == 2.5
+      and follow.seconds('0', 60.0) == 0)
+check('a duration that is not one falls back to the default',
+      all(follow.seconds(value, 60.0) == 60 for value in (None, '', 'soon', '-5', 'nan', 'inf')))
+check('a poll of 0 turns following off', follow.start(current, loaded, {'MODEL_POLL_SECONDS': '0'}) is None)
 
 print()
 if failures:

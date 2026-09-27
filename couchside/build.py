@@ -2,10 +2,15 @@
 
     .venv/bin/python couchside/build.py
 
-The engine is Next Watch's own, copied in so this app deploys by itself;
-test_couchside.py fails if the two ever drift apart. The transfer codec and QR
-encoder come from Next Watch too, so a list moves between the two apps. Icons
-and the share image are rendered once by brand/make.py and copied from brand/.
+The engine is Next Watch's own, copied in so this app deploys by itself, and so is
+follow.py, which restarts the server when the model is replaced; test_couchside.py
+fails if either ever drifts apart. The transfer codec and QR encoder come from Next
+Watch too, so a list moves between the two apps. Icons and the share image are
+rendered once by brand/make.py and copied from brand/.
+
+The page keeps placeholders for the catalogue's count and date and the first-visit
+posters, which server.py fills from whichever model it loads, so a build needs no
+model and a new model shows its own date without one.
 """
 import hashlib
 import json
@@ -18,6 +23,8 @@ APP = HERE.parent / 'app'
 PUBLIC = HERE / 'public'
 OWN = ('style.css', 'main.js', 'format.js')
 SHARED = ('transfer.js', 'qr.js')
+# Next Watch's server modules, copied beside this server so it deploys by itself.
+MODULES = ('engine.py', 'follow.py')
 BRAND = ('favicon.ico', 'favicon.svg', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png',
          'icon-maskable-512.png', 'og.jpg')
 def manifest(description):
@@ -63,13 +70,10 @@ LOOSE = '''<!doctype html>
 
 
 def main():
-    shutil.copyfile(APP / 'engine.py', HERE / 'engine.py')
+    for name in MODULES:
+        shutil.copyfile(APP / name, HERE / name)
     sys.path.insert(0, str(HERE))
-    from engine import Engine
-    from library import Library, DESCRIPTION
-
-    engine = Engine(HERE.parent / 'model')
-    library = Library(engine, HERE / 'art.bin.gz')
+    from library import DESCRIPTION
 
     PUBLIC.mkdir(exist_ok=True)
     for name in OWN:
@@ -87,13 +91,7 @@ def main():
         title='You are offline', action='Try again',
         body='Couchside needs a connection to find shows for you. Your ratings and My List are safe on this device.'))
 
-    boot = {'date': engine.date, 'count': engine.n, 'starters': library.starters, 'genres': library.genres}
-    payload = json.dumps(boot, ensure_ascii=False, separators=(',', ':')).replace('</', '<\\/')
-    page = (HERE / 'index.template.html').read_text() \
-        .replace('__BOOTSTRAP__', payload) \
-        .replace('__CATALOG_COUNT__', f'{engine.n:,}') \
-        .replace('__DATASET_DATE__', engine.date) \
-        .replace('__DESCRIPTION__', DESCRIPTION)
+    page = (HERE / 'index.template.html').read_text().replace('__DESCRIPTION__', DESCRIPTION)
     (PUBLIC / 'index.html').write_text(page)
 
     # The service worker's cache is named after this build, so a deploy retires the old one.
@@ -104,6 +102,7 @@ def main():
     for name, size in sizes.items():
         print(f'  {name:<14} {size / 1000:7.1f} KB')
     print(f'  {"first load":<14} {sum(sizes.values()) / 1000:7.1f} KB of code and markup; posters load from TVmaze')
+    print('  (index.html before the server fills in its model\'s starter posters and genres)')
 
 
 if __name__ == '__main__':

@@ -72,7 +72,9 @@ that you will enjoy the show.
 TVmaze keeps every poster at a URL built from its image id, so
 `scripts/build_art.py` stores one integer per show, plus the year it ended, in
 `art.bin.gz` (269 KB). Posters load straight from TVmaze's image server, which
-TVmaze allows; the page sends no referrer.
+TVmaze allows; the page sends no referrer. The server reads `art.bin.gz` from
+the model directory when the model carries one, as each refreshed model does, and
+otherwise the copy here, which matches the frozen snapshot.
 
 Cast, seasons, episodes and widescreen backdrops are not in the snapshot.
 `live.py` fetches them from the TVmaze API on the server when a title opens,
@@ -101,13 +103,15 @@ cached for days and a show with nothing is cached as nothing.
 ## Run it
 
 ```sh
-.venv/bin/python couchside/build.py     # copies the engine, writes public/
+.venv/bin/python couchside/build.py     # copies the engine and follower, writes public/
 .venv/bin/python couchside/server.py    # http://localhost:8082
 .venv/bin/python couchside/brand/make.py    # only when the icon or share image changes
 ```
 
 Python 3.10+ and no packages. The model is read from `MODEL_DIR`, or from
-`model/` beside this directory.
+`model/` beside this directory. The build needs no model: the page's count,
+snapshot date and first-visit posters are filled in by the server at startup,
+from whichever model it loaded.
 
 ## Check it
 
@@ -116,19 +120,30 @@ Python 3.10+ and no packages. The model is read from `MODEL_DIR`, or from
 node couchside/test_format.mjs
 ```
 
-The first covers the rows, browsing, badges, title pages and validation, the live
-sources against fakes (trimming, trailer and rating matching, caching, stale
-answers, 404s as answers, 429s, the rate window, icon host checks), and the HTTP
-server end to end: pages and their previews, the 404 page, the manifest, icon
-sizes and file types. It also fails if `engine.py` here ever differs from
-Next Watch's. The second covers the page's small helpers.
+The first runs everything over a temporary model laid out the way the refresher
+leaves one: the repository's model dated a day later, with a poster moved. It
+covers the rows, browsing, badges, title pages and validation; that the catalog
+and posters come from `MODEL_DIR`; the live sources against fakes (trimming,
+trailer and rating matching, caching, stale answers, 404s as answers, 429s, the
+rate window, icon host checks); the HTTP server end to end: pages and their
+previews, the loaded model's date and count on the page, the 404 page, the
+manifest, icon sizes and file types; and the follower's decisions. It also fails
+if `engine.py` or `follow.py` here ever differs from Next Watch's. The second
+covers the page's small helpers.
 
 ## Deploy
 
 Couchside is the `couchside` app in the root `rig.yaml`, on port 8082, reading
-the shared model through `MODEL_DIR=/home/developer/model`. Pushing to `main`
-deploys it through the Rigbox GitHub binding. If `app/engine.py` changes, rerun
-`couchside/build.py` so the copy here follows.
+the shared model through `MODEL_DIR`. Pushing to `main` deploys it through the
+Rigbox GitHub binding. If `app/engine.py` or `app/follow.py` changes, rerun
+`couchside/build.py` so the copies here follow.
+
+When `MODEL_DIR` names a link the refresher moves to each new model, the server
+follows it the way Next Watch does: it checks every `MODEL_POLL_SECONDS` (60),
+and once the link leads to a different directory holding `build.json` it waits
+`RELOAD_DELAY_SECONDS` (0), logs one line and exits with status 0 for the host to
+restart it on the new model. An incomplete or missing target is never a reason
+to leave, and `MODEL_POLL_SECONDS=0` turns following off.
 
 Data and images from [TVmaze](https://www.tvmaze.com/),
 [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).

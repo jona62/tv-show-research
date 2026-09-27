@@ -13,6 +13,7 @@ from engine import Engine
 from library import Library, DESCRIPTION
 from live import (Live, LiveError, Icons, KINOCHECK, ITUNES, trim_videos, trim_seasons,
                   match_rating, itunes_search)
+import follow
 
 HERE = Path(__file__).resolve().parent
 PUBLIC = HERE / 'public'
@@ -32,21 +33,44 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; "
        "object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
 SHARE = re.compile(r'<!--share.*?<!--/share-->', re.S)
 HOST = re.compile(r'[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?(?::\d{1,5})?', re.I)
+HOLES = re.compile(r'__(BOOTSTRAP|CATALOG_COUNT|DATASET_DATE)__')
 
 
 def model_dir():
-    """One model copy serves every app. Deployed, MODEL_DIR names it; locally the
-    repository's own model/ beside this directory is used."""
+    """One model copy serves every app. Deployed, MODEL_DIR names it, and may be a link
+    the refresher moves to each new model; locally the repository's own model/ beside
+    this directory is used."""
     for candidate in (os.environ.get('MODEL_DIR'), HERE / 'model', HERE.parent / 'model'):
         if candidate and (Path(candidate) / 'catalog.json.gz').exists():
             return Path(candidate)
     raise SystemExit('No model found. Set MODEL_DIR, or run from a checkout with model/ beside this app.')
 
 
-ENGINE = Engine(model_dir())
-LIBRARY = Library(ENGINE, HERE / 'art.bin.gz')
+def art_file(model):
+    """A model the refresher built carries posters to match its catalog; the frozen one
+    has none, and uses the copy kept here."""
+    return model / 'art.bin.gz' if (model / 'art.bin.gz').is_file() else HERE / 'art.bin.gz'
+
+
+def fill(template, engine, library):
+    """The page with this model's count, date and first-visit posters, filled once at
+    startup."""
+    boot = {'date': engine.date, 'count': engine.n, 'starters': library.starters, 'genres': library.genres}
+    # Every < in the data is escaped, so no show's name can close or confuse the script block.
+    payload = json.dumps(boot, ensure_ascii=False, separators=(',', ':')).replace('<', '\\u003c')
+    values = {'BOOTSTRAP': payload, 'CATALOG_COUNT': f'{engine.n:,}', 'DATASET_DATE': html.escape(engine.date)}
+    return HOLES.sub(lambda m: values[m[1]], template)
+
+
+SOURCE = model_dir()
+# Read from wherever the link led at startup, so a model replaced mid-load cannot mix
+# two versions; follow.py notices the move and the restart loads the new one whole.
+MODEL = Path(os.path.realpath(SOURCE))
+ENGINE = Engine(MODEL)
+LIBRARY = Library(ENGINE, art_file(MODEL))
 LIVE = Live()
-PAGE = (PUBLIC / 'index.html').read_text() if (PUBLIC / 'index.html').exists() else ''
+TEMPLATE = PUBLIC / 'index.html'
+PAGE = fill(TEMPLATE.read_text(), ENGINE, LIBRARY) if TEMPLATE.exists() else ''
 LOST = (PUBLIC / '404.html').read_bytes() if (PUBLIC / '404.html').exists() else b''
 # KinoCheck allows 1,000 calls a day and iTunes about 20 a minute, so both cache for days.
 KINO = Live(base=KINOCHECK, ttl=3 * 86400, size=3000, calls=20, period=60)
@@ -316,5 +340,6 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 if __name__ == '__main__':
+    follow.start(os.environ.get('MODEL_DIR') or SOURCE, MODEL)
     port = int(os.environ.get('PORT', '8082'))
     ThreadingHTTPServer(('0.0.0.0', port), partial(Handler, directory=str(PUBLIC))).serve_forever()
