@@ -44,6 +44,40 @@ TVmaze's own 0 to 100 popularity instead, which covers every title.
 `scripts/build_popularity.py` writes those weights in catalog order as one byte
 each, about 69 KB gzipped, so the 18 MB catalog never has to be rebuilt for it.
 
+## Finding a show
+
+Search forgives how a show is typed. Case, accents and punctuation do not matter
+(*greys anatomy* finds Grey's Anatomy, *mr robot* finds Mr. Robot, and *&* and
+*and* are one), nor does spacing (*sponge bob* and *spongebob* both find
+SpongeBob SquarePants), and spelled-out numbers match digits (*brooklyn 99*, *nine
+one one*). A slip is forgiven (*stranger thigns*, *sucession*), initials stand for
+words (*law and order svu*), a year at the end picks between a show and its remake
+(*doctor who 1963*), and a query longer than TVmaze's name for a show still finds
+it (*Demon Slayer: Kimetsu no Yaiba* finds Demon Slayer). The best match comes
+first: an exact title, with or without *The*, then titles that start with the
+query, then titles holding every word, then the looser matches, each group ordered
+by TVmaze's popularity, then rating, then year. A single letter finds only a show
+of that one letter, such as *V*.
+
+Shows are also found by their other titles. When the model carries
+`search.json.gz`, Wikidata's labels and aliases in every language (*La casa de
+papel*, *Shingeki no Kyojin*, *進撃の巨人*), a show found by one of them says so:
+*Also known as Money Heist*.
+
+The catalogue is rebuilt every night, so a show added to TVmaze since is missing
+until the next build. When the catalogue finds nothing, or only guesses, the
+server asks TVmaze's own search: its matches in the catalogue lead the results,
+and a show it has that the catalogue does not yet is named with a link to its
+TVmaze page and a note that new shows arrive with the nightly refresh. The browser
+never talks to TVmaze. The server caches its answers, waits at most 3 seconds,
+keeps to 4 calls every 10 seconds (TVmaze allows 20 from one address, and
+Couchside takes the rest), and treats any failure as no extra answer. Only a
+search that found nothing anywhere suggests checking the spelling.
+
+On an M3 Pro a search takes a millisecond or two and rarely ten. The index costs
+about 0.4 s and 15 MB at startup over the catalogue alone, and about 1.7 s and 40
+MB with a quarter of a million other titles.
+
 ## Moving a list between devices
 
 There are no accounts, so *Move to another device* packs your ratings, your
@@ -83,6 +117,7 @@ crosses 512 KB.
 
 ```sh
 .venv/bin/python app/test_engine.py
+.venv/bin/python app/test_search.py
 .venv/bin/python app/test_server.py
 node app/test_similar.mjs
 node app/test_transfer.mjs
@@ -92,15 +127,21 @@ node app/test_qr.mjs
 The first verifies the app engine ranks identically to the research recommender under
 matched settings, that rated shows never come back as picks, that matching to
 chosen shows changes only the ranking and equals re-rating the rest as neutral,
-that bad input is rejected, and that search and plot terms behave. The second runs
+that bad input is rejected, that plot terms behave, and that search finds the show
+meant by every kind of query above on the real catalogue. The second checks search
+on its own over a small made-up catalogue: how text is read, each tier and its
+order, other titles and a bad `search.json.gz`, and the TVmaze fallback against
+fakes, one of them a local HTTP server, for its cache, rate window, 429s, timeout
+and failures. The third runs
 the server over a temporary model laid out the way the refresher leaves one, dated
 a day after the real one: the page and its tab paths carry that model's date,
-count and first-visit data, assets are still served as files, and the follower
+count and first-visit data, assets are still served as files, search finds shows by
+their other titles and asks a fake TVmaze only when it should, and the follower
 leaves only for a complete new model, never for one still being written or a link
-to nothing. The third pins which chosen
-shows survive a change to the list and how they are named. The fourth round-trips transfer
+to nothing. Nothing reaches the network. The fourth pins which chosen
+shows survive a change to the list and how they are named. The fifth round-trips transfer
 codes, including a full 60-plus-200 list, and checks that damaged, truncated and
-wrong-version codes are refused rather than half-applied. The fifth holds the QR
+wrong-version codes are refused rather than half-applied. The sixth holds the QR
 encoder to its recorded matrices, its version boundaries, and the structure a
 scanner depends on.
 
@@ -139,6 +180,12 @@ for looking like what you disliked. When a request names shows to match
 (`similar_to`), the mean and the blend run over those alone; dislikes still
 count and every rated show stays out of the pool. Feature families are weighted
 by the *Tune* preset. Missing data contributes zero rather than being guessed at.
+
+`titles.py` is search. It indexes every show's titles once at startup, as flat
+arrays and byte strings rather than an object per title, and answers
+`Engine.search`. `fallback.py` shapes what `GET /api/search` returns,
+`{"shows": [...], "missing": [...], "missing_first": false}`, asking TVmaze when
+the catalogue comes up short. Couchside copies both, with the engine.
 
 `server.py` is a standard-library HTTP server with `GET /api/search` and
 `POST /api/recommend`. Both are stateless: your list lives in your browser and is

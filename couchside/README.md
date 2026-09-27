@@ -25,7 +25,13 @@ rebuilt every night. Nothing plays. It is for finding your next show.
 - **New & Popular** has the Top 10, new shows this year ranked for you, and
   premieres coming soon with their dates.
 - **My List** holds what you saved, and every show you rated, filterable by
-  rating. **Search** finds any title in the catalogue.
+  rating.
+- **Search** finds a show however it is typed: with typos, odd spacing or
+  punctuation, by another of its titles in any language (the card then says
+  *Also known as* that title), with a year to pick between a show and its remake,
+  or pasted with more words than TVmaze's name for it. A show too new for the
+  catalogue is named with a link to its TVmaze page, since the nightly refresh
+  brings it in.
 
 The page and any open title live in the URL (`/new`, `/list`, `/search?q=`,
 `?show=169`), so refresh, Back and shared links behave. Your ratings and My List
@@ -69,6 +75,16 @@ A match uses Next Watch's scale: 99% is your best pick and everything else is
 measured against it. It says how alike the stories, themes and genres are, not
 that you will enjoy the show.
 
+## How search finds a show
+
+Search is Next Watch's: `titles.py` indexes every show's name and, when the model
+carries `search.json.gz`, its other titles from Wikidata, and `fallback.py` asks
+TVmaze's own search when the catalogue finds nothing or only guesses. Both are
+copied here by `build.py`; Next Watch's README says how they match and rank. Here
+the answer's cards carry posters, a card found through another title has that
+title as a caption, and shows TVmaze has that the catalogue does not yet are
+listed under the results, or above them when TVmaze ranks one of them first.
+
 ## Where the pictures, trailers and live details come from
 
 TVmaze keeps every poster at a URL built from its image id, so
@@ -103,8 +119,9 @@ Cast, seasons, episodes and widescreen backdrops are not in the snapshot.
 `live.py` fetches them from the TVmaze API on the server when a title opens,
 trims them, caches them for six hours, and stays inside TVmaze's rate limit of
 20 calls every 10 seconds, backing off after a 429 and serving a stale answer
-rather than none. When TVmaze is unreachable a title page simply shows
-everything else.
+rather than none. That limit is per address, so title pages take 12 of the 20
+and leave 4 each to search here and on Next Watch. When TVmaze is unreachable a
+title page simply shows everything else.
 
 - **Trailers** come from [KinoCheck](https://api.kinocheck.com/), a free API
   of official trailers, looked up by the IMDb id TVmaze keeps. It covers most
@@ -126,7 +143,7 @@ cached for days and a show with nothing is cached as nothing.
 ## Run it
 
 ```sh
-.venv/bin/python couchside/build.py     # copies the engine and follower, writes public/
+.venv/bin/python couchside/build.py     # copies the engine, its search and the follower, writes public/
 .venv/bin/python couchside/server.py    # http://localhost:8082
 .venv/bin/python couchside/brand/make.py    # only when the icon or share image changes
 ```
@@ -144,24 +161,27 @@ node couchside/test_format.mjs
 ```
 
 The first runs everything over a temporary model laid out the way the refresher
-leaves one: the repository's model dated a day later, with a poster moved and
-hand-made TMDB data. It covers the rows, browsing, badges, title pages and
-validation; that the catalog, posters and TMDB data come from `MODEL_DIR`; TMDB's
-trimming, and that a bad or missing file means no TMDB data; TMDB first and every
-fallback, over HTTP; the live sources against fakes (trimming, trailer and rating
-matching, caching, stale answers, 404s as answers, 429s, the rate window, icon
-host checks); the HTTP server end to end: pages and their previews, the loaded
-model's date and count on the page, TMDB's credit only with TMDB data, the policy,
-the 404 page, the manifest, icon sizes and file types; and the follower's
-decisions. It also fails if `engine.py` or `follow.py` here ever differs from
-Next Watch's. The second covers the page's small helpers, where to watch among them.
+leaves one: the repository's model dated a day later, with a poster moved,
+hand-made TMDB data and a few other titles. It covers the rows, browsing, badges,
+title pages and validation; that the catalog, posters and TMDB data come from
+`MODEL_DIR`; TMDB's trimming, and that a bad or missing file means no TMDB data;
+TMDB first and every fallback, over HTTP; the live sources against fakes
+(trimming, trailer and rating matching, caching, stale answers, 404s as answers,
+429s, the rate window, icon host checks); search over HTTP, by another title and
+through a fake TVmaze, with a show too new for the catalogue; the HTTP server end
+to end: pages and their previews, the loaded model's date and count on the page,
+TMDB's credit only with TMDB data, the policy, the 404 page, the manifest, icon
+sizes and file types; and the follower's decisions. It also fails if `engine.py`,
+`titles.py`, `fallback.py` or `follow.py` here ever differs from Next Watch's. The
+second covers the page's small helpers, where to watch and what search says among
+them.
 
 ## Deploy
 
 Couchside is the `couchside` app in the root `rig.yaml`, on port 8082, reading
 the shared model through `MODEL_DIR`. Pushing to `main` deploys it through the
-Rigbox GitHub binding. If `app/engine.py` or `app/follow.py` changes, rerun
-`couchside/build.py` so the copies here follow.
+Rigbox GitHub binding. If `app/engine.py`, `app/titles.py`, `app/fallback.py` or
+`app/follow.py` changes, rerun `couchside/build.py` so the copies here follow.
 
 When `MODEL_DIR` names a link the refresher moves to each new model, the server
 follows it the way Next Watch does: it checks every `MODEL_POLL_SECONDS` (60),
