@@ -354,6 +354,8 @@ check('titles are escaped in previews', f'content="{tricky_name.replace("&", "&a
 check('an unknown title previews the app', b'content="Couchside"' in fetch('/?show=999999999')[2])
 check('https is kept behind a proxy', f'content="https://127.0.0.1:{httpd.server_address[1]}/og.jpg"'.encode()
       in fetch('/', headers={'X-Forwarded-Proto': 'https'})[2])
+check('a public host is https even when the proxy says http', b'content="https://couchside.example/og.jpg"'
+      in fetch('/', headers={'Host': 'couchside.example', 'X-Forwarded-Proto': 'http'})[2])
 body = fetch('/', headers={'Host': 'evil.example"><script>x</script>'})[2]
 check('a hostile Host header is not echoed', b'<script>x' not in body and b'evil.example' not in body)
 status, headers, body = fetch('/manifest.webmanifest')

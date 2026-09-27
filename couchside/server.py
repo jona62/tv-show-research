@@ -73,9 +73,10 @@ def origin(headers):
     host = headers.get('Host', '')
     if not HOST.fullmatch(host):
         return ''
-    scheme = headers.get('X-Forwarded-Proto', '')
-    if scheme not in ('http', 'https'):
-        scheme = 'http' if host.split(':')[0] in ('localhost', '127.0.0.1') else 'https'
+    # A public host is always served over https. The proxy in front of this server may
+    # report its own inner hop as http, so only a local run is taken at its word.
+    local = host.split(':')[0] in ('localhost', '127.0.0.1')
+    scheme = 'https' if not local or headers.get('X-Forwarded-Proto') == 'https' else 'http'
     return f'{scheme}://{host}'
 
 
