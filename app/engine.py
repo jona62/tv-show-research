@@ -19,6 +19,7 @@ import struct
 import sys
 import unicodedata
 
+import facets
 from taste import Attributes, Taste
 
 RATINGS = (-1, 0, .35, .7, 1)
@@ -36,8 +37,22 @@ FORMAT_GROUPS = {
                    'Award Show', 'Sports', 'News'),
 }
 
+# How much each Wikidata or network facet family counts toward the facet closeness of
+# two shows; each family's part is a cosine, and the total is scaled back to 0 to 1.
+# Tuned on scripts/bench: franchises (spin-offs, sequels, shared universes) and makers
+# lift the right shows; shared cast, subjects, networks and broad genres pulled in
+# shows that merely look alike, so they only explain picks (TIE_ORDER), and Wikidata's
+# genres reach the ranking through the taste model's subgenre family instead.
+FACET_WEIGHTS = {'franchise': 2.0, 'maker': 0.5, 'cast': 0.0, 'genre': 0.0, 'subject': 0.0,
+                 'network': 0.0, 'award': 0.0}
+# The order ties between two shows are named in when a pick explains itself. A tie that
+# more than TIE_COMMON of all shows share (drama, crime, a streaming service) explains
+# nothing and is left out.
+TIE_ORDER = ('franchise', 'maker', 'cast', 'genre', 'subject', 'network')
+TIE_COMMON = 0.01
+
 DEFAULT_SETTINGS = {
-    'text': 40, 'themes': 35, 'genres': 25,
+    'text': 40, 'themes': 35, 'genres': 25, 'facets': 30,
     'closest': .3, 'dislike': .35,
     'language': 'all', 'type': 'all', 'status': 'all',
     'year_min': 1900, 'runtime_min': 0, 'rating_min': 0, 'known_min': 60,
@@ -106,7 +121,14 @@ class Engine:
         # Shows share far fewer theme and genre combinations than there are shows (about
         # 17,000 and 1,300 across 90,000), so closeness is worked out once per combination.
         self.combos = {field: self.combinations(field) for field in ('theme_bits', 'genre_bits')}
-        self.attributes = Attributes(self)
+        # Wikidata's genres, makers, cast, franchises and subjects and TVmaze's networks,
+        # when the model carries them (facets.py); a model without them ranks as before.
+        self.facets = facets.load(model, self.n)
+        if self.facets:
+            known = [f for f in FACET_WEIGHTS if f in self.facets.families]
+            total = sum(FACET_WEIGHTS[f] for f in known) or 1
+            self.facet_weights = {f: FACET_WEIGHTS[f] / total for f in known}
+        self.attributes = Attributes(self, self.subgenres())
         self.quick_picks = [self.card(self.by_id[i]) for i in QUICK_PICKS if i in self.by_id]
 
     # ---------------------------------------------------------------- shapes
@@ -180,7 +202,7 @@ class Engine:
         if not isinstance(settings, dict):
             raise ValueError('Settings must be an object.')
         result = dict(DEFAULT_SETTINGS)
-        ranges = {'text': (0, 100), 'themes': (0, 100), 'genres': (0, 100), 'closest': (0, 1),
+        ranges = {'text': (0, 100), 'themes': (0, 100), 'genres': (0, 100), 'facets': (0, 100), 'closest': (0, 1),
                   'dislike': (0, 1), 'year_min': (1900, 2100), 'runtime_min': (0, 240),
                   'rating_min': (0, 10), 'known_min': (0, 100)}
         for k, (lo, hi) in ranges.items():
@@ -241,9 +263,47 @@ class Engine:
         masks = list(seen)
         return masks, [m.bit_count() for m in masks], index
 
-    @lru_cache(maxsize=48)
+    def subgenres(self):
+        """Wikidata's genres as (labels, one bitmask per show), for the taste model."""
+        f = self.facets
+        if not f or 'genre' not in f.families:
+            return None
+        start, end = f.family_ranges[f.families.index('genre')]
+        labels = [f.labels[c] for c in range(start, end)]
+        masks = []
+        for i in range(self.n):
+            mask = 0
+            for k in range(f.row_ptr[i], f.row_ptr[i + 1]):
+                column = f.columns[k]
+                if start <= column < end:
+                    mask |= 1 << (column - start)
+            masks.append(mask)
+        return labels, masks
+
+    def ties(self, i, j):
+        """What two shows concretely share beyond plot words: a franchise, a maker, cast,
+        a Wikidata genre, a subject or a network, strongest first within each kind."""
+        f = self.facets
+        if not f:
+            return []
+        mine = dict(f.row(i))
+        common = TIE_COMMON * self.n
+        shared = [(TIE_ORDER.index(f.families[f.token_family[c]]), -v * mine[c], c)
+                  for c, v in f.row(j) if c in mine and f.families[f.token_family[c]] in TIE_ORDER
+                  and f.df[c] <= common]
+        shared.sort()
+        out, seen = [], set()
+        for _order, _strength, c in shared:
+            family, label = f.families[f.token_family[c]], f.labels[c]
+            if (family, label) not in seen:
+                seen.add((family, label))
+                out.append({'family': family, 'label': label})
+        return out[:4]
+
+    @lru_cache(maxsize=32)
     def components(self, index):
-        """Cached catalog-to-show similarities. No user profile is ever cached."""
+        """Cached catalog-to-show similarities: plot text, themes, genres and, when the
+        model has them, facets. No user profile is ever cached."""
         source = self.shows[index]
         text = array('f', [0]) * self.n
         for term, value in self.text_items(index):
@@ -258,19 +318,28 @@ class Engine:
                 return array('f', bytes(4 * self.n))
             table = [(mine & m).bit_count() / math.sqrt(n * c) if c else 0.0 for m, c in zip(masks, counts)]
             return array('f', map(table.__getitem__, where))
-        return text, bits('theme_bits'), bits('genre_bits')
+        near = self.facets.similarity(index, self.facet_weights) if self.facets else None
+        return text, bits('theme_bits'), bits('genre_bits'), near
 
     def blend(self, index, settings):
-        """How close every show in the catalog sits to one show, with story, themes and
-        genres weighted as the settings ask."""
-        return self.blended(index, settings['text'], settings['themes'], settings['genres'])
+        """How close every show in the catalog sits to one show, with story, themes,
+        genres and facets weighted as the settings ask."""
+        return self.blended(index, settings['text'], settings['themes'], settings['genres'],
+                            settings.get('facets', DEFAULT_SETTINGS['facets']))
 
     @lru_cache(maxsize=96)
-    def blended(self, index, text, themes, genres):
+    def blended(self, index, text, themes, genres, extra=0):
+        """Story, themes and genres share out their weights; facets come on top, as a
+        bonus of extra / 100 times the facet closeness. So a show with no franchise or
+        maker in common with anything ranks exactly as it would without facets, and one
+        that shares them is lifted."""
+        t, h, g, f = self.components(index)
         total = text + themes + genres
         a, b, c = text / total, themes / total, genres / total
-        t, h, g = self.components(index)
-        return array('f', [a * x + b * y + c * z for x, y, z in zip(t, h, g)])
+        if not extra or f is None:
+            return array('f', [a * x + b * y + c * z for x, y, z in zip(t, h, g)])
+        d = extra / 100
+        return array('f', [a * x + b * y + c * z + d * w for x, y, z, w in zip(t, h, g, f)])
 
     def taste(self, profile):
         """The leanings of a whole list, liked and disliked shows alike."""
@@ -370,6 +439,7 @@ class Engine:
                 'links': [round(affinities[pid][i] * 100, 1) for pid in liked_order],
                 'known': self.popularity[i],
                 'fits': ranking.fits(i),
+                'ties': self.ties(i, source_index),
                 'interest': ranking.interest_of(i),
             }
         base['picks'] = [pick(i, rank + 1) for rank, i in enumerate(ordered[:TOP_PICKS])]

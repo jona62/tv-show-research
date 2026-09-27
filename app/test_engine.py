@@ -43,7 +43,7 @@ def closeness_only(body):
 
 # 1. Closeness alone ranks as the research engine does once the settings line up;
 # scores are measured against the best pick, so they agree in proportion.
-settings = {**DEFAULT_SETTINGS, 'rating_min': 0, 'known_min': 0}
+settings = {**DEFAULT_SETTINGS, 'rating_min': 0, 'known_min': 0, 'facets': 0}
 mine = closeness_only({'profile': PROFILE, 'settings': settings})
 theirs = reference.calculate({'profile': PROFILE, 'settings': {**settings, 'axis_x': 'all', 'axis_y': 'all'}})
 overlap = min(len(mine['picks']), len(theirs['recommendations']))
@@ -108,7 +108,7 @@ for label, body in [
     ('invalid rating', {'profile': [{'id': 169, 'weight': .5}], 'settings': {}}),
     ('out-of-range setting', {'profile': [{'id': 169, 'weight': 1}], 'settings': {'closest': 4}}),
     ('out-of-range popularity', {'profile': [{'id': 169, 'weight': 1}], 'settings': {'known_min': 140}}),
-    ('zero feature weights', {'profile': [{'id': 169, 'weight': 1}], 'settings': {'text': 0, 'themes': 0, 'genres': 0}}),
+    ('zero feature weights', {'profile': [{'id': 169, 'weight': 1}], 'settings': {'text': 0, 'themes': 0, 'genres': 0, 'facets': 0}}),
     ('unknown language', {'profile': [{'id': 169, 'weight': 1}], 'settings': {'language': 'Klingon'}}),
     ('oversized list', {'profile': [{'id': i, 'weight': 1} for i in range(1, 80)], 'settings': {}}),
 ]:
@@ -192,7 +192,10 @@ check('one thin chosen show is named', warn([269, 169]).startswith('Peaky Blinde
 check('several thin chosen shows are counted together', warn([269, 1699]).startswith('Some of the shows you chose'))
 far = app.calculate({'profile': PROFILE, 'settings': {'year_min': 2100}, 'similar_to': [13417]})
 check('an empty pool keeps its message when narrowed', far['picks'] == [] and 'Widen' in far['message'])
-blank = app.calculate({'profile': thin, 'settings': {}, 'similar_to': [1699]})
+# A show with no plot, no genres and no facets (not even a network) has nothing to match on.
+bare = next(s['id'] for i, s in enumerate(app.shows) if not s['summary_words'] and not s['genre_bits']
+            and not (app.facets and app.facets.row_ptr[i + 1] > app.facets.row_ptr[i]))
+blank = app.calculate({'profile': thin + [{'id': bare, 'weight': 1}], 'settings': {}, 'similar_to': [bare]})
 check('a chosen show with no signals says so',
       blank['picks'] == [] and blank['candidate_count'] > 0 and 'shows you chose' in blank['message'])
 for label, body, said in [

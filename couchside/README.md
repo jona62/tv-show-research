@@ -7,7 +7,8 @@ rebuilt every night. Nothing plays. It is for finding your next show.
 ## What is on it
 
 - **Home** is a hero and rows. Once you have rated a few shows the rows are
-  *Top picks for you*, *Because you loved* one recent favourite at a time, the
+  *Top picks for you*, *Because you loved* one favourite from each of your
+  interests, the
   *Top 10 shows today*, your strongest genre and theme, *New for you*,
   *Critically acclaimed* and *Popular right now*. A first visit picks three or
   more shows from forty posters, or skips and gets rows by popularity.
@@ -57,17 +58,19 @@ the credit TMDB asks for, and copied the same way.
 
 ## How the rows are built
 
-`library.py` wraps the Next Watch engine. For each request it works out once how
-close every show sits to each rated show, then cuts every row from that: the
-plain ranking for Top picks, one rated show at a time for *Because you loved*,
-the ranking filtered by genre, theme or year for the rest. The first six cards
+`library.py` wraps the Next Watch engine, taste model and interests included
+(see Next Watch's README). For each request it works out once how close every
+show sits to each rated show and scores everything with one ranking, then cuts
+every row from that: the plain ranking for Top picks, one rated show from each
+interest for *Because you loved* (judged by that interest's taste), the ranking
+filtered by genre, theme or year for the rest. The first six cards
 of each row skip anything an earlier row opened with, so rows do not repeat at a
 glance, while the rest of a row keeps its own order. Top picks rank exactly as
 Next Watch does, and a test holds them to it.
 
 A match uses Next Watch's scale: 99% is your best pick and everything else is
-measured against it. It says how alike the stories, themes and genres are, not
-that you will enjoy the show.
+measured against it. It says how close a show sits to what you liked and how well
+it fits your list's leanings, not that you will enjoy the show.
 
 ## Where the pictures, trailers and live details come from
 

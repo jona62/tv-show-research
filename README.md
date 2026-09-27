@@ -4,6 +4,14 @@ Three apps over the TVmaze catalogue of TV series. Next Watch and Couchside read
 a model rebuilt every night; the research site keeps the 89,594-show snapshot it
 was published with.
 
+Both apps share one recommender. A pick has to sit close to shows you liked (plot,
+themes, genres, and a shared franchise or maker from Wikidata) and fit what your
+whole list leans toward: its languages, formats, networks, eras, subgenres, and how
+well known and well rated its shows are, learned from your ratings and dislikes.
+A list with several tastes gets picks for each. [scripts/bench](scripts/bench/)
+measures it against 71 viewer personas: on the 20 nobody tuned on, a held-out
+favourite lands in the top 24 picks 44% of the time, up from 10%.
+
 **[app/](app/) is Next Watch**, the web app: rate what you have watched, get
 ranked picks with the reason each one surfaced, and see your taste drawn against
 them. Three screens, light by default, under 50 KB on first load, works on a

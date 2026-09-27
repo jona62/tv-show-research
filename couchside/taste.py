@@ -282,11 +282,18 @@ class Taste:
                     if weight * delta[bit] > 0.3 and a.base[family][bit] < COMMON:
                         found.append((weight * delta[bit], family, a.labels[family][bit]))
         found.sort(key=lambda f: -f[0])
-        return [{'family': family, 'label': label} for _score, family, label in found[:limit]]
+        out, seen = [], set()
+        for _score, family, label in found:
+            # TVmaze's Crime and Wikidata's crime are one reason.
+            if label.casefold() not in seen:
+                seen.add(label.casefold())
+                out.append({'family': family, 'label': label})
+        return out[:limit]
 
     def summary(self, limit=6):
         """What the list leans toward and away from, in plain attributes, for showing a
-        person their own taste. A leaning needs at least two liked shows behind it; an
+        person their own taste. A leaning needs at least two liked shows behind it and
+        must be something most shows are not (English and scripted say little); an
         avoidance comes from two or more dislikes, or from something common a long list
         never includes."""
         a, leans, avoids = self.a, [], []
@@ -298,7 +305,7 @@ class Taste:
             for v, support in shows.items():
                 share = mass[v] / total
                 lift = share / base[v]
-                if support >= 2 and share >= 0.25 and lift >= 1.5:
+                if support >= 2 and share >= 0.25 and lift >= 1.5 and base[v] < COMMON:
                     leans.append((share * math.log(lift), {
                         'family': family, 'label': name(v), 'share': round(share * 100),
                         'base': round(base[v] * 100, 1), 'shows': support}))
@@ -313,7 +320,19 @@ class Taste:
                         avoids.append((base[v], {'family': family, 'label': name(v), 'why': 'never', 'shows': 0}))
         leans.sort(key=lambda f: -f[0])
         avoids.sort(key=lambda f: -f[0])
-        return {'leans': [f for _r, f in leans[:limit]], 'avoids': [f for _r, f in avoids[:limit]]}
+        return {'leans': distinct(leans, limit), 'avoids': distinct(avoids, limit)}
+
+
+def distinct(ranked, limit):
+    """The first limit entries of a ranked list with one entry per label, whatever its
+    case or family: TVmaze's Crime and Wikidata's crime are one leaning."""
+    out, seen = [], set()
+    for _rank, entry in ranked:
+        key = entry['label'].casefold()
+        if key not in seen:
+            seen.add(key)
+            out.append(entry)
+    return out[:limit]
 
 
 def bits(mask):

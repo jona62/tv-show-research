@@ -92,23 +92,24 @@ profile, which is the first place to look when a persona scores badly.
 
 ## Baseline
 
-`baseline.json` is the engine with the taste model (taste.py and interests in
-engine.py) on the 2026-09-07 model, under its own defaults. `closeness-only.json`
-is the engine before it, as of `b7ae920` (`app/engine.py` hash `b87bbf85692e`),
-which ranked by closeness alone under the old defaults (floor 85, from 1990).
-Compare a change with `--compare scripts/bench/baseline.json`.
+`baseline.json` is the current engine (closeness, Wikidata franchise and maker
+links, the taste model and interests) on the 2026-09-07 model, under its own
+defaults. `closeness-only.json` is the engine before any of that, as of
+`b7ae920` (`app/engine.py` hash `b87bbf85692e`), which ranked by plot, theme and
+genre closeness alone under the old defaults (floor 85, from 1990). Compare a
+change with `--compare scripts/bench/baseline.json`.
 
-| | closeness only | taste model |
+| personas.json (tuned on) | closeness only | current |
 |---|---:|---:|
-| default: leave-one-out HR@24 / HR@100 | 13.3% / 27.8% | 42.4% / 65.1% |
-| default: MRR, median rank | 0.033, 504 | 0.149, 43 |
+| default: leave-one-out HR@24 / HR@100 | 13.3% / 27.8% | 46.9% / 69.6% |
+| default: MRR, median rank | 0.033, 504 | 0.176, 31 |
 | default: targets filtered | 118 of 622 | 11 of 622 |
-| default: few-shot HR@24 | 10.2% | 33.2% |
-| wide: leave-one-out HR@24 / HR@100 | 5.8% / 11.6% | 40.4% / 60.9% |
-| wide: MRR, median rank | 0.019, 1,913 | 0.144, 47 |
-| wide: few-shot HR@24 | 3.8% | 30.8% |
+| default: few-shot HR@24 | 10.2% | 37.7% |
+| wide: leave-one-out HR@24 / HR@100 | 5.8% / 11.6% | 45.2% / 67.5% |
+| wide: MRR, median rank | 0.019, 1,913 | 0.173, 36 |
+| wide: few-shot HR@24 | 3.8% | 34.6% |
 | dislikes in the top 24 of loves and likes alone | 0 of 49 | 2 of 49 |
-| wide: mean popularity of the top 24 | 58.5 | 85.7 |
+| wide: mean popularity of the top 24 | 58.5 | 86.2 |
 
 A random ranking would score an HR@24 of about 0.3% under the old default and
 0.03% under `wide`. The closeness-only engine did best where plot words are
@@ -118,16 +119,30 @@ non-English drama and prestige limited series. Under its default, the popularity
 floor removed most Japanese, Indian and slice-of-life anime targets and half the
 French ones, and the year floor the soaps and pre-1990 classics.
 
-The taste model's handful of global constants (in taste.py: STRENGTH, PRIOR,
-QUALITY and the family weights; in engine.py: INTEREST_JOIN and INTEREST_SHARE,
-plus the default floor and year) were chosen on these personas, taking a change
-only when it raised leave-one-out MRR on both the even and the odd half of the
-persona list. So these numbers flatter it somewhat. `holdout.json` holds personas
-nobody tuned on; judge generalisation there:
+The current engine's handful of global constants (in taste.py: STRENGTH, PRIOR,
+QUALITY and the family weights; in engine.py: INTEREST_JOIN, INTEREST_SHARE,
+FACET_WEIGHTS and the facet bonus, plus the default floor and year) were chosen on
+`personas.json`, taking a change only when it raised leave-one-out MRR on both
+the even and the odd half of the persona list. So its numbers there flatter it
+somewhat. `holdout.json` holds 20 more personas (264 ratings) written afterwards,
+without looking at any engine output, that nothing was tuned on; it is the honest
+measure:
+
+| holdout.json (never tuned on) | closeness only | current |
+|---|---:|---:|
+| default: leave-one-out HR@24 / HR@100 | 9.8% / 18.0% | 44.3% / 63.5% |
+| default: MRR, median rank | 0.037, 1,695 | 0.165, 36 |
+| default: few-shot HR@24 | 8.8% | 35.2% |
+| wide: leave-one-out HR@24 / HR@100 | 7.0% / 18.4% | 43.9% / 63.5% |
+| dislikes in the top 24 of loves and likes alone | 3 of 20 | 0 of 20 |
 
 ```sh
-.venv/bin/python scripts/bench/taste_bench.py --personas scripts/bench/holdout.json --jobs 4
+.venv/bin/python scripts/bench/taste_bench.py --personas scripts/bench/holdout.json --jobs 4 \
+    --compare scripts/bench/holdout-baseline.json
 ```
+
+Keep it that way: judge a change on `holdout.json` only after deciding it on
+`personas.json`, and never tune on it.
 
 ## Caveats
 
