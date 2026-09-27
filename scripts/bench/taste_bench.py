@@ -414,7 +414,7 @@ ROWS = [
     ('  in top 24 of loves and likes alone', ('dislikes', 'liked_only_top24_rate'), 'pct', 'down'),
     ('distinct picks across personas', ('picks', 'distinct'), 'int', 'up'),
     ('mean popularity of the top 24', ('picks', 'mean_popularity'), 'num', None),
-    ('runtime (s)', ('runtime_s',), 'num', None),
+    ('compute time (s), summed over workers', ('runtime_s',), 'num', None),
 ]
 
 
