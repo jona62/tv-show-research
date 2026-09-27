@@ -1,4 +1,4 @@
-# Both apps in one workspace, sharing one copy of the 46MB model.
+# All three apps in one workspace, sharing one copy of the 46MB model.
 #
 # model/ sits outside every app directory on purpose: the release uploader
 # refuses a blob over about 2MB, so the model is copied to /home/developer/model
@@ -9,7 +9,7 @@ visibility: public
 
 workspace:
   image: base
-  # Two engines hold about 500MB resident each.
+  # Three engines hold about 650MB resident each, under 2GB together.
   resources: { ramMb: 3072, vcpuCount: 1, diskSizeMb: 5120 }
   deployment:
     strategy: incremental
@@ -40,6 +40,22 @@ apps:
     health:
       path: /healthz
       timeoutSeconds: 90
+    source:
+      kind: git
+      repo: https://github.com/jona62/tv-show-research.git
+      branch: main
+
+  couchside:
+    path: ./couchside
+    port: 8082
+    visibility: public
+    start: python3 server.py
+    env:
+      PORT: "8082"
+      MODEL_DIR: /home/developer/model
+    health:
+      path: /healthz
+      timeoutSeconds: 120
     source:
       kind: git
       repo: https://github.com/jona62/tv-show-research.git
