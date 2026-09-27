@@ -9,6 +9,9 @@ Four screens and nothing else:
 - **Watch next** shows ranked picks as cards. Each one carries a match score,
   the liked show it sits closest to, the signals they share, and *Why this?* for
   the full reasoning. *Seen it* and *Not for me* feed straight back into the ranking.
+  A line above the cards says what they are matched to; *Narrow it down* takes
+  you to your list to match them to just the shows you choose, for when you want
+  more like one or two of them rather than all of them.
 - **Your taste** states the pattern in a sentence, says how much of the
   catalogue's vocabulary your list covers, and lists every signal your shows
   repeat with how far above catalogue average each one runs. Below that, a radar
@@ -18,7 +21,10 @@ Four screens and nothing else:
 - **Saved** is the watchlist. Anything you save waits there until you watch it;
   rating it then moves it into your shows, where it starts shaping the picks.
 - **Your shows** is the rated list, five ratings per row, and the place to move
-  a list between devices.
+  a list between devices. *More like this* on any liked show narrows the picks
+  to it; tick several and they are matched to those alone. Your taste, the
+  signals and the fit chart keep describing the whole list, since narrowing is a
+  lens on the picks, not a different taste.
 
 Light by default, dark on request, one layout that works at 375px and on a desktop.
 First load is under 50 KB of HTML, CSS and JS; the 512 KB ceiling is enforced by
@@ -45,7 +51,8 @@ characters and the largest possible one under 1,200.
 
 The payload rides in the URL fragment, which browsers never send to a server, so
 a shared link keeps the same promise as the rest of the app: nothing about you
-reaches us. Opening the link on a device with no list imports it; on a device
+reaches us. Which shows the picks are narrowed to stays on the device: a link
+carries the list, not the lens. Opening the link on a device with no list imports it; on a device
 that already has one it asks whether to add or replace. Adding keeps your own
 ratings where the two lists disagree, so merging twice changes nothing. A bare
 code can be pasted instead, for when a messaging app mangles long links, and a
@@ -74,15 +81,18 @@ crosses 512 KB.
 
 ```sh
 .venv/bin/python app/test_engine.py
+node app/test_similar.mjs
 node app/test_transfer.mjs
 node app/test_qr.mjs
 ```
 
 The first verifies the app engine ranks identically to the research recommender under
-matched settings, that rated shows never come back as picks, that bad input is
-rejected, and that search and plot terms behave. The second round-trips transfer
+matched settings, that rated shows never come back as picks, that matching to
+chosen shows changes only the ranking and equals re-rating the rest as neutral,
+that bad input is rejected, and that search and plot terms behave. The second pins which chosen
+shows survive a change to the list and how they are named. The third round-trips transfer
 codes, including a full 60-plus-200 list, and checks that damaged, truncated and
-wrong-version codes are refused rather than half-applied. The third holds the QR
+wrong-version codes are refused rather than half-applied. The fourth holds the QR
 encoder to its recorded matrices, its version boundaries, and the structure a
 scanner depends on.
 
@@ -118,14 +128,17 @@ outside the document root and return 404.
 `engine.py` loads the catalog and the sparse TF-IDF, genre and theme vectors
 once, then scores candidates against your ratings: a weighted mean across
 everything you liked, blended with your single strongest match, minus a penalty
-for looking like what you disliked. Feature families are weighted by the *Tune*
-preset. Missing data contributes zero rather than being guessed at.
+for looking like what you disliked. When a request names shows to match
+(`similar_to`), the mean and the blend run over those alone; dislikes still
+count and every rated show stays out of the pool. Feature families are weighted
+by the *Tune* preset. Missing data contributes zero rather than being guessed at.
 
 `server.py` is a standard-library HTTP server with `GET /api/search` and
 `POST /api/recommend`. Both are stateless: your list lives in your browser and is
 posted with each request, never stored. Three concurrent calculations at most.
 
-`main.js` renders; `fit.js` holds the taste chart and its pure value maths.
+`main.js` renders; `fit.js` holds the taste chart and its pure value maths;
+`similar.js` holds the rules for which chosen shows the picks are matched to.
 `build.py` inlines the catalog metadata and starter titles into the page so a
 first visit needs no round trip.
 

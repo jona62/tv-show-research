@@ -45,6 +45,7 @@ check('rated shows are excluded', not rated & {p['id'] for p in mine['picks']})
 
 # 3. The popularity default keeps obscure titles out without demanding a rating.
 strict = app.calculate({'profile': PROFILE, 'settings': {}})
+check('default settings return picks', len(strict['picks']) > 0)
 check('default excludes obscure titles', all(p['known'] >= 85 for p in strict['picks']))
 check('default is narrower than no floor', strict['candidate_count'] < mine['candidate_count'])
 loose = app.calculate({'profile': PROFILE, 'settings': {'known_min': 0}})
@@ -121,6 +122,72 @@ check('search caps its results', len(app.search('the')) <= 12)
 # 10. Character names stay out of the plot terms.
 gangs = app.shows[app.by_id[next(h['id'] for h in app.search('Gangs of London') if h['name'] == 'Gangs of London')]]
 check('plot terms drop character names', 'sean' not in app.plot_words(gangs) and 'wallace' not in app.plot_words(gangs))
+
+# 11. Picks can be matched to chosen shows alone. The pool, the dislikes and the
+# taste payload stay exactly as they are; only the scoring set shrinks.
+narrow = app.calculate({'profile': PROFILE, 'settings': {}, 'similar_to': [618, 13417]})
+plain = app.calculate({'profile': PROFILE, 'settings': {}, 'similar_to': []})
+ids = lambda r: [p['id'] for p in r['picks']]
+same_scores = lambda a, b: all(x['score'] == y['score'] for x, y in zip(a['picks'], b['picks']))
+check('an empty selection is the plain ranking', ids(plain) == ids(strict) and same_scores(plain, strict))
+check('the selection is echoed in list order',
+      narrow['similar_to'] == [13417, 618] and strict['similar_to'] == [] and empty['similar_to'] == [])
+check('every pick is closest to a chosen show',
+      narrow['picks'] and all(p['because_id'] in (13417, 618) for p in narrow['picks']))
+one = app.calculate({'profile': PROFILE, 'settings': {}, 'similar_to': [618]})
+check('one chosen show sources every pick', one['picks'] and all(p['because_id'] == 618 for p in one['picks']))
+check('narrowing changes the ranking', ids(one) != ids(strict))
+check('narrowing keeps the pool', narrow['candidate_count'] == strict['candidate_count'])
+check('narrowing keeps rated shows out', not rated & set(ids(narrow)))
+check('taste stays the whole list',
+      {s['id'] for s in narrow['liked']} == liked and narrow['features'] == strict['features']
+      and narrow['breadth'] == strict['breadth'] and narrow['context'] == strict['context']
+      and narrow['positive_count'] == strict['positive_count'])
+check('links cover every liked show', all(len(p['links']) == len(narrow['liked']) for p in narrow['picks']))
+rerated = [p if p['id'] in (13417, 618) or p['weight'] < 0 else {**p, 'weight': 0} for p in PROFILE]
+same = app.calculate({'profile': rerated, 'settings': {}})
+check('narrowing matches re-rating the other shows as neutral',
+      ids(narrow) == ids(same) and all(abs(a['score'] - b['score']) < .01 for a, b in zip(narrow['picks'], same['picks'])))
+only_liked = [p for p in PROFILE if p['weight'] > 0]
+solo = app.calculate({'profile': only_liked, 'settings': {}, 'similar_to': [618]})
+at = [s['id'] for s in solo['liked']].index(618)
+check('one chosen show scores as its own similarity',
+      solo['picks'] and all(abs(p['score'] - p['links'][at]) < .11 for p in solo['picks']))
+check('dislikes still count when narrowed', any(p['penalised'] for p in one['picks']))
+every = app.calculate({'profile': PROFILE, 'settings': {}, 'similar_to': [p['id'] for p in only_liked]})
+check('choosing every liked show is the plain ranking',
+      ids(every) == ids(strict) and same_scores(every, strict) and every['similar_to'] == [p['id'] for p in only_liked])
+okay = app.calculate({'profile': PROFILE, 'settings': {}, 'similar_to': [82]})
+check('a show rated OK can be chosen', okay['picks'] and all(p['because_id'] == 82 for p in okay['picks']))
+# Peaky Blinders has a 12-word summary; 1699 has no summary, themes or genres at all.
+thin = [{'id': 269, 'weight': 1}, {'id': 1699, 'weight': 1}, {'id': 169, 'weight': 1}]
+warn = lambda chosen: app.calculate({'profile': thin, 'settings': {}, 'similar_to': chosen})['warning']
+check('the plot warning follows the chosen shows', warn([169]) == '' and 'your shows' in warn([]))
+check('one thin chosen show is named', warn([269, 169]).startswith('Peaky Blinders has'))
+check('several thin chosen shows are counted together', warn([269, 1699]).startswith('Some of the shows you chose'))
+far = app.calculate({'profile': PROFILE, 'settings': {'year_min': 2100}, 'similar_to': [13417]})
+check('an empty pool keeps its message when narrowed', far['picks'] == [] and 'Widen' in far['message'])
+blank = app.calculate({'profile': thin, 'settings': {}, 'similar_to': [1699]})
+check('a chosen show with no signals says so',
+      blank['picks'] == [] and blank['candidate_count'] > 0 and 'shows you chose' in blank['message'])
+for label, body, said in [
+    ('a selection that is not a list', {'profile': PROFILE, 'settings': {}, 'similar_to': 169}, 'as a list'),
+    ('a null selection', {'profile': PROFILE, 'settings': {}, 'similar_to': None}, 'as a list'),
+    ('a selection of strings', {'profile': PROFILE, 'settings': {}, 'similar_to': ['169']}, 'whole numbers'),
+    ('a boolean chosen id', {'profile': PROFILE, 'settings': {}, 'similar_to': [True]}, 'whole numbers'),
+    ('a fractional chosen id', {'profile': PROFILE, 'settings': {}, 'similar_to': [169.0]}, 'whole numbers'),
+    ('a repeated chosen show', {'profile': PROFILE, 'settings': {}, 'similar_to': [169, 169]}, 'only once'),
+    ('choosing a disliked show', {'profile': PROFILE, 'settings': {}, 'similar_to': [80]}, 'counted as liked'),
+    ('choosing a show not on the list', {'profile': PROFILE, 'settings': {}, 'similar_to': [999_999_999]}, 'on your list'),
+    ('choosing a neutral show', {'profile': [{'id': 169, 'weight': 0}], 'settings': {}, 'similar_to': [169]}, 'counted as liked'),
+    ('an oversized selection', {'profile': PROFILE, 'settings': {}, 'similar_to': list(range(1, 62))}, 'up to 60'),
+    ('choosing with an empty list', {'profile': [], 'settings': {}, 'similar_to': [169]}, 'on your list'),
+]:
+    try:
+        app.calculate(body)
+        check(f'rejects {label}', False)
+    except ValueError as exc:
+        check(f'rejects {label}', said in str(exc), str(exc))
 
 print()
 if failures:

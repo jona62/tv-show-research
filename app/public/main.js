@@ -1,6 +1,7 @@
 import { fitRows, chooseSpokes, drawFit, short } from './fit.js';
 import { encode, decode, LIMITS } from './transfer.js';
 import { matrix, svgPath } from './qr.js';
+import { prune, few } from './similar.js';
 
 const boot = JSON.parse(document.getElementById('boot').textContent);
 const $ = id => document.getElementById(id);
@@ -34,7 +35,7 @@ const button = (text, cls, onClick) => {
 };
 const meta = s => [s.year ?? 'Year unknown', s.channel, s.rating ? '★ ' + s.rating : null].filter(Boolean).join(' · ');
 
-let state = { profile: [], saved: [], settings: { ...DEFAULTS } };
+let state = { profile: [], saved: [], settings: { ...DEFAULTS }, similar_to: [] };
 let data = null, tab = 'next', reqId = 0, reqAbort = null, timer = null;
 let searchId = 0, searchAbort = null, searchTimer = null, fitPick = null;
 let allSignals = false, allRelated = false;
@@ -47,6 +48,7 @@ try {
       profile: saved.profile.filter(p => Number.isInteger(p.id) && RATINGS.some(([w]) => w === p.weight)).slice(0, 60),
       saved: (Array.isArray(saved.saved) ? saved.saved : []).filter(s => Number.isInteger(s.id)).slice(0, 200),
       settings: { ...DEFAULTS, ...(saved.settings || {}) },
+      similar_to: Array.isArray(saved.similar_to) ? saved.similar_to.filter(Number.isInteger) : [],
     };
     // A lists saved before the popularity control existed keeps its old rating floor otherwise.
     if (!KNOWN.includes(state.settings.known_min)) state.settings.known_min = 85;
@@ -55,6 +57,7 @@ try {
     if (!FORMATS.includes(state.settings.type)) state.settings.type = 'all';
   }
 } catch { /* first visit, or storage is off */ }
+keepSimilar();
 
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* private mode */ }
@@ -113,11 +116,66 @@ function rate(id, weight) {
   const found = state.profile.find(p => p.id === id);
   if (!found) return;
   found.weight = weight;
-  save(); renderList(); run();
+  keepSimilar(); save(); renderList(); run();
 }
 function remove(id) {
   state.profile = state.profile.filter(p => p.id !== id);
-  save(); renderList(); renderPicks(); run(0);
+  keepSimilar(); save(); renderList(); renderPicks(); run(0);
+}
+
+/* ------------------------------------------------------ more like this */
+// Which liked shows the picks are matched to. Empty means all of them, which is
+// the plain ranking. It lives here and not in settings: it points at rows of the
+// list, so it stays on this device and never rides in a transfer link.
+function likedShows() { return state.profile.filter(p => p.weight > 0); }
+
+function keepSimilar() { state.similar_to = prune(state.profile, state.similar_to); }
+function chooseSimilar(id, on) {
+  state.similar_to = on ? [...state.similar_to, id] : state.similar_to.filter(c => c !== id);
+  keepSimilar(); save();
+  // Updated in place, not rebuilt, so the box a keyboard user just toggled keeps focus.
+  $('list').querySelector(`.item[data-id="${id}"]`)?.classList.toggle('chosen', state.similar_to.includes(id));
+  renderSimilar();
+  run();
+}
+function useAllShows() {
+  state.similar_to = [];
+  save(); renderList(); run();
+  $(tab).focus();
+}
+function goChoose(toChosen) {
+  show('shows');
+  const boxes = [...$('list').querySelectorAll('input[data-similar]')];
+  ((toChosen && boxes.find(b => b.checked)) || boxes[0])?.focus();
+}
+// One line on Watch next saying what the picks are matched to, and its twin on
+// Your shows. Both read from state, so a tick shows before the picks arrive.
+function renderSimilar() {
+  const liked = likedShows();
+  const names = state.similar_to.map(id => state.profile.find(p => p.id === id)?.name).filter(Boolean);
+  const on = names.length > 0;
+  const all = liked.length === 2 ? 'both shows you liked' : `all ${liked.length} shows you liked`;
+  for (const id of ['scope', 'similar-meta']) {
+    $(id).hidden = liked.length < 2;
+    $(id).classList.toggle('on', on);
+  }
+  const said = {
+    'scope-said': on ? `Similar to just ${few(names)}. ` : `Similar to ${all}. `,
+    'similar-said': on ? `Picks are similar to just ${few(names)}. `
+      : `Picks are similar to ${all}. ${liked.length === 2
+        ? 'Tick More like this on either one to match just it.'
+        : 'Tick More like this on any of them to match just the ones you choose.'}`,
+  };
+  // #similar-said is a live region: rewritten only when the sentence changes.
+  for (const [id, text] of Object.entries(said)) if ($(id).textContent !== text) $(id).textContent = text;
+  const acts = $('scope-acts');
+  acts.replaceChildren();
+  if (on) acts.append(button('Change', 'link', () => goChoose(true)), ' · ', button('Use all my shows', 'link', useAllShows));
+  else acts.append(button('Narrow it down', 'link', () => goChoose(false)));
+  const mine = $('similar-acts');
+  mine.replaceChildren();
+  if (on) mine.append(button('See picks', 'link', () => { show('next'); $('next').focus(); }), ' · ',
+                      button('Use all my shows', 'link', useAllShows));
 }
 
 /* -------------------------------------------------------------- search */
@@ -207,7 +265,8 @@ function run(delay = 160) {
     try {
       const res = await fetch('/api/recommend', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: reqAbort.signal,
-        body: JSON.stringify({ profile: state.profile.map(({ id, weight }) => ({ id, weight })), settings: state.settings }),
+        body: JSON.stringify({ profile: state.profile.map(({ id, weight }) => ({ id, weight })), settings: state.settings,
+                               similar_to: state.similar_to }),
       });
       const body = await res.json();
       if (id !== reqId) return;
@@ -227,7 +286,6 @@ function run(delay = 160) {
 function render() {
   renderCards();
   renderTaste();
-  renderList();
   renderCount();
 }
 function renderCount() {
@@ -472,7 +530,7 @@ function renderFit() {
 
   const choice = $('fit-vs').value;
   const other = choice === 'none' ? null
-    : choice === 'closest' ? data.liked.find(s => s.id === pick.because_id)
+    : choice === 'closest' ? data.liked[pick.links.indexOf(Math.max(...pick.links))]
       : data.liked.find(s => s.id === Number(choice));
 
   const rows = fitRows(data.liked, pick, other, $('fit-kind').value, boot.themes, boot.genres);
@@ -507,9 +565,10 @@ function renderRelate(pick) {
     .map((s, i) => ({ ...s, score: pick.links[i] }))
     .sort((a, b) => b.score - a.score);
   const top = pairs[0]?.score || 1;
-  $('relate-note').textContent = pairs.length > 1
-    ? `${pick.name} is closest to ${pairs[0].name} and furthest from ${pairs.at(-1).name}.`
-    : `${pick.name} against the one show you have rated.`;
+  $('relate-note').textContent = pairs.length < 2 ? `${pick.name} against the one show you have rated.`
+    : data.similar_to.length && pairs[0].id !== pick.because_id
+      ? `${pick.name} was picked for ${pick.because}. Across everything you liked it sits closest to ${pairs[0].name}.`
+      : `${pick.name} is closest to ${pairs[0].name} and furthest from ${pairs.at(-1).name}.`;
   const holder = $('relate');
   holder.replaceChildren();
   const rows = allRelated ? pairs : pairs.slice(0, 10);
@@ -544,15 +603,29 @@ new ResizeObserver(() => {
 function renderList() {
   const holder = $('list');
   holder.replaceChildren();
-  const liked = state.profile.filter(p => p.weight > 0).length;
+  const liked = likedShows().length;
   $('shows-meta').textContent = state.profile.length
     ? `${state.profile.length} rated · ${liked} counted as liked. Ratings shape every pick; nothing you rate is recommended back.`
     : 'Nothing here yet. Search at the top to add what you have watched.';
   $('clear-all').hidden = !state.profile.length;
   for (const p of state.profile) {
     const item = el('div', '', 'item');
+    item.dataset.id = p.id;
     const top = el('div', '', 'item-top');
-    top.append(el('span', p.name, 'item-name'), button('Remove', 'drop-show', () => remove(p.id)));
+    top.append(el('span', p.name, 'item-name'));
+    if (p.weight > 0 && liked > 1) {
+      const wrap = el('label', '', 'similar');
+      const box = el('input');
+      box.type = 'checkbox';
+      box.dataset.similar = p.id;
+      box.checked = state.similar_to.includes(p.id);
+      box.setAttribute('aria-label', `More like this: ${p.name}`);
+      box.addEventListener('change', () => chooseSimilar(p.id, box.checked));
+      wrap.append(box, 'More like this');
+      top.append(wrap);
+      item.classList.toggle('chosen', box.checked);
+    }
+    top.append(button('Remove', 'drop-show', () => remove(p.id)));
     item.append(top, el('p', meta(p), 'item-meta'));
     const seg = el('div', '', 'seg');
     seg.setAttribute('role', 'group');
@@ -566,10 +639,11 @@ function renderList() {
     item.append(seg);
     holder.append(item);
   }
+  renderSimilar();
 }
 $('clear-all').addEventListener('click', () => {
   state.profile = [];
-  save(); renderList(); renderPicks(); run(0);
+  keepSimilar(); save(); renderList(); renderPicks(); run(0);
 });
 
 /* ------------------------------------------------------- moving devices */
@@ -660,7 +734,7 @@ async function apply(incoming, replace) {
   if (!rated.length && !kept.length) throw new Error('None of those shows are in this catalog.');
 
   if (replace) {
-    state = { profile: rated, saved: kept, settings: { ...DEFAULTS, ...incoming.settings } };
+    state = { profile: rated, saved: kept, settings: { ...DEFAULTS, ...incoming.settings }, similar_to: [] };
   } else {
     const mine = new Set(state.profile.map(s => s.id));
     // Your own ratings win, so merging twice never rewrites what you decided here.
@@ -668,7 +742,7 @@ async function apply(incoming, replace) {
     const held = new Set([...state.profile.map(s => s.id), ...state.saved.map(s => s.id)]);
     state.saved = [...state.saved, ...kept.filter(s => !held.has(s.id))].slice(0, LIMITS.saved);
   }
-  save(); renderList(); renderSaved(); renderPicks(); syncTune(); run(0);
+  keepSimilar(); save(); renderList(); renderSaved(); renderPicks(); syncTune(); run(0);
   const dropped = ids.length - known.size;
   note(`Brought in ${rated.length} rated and ${kept.length} saved`
     + `${dropped ? `, and skipped ${dropped} no longer in the catalog` : ''}.`);

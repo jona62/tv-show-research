@@ -50,6 +50,7 @@
         <h1>Watch next</h1>
         <button id="open-tune" class="ghost" type="button">Tune</button>
       </div>
+      <p id="scope" class="scope" hidden><span id="scope-said"></span><span id="scope-acts"></span></p>
       <p id="next-meta" class="hint" role="status" aria-live="polite"></p>
       <p id="warn" class="warn" hidden></p>
       <div id="cards" class="cards"></div>
@@ -120,6 +121,7 @@
       </div>
     </div>
     <p id="shows-meta" class="hint"></p>
+    <p id="similar-meta" class="scope" hidden><span id="similar-said" role="status" aria-live="polite"></span><span id="similar-acts"></span></p>
     <div id="list" class="list"></div>
   </section>
 
@@ -128,8 +130,8 @@
 <footer>
   <p><button id="open-about" class="link" type="button">How this works</button></p>
   <p>Data from <a href="https://www.tvmaze.com/">TVmaze</a> · <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> · <span class="nb">snapshot 2026-09-07</span></p>
-  <a class="club" href="https://512kb.club/" aria-label="512KB Club, green team: this page loads 85.6 KB of uncompressed resources">
-    <span>512KB CLUB</span><span>85.6 KB</span>
+  <a class="club" href="https://512kb.club/" aria-label="512KB Club, green team: this page loads 91.4 KB of uncompressed resources">
+    <span>512KB CLUB</span><span>91.4 KB</span>
   </a>
 </footer>
 
@@ -218,7 +220,7 @@
 <dialog id="about"><div class="sheet">
   <button class="icon close" type="button" data-close aria-label="Close">✕</button>
   <h2 class="sheet-h">How this works</h2>
-  <p>Every pick is scored against the shows you rated: plot wording, theme signals read from summaries, and genre tags. Your closest match pulls harder than the rest, and anything close to what you disliked is pushed down.</p>
+  <p>Every pick is scored against the shows you rated: plot wording, theme signals read from summaries, and genre tags. Your closest match pulls harder than the rest, and anything close to what you disliked is pushed down. Tick <i>More like this</i> on one or more of your shows and every pick is scored against those alone; dislikes still count.</p>
   <p>A match score is similarity, not a promise you’ll enjoy it. Themes come from English summary text, so titles with thin descriptions match on genre alone.</p>
   <p>89,594 television series in this snapshot, from scripted drama to animation, documentary and reality. There are no films: the catalogue does not carry them.</p>
   <p> Your list stays in this browser. No account, nothing stored on a server.</p>

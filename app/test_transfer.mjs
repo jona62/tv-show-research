@@ -18,6 +18,8 @@ check('saved ids survive the trip', JSON.stringify(back.saved) === JSON.stringif
 for (const key of ['text', 'themes', 'genres', 'dislike', 'language', 'type', 'status', 'year_min', 'known_min'])
   check(`setting ${key} survives`, back.settings[key] === state.settings[key], `${back.settings[key]} != ${state.settings[key]}`);
 check('code is url safe', !/[+/=]/.test(code), code);
+check('which shows the picks match never rides in the code', encode({ ...state, similar_to: [13417] }) === code);
+check('a code carries no such choice back', !('similar_to' in back));
 check('a typical list stays short', code.length < 160, `${code.length} chars`);
 
 const full = {

@@ -165,6 +165,7 @@ class Engine:
                 raise ValueError('Choose a valid rating for each show.')
             seen.add(p['id'])
             parsed.append({'id': p['id'], 'weight': weight})
+        chosen = self.validate_similar(body.get('similar_to', []), parsed)
         settings = body.get('settings', {})
         if not isinstance(settings, dict):
             raise ValueError('Settings must be an object.')
@@ -185,7 +186,23 @@ class Engine:
             if not isinstance(value, str) or value not in allowed:
                 raise ValueError(f'Choose a valid {key} filter.')
             result[key] = value
-        return parsed, result
+        return parsed, result, chosen
+
+    def validate_similar(self, wanted, profile):
+        """The liked shows a request asks to match, in list order. Absent or empty
+        means every liked show, which is the plain ranking."""
+        if not isinstance(wanted, list):
+            raise ValueError('Send the shows to match as a list of ids.')
+        if len(wanted) > MAX_LIST:
+            raise ValueError(f'Choose up to {MAX_LIST} shows to match.')
+        if any(type(i) is not int for i in wanted):
+            raise ValueError('Show ids must be whole numbers.')
+        if len(set(wanted)) != len(wanted):
+            raise ValueError('Each show to match should appear only once.')
+        wanted = set(wanted)
+        if not wanted <= {p['id'] for p in profile if p['weight'] > 0}:
+            raise ValueError('Each show to match must be on your list and counted as liked.')
+        return [p['id'] for p in profile if p['id'] in wanted]
 
     # ------------------------------------------------------------- scoring
 
@@ -230,13 +247,21 @@ class Engine:
                 list(s['genres']))
 
     def calculate(self, body):
-        profile, settings = self.validate(body)
+        profile, settings, chosen = self.validate(body)
         positives = [p for p in profile if p['weight'] > 0]
         negatives = [p for p in profile if p['weight'] < 0]
+        # Choosing shows narrows what the picks are matched to, not what your taste
+        # is made of: only the scoring set shrinks. Every rated show still stays out
+        # of the pool, dislikes still count, and the liked list, its signals and the
+        # per-show links keep covering everything you liked. Ranking against a chosen
+        # set is the same as ranking a list where every other liked show is re-rated
+        # neutral, since neutral shows leave the pool but are never scored.
+        scoring = [p for p in positives if p['id'] in set(chosen)] if chosen else positives
         watched_ids = {p['id'] for p in profile}
         base = {
             'date': self.date, 'catalog_count': self.n, 'candidate_count': 0,
             'settings': settings, 'positive_count': len(positives), 'negative_count': len(negatives),
+            'similar_to': chosen,
             'picks': [], 'liked': [], 'features': [], 'context': [], 'message': '', 'warning': '',
             'breadth': {'themes': [0, len(self.themes)], 'genres': [0, len(self.genres)]},
         }
@@ -249,8 +274,14 @@ class Engine:
         candidates = [i for i, s in enumerate(self.shows)
                       if s['id'] not in watched_ids and self.eligible(i, settings, formats)]
         base['candidate_count'] = len(candidates)
-        if any(self.shows[self.by_id[p['id']]]['summary_words'] < 15 for p in positives):
+        thin = [self.shows[self.by_id[p['id']]]['name'] for p in scoring
+                if self.shows[self.by_id[p['id']]]['summary_words'] < 15]
+        if thin and not chosen:
             base['warning'] = 'Some of your shows have very little plot text, so their matches lean on genres alone.'
+        elif len(thin) == 1:
+            base['warning'] = f'{thin[0]} has very little plot text, so its matches lean on genres alone.'
+        elif thin:
+            base['warning'] = 'Some of the shows you chose have very little plot text, so their matches lean on genres alone.'
 
         total = settings['text'] + settings['themes'] + settings['genres']
         a, b, c = (settings[k] / total for k in ('text', 'themes', 'genres'))
@@ -259,13 +290,13 @@ class Engine:
             t, h, g = self.components(self.by_id[p['id']])
             affinities[p['id']] = array('f', (min(1.0, a * x + b * y + c * z) for x, y, z in zip(t, h, g)))
 
-        norm = sum(p['weight'] for p in positives)
-        top_weight = max(p['weight'] for p in positives)
+        norm = sum(p['weight'] for p in scoring)
+        top_weight = max(p['weight'] for p in scoring)
         closest, dislike = settings['closest'], settings['dislike']
         scores = array('f', [0]) * self.n
         for i in candidates:
-            mean = sum(p['weight'] * affinities[p['id']][i] for p in positives) / norm
-            best = max(p['weight'] / top_weight * affinities[p['id']][i] for p in positives)
+            mean = sum(p['weight'] * affinities[p['id']][i] for p in scoring) / norm
+            best = max(p['weight'] / top_weight * affinities[p['id']][i] for p in scoring)
             hit = (1 - closest) * mean + closest * best
             if negatives:
                 hit -= dislike * sum(affinities[p['id']][i] for p in negatives) / len(negatives)
@@ -287,7 +318,7 @@ class Engine:
         def pick(i, rank):
             s = self.shows[i]
             themes, genres = self.signals(i)
-            source = max(positives, key=lambda p: affinities[p['id']][i])
+            source = max(scoring, key=lambda p: affinities[p['id']][i])
             source_index = self.by_id[source['id']]
             source_themes, source_genres = liked_signals[source['id']]
             penalty = dislike * sum(affinities[p['id']][i] for p in negatives) / len(negatives) if negatives else 0.0
@@ -343,6 +374,7 @@ class Engine:
                 base['context'].append({'label': label, 'value': top, 'count': count, 'of': len(positives)})
 
         if not ordered:
-            base['message'] = ('Nothing matches these filters yet. Widen the year, language or format.'
-                               if not candidates else 'No positive matches under these settings. Add another show you liked.')
+            base['message'] = ('Nothing matches these filters yet. Widen the year, language or format.' if not candidates
+                               else 'No positive matches for the shows you chose. Choose others, or use all your shows.' if chosen
+                               else 'No positive matches under these settings. Add another show you liked.')
         return base

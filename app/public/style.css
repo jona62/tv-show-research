@@ -163,6 +163,17 @@ select{padding:8px 10px;border:1px solid var(--line);border-radius:7px;backgroun
 .item{border:1px solid var(--line);border-radius:var(--r);background:var(--raised);padding:11px 12px}
 .item-top{display:flex;gap:10px;align-items:baseline}
 .item-name{flex:1;font-size:15px;font-weight:600;overflow-wrap:anywhere}
+.similar{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);padding:7px 6px;
+  margin:-7px 0;border-radius:6px;cursor:pointer;white-space:nowrap}
+.similar input{width:16px;height:16px;margin:0;accent-color:var(--accent)}
+.similar:hover{color:var(--ink)}
+.item.chosen{border-color:var(--accent)}
+.item.chosen .similar{color:var(--accent);font-weight:600}
+/* what the picks are matched to: a hint until something is chosen, then a soft accent panel */
+.scope{font-size:13px;color:var(--muted);margin:6px 0}
+.scope.on{background:var(--accent-soft);color:var(--accent);padding:9px 12px;border-radius:8px;margin:10px 0}
+.scope .link{font-size:inherit}
+.scope.on .link{color:inherit}
 .item-meta{font-size:12.5px;color:var(--muted);margin:2px 0 9px}
 .seg{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
 .seg button{padding:7px 2px;font-size:12px;border:1px solid var(--line);border-radius:6px;

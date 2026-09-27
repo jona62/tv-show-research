@@ -100,7 +100,7 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json({'shows': ENGINE.cards(read_ids(payload))})
             else:
                 self.send_json(ENGINE.calculate(payload))
-        except (json.JSONDecodeError, UnicodeDecodeError):
+        except (json.JSONDecodeError, UnicodeDecodeError, RecursionError):
             self.send_json({'error': 'Send a valid JSON list.'}, 400)
         except ValueError as exc:
             self.send_json({'error': str(exc)}, 400)
