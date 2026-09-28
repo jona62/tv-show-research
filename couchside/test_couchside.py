@@ -379,8 +379,8 @@ check('labels lower-case without breaking acronyms',
 
 # 4c. The whole page for lists of several shapes: its fixed places, its size, and the rules
 # that keep rows from repeating one another. Today's rows (tier 0) come first and keep the
-# rules of a page of 20 to 30 rows; the page goes on past them into the tiers below, which
-# here hold only what is left of today's (4i gives the tiers rows of their own).
+# rules of a page of 20 to 30 rows; the page goes on past them into the tiers below (4i
+# pages whole pages with stand-in rows in every tier).
 SHAPES = {
     'five shows': {'profile': PROFILE, 'list': [526, 431]},
     'one taste': {'profile': listed('prestige_crime')},
@@ -628,7 +628,7 @@ def watched(deeper, options, p):
 
 Deeper.best = watched
 with stub_tiers.installed(Page, tier_rows=counted):
-    for shape, day in (('twenty-five mixed', seeded('2026-10-05')), ('five shows', {})):
+    for shape, day in (('five shows', {}), ('twenty-five mixed', seeded('2026-10-05'))):
         body = {'settings': {}, 'list': [], **SHAPES[shape], **day}
         page_rows, answers = whole(body)
         keys = [r['key'] for r in page_rows]
@@ -662,10 +662,7 @@ with stub_tiers.installed(Page, tier_rows=counted):
               and sum(page.quotas(4 * page.cap).values()) > sum(page.quotas(page.cap).values()), picks[-5:])
         picks.clear()
 
-    # body and page_rows are the seeded page of twenty-five mixed shows from here.
-    body = {'settings': {}, 'list': [], **SHAPES['twenty-five mixed'], **seeded('2026-10-05')}
-    page_rows = whole(body)[0]
-    today = [r for r in page_rows if 'tier' not in r]
+    # body, page_rows and today are the seeded page of twenty-five mixed shows from here.
     built.clear()
     lib.home(body)
     check('the first rows build no tier past today\'s', not built and len(today) > FIRST_PAGE, dict(built))

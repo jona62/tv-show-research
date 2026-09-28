@@ -1593,13 +1593,15 @@ class Deeper:
         a title above, has too few cards left to open with or half repeats a row above is
         left out for good; one resting (tired) or whose interest holds its share of a page
         this long is held back. Popular stays below row 10, the Top 10 below row 2 and
-        Something different past the first page, as among today's rows."""
+        Something different past the first page, as among today's rows. A first visit's
+        row left over from today's waits for the last tier, where a row to browse by taste
+        may take its key (join)."""
         page = self.page
         quota, tired = self.quota(p), page.fresh.tired
         out = []
         for key, shelf in self.pool.items():
             if key in self.dropped or (shelf.kind_of == 'popular' and p < 11) or (key == 'top10' and p < 3) \
-                    or (shelf.kind_of == 'different' and p <= FIRST_PAGE):
+                    or (shelf.kind_of == 'different' and p <= FIRST_PAGE) or (shelf.kind_of == 'plain' and self.tier < TIERS):
                 continue
             why = None
             if shelf.title.casefold() in self.titles:
