@@ -104,7 +104,7 @@ from build import MODULES                                        # noqa: E402
 from engine import DEFAULT_SETTINGS, QUICK_PICKS                 # noqa: E402
 from fallback import Remote                                      # noqa: E402
 from library import ROW, MORE, GLANCE, SHORTEST, GENRE_ROWS, NEW_DAYS, FALLBACK, lower_first  # noqa: E402
-from library import (Page, FIRST_PAGE, NEXT_PAGE, MOST_ROWS, CREATOR_SHORTEST, NOT_FOR_ME,        # noqa: E402
+from library import (Page, Deeper, FIRST_PAGE, NEXT_PAGE, MOST_ROWS, CREATOR_SHORTEST, NOT_FOR_ME,  # noqa: E402
                      INTEREST_CAP, HIDDEN, PINNED, LONGEST, TIERS)
 from live import (Live, LiveError, Icons, trim_show, trim_episodes, trim_videos,        # noqa: E402
                   trim_seasons, match_rating, IMAGES)
@@ -609,6 +609,8 @@ import stub_tiers  # noqa: E402
 
 built = Counter()
 building = Page.tier_rows
+choosing = Deeper.best
+picks = []
 
 
 def counted(page_, tier):
@@ -616,6 +618,15 @@ def counted(page_, tier):
     return building(page_, tier)
 
 
+def watched(deeper, options, p):
+    """Deeper.best, noting whether the row it takes was held back and whether any was not."""
+    shelf, rel = choosing(deeper, options, p)
+    held = {row.key: back for row, _rel, back in options}
+    picks.append((held[shelf.key], not all(held.values())))
+    return shelf, rel
+
+
+Deeper.best = watched
 with stub_tiers.installed(Page, tier_rows=counted):
     for shape, day in (('twenty-five mixed', seeded('2026-10-05')), ('five shows', {})):
         body = {'settings': {}, 'list': [], **SHAPES[shape], **day}
@@ -645,16 +656,11 @@ with stub_tiers.installed(Page, tier_rows=counted):
         check(f'{shape}, every tier: no row comes before its tier opens, so no tier-2 row before tier 1',
               all(origin[r['key']] <= r.get('tier', 0) for r in page_rows)
               and all(origin[k] < t for t, n in opened_at.items() for k in keys[:n]))
-        served, within = Counter(), True
-        for p, (shelf, _items) in enumerate(laid, 1):
-            k = shelf.interest
-            if 0 < page.tier_of.get(shelf.key, 0) < TIERS and k is not None \
-                    and served[k] >= page.quotas(max(page.cap, p))[k]:
-                within = False
-            served[k] += k is not None
-        check(f'{shape}, every tier: until the last tier opens, an interest takes a row only within its share of the page '
-              f'so far, which grows with the page', within and sum(page.quotas(4 * page.cap).values())
-              > sum(page.quotas(page.cap).values()))
+        check(f'{shape}, every tier: a row resting, or whose interest holds its share of the page so far (a share that '
+              f'grows with the page), comes only once nothing else open holds up',
+              picks and not any(held and others for held, others in picks)
+              and sum(page.quotas(4 * page.cap).values()) > sum(page.quotas(page.cap).values()), picks[-5:])
+        picks.clear()
 
     # body and page_rows are the seeded page of twenty-five mixed shows from here.
     body = {'settings': {}, 'list': [], **SHAPES['twenty-five mixed'], **seeded('2026-10-05')}
@@ -696,9 +702,11 @@ with stub_tiers.installed(Page, tier_rows=counted):
     tired_deep = page_rows[len(today) + 3]['key']
     rested = whole({**body, 'tired': [tired_deep]})[0]
     rested_keys = [r['key'] for r in rested]
-    check('a tired row past today\'s rests until the last tier is open and nothing else holds up',
-          tired_deep not in rested_keys or (rested[rested_keys.index(tired_deep)]['tier'] == TIERS
-                                            and rested_keys.index(tired_deep) > len(today) + 3), tired_deep)
+    check('a tired row past today\'s rests further down, and no sooner than its tier',
+          tired_deep not in rested_keys or (rested_keys.index(tired_deep) > len(today) + 3
+                                            and rested[rested_keys.index(tired_deep)]['tier'] >= page_rows[len(today) + 3]['tier']),
+          tired_deep)
+Deeper.best = choosing
 
 # 5. A title page explains itself and finds what is like it.
 page = lib.title({'profile': PROFILE, 'settings': {}, 'id': reference['picks'][0]['id']})

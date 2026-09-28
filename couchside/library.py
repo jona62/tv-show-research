@@ -1499,12 +1499,17 @@ class Deeper:
         return WEAK * statistics.median(self.relevances[min(self.opened, max(0, len(self.relevances) - RECENT)):])
 
     def join(self, shelf):
-        """One row to a key: a row waits to be placed unless one with its key already
-        is, or is placed, as a browsing row is whose genre today's rows had."""
-        if shelf.key in self.seen:
+        """One row to a key: a row waits to be placed unless one with its key already is,
+        or is placed, as a browsing row is whose genre today's rows had. A first visit's
+        row left over from today's gives way to a later tier's row with its key, cut for
+        the list, as it gives way to the list's own among today's (shelves)."""
+        waiting = self.pool.get(shelf.key)
+        if shelf.key in self.seen and not (waiting and waiting.kind_of == 'plain' and shelf.kind_of != 'plain'):
             return
         self.seen.add(shelf.key)
         self.pool[shelf.key] = shelf
+        self.dropped.discard(shelf.key)
+        self.glances.pop(shelf.key, None)
         found = [(self.overlap(shelf, row), row.key) for row in self.placed]
         self.overlaps[shelf.key] = max((x for x in found if x[0]), default=(0.0, None))
 
@@ -1641,20 +1646,19 @@ class Deeper:
     def next(self):
         """The next row and its cards, or None where the page ends. Only rows that hold up
         against the rows above are weighed: this deep, a penalty of a few tenths is more
-        than a weak row's whole relevance, and would let it in ahead of good ones."""
+        than a weak row's whole relevance, and would let it in ahead of good ones. Rows
+        held back have their turn once the rest are spent, before the next tier opens, so
+        a tier's strong rows stay in it (as today's rows rest a tired row at their foot)."""
         while len(self.placed) < LONGEST:
             p = len(self.placed) + 1
             bar = self.bar()
             options = [option for option in self.options(p) if option[1] >= bar]
-            ready = [option for option in options if not option[2]]
+            ready = [option for option in options if not option[2]] or options
             if ready:
                 shelf, rel = self.best(ready, p)
             elif self.tier < TIERS:
                 self.open()
                 continue
-            elif options:
-                # With every tier open, rows held back have their turn before the page ends.
-                shelf, rel = self.best(options, p)
             else:
                 return None
             items = self.page.draw(shelf, self.heads, self.count, deep=True)
