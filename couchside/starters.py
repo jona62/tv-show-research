@@ -668,10 +668,12 @@ class Screen:
                 return i
         return None
 
-    def tally(self):
+    def tally(self, without=()):
+        """What the screen spans, for the quotas, leaving out the places in without."""
         s = self.s
-        forms = [s.format_of(slot[0]) for slot in self.slots]
-        shows = [s.e.shows[slot[0]] for slot in self.slots]
+        kept = [slot for q, slot in enumerate(self.slots) if q not in without]
+        forms = [s.format_of(slot[0]) for slot in kept]
+        shows = [s.e.shows[slot[0]] for slot in kept]
         return {'formats': len(set(forms)), 'decades': len({decade(x['year']) for x in shows if x['year']}),
                 'cartoons': sum(form in ('animation', 'anime') for form in forms),
                 'unscripted': forms.count('unscripted'),
@@ -846,19 +848,30 @@ class Screen:
 
     def leaving(self, at):
         """The unpicked places a pick swaps: titles from facets that already have a pick,
-        then from facets with more than one title on screen, then the least familiar;
-        anchors and the last pick's arrivals last, and nearest the pick among equals."""
-        s = self.s
+        then from facets with more than one title on screen; anchors and the last pick's
+        arrivals last, and nearest the pick among equals. None goes whose loss would take
+        the screen below a quota it meets."""
         counts = {}
         for slot in self.slots:
             counts[slot[2]] = counts.get(slot[2], 0) + 1
         where = at if at is not None else len(self.slots)
 
         def cost(q):
-            i, why, n = self.slots[q]
+            _i, why, n = self.slots[q]
             return (why == 'anchor', q in self.recent, -self.picks.get(n, 0), -min(counts[n] - 1, 2),
-                    round(s.familiarity(i), 1), abs(q - where), q)
-        return sorted((q for q in range(len(self.slots)) if q not in self.pinned), key=cost)[:SWAPS]
+                    abs(q - where), q)
+        out = []
+        for q in sorted((q for q in range(len(self.slots)) if q not in self.pinned), key=cost):
+            if len(out) == SWAPS:
+                break
+            if self.keeps_quotas(set(out) | {q}):
+                out.append(q)
+        return out
+
+    def keeps_quotas(self, without):
+        """Whether the screen still meets every quota it meets now without these places."""
+        need, now, then = quotas(self.count), self.tally(), self.tally(without)
+        return all(then[k] >= need[k] for k in need if now[k] >= need[k])
 
     def contrast(self, i, n, without):
         """A title from the pick's facet that differs from it in era, language or subgenre."""
@@ -922,7 +935,10 @@ class Screen:
             explored = [q for q in free if self.picks.get(self.slots[q][2])]
             if len(free) - len(explored) >= UNEXPLORED * len(free):
                 return
-            q = max(explored, key=lambda q: (self.slots[q][1] not in ('contrast', 'anchor'), q))
+            spare = [q for q in explored if self.keeps_quotas({q})]
+            if not spare:
+                return
+            q = max(spare, key=lambda q: (self.slots[q][1] not in ('contrast', 'anchor'), q))
             got = self.unexplored({q})
             if got is None:
                 return

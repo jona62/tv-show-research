@@ -73,6 +73,39 @@ day and seed as `fresh`, and each pick gives its true `rank` and its `place`:
 byte for byte, which is what the tests and `scripts/bench` see, and so does a
 browser with no storage or no Web Crypto (a page not served over https).
 
+## How first-visit shows are chosen
+
+A fixed list of famous titles is easy to recognise but teaches little, and starts
+everyone from the same few shows (MovieLens: Rashid et al. 2002 and 2008; Golbandi
+et al. 2011). So the chips on a first visit come from `GET /api/starters`, drawn by
+`starters.py`:
+
+- **A pool of familiar titles in about 35 kinds.** Well rated or very popular shows
+  (the 2,000 most popular, and the 50 most popular in each of the 15 largest
+  languages), one per franchise, are split by format, genre cluster and language
+  family, and each kind keeps the ten best known within their language and most
+  typical of it. The pool is rebuilt whenever a model loads, in a quarter of a second.
+- **24 chips a screen.** Three anchors (the long-standing quick picks and each
+  format's best known), seventeen kinds drawn by the square root of their summed
+  popularity, and four flexible places. Every screen spans four formats, three
+  decades, some animation, something unscripted and two shows not in English; the
+  most familiar come first, and no two of a kind sit together.
+- **Your language.** The browser sends its first language (or the server reads
+  `Accept-Language`). A language other than English takes seven places from what is
+  popular in it; English with a region such as en-GB or en-IN takes four from that
+  country's television. Otherwise the four explore kinds not yet on screen.
+- **Different each day, the same all day.** The seed is the picks' own (`fresh.js`),
+  so a screen is a function of seed, round, language and what you added: the server
+  caches it and keeps nothing. *Show different shows* moves to the next round, which
+  changes every chip you have not added.
+- **It adapts.** Each show added keeps its chip and swaps three others: another of its
+  kind from a different era, language or subgenre, one from the most similar kind,
+  and one from a kind not yet explored. No kind holds more than three chips, at least
+  60% of the rest come from kinds with nothing added, and a swap never takes a screen
+  below its quotas. The strip stays until your list holds ten shows (five to ten gives
+  the sharpest picks) or you press *Done adding*; the quick picks stand in if the
+  request fails.
+
 ## What is in the catalogue
 
 TVmaze indexes **television only**. There are no films, so the format filter
@@ -167,6 +200,8 @@ node app/test_qr.mjs
 .venv/bin/python app/test_fresh.py
 node app/test_fresh.mjs
 node app/test_visits.mjs
+.venv/bin/python app/test_starters.py
+node app/test_starters.mjs
 ```
 
 The first verifies the app engine ranks identically to the research recommender under
@@ -194,7 +229,13 @@ days, `fresh.js`'s memory and its one-second rule with a stand-in observer, and
 visit can be shown again, and keeps the days of picks to find one again.
 `test_engine.py` checks fresh answers too: the same day and seed give the same
 answer, the first five hold, places 12 and 20 come from ranks 25 to 72, two weeks of
-daily visits keep to the guardrails, and malformed fields are refused.
+daily visits keep to the guardrails, and malformed fields are refused. The last two
+cover first-visit shows on the real catalogue: the same inputs give the same screen,
+visitors and days differ, every screen meets its quotas with no franchise twice,
+each pick swaps a contrast, a neighbour and an unexplored kind and keeps its place
+through ten picks under the 60% rule, languages take their places, it all works
+without facets and within 20 ms; then the query, the layout that keeps picks in
+place, and the seed from the fresh store.
 
 ## Deploy
 
@@ -262,8 +303,8 @@ arrays and byte strings rather than an object per title, and answers
 `{"shows": [...], "missing": [...], "missing_first": false}`, asking TVmaze when
 the catalogue comes up short. Couchside copies both, with the engine.
 
-`server.py` is a standard-library HTTP server with `GET /api/search` and
-`POST /api/recommend`. Both are stateless: your list lives in your browser and is
+`server.py` is a standard-library HTTP server with `GET /api/search`,
+`GET /api/starters` and `POST /api/recommend`. All are stateless: your list lives in your browser and is
 posted with each request, never stored. Three concurrent calculations at most.
 It renders the page once at startup and answers `/` and the three tab paths with
 it, so a refresh keeps the tab; everything else in `public/` is served as files.
@@ -271,9 +312,10 @@ it, so a refresh keeps the tab; everything else in `public/` is served as files.
 `main.js` renders; `fit.js` holds the taste chart and its pure value maths;
 `similar.js` holds the rules for which chosen shows the picks are matched to;
 `fresh.js` (shared with Couchside) remembers what was on screen, and `visits.js`
-holds what stays put within a visit.
-The catalog metadata and starter titles ride in the page, so a first visit needs
-no round trip. `build.py` leaves them, with the count and snapshot date, as
+holds what stays put within a visit; `starters.js` (shared too) asks for first-visit
+shows and keeps added ones in place.
+The catalog metadata and the quick picks ride in the page, the quick picks as the
+fallback when first-visit shows cannot be asked for. `build.py` leaves them, with the count and snapshot date, as
 placeholders that `server.py` fills from the model it loaded (`page.py`), and
 fills them itself only to measure the page for its size badge and the 512 KB check.
 

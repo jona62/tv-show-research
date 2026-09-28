@@ -145,7 +145,7 @@ check('a tab path with a trailing slash leads nowhere', fetch('/saved/')[0] == 4
 check('an unknown path is a 404', fetch('/nope')[0] == 404)
 check('sources and the model are not served', all(fetch(path)[0] == 404 for path in (
     '/server.py', '/page.py', '/follow.py', '/engine.py', '/titles.py', '/fallback.py', '/model/catalog.json.gz',
-    '/model/search.json.gz', '/build.json')))
+    '/model/search.json.gz', '/build.json', '/starters.py')))
 check('the health check answers', json.loads(fetch('/healthz')[2]) == {'status': 'ok'})
 check('search answers from the loaded model', json.loads(fetch('/api/search?q=breaking%20bad')[2])['shows'][0]['id'] == 169)
 
@@ -184,6 +184,41 @@ NOTHING = {'shows': [], 'missing': [], 'missing_first': False}
 check('TVmaze down is an empty answer, not an error', status == 200 and found == NOTHING)
 check('an overlong search is refused', fetch('/api/search?q=' + 'x' * 101)[0] == 400)
 check('an empty search finds nothing', search('')[2] == NOTHING)
+
+
+def starters(query, headers=None):
+    try:
+        with urlopen(Request(f'{base}/api/starters?{query}', headers=headers or {}), timeout=30) as response:
+            return response.status, response.headers, json.loads(response.read())
+    except HTTPError as exc:
+        return exc.code, exc.headers, json.loads(exc.read())
+
+
+SEED = '0123456789abcdef'
+status, headers, first = starters(f'seed={SEED}&lang=en-US')
+chips = first['shows']
+check('starters answer 24 chips: id, name, year and channel, and why each is there',
+      status == 200 and len(chips) == 24 and all(set(c) == {'id', 'name', 'year', 'channel', 'why'} for c in chips)
+      and len({c['id'] for c in chips}) == 24 and first['round'] == 0)
+check('starters are never cached', headers.get('Cache-Control') == 'no-store')
+check('the same seed gives the same starters, another seed others', starters(f'seed={SEED}&lang=en-US')[2] == first
+      and len({c['id'] for c in chips} & {c['id'] for c in starters('seed=fedcba9876543210&lang=en-US')[2]['shows']}) < 12)
+picked = [chips[2]['id'], chips[9]['id']]
+after = starters(f'seed={SEED}&lang=en-US&picked={picked[0]},{picked[1]}')[2]['shows']
+check('picks stay in their places', after[2]['id'] == picked[0] and after[9]['id'] == picked[1]
+      and after[2]['why'] == after[9]['why'] == 'picked')
+check('each pick swaps others for a contrast, a neighbour and an unexplored kind',
+      {'contrast', 'nearest', 'unexplored'} <= {c['why'] for c in after})
+british = starters(f'seed={SEED}&lang=en-GB')[2]['shows']
+check('en-GB gives four starters from British television', [
+    engine.shows[engine.by_id[c['id']]]['country'] for c in british if c['why'] == 'locale'] == ['GB'] * 4)
+check('Accept-Language speaks when lang is missing', sum(c['why'] == 'locale' for c in starters(
+    f'seed={SEED}', {'Accept-Language': 'ko-KR,ko;q=0.9'})[2]['shows']) == 7)
+check('a seedless request gets the plain screen', starters('')[2] == starters('')[2] and starters('')[0] == 200)
+for query, said in [('seed=0123', 'seed'), ('round=99', 'round'), ('picked=169,169', 'once'), ('lang=' + 'x' * 36, 'lang'),
+                    ('count=0', 'shows'), ('seed=0123456789abcdef&seed=0123456789abcdef', 'once')]:
+    status, _headers, body = starters(query)
+    check(f'starters refuse {query[:30]}', status == 400 and said in body['error'], body)
 first_load = len(page) + sum((PUBLIC / name).stat().st_size for name in ASSETS)
 badge = float(re.search(rb'loads (\d+\.\d) KB', page)[1])
 check('the size badge states the page as served, under the budget',

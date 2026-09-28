@@ -11,7 +11,8 @@ rebuilt every night. Nothing plays. It is for finding your next show.
   interests, the
   *Top 10 shows today*, your strongest genre and theme, *New for you*,
   *Critically acclaimed* and *Popular right now*. A first visit picks three or
-  more shows from forty posters, or skips and gets rows by popularity.
+  more shows from 24 posters drawn for it, or any show by search, or skips and gets
+  rows by popularity.
 - **A title page** opens over any screen with the match, years, age rating,
   seasons, why it surfaced (the liked show it sits closest to and what they
   share), where to watch it, the summary, cast, genres, themes and network, every
@@ -61,6 +62,20 @@ in headless Chrome. It needs rsvg-convert, ImageMagick and Chrome, and runs by
 hand; the outputs are committed and `build.py` copies them into `public/`.
 `brand/tmdb.svg` is TMDB's own logo, fetched unchanged from themoviedb.org for
 the credit TMDB asks for, and copied the same way.
+
+## How first-visit shows are chosen
+
+The welcome page asks `GET /api/starters` for 24 posters, drawn by Next Watch's
+`starters.py` (copied here; its README says how) from shows with posters: familiar
+titles spread across about 35 kinds of show, different for each browser and day by
+the seed `fresh.js` keeps, with seven places for a browser's own language, or four
+for an English-speaking country's television. A pick keeps its place and swaps three
+other posters for a contrast from its kind, a neighbouring kind and one not yet
+explored, never more than three of a kind on screen. *Show different shows* redraws
+everything not picked, and *Add a show you love* searches the whole catalogue, its
+results picked like any poster. Three picks are needed, five to ten make the best
+rows, the prompts stop at ten, and *Skip for now* still skips. The page carries
+twelve posters from the plain screen in case the request fails.
 
 ## How the rows are built
 
@@ -174,8 +189,10 @@ TMDB first and every fallback, over HTTP; the live sources against fakes
 through a fake TVmaze, with a show too new for the catalogue; the HTTP server end
 to end: pages and their previews, the loaded model's date and count on the page,
 TMDB's credit only with TMDB data, the policy, the 404 page, the manifest, icon
-sizes and file types; and the follower's decisions. It also fails if `engine.py`,
-`titles.py`, `fallback.py` or `follow.py` here ever differs from Next Watch's. The
+sizes and file types; first-visit starters over HTTP, as posters that adapt to a
+pick and follow a browser's language; and the follower's decisions. It also fails if
+`engine.py`, `titles.py`, `fallback.py`, `follow.py`, `starters.py` or any other
+module copied here ever differs from Next Watch's. The
 second covers the page's small helpers, where to watch and what search says among
 them.
 

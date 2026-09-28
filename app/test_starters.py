@@ -209,7 +209,7 @@ check('a neighbour comes from one of the facets most like the pick\'s', all(near
 check('an unexplored title comes from a facet not on screen', all(unexplored_ok), unexplored_ok)
 
 # 6. Ten picks in a row: picks stay put, and the screen never drills into one cluster.
-share, stable, sound_all, moved = [], [], [], []
+share, stable, sound_all, moved, spans = [], [], [], [], []
 for seed in seeds[:20]:
     picked, places = [], {}
     screen = fresh(seed)
@@ -223,11 +223,13 @@ for seed in seeds[:20]:
         moved.append(sum(1 for r in range(24) if r != q and before[r].why != 'picked' and screen[r].index != before[r].index))
         stable.append(all(shows[screen[p].index]['id'] == x and screen[p].why == 'picked' for x, p in places.items()))
         sound_all.append(sound(screen))
+        spans.append(all(tally(screen)[k] >= v for k, v in starters.QUOTAS.items()))
         explored = {facet(slot) for slot in screen if slot.why == 'picked'}
         unpicked = [slot for slot in screen if slot.why != 'picked']
         share.append(sum(facet(slot) not in explored for slot in unpicked) / len(unpicked))
 check('picks keep their places through ten picks', all(stable))
 check('the screen stays free of repeats and within the cap', all(sound_all))
+check('picks never take the screen below its quotas', all(spans), spans.count(False))
 check(f'at least 60% of unpicked titles come from facets with no pick (lowest {min(share):.0%})',
       min(share) >= UNEXPLORED - 1e-9)
 check(f'a pick mostly changes three titles (median {statistics.median(moved)}, most {max(moved)})',
