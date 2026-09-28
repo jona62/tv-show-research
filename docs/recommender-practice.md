@@ -92,6 +92,10 @@ articles about the catalogue's shows, it says which shows the same people are
 curious about, for about 13,000 of them. Added to closeness, it raised the share of
 held-out favourites in the top 24 from 44% to 54% on personas nobody tuned on.
 TMDB's recommendations would be richer, but its terms forbid using its data for this.
+Two extensions were measured and left out: adding eleven other Wikipedias' clickstreams
+(Japanese, Spanish, Korean and others, used only for shows in their own language) moved
+some non-English personas up and others down, and six months instead of three changed
+nothing beyond noise.
 
 ## What Next Watch and Couchside do
 
