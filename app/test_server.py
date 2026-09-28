@@ -90,7 +90,7 @@ def check(name, ok, detail=''):
 
 engine = server.ENGINE
 PUBLIC = ROOT / 'app' / 'public'
-ASSETS = ('style.css', 'main.js', 'fit.js', 'similar.js', 'transfer.js', 'qr.js', 'favicon.svg')
+ASSETS = ('style.css', 'main.js', 'fit.js', 'similar.js', 'transfer.js', 'qr.js', 'fresh.js', 'visits.js', 'favicon.svg')
 
 # 1. The model is the one MODEL_DIR leads to, read from where the link led at startup.
 check('the server reads the version the link leads to', server.MODEL == Path(os.path.realpath(VERSION)))

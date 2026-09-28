@@ -2,6 +2,8 @@ import { fitRows, chooseSpokes, drawFit, short } from './fit.js';
 import { encode, decode, LIMITS } from './transfer.js';
 import { matrix, svgPath } from './qr.js';
 import { prune, few } from './similar.js';
+import { today, freshStore, noteSeen, noteEngaged, prune as forget, freshness, watcher } from './fresh.js';
+import { visitKey, resumable, merge, shownStore, noteShown, pruneShown, lastShown, dayName } from './visits.js';
 
 const boot = JSON.parse(document.getElementById('boot').textContent);
 const $ = id => document.getElementById(id);
@@ -73,6 +75,84 @@ function save() {
   try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* private mode */ }
 }
 
+/* ----------------------------------------------------------- freshness */
+// The first five picks hold from day to day and the rest turn over a little (fresh.py).
+// This browser keeps which picks were on screen on which days and what you engaged
+// with (fresh.js), under a key of its own; a request carries only the day, a seed and
+// a decayed count per title. With no storage to keep the seed's salt, there is no seed
+// and the picks stay as ranked.
+const FRESH_KEY = 'next-watch-fresh';
+const fresh = (() => {
+  let raw;
+  try { raw = localStorage.getItem(FRESH_KEY); } catch { return null; }
+  let kept = null;
+  try { kept = JSON.parse(raw); } catch { /* damaged: start again */ }
+  const store = forget(freshStore(kept), today());
+  try { localStorage.setItem(FRESH_KEY, JSON.stringify(store)); } catch { return null; }
+  return store;
+})();
+let freshTimer = 0;
+// Impressions come in bursts, so the store is written a second after the last one, and
+// at once when the page is left.
+function keepFresh(now = false) {
+  if (!fresh) return;
+  clearTimeout(freshTimer);
+  const write = () => { try { localStorage.setItem(FRESH_KEY, JSON.stringify(fresh)); } catch { /* full */ } };
+  if (now) write(); else freshTimer = setTimeout(write, 1000);
+}
+// Opening a title, asking why, saving or rating it spares it two weeks of fatigue.
+function engage(id) {
+  if (!fresh) return;
+  noteEngaged(fresh, id, today());
+  keepFresh();
+}
+// A pick counts as seen once half of it has been on screen for a second, at most once a
+// day. Counting only writes the store; it never redraws anything.
+const impressions = fresh ? watcher(id => { noteSeen(fresh, id, today()); keepFresh(); }) : null;
+async function freshFields() {
+  if (!fresh) return {};
+  // Without Web Crypto (a page not served over https) there is no seed: the plain ranking.
+  try { return await freshness(fresh, today()); } catch { return {}; }
+}
+
+/* -------------------------------------------------------------- visits */
+// A visit's picks hold still. The last answer, as shown, is kept for this tab, and a
+// reload or a return on the same day within half an hour of the last activity, with the
+// same list and settings, shows it again instead of asking afresh (visits.js). Actions
+// merge into it; a new layout waits for the next visit.
+const VISIT_KEY = 'next-watch-visit';
+let active = Date.now();
+let made = { key: null, day: null };   // what the picks on show were made for
+for (const type of ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll']) {
+  addEventListener(type, () => { active = Date.now(); }, { capture: true, passive: true });
+}
+function keepVisit() {
+  if (!data) return;
+  try {
+    sessionStorage.setItem(VISIT_KEY, JSON.stringify({ key: made.key, day: made.day, at: active, best, data }));
+  } catch { /* storage is off */ }
+}
+function lastVisit() {
+  try {
+    const visit = JSON.parse(sessionStorage.getItem(VISIT_KEY));
+    return resumable(visit, { key: visitKey(state), day: today(), now: Date.now() }) ? visit : null;
+  } catch { return null; }
+}
+const leave = () => { keepVisit(); keepFresh(true); };
+addEventListener('pagehide', leave);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') leave(); });
+
+/* --------------------------------------------------------- finding again */
+// The picks shown on each of the last three days, names and all, so one that has since
+// rotated away can be found again without searching (visits.js).
+const SHOWN_KEY = 'next-watch-shown';
+const pastPicks = (() => {
+  try { return pruneShown(shownStore(JSON.parse(localStorage.getItem(SHOWN_KEY))), today()); } catch { return shownStore(null); }
+})();
+function keepShown() {
+  try { localStorage.setItem(SHOWN_KEY, JSON.stringify(pastPicks)); } catch { /* full or off */ }
+}
+
 /* --------------------------------------------------------------- theme */
 const setTheme = mode => {
   document.documentElement.dataset.theme = mode;
@@ -124,22 +204,24 @@ $('open-tune').addEventListener('click', () => $('tune').showModal());
 /* --------------------------------------------------------------- list */
 function has(id) { return state.profile.some(p => p.id === id); }
 
-function add(showRow, weight = .7) {
+function add(showRow, weight = .7, how = 'merge') {
   if (has(showRow.id)) return;
   state.saved = state.saved.filter(s => s.id !== showRow.id);
   if (state.profile.length >= 60) { note('Your list is full at 60 shows. Remove one first.'); return; }
   state.profile.push({ id: showRow.id, name: showRow.name, year: showRow.year, channel: showRow.channel, weight });
-  save(); renderList(); renderPicks(); run(0);
+  engage(showRow.id);
+  save(); renderList(); renderPicks(); run(0, how);
 }
 function rate(id, weight) {
   const found = state.profile.find(p => p.id === id);
   if (!found) return;
   found.weight = weight;
-  keepSimilar(); save(); renderList(); run();
+  engage(id);
+  keepSimilar(); save(); renderList(); run(160, 'merge');
 }
 function remove(id) {
   state.profile = state.profile.filter(p => p.id !== id);
-  keepSimilar(); save(); renderList(); renderPicks(); run(0);
+  keepSimilar(); save(); renderList(); renderPicks(); run(0, 'merge');
 }
 
 /* ------------------------------------------------------ more like this */
@@ -315,7 +397,18 @@ function note(text, bad = false) {
   $('next-meta').textContent = text;
   $('next-meta').classList.toggle('error', bad);
 }
-function run(delay = 160) {
+// How the next answer is shown (visits.js). 'hold', after Seen it or Not for me, keeps
+// every other card where it is; 'merge', after a rating or a show added or removed
+// elsewhere, keeps where they are the cards the answer still holds; 'full', after
+// settings, the shows to match or a list brought in, lays the picks out afresh. A
+// stronger one still waiting outlasts a weaker one asked for after it.
+const LAYOUTS = ['hold', 'merge', 'full'];
+let layout = 'full';
+let added = 0;   // picks the last answer added at the end of the list
+let best = 1;    // the answer's best score, which every match figure is measured against
+
+// 'resume' shows the visit kept for this tab when it can (see visits).
+function run(delay = 160, how = 'full') {
   const id = ++reqId;
   clearTimeout(timer); reqAbort?.abort();
   const liked = state.profile.filter(p => p.weight > 0).length;
@@ -323,22 +416,30 @@ function run(delay = 160) {
   $('next-body').hidden = liked === 0;
   renderCount();
   if (!liked) { data = null; renderList(); return; }
+  const visit = how === 'resume' ? lastVisit() : null;
+  if (visit) { showAnswer(visit.data, [], { key: visit.key, day: visit.day, top: visit.best }); return; }
+  if (LAYOUTS.indexOf(how) > LAYOUTS.indexOf(layout)) layout = how;
   note('Working out your picks…');
   timer = setTimeout(async () => {
     reqAbort = new AbortController();
+    const { signal } = reqAbort;
     try {
+      const ask = { profile: state.profile.map(({ id, weight }) => ({ id, weight })), settings: state.settings,
+                    similar_to: state.similar_to, ...await freshFields() };
+      if (id !== reqId) return;
       const res = await fetch('/api/recommend', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: reqAbort.signal,
-        body: JSON.stringify({ profile: state.profile.map(({ id, weight }) => ({ id, weight })), settings: state.settings,
-                               similar_to: state.similar_to }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, signal, body: JSON.stringify(ask),
       });
       const body = await res.json();
       if (id !== reqId) return;
       if (!res.ok) throw new Error(body.error || 'Could not work out your picks.');
-      data = body;
+      // Nothing rated stays on screen, whatever the layout.
+      const before = layout === 'full' ? [] : (data?.picks || []).filter(p => !has(p.id));
+      const hold = layout === 'hold';
+      layout = 'hold';
       state.settings = body.settings;
       save();
-      render();
+      showAnswer(body, before, { key: visitKey(state), day: ask.day || today(), hold });
     } catch (e) {
       if (e.name === 'AbortError' || id !== reqId) return;
       note(e.message || 'Could not reach the recommender.', true);
@@ -346,11 +447,29 @@ function run(delay = 160) {
   }, delay);
 }
 
+// An answer on screen: merged into the picks already shown, when there are some to keep
+// (visits.js), and kept for this tab so a reload shows the same. `top` is the best score
+// of a kept visit's own answer, which its merged picks cannot be relied on to hold.
+function showAnswer(answer, before, { key, day, hold = false, top }) {
+  best = top > 0 ? top : Math.max(0, ...answer.picks.map(p => p.score)) || 1;
+  data = answer;
+  const had = new Set(before.map(p => p.id));
+  if (before.length) data.picks = merge(before, answer.picks, { hold });
+  added = before.length ? data.picks.filter(p => !had.has(p.id)).length : 0;
+  made = { key, day };
+  render();
+  keepVisit();
+}
+
 /* -------------------------------------------------------------- render */
 function render() {
   renderCards();
   renderTaste();
   renderCount();
+  note(data.picks.length
+    ? `${data.picks.length} picks from ${data.candidate_count.toLocaleString()} shows that fit your filters.${
+      added ? ` ${added === 1 ? 'One new pick' : `${added} new picks`} at the end.` : ''}`
+    : '');
 }
 function renderCount() {
   const n = state.profile.length;
@@ -363,6 +482,7 @@ function renderCount() {
 function isSaved(id) { return state.saved.some(s => s.id === id); }
 
 function toggleSave(pick) {
+  engage(pick.id);
   state.saved = isSaved(pick.id)
     ? state.saved.filter(s => s.id !== pick.id)
     : [...state.saved, { id: pick.id, name: pick.name, year: pick.year, channel: pick.channel,
@@ -385,10 +505,7 @@ function renderSaved() {
     const top = el('div', '', 'card-top');
     const title = el('div', '', 'card-title');
     const heading = el('h3');
-    const out = el('a', s.name);
-    out.href = s.url; out.target = '_blank'; out.rel = 'noopener noreferrer';
-    out.setAttribute('aria-label', `${s.name} on TVmaze, opens in a new tab`);
-    heading.append(out);
+    heading.append(tvmaze(s.name, s));
     title.append(heading, el('p', meta(s)));
     top.append(title);
     const acts = el('div', '', 'acts');
@@ -434,62 +551,121 @@ const TIE = {
 const tie = t => (TIE[t.family] || cap)(t.label);
 const interestName = (it, names) => it.leans.length ? it.leans.map(l => cap(short(l))).join(' · ') : `Like ${names[0]}`;
 
+// Measured against the answer's best score, not the first card's: the first five can
+// trade places as they are shown day after day.
 function matchOf(pick) {
-  const best = data.picks[0]?.score || 1;
   return Math.max(1, Math.min(99, Math.round(pick.score / best * 99)));
 }
 
+// A link to a show's TVmaze page. Opening it, by click or middle click, is engaging with it.
+function tvmaze(text, show, label = `${show.name} on TVmaze, opens in a new tab`) {
+  const out = el('a', text);
+  out.href = show.url; out.target = '_blank'; out.rel = 'noopener noreferrer';
+  if (label) out.setAttribute('aria-label', label);
+  out.addEventListener('click', () => engage(show.id));
+  out.addEventListener('auxclick', e => { if (e.button === 1) engage(show.id); });
+  return out;
+}
+
+// Seen it and Not for me take the pick off the list at once; the answer that follows
+// fills in at the end, and no other card moves.
+function dismiss(pick, weight) {
+  add(pick, weight, 'hold');
+  if (!has(pick.id) || !data) return;   // the list is full, so nothing was added
+  data.picks = data.picks.filter(p => p.id !== pick.id);
+  renderCards();
+}
+
+// The latest details of a pick on screen, which its card may have been drawn before.
+const current = pick => data?.picks.find(p => p.id === pick.id) || pick;
+
+// Each pick's card. One is replaced only when what it shows changed, and moved only when
+// out of place, so a merge leaves the rest of the list, and whatever has focus, alone.
+let cards = new Map();
 function renderCards() {
   const holder = $('cards');
-  holder.replaceChildren();
   $('warn').hidden = !data.warning;
   $('warn').textContent = data.warning;
   $('none').hidden = !data.message;
   $('none').textContent = data.message;
-  note(data.picks.length
-    ? `${data.picks.length} picks from ${data.candidate_count.toLocaleString()} shows that fit your filters.`
-    : '');
+  const focus = focusIn(holder);
+  const next = new Map();
   for (const pick of data.picks) {
-    const card = el('article', '', 'card');
-    const top = el('div', '', 'card-top');
-    const title = el('div', '', 'card-title');
-    const heading = el('h3');
-    const out = el('a', pick.name);
-    out.href = pick.url; out.target = '_blank'; out.rel = 'noopener noreferrer';
-    out.setAttribute('aria-label', `${pick.name} on TVmaze, opens in a new tab`);
-    heading.append(out);
-    title.append(heading, el('p', [meta(pick), pick.runtime ? pick.runtime + ' min' : null].filter(Boolean).join(' · ')));
-    const score = el('div', '', 'score');
-    score.append(el('b', String(matchOf(pick))), el('span', 'match'));
-    top.append(title, score);
-
-    const because = el('p', '', 'because');
-    because.append(document.createTextNode('Closest to '), el('b', pick.because));
-    if (pick.ties?.length) because.append(el('span', ` · ${pick.ties.slice(0, 2).map(tie).join(' · ')}`, 'ties'));
-    const tags = el('div', '', 'tags');
-    for (const name of sharedLabels(pick).slice(0, 3)) tags.append(el('span', name, 'tag'));
-    if (!tags.childElementCount) tags.append(el('span', 'a close match on plot wording', 'tag plain'));
-
-    const acts = el('div', '', 'acts');
-    const keep = button(isSaved(pick.id) ? 'Saved ✓' : 'Save', '', () => toggleSave(pick));
-    keep.classList.toggle('on', isSaved(pick.id));
-    keep.setAttribute('aria-pressed', String(isSaved(pick.id)));
-    acts.append(
-      button('Why this?', 'why', () => openWhy(pick)),
-      keep,
-      button('Seen it', '', () => add(pick, 0)),
-      button('Not for me', '', () => add(pick, -1)),
-    );
-
-    card.append(top, because, tags);
-    if (pick.fits?.length) card.append(el('p', `Fits your taste for ${listed(pick.fits.map(within))}.`, 'fits'));
-    if (pick.summary) card.append(el('p', pick.summary, 'blurb'));
-    card.append(acts);
-    holder.append(card);
+    const card = pickCard(pick), had = cards.get(pick.id);
+    next.set(pick.id, had?.outerHTML === card.outerHTML ? had : card);
   }
+  for (const [id, card] of cards) if (next.get(id) !== card) card.remove();
+  [...next.values()].forEach((card, n) => {
+    if (holder.children[n] !== card) holder.insertBefore(card, holder.children[n] || null);
+  });
+  cards = next;
+  refocus(focus, holder);
+  for (const [id, card] of cards) impressions?.observe(card, id);
+  if (noteShown(pastPicks, today(), data.picks)) keepShown();
+  renderEarlier();
+}
+
+// Where focus sits among the cards, so it can be handed on when its card is redrawn or leaves.
+function focusIn(holder) {
+  const now = document.activeElement;
+  const card = now && holder.contains(now) ? now.closest('.card') : null;
+  return card && { id: Number(card.dataset.id), act: now.dataset.act, at: [...holder.children].indexOf(card) };
+}
+// Back to the same control on a redrawn card; to the card that took its place when it
+// left, or the one before it when it was the last.
+function refocus(focus, holder) {
+  if (!focus || holder.contains(document.activeElement)) return;
+  const same = cards.get(focus.id);
+  const target = same ? same.querySelector(`[data-act="${focus.act}"]`) || same
+    : holder.children[Math.min(focus.at, holder.children.length - 1)] || $('next');
+  target.focus();
+}
+
+function pickCard(pick) {
+  const different = pick.place === 'different';
+  const card = el('article', '', different ? 'card different' : 'card');
+  card.dataset.id = pick.id;
+  card.tabIndex = -1;
+  card.setAttribute('aria-label', pick.name);
+  if (different) card.append(el('p', 'A little different', 'kicker'));
+  const top = el('div', '', 'card-top');
+  const title = el('div', '', 'card-title');
+  const heading = el('h3');
+  const out = tvmaze(pick.name, pick);
+  out.dataset.act = 'title';
+  heading.append(out);
+  title.append(heading, el('p', [meta(pick), pick.runtime ? pick.runtime + ' min' : null].filter(Boolean).join(' · ')));
+  const score = el('div', '', 'score');
+  score.append(el('b', String(matchOf(pick))), el('span', 'match'));
+  top.append(title, score);
+
+  const because = el('p', '', 'because');
+  because.append(document.createTextNode('Closest to '), el('b', pick.because));
+  if (pick.ties?.length) because.append(el('span', ` · ${pick.ties.slice(0, 2).map(tie).join(' · ')}`, 'ties'));
+  const tags = el('div', '', 'tags');
+  for (const name of sharedLabels(pick).slice(0, 3)) tags.append(el('span', name, 'tag'));
+  if (!tags.childElementCount) tags.append(el('span', 'a close match on plot wording', 'tag plain'));
+
+  const acts = el('div', '', 'acts');
+  const keep = button(isSaved(pick.id) ? 'Saved ✓' : 'Save', '', () => toggleSave(pick));
+  keep.classList.toggle('on', isSaved(pick.id));
+  keep.setAttribute('aria-pressed', String(isSaved(pick.id)));
+  const controls = [['why', button('Why this?', 'why', () => openWhy(current(pick)))], ['save', keep],
+    ['seen', button('Seen it', '', () => dismiss(pick, 0))], ['no', button('Not for me', '', () => dismiss(pick, -1))]];
+  for (const [act, control] of controls) {
+    control.dataset.act = act;
+    acts.append(control);
+  }
+
+  card.append(top, because, tags);
+  if (pick.fits?.length) card.append(el('p', `Fits your taste for ${listed(pick.fits.map(within))}.`, 'fits'));
+  if (pick.summary) card.append(el('p', pick.summary, 'blurb'));
+  card.append(acts);
+  return card;
 }
 
 function openWhy(pick) {
+  engage(pick.id);
   const body = $('why-body');
   body.replaceChildren();
   body.append(el('h3', pick.name, 'why-head'));
@@ -515,6 +691,12 @@ function openWhy(pick) {
       + `${names.length > 1 ? 'share' : 'stands for'}: ${interestName(interest, names)}.`));
   }
   body.append(block);
+  if (pick.place === 'different') {
+    const aside = el('div', '', 'why-block');
+    aside.append(el('h4', 'A little different'), el('p', 'Two places a day go to shows from a little further down '
+      + 'your ranking than the rest, so the list never settles into one groove. This is one of them.'));
+    body.append(aside);
+  }
 
   if (pick.keywords.length) {
     const words = el('div', '', 'why-block');
@@ -535,9 +717,7 @@ function openWhy(pick) {
     body.append(down);
   }
   const links = el('div', '', 'why-block');
-  const site = el('a', 'Open on TVmaze ↗');
-  site.href = pick.url; site.target = '_blank'; site.rel = 'noopener noreferrer';
-  links.append(site);
+  links.append(tvmaze('Open on TVmaze ↗', pick, null));
   body.append(links);
 
   const jump = el('div', '', 'why-block');
@@ -550,6 +730,64 @@ function openWhy(pick) {
   body.append(jump);
   $('why').showModal();
 }
+
+/* ------------------------------------------------------ yesterday's picks */
+// The picks of the last day before today that have rotated away since and are not
+// rated, so one seen then can be found again: added to your shows once watched, or saved.
+function earlierPicks() {
+  const showing = new Set(data?.picks.map(p => p.id) || []);
+  return lastShown(pastPicks, today(), p => !has(p.id) && !showing.has(p.id));
+}
+function renderEarlier() {
+  const found = earlierPicks();
+  $('earlier').hidden = !found;
+  if (found) $('open-earlier').textContent = `${dayName(found)}'s picks`;
+}
+function fillEarlier() {
+  const list = $('earlier-list');
+  const now = document.activeElement;
+  const row = now && list.contains(now) ? now.closest('li') : null;
+  const focus = row && { id: Number(row.dataset.id), act: now.dataset.act, at: [...list.children].indexOf(row) };
+  const found = earlierPicks();
+  if (found) $('earlier-h').textContent = `${dayName(found)}'s picks`;
+  list.replaceChildren(...(found?.picks || []).map(p => {
+    const item = el('li');
+    item.dataset.id = p.id;
+    const name = el('div', '', 'earlier-name');
+    const title = p.url ? tvmaze(p.name, p) : el('span', p.name);
+    title.dataset.act = 'title';
+    name.append(title, el('small', meta(p)));
+    const adding = button('Add', 'ghost', () => {
+      add(p);
+      if (has(p.id)) $('earlier-said').textContent = `Added ${p.name} to your shows.`;
+      fillEarlier();
+    });
+    adding.dataset.act = 'add';
+    adding.setAttribute('aria-label', `Add ${p.name} to your shows as liked`);
+    const keep = button(isSaved(p.id) ? 'Saved ✓' : 'Save', 'ghost', () => { toggleSave(p); fillEarlier(); });
+    keep.dataset.act = 'save';
+    keep.classList.toggle('on', isSaved(p.id));
+    keep.setAttribute('aria-pressed', String(isSaved(p.id)));
+    const acts = el('div', '', 'earlier-acts');
+    acts.append(adding, keep);
+    item.append(name, acts);
+    return item;
+  }));
+  $('earlier-none').hidden = Boolean(found);
+  // An added show leaves the list: focus moves to the title of the one that took its
+  // place, never to another Add, so a second press cannot add a second show.
+  if (focus && !list.contains(document.activeElement)) {
+    const same = [...list.children].find(item => Number(item.dataset.id) === focus.id);
+    const target = same ? same.querySelector(`[data-act="${focus.act}"]`)
+      : list.children[Math.min(focus.at, list.children.length - 1)]?.querySelector('[data-act="title"]');
+    (target || $('earlier-sheet').querySelector('[data-close]')).focus();
+  }
+}
+$('open-earlier').addEventListener('click', () => {
+  $('earlier-said').textContent = '';
+  fillEarlier();
+  $('earlier-sheet').showModal();
+});
 
 /* --------------------------------------------------------------- taste */
 function renderTaste() {
@@ -968,5 +1206,5 @@ renderList();
 renderSaved();
 syncTune();
 show(firstTab());
-run(0);
+run(0, 'resume');
 readLink();
