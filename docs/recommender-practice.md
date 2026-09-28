@@ -135,9 +135,14 @@ posted with each request; the server stays deterministic and needs no clock.
   franchise and cast rows, hidden gems, limited series, a Top 10 chart, Something
   different and Popular, each next row the most relevant after penalties for
   repeating the rows above (Netflix, Prime Video). Interests get rows by their share
-  (Steck). Twenty rows or more arrive eight at a time as you scroll; lower rows
-  reorder daily, the hero is drawn each day from the top ten, never repeating
-  within a week, and rows you keep passing over rest.
+  (Steck). Past those twenty or so rows the page has no set end: a Because you
+  loved row for every liked show, what its fans also look up on Wikipedia, casts,
+  channels, decades and subjects the list shares, each interest's own popular and
+  half-hour rows, then rows to try among genre and theme rows ordered by taste,
+  about 80 rows in all before it says that is everything for today. Rows arrive
+  eight and then six at a time as you scroll; lower rows reorder daily, the hero is
+  drawn each day from the top ten, never repeating within a week, and rows you keep
+  passing over rest.
 - **First visits** (app/starters.py) draw 24 starters from about 350 shows that are
   familiar and span distinct kinds of show, one per franchise, per browser and per
   day, with the browser's language taking its share. Each pick keeps its place and

@@ -140,7 +140,10 @@ each starts lower than the one before: a bar set by the first page would close a
 tier within a row or two, and one that followed the last few rows down would let
 a tier run on into rows far weaker than the next tier's. When nothing left holds
 up the next tier opens, and once the fourth is spent the page ends, at 300 rows
-at most. Interest quotas grow with the page, *Because you loved* has no limit,
+at most. Exploring and browsing open together, so the rows to try (*Horror shows
+to try*, *German shows for you*) come a few at a time among the rows to browse
+rather than in one block, and a genre with a row to try is not browsed again
+under its plain name. Interest quotas grow with the page, *Because you loved* has no limit,
 and a row whose interest already holds its share, or that is resting, waits
 until the rest of its tier is spent. With fewer than ten liked shows, rows that
 are not personal come first while the page is past half personal. A first
@@ -352,12 +355,12 @@ rows, on an Apple M3 Pro:
 | held-out loves in the first 8 rows | 76% | 76% |
 | held-out loves anywhere on the page | 82% | 86% |
 | every interest of 15% or more in the first 8 rows | 99% | 99% |
-| rows per page, median (fewest to most) | 20 (17 to 24) | 82 (66 to 96) |
-| distinct shows per page | 302 | 1,273 |
-| repeated cards per page | 69 | 293 |
-| rows that are not personal | 32% | 68% |
-| first request, median and 95th percentile | 122 and 149 ms | 122 and 149 ms |
-| each request for more, the same | 117 and 147 ms | 158 and 193 ms |
+| rows per page, median (fewest to most) | 20 (17 to 24) | 81 (65 to 91) |
+| distinct shows per page | 302 | 1,249 |
+| repeated cards per page | 69 | 282 |
+| rows that are not personal | 32% | 67% |
+| first request, median and 95th percentile | 120 and 146 ms | 121 and 147 ms |
+| each request for more, the same | 115 and 149 ms | 157 and 190 ms |
 
 Today's rows match the page with a fixed length for all 71 personas. Held out
 this way, a love mostly turns up in the first eight rows; the rows past today's
