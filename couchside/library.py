@@ -337,8 +337,10 @@ class Shelf:
     a creator), for keeping two of a sort apart; interest is the interest it serves."""
 
     def __init__(self, key, title, kind_of, items, score=None, *, kind='row', interest=None, personal=True,
-                 evidence=0.85, subtitle='', shortest=SHORTEST, seed=None, callouts=True, diverse=True, proto=None):
+                 evidence=0.85, subtitle='', shortest=SHORTEST, seed=None, callouts=True, diverse=True, proto=None,
+                 tier=0):
         self.key, self.title, self.kind_of, self.kind = key, title, kind_of, kind
+        self.tier = tier
         self.items = list(dict.fromkeys(items))
         if proto is not None:
             # The clearest example of the row's theme goes first, from its best five.
@@ -377,6 +379,7 @@ class Pinned:
         self.interest = shelf.interest if shelf else None
         self.personal = shelf.personal if shelf else False
         self.kind = shelf.kind if shelf else 'row'
+        self.tier = shelf.tier if shelf else 0
         self.top12 = shelf.top12 if shelf else frozenset(head)
         self.relevance = shelf.relevance if shelf else 0.0
 
@@ -726,6 +729,10 @@ class Page:
                                   subtitle=fans_of([self.names[p['id']] for p in holders[c]])))
         return found, creators_row
 
+    def personal_rows(self):
+        """Tier 1: more rows from the list itself, for when the first page's run out."""
+        return []
+
     def shelves(self):
         """Every candidate row: those that belong to an interest, queued in the order an
         interest adds them, and the rest."""
@@ -947,6 +954,18 @@ class Page:
                      evidence=EVIDENCE['different'], callouts=False,
                      subtitle=f'Well-loved {label if label == "Westerns" else lower_first(label)}, a change from your usual')
 
+    def interest_rows(self):
+        """Tier 2: each interest's own version of the rows that cut across the list."""
+        return []
+
+    def explore_rows(self):
+        """Tier 3: languages, formats and genres the list has not reached, by taste."""
+        return []
+
+    def browse_rows(self):
+        """Tier 4: the genre, theme and format rows, by taste."""
+        return []
+
     def list_row(self):
         """My List, most recently added first, when it holds a show not yet rated."""
         saved = list(reversed(self.saved))[:LIST_ROW]
@@ -956,6 +975,16 @@ class Page:
                      diverse=False)
 
     # ------------------------------------------------------------ choosing rows
+
+    def tier_rows(self, tier):
+        """The candidate rows of a tier past the first page's (tier 0): 1 more from the
+        list itself, 2 each interest's own, 3 exploring, 4 browsing. Each is marked with
+        its tier, and rows too short to show are left out."""
+        rows = {1: self.personal_rows, 2: self.interest_rows, 3: self.explore_rows, 4: self.browse_rows}[tier]()
+        for row in rows:
+            if row:
+                row.tier = tier
+        return [row for row in rows if row and len(row.items) >= row.shortest]
 
     def relevance(self, shelf, heads, count):
         head = shelf.glance(heads, count)
