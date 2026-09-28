@@ -10,7 +10,9 @@ whole list leans toward: its languages, formats, networks, eras, subgenres, and 
 well known and well rated its shows are, learned from your ratings and dislikes.
 A list with several tastes gets picks for each. [scripts/bench](scripts/bench/)
 measures it against 71 viewer personas: on the 20 nobody tuned on, a held-out
-favourite lands in the top 24 picks 44% of the time, up from 10%.
+favourite lands in the top 24 picks 44% of the time, up from 10%. Picks and rows
+stay fresh from day to day, and first visits are drawn per browser; what that
+borrows from Netflix and others is in [docs/recommender-practice.md](docs/recommender-practice.md).
 
 **[app/](app/) is Next Watch**, the web app: rate what you have watched, get
 ranked picks with the reason each one surfaced, and see your taste drawn against
