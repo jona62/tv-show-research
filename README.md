@@ -16,7 +16,7 @@ borrows from Netflix and others is in [docs/recommender-practice.md](docs/recomm
 
 **[app/](app/) is Next Watch**, the web app: rate what you have watched, get
 ranked picks with the reason each one surfaced, and see your taste drawn against
-them. Four screens, light by default, about 100 KB on first load, works on a
+them. Four screens, light by default, about 135 KB on first load, works on a
 phone. [Read more](app/README.md).
 
 ```sh
