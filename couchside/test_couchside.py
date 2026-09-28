@@ -329,12 +329,14 @@ seed_owners = [owner[int(r['key'][5:])] for r in home['rows'] if r['key'].starts
 check('seed rows take one show from each interest, heaviest first',
       seed_owners[:len(interests)] == list(range(min(len(interests), len(seed_owners)))), seeds)
 check('a loved show fronts the heaviest interest', seeds[0] == 'Because you loved Breaking Bad', seeds)
-check('a liked seed says liked', any(t == 'Because you liked Peaky Blinders' for t in seeds), seeds)
+liked_only = [r['title'] for r in lib.home({'profile': [{'id': 82, 'weight': .7}], 'settings': {}})['rows']
+              if r['key'].startswith('seed-')]
+check('a liked seed says liked', liked_only == ['Because you liked Game of Thrones'], liked_only)
 for r in home['rows']:
     if r['key'].startswith('genre-'):
         genre = next(g for g, title in GENRE_ROWS.items() if title == r['title'])
         check(f'{r["title"]} holds only {genre}', all(genre in engine.shows[engine.by_id[c["id"]]]['genres'] for c in r['items']))
-check('new for you is new', all(c['year'] >= lib.year - 1 for c in rows['new']['items']))
+check('new for you is new', all(c['year'] >= lib.year - 1 for c in rows.get('new', {'items': []})['items']))
 fresh_rows = [r for r in home['rows'] if r['key'] not in ('top10', 'popular')]
 openers = [c['id'] for r in fresh_rows for c in r['items'][:GLANCE]]
 check('rows open with shows no earlier row opened with', len(openers) == len(set(openers)))
@@ -453,6 +455,9 @@ for shape, body in SHAPES.items():
         planned = sum(quota.values())
         check(f'{shape}: with three or more interests, none is planned more than 40% of their rows',
               all(q <= INTEREST_CAP * planned + 1e-9 for q in quota.values()), quota)
+    if sum(p['weight'] > 0 for p in body['profile']) < 10:
+        check(f'{shape}: with fewer than ten liked shows, personal rows are at most half the page',
+              2 * sum(shelf.personal for shelf, _items in laid) <= len(laid))
     seed_interests = Counter(shelf.interest for shelf, _items in laid if shelf.kind_of == 'seed')
     check(f'{shape}: at most two Because you loved rows for an interest', max(seed_interests.values()) <= 2)
     for shelf, items in laid:

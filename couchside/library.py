@@ -94,7 +94,8 @@ NOT_FOR_ME = 0.5        # closeness to a show marked Not for me that keeps a sho
 NICHE = 12              # shows a micro-genre needs before it is a row
 DEPTH_POOL = 3000       # how far down the ranking, overall or in an interest, a filtered row looks
 FILTER_POOL = 150       # matches a filtered row weighs before cutting to a row
-SEED_POOL = 80          # the closest shows weighed for a seed's row
+SEED_POOL = 80          # the cards a seed's row keeps, from every similar show it weighs
+LIKE_POOL = 600         # the shows closest to My List that its row weighs
 FITTING = 3000          # a seed's row looks among the best this many fits, overall and in its interest
 ROTATE = 3              # a day's seed rotates among an interest's best this many
 INTEREST_FLOOR = 0.08   # an interest this heavy gets at least one row
@@ -482,24 +483,32 @@ class Page:
         return out
 
     def near(self, show_id, k=None):
-        """The shows closest to one rated show among those that fit the list, as (how many
-        count as similar, the closest few as (closeness, index), closest first). Closeness
-        to a show marked Not for me is taken off, as the engine takes it off its ranking."""
+        """Every show similar to one rated show among those that fit the list, as (how
+        many, and (closeness, index) closest first). Closeness to a show marked Not for
+        me is taken off, as the engine takes it off its ranking."""
         if (show_id, k) not in self._near:
             affinity = self.taste.affinities.get(show_id) or self.e.blend(self.e.by_id[show_id], self.taste.settings)
             pool = list(dict.fromkeys(self.usable[:FITTING] + (self.by_interest[k][:FITTING] if k is not None else [])))
             close = [(v, i) for v, i in zip(itemgetter(*pool)(affinity) if len(pool) > 1 else
                                             [affinity[i] for i in pool], pool) if v >= SIMILAR]
-            self._near[show_id, k] = (len(close), self.penalised(heapq.nlargest(2 * SEED_POOL, close)))
+            self._near[show_id, k] = (len(close), self.penalised(close))
         return self._near[show_id, k]
 
     def penalised(self, close):
-        if not self.negatives:
-            return close[:SEED_POOL]
-        share = self.taste.settings['dislike'] / len(self.negatives)
-        arrays = [self.taste.affinities[p['id']] for p in self.negatives]
-        out = [(v - share * sum(a[i] for a in arrays), i) for v, i in close]
-        return sorted(out, reverse=True)[:SEED_POOL]
+        if self.negatives:
+            share = self.taste.settings['dislike'] / len(self.negatives)
+            arrays = [self.taste.affinities[p['id']] for p in self.negatives]
+            close = [(v - share * sum(a[i] for a in arrays), i) for v, i in close]
+        return sorted(close, reverse=True)
+
+    def closeness_row(self, close, k=None):
+        """Cards weighed 0.5 on closeness, 0.35 on taste and 0.15 on popularity, closeness
+        and taste as places among every similar show, so a well-known show a little
+        less close still counts: (the best SEED_POOL in order, their scores)."""
+        near, taste = ranks({i: v for v, i in close}), ranks({i: self.taste_of(i, k) for _v, i in close})
+        score = {i: 0.5 * near[i] + 0.35 * taste[i] + 0.15 * self.pop(i) for _v, i in close}
+        items = sorted(score, key=lambda i: (-score[i], self.e.shows[i]['id']))[:SEED_POOL]
+        return items, {i: score[i] for i in items}
 
     # ------------------------------------------------------------ candidate rows
 
@@ -527,9 +536,7 @@ class Page:
         _count, close = self.near(p['id'], k)
         if not close:
             return None
-        near, taste = ranks({i: v for v, i in close}), ranks({i: self.taste_of(i, k) for _v, i in close})
-        score = {i: 0.5 * near[i] + 0.35 * taste[i] + 0.15 * self.pop(i) for _v, i in close}
-        items = sorted(score, key=lambda i: (-score[i], self.e.shows[i]['id']))
+        items, score = self.closeness_row(close, k)
         loved = p['weight'] == 1
         verb = 'loved' if loved else 'liked'
         return Shelf(f'seed-{p["id"]}', f'Because you {verb} {self.names[p["id"]]}', 'seed', items, score,
@@ -857,13 +864,11 @@ class Page:
         sums = [0.0] * len(pool)
         for affinity in arrays:
             sums = [a + b for a, b in zip(sums, gather(affinity))]
-        close = self.penalised(heapq.nlargest(2 * SEED_POOL, ((v / len(arrays), i) for v, i in zip(sums, pool)
-                                                           if i not in keep)))
+        close = self.penalised(heapq.nlargest(LIKE_POOL, ((v / len(arrays), i) for v, i in zip(sums, pool)
+                                                        if i not in keep)))
         if not close:
             return None
-        near, taste = ranks({i: v for v, i in close}), ranks({i: self.taste_of(i) for _v, i in close})
-        score = {i: 0.5 * near[i] + 0.35 * taste[i] + 0.15 * self.pop(i) for _v, i in close}
-        items = sorted(score, key=lambda i: (-score[i], self.e.shows[i]['id']))
+        items, score = self.closeness_row(close)
         names = [self.e.shows[i]['name'] for i in saved[:2]]
         return Shelf('like-list', 'More like your list', 'like-list', items, score, evidence=EVIDENCE['like-list'],
                      subtitle=f'Like {" and ".join(names)} on your list')
@@ -1025,8 +1030,15 @@ class Page:
                 break
             value, rel, _key, best = max(scored, key=lambda x: (x[0], x[1], x[2]))
             unserved = [k for k in self.significant if not interest_rows[k] and queue_head(k)]
-            if len(placed) >= FIRST_PAGE and relevances and not unserved and best.kind_of not in FIXED_KINDS \
-                    and max(x[1] for x in scored) < 0.5 * statistics.median(relevances):
+            overweight = self.light and 2 * personal > len(placed) + bool(different)
+            if overweight and best.personal:
+                # Past the plan, a short list's page takes only rows that are not personal.
+                plain = [x for x in scored if not x[3].personal]
+                if not plain:
+                    break
+                value, rel, _key, best = max(plain, key=lambda x: (x[0], x[1], x[2]))
+            if len(placed) >= FIRST_PAGE and relevances and not unserved and not overweight \
+                    and best.kind_of not in FIXED_KINDS and max(x[1] for x in scored) < 0.5 * statistics.median(relevances):
                 if not top10 or 'top10' in taken or 'top10' in tired:
                     break
                 best, rel = top10, self.relevance(top10, heads, count)
@@ -1043,6 +1055,14 @@ class Page:
                 interest_rows[best.interest] += 1
             seeds += best.kind_of == 'seed'
             personal += best.personal
+        # With fewer than ten liked shows, personal rows are at most half the page: when
+        # rows that are not personal ran out first, the last personal ones go.
+        while self.light and 2 * sum(row.personal for row in placed) > len(placed) + bool(different):
+            last = max((n for n, row in enumerate(placed) if row.personal and n >= len(pinned) and row.kind_of != 'top'),
+                       default=None)
+            if last is None:
+                break
+            placed.pop(last)
         # Today's order: the first rows stay, the rest reorder a little from day to day,
         # and rows passed over lately rest at the end.
         if pinned:
