@@ -153,7 +153,7 @@ for shape, body in LISTS.items():
     for r in tiers[2]:
         check(f'{shape}: {r.title} serves an interest, for its fans', r.personal and r.interest is not None
               and r.subtitle == fans_of(page.interest_names(r.interest)) and r.title.startswith(PREFIXES[r.kind_of]))
-        check(f'{shape}: {r.title} opens with shows that fit the interest', page.opens_well(r.items, r.interest))
+        check(f'{shape}: {r.title} opens with shows that fit the interest', page.head_fits(r.items, r.interest))
         if r.kind_of == 'interest-new':
             check(f'{shape}: {r.title} is new', all(shows[i]['year'] >= lib.year - 1 for i in r.items))
         if r.kind_of == 'interest-short':
@@ -177,7 +177,7 @@ for shape, body in LISTS.items():
     check(f'{shape}: a handful of languages at most', len(languages) <= page.EXPLORE_LANGUAGES)
     for r in tiers[3]:
         check(f'{shape}: {r.title} is not personal and opens with shows that fit',
-              not r.personal and r.interest is None and page.opens_well(r.items))
+              not r.personal and r.interest is None and page.head_fits(r.items))
         if r.kind_of == 'explore-language':
             language = r.title.removesuffix(' shows for you')
             check(f'{shape}: {r.title} is in a language nothing liked is in', r.key == f'lang-{slug(language)}'

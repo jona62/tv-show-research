@@ -974,7 +974,7 @@ class Page:
     # first-visit rows' titles (FORMAT_ROWS).
     FORMAT_NAMES = {'animation': 'Animated series', 'documentary': 'Documentaries', 'unscripted': 'Reality TV'}
 
-    def opens_well(self, items, k=None):
+    def head_fits(self, items, k=None):
         """Whether a row's first cards fit the list, or interest k, well enough for the
         row to be chosen for it."""
         head = items[:GLANCE]
@@ -1065,7 +1065,7 @@ class Page:
                 rows.append(('short', f'Half-hour {words}', *self.default(found, k)))
             subtitle = fans_of(self.interest_names(k))
             for kind, title, items, score in rows:
-                if len(items) < SHORTEST or not self.opens_well(items, k) or (kind != 'short' and repeats(kind, items)):
+                if len(items) < SHORTEST or not self.head_fits(items, k) or (kind != 'short' and repeats(kind, items)):
                     continue
                 out.append(Shelf(f'{kind}-{slug(words)}', title, f'interest-{kind}', items, score, interest=k,
                                  evidence=self.INTEREST_EVIDENCE[kind], subtitle=subtitle,
@@ -1104,7 +1104,7 @@ class Page:
             if len(items) < SHORTEST or title in near:
                 continue
             items, score = self.default(items[:FILTER_POOL])
-            if self.opens_well(items):
+            if self.head_fits(items):
                 options.append((statistics.fmean(self.fit(i) for i in items[:GLANCE]), language, title, items, score))
         options.sort(key=lambda o: (-o[0], o[1]))
         return [Shelf(f'lang-{slug(language)}', title, 'explore-language', items, score, personal=False,
@@ -1141,7 +1141,7 @@ class Page:
         taste = ranks({i: self.taste_of(i) for i in found})
         score = {i: 0.5 * self.quality(i) + 0.3 * taste[i] + 0.2 * self.pop(i) for i in found}
         items = sorted(score, key=lambda i: (-score[i], e.shows[i]['id']))
-        if not self.opens_well(items):
+        if not self.head_fits(items):
             return None
         return Shelf(f'explore-{slug(key)}', title, f'explore-{sort}', items, score, personal=False,
                      evidence=self.EXPLORE_EVIDENCE[sort], callouts=False, subtitle='A change from your usual')
