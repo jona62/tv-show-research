@@ -60,7 +60,15 @@
       <h1 id="welcome-h">Pick three or more shows you like</h1>
       <p class="lede">Every row is built from them. You can rate anything else as you browse.</p>
     </div>
-    <ul class="grid picks" id="starters"></ul>
+    <div class="welcome-tools">
+      <input id="q-welcome" type="search" placeholder="Add a show you love" autocomplete="off" maxlength="100"
+             aria-label="Add a show you love" aria-controls="found" enterkeyhint="search">
+      <button class="btn ghost" id="starters-more" type="button">Show different shows</button>
+    </div>
+    <p class="note" id="found-note" role="status" aria-live="polite" hidden></p>
+    <ul class="grid found" id="found" aria-label="Shows found" hidden></ul>
+    <div class="chips" id="also-picked" role="group" aria-label="Picked from search" hidden></div>
+    <ul class="grid picks" id="starters" aria-label="Shows to pick from"></ul>
     <div class="welcome-bar">
       <span id="picked-note" role="status" aria-live="polite"></span>
       <button class="btn ghost" id="skip" type="button">Skip for now</button>

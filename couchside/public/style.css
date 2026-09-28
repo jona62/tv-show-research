@@ -242,6 +242,11 @@ main{min-height:70vh;padding-bottom:calc(var(--dock) + 24px + env(safe-area-inse
 /* welcome -------------------------------------------------------------- */
 .welcome-head{padding:0 var(--gutter);margin-bottom:18px;max-width:720px}
 .welcome-head h1{font:800 clamp(24px,3.2vw,40px)/1.15 -apple-system,BlinkMacSystemFont,sans-serif;margin:0}
+.welcome-tools{display:flex;flex-wrap:wrap;gap:10px;margin:0 var(--gutter) 16px;max-width:720px}
+.welcome-tools input{flex:1 1 220px;min-width:0;padding:10px 14px;border:1px solid #444;border-radius:6px;
+  background:#2a2a2a;color:var(--ink);font-size:16px;-webkit-appearance:none;appearance:none}
+.welcome-tools input:focus{border-color:#fff;outline:none;background:#333}
+.found{margin-bottom:18px}
 .picks{padding-bottom:110px}
 .pick .tick{position:absolute;inset:0;display:none;place-items:center;border-radius:var(--r);background:#141414a6;
   box-shadow:inset 0 0 0 3px var(--brand)}

@@ -12,7 +12,8 @@ import gzip
 import struct
 import sys
 
-from engine import FORMAT_GROUPS, QUICK_PICKS
+from engine import FORMAT_GROUPS
+from starters import Starters
 
 IMAGE = 'https://static.tvmaze.com/uploads/images/{size}/{bucket}/{image}.jpg'
 ROW = 20            # cards in a row
@@ -21,6 +22,7 @@ MORE = 12           # cards under More like this
 SEEDS = 3           # "Because you loved" rows
 GLANCE = 6          # cards a row shows before scrolling, kept distinct across rows
 MAX_SAVED = 200     # My List, the same ceiling the transfer code carries
+FALLBACK = 12       # first-visit posters the page carries for when it cannot ask for starters
 
 GENRE_ROWS = {
     'Action': 'Action shows', 'Adventure': 'Adventures', 'Anime': 'Anime', 'Children': 'For the kids',
@@ -188,6 +190,8 @@ class Library:
                 items = [i for i in shelf if e.shows[i]['type'] in allowed]
                 title = FORMAT_ROWS[value]
             self.cold.append((f'{kind}-{value}'.lower(), title, items))
+        # First-visit posters: drawn per visitor by /api/starters from shows with posters.
+        self.starting = Starters(e, lambda i: self.images[i] != 0)
         self.starters = self._starters()
         # Everything a person can browse by, each fronted by its best-known show that no
         # earlier tile already uses, so the grid does not repeat one poster.
@@ -225,15 +229,14 @@ class Library:
                 'themes': [t.split(' / ')[0] for t in themes], 'match': taste.match(i) if taste else None}
 
     def _starters(self):
-        """Posters for a first visit to pick from: recognisable titles, spread across kinds."""
-        e, picked = self.e, []
-        for show_id in QUICK_PICKS:
-            i = e.by_id.get(show_id)
-            if i is not None and self.images[i]:
-                picked.append(i)
-        for _key, _title, items in self.cold:
-            picked += [i for i in items if i not in picked][:3]
-        return [self.card(i) for i in picked[:40]]
+        """A few posters for a first visit, for when the page cannot ask for starters: the
+        plain screen, drawn without a visitor's seed."""
+        return [self.card(slot.index) for slot in self.starting.choose(count=FALLBACK)]
+
+    def starters_for(self, seed, rnd, picked, lang, count):
+        """First-visit posters for a visitor, each with why it is there (starters.py)."""
+        return [{**self.card(slot.index), 'why': slot.why}
+                for slot in self.starting.choose(seed, rnd, picked, lang, count)]
 
     # ------------------------------------------------------------ requests
 

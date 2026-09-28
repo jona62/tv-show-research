@@ -12,7 +12,7 @@ HERE = Path(__file__).resolve().parent
 PUBLIC = HERE / 'public'
 MODEL = HERE / 'model'
 SHARED = HERE.parent / 'model'
-ASSETS = ('style.css', 'main.js', 'fit.js', 'similar.js', 'transfer.js', 'qr.js')
+ASSETS = ('style.css', 'main.js', 'fit.js', 'similar.js', 'transfer.js', 'qr.js', 'fresh.js', 'starters.js')
 BUDGET = 512_000
 
 FAVICON = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">'

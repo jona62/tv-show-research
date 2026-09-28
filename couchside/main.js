@@ -3,6 +3,7 @@ import { matrix, svgPath } from './qr.js';
 import { tieText, leaning, leaningHeading } from './format.js';
 import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere, longDate, airs,
   whereToWatch, trailerSearch, searchNote } from './format.js';
+import { daySeed, startersQuery, mergeStarters, browserLanguage, MAX_ROUND, MAX_PICKED } from './starters.js';
 
 const boot = JSON.parse(document.getElementById('boot').textContent);
 const $ = id => document.getElementById(id);
@@ -1278,38 +1279,150 @@ document.addEventListener('keydown', e => {
 });
 
 /* -------------------------------------------------------------- welcome */
+// Starters come from /api/starters: drawn for this browser and day across distinct kinds
+// of show, and each pick swaps three of the rest for a contrast, a neighbour and a kind
+// not yet explored (starters.py says how). A search adds any show. Three picks are
+// needed, five to ten make the best rows, and the prompting stops at ten. The posters
+// the server filled in stand in when the request fails.
+const FRESH = 'couchside-fresh';
+const NEEDED = 3, SUGGESTED = 5, PLENTY = 10;
 const picked = new Set();
+const opening = { shows: [], round: 0, asked: '', req: 0, seed: null, tiles: new Map() };
+
+// Liked shows already rated go first, so what is picked here only ever adds to the end.
+const welcomePicks = () =>
+  [...state.profile.filter(p => p.weight > 0).map(p => p.id).slice(-10), ...picked].slice(0, MAX_PICKED);
 
 function renderWelcome() {
-  const grid = $('starters');
-  grid.replaceChildren(...boot.starters.map(c => {
-    remember(c);
-    const li = el('li');
-    const already = rated(c.id) > 0;
-    const b = button('card pick', '', () => {
-      if (picked.has(c.id)) picked.delete(c.id); else picked.add(c.id);
-      b.setAttribute('aria-pressed', String(picked.has(c.id)));
-      syncPicks();
-    });
-    b.setAttribute('aria-pressed', String(already || picked.has(c.id)));
-    b.setAttribute('aria-label', already ? `${c.name}, already rated` : c.name);
-    b.disabled = already;
+  drawWelcome();
+  loadWelcome();
+}
+
+async function loadWelcome() {
+  const ids = welcomePicks();
+  const asking = `${opening.round}|${ids.join(',')}`;
+  if (asking === opening.asked) return;
+  opening.asked = asking;
+  const id = ++opening.req;
+  opening.seed ??= daySeed(FRESH);
+  const query = startersQuery({ seed: await opening.seed, round: opening.round, picked: ids, lang: browserLanguage() });
+  try {
+    const { shows } = await call('/api/starters?' + query);
+    if (id !== opening.req) return;
+    opening.shows = mergeStarters(opening.shows, shows.map(remember), n => picked.has(n));
+  } catch {
+    if (id !== opening.req) return;
+    opening.asked = '';
+    if (!opening.shows.length) opening.shows = boot.starters.map(remember);
+  }
+  if (view === 'welcome') drawWelcome();
+}
+
+// A poster to pick. Starters keep theirs by id, so a redraw moves a poster rather than
+// loading it again.
+function pickTile(c, tiles) {
+  let li = tiles.get(c.id);
+  if (!li) {
+    li = el('li');
+    const b = button('card pick', '', () => togglePick(c));
+    b.dataset.pick = c.id;
     const tick = el('span', '', 'tick');
     tick.append(icon('check'));
     b.append(artEl(c), tick);
     li.append(b);
-    return li;
-  }));
+    tiles.set(c.id, li);
+  }
+  paintPick(li.firstChild, c);
+  return li;
+}
+
+function paintPick(b, c) {
+  const already = rated(c.id) > 0;
+  b.setAttribute('aria-pressed', String(already || picked.has(c.id)));
+  b.setAttribute('aria-label', already ? `${c.name}, already rated` : c.name);
+  b.disabled = already;
+}
+
+function togglePick(c) {
+  if (rated(c.id) > 0) return;
+  if (picked.has(c.id)) picked.delete(c.id);
+  else picked.add(remember(c).id);
+  for (const b of document.querySelectorAll(`[data-pick="${c.id}"]`)) paintPick(b, c);
+  drawAlso();
   syncPicks();
+  loadWelcome();
+}
+
+function drawWelcome() {
+  const keep = new Set(opening.shows.map(c => c.id));
+  for (const id of opening.tiles.keys()) if (!keep.has(id)) opening.tiles.delete(id);
+  $('starters').replaceChildren(...opening.shows.map(c => pickTile(c, opening.tiles)));
+  drawAlso();
+  syncPicks();
+}
+
+// Shows picked from a search sit off the grid; they are listed here, and a tap takes one back.
+function drawAlso() {
+  const shown = new Set(opening.shows.map(c => c.id));
+  const extra = [...picked].filter(id => !shown.has(id));
+  $('also-picked').hidden = !extra.length;
+  $('also-picked').replaceChildren(...extra.map(id => {
+    const c = info(id);
+    const b = button('chip', c.name, () => togglePick(c));
+    b.setAttribute('aria-pressed', 'true');
+    b.setAttribute('aria-label', `${c.name}, picked. Take it back`);
+    return b;
+  }));
 }
 
 function syncPicks() {
   const liked = state.profile.filter(p => p.weight > 0).length;
-  const need = Math.max(0, 3 - liked - picked.size);
+  const total = liked + picked.size;
+  const need = Math.max(0, NEEDED - total);
+  const said = picked.size ? `${picked.size} picked. ` : '';
   $('picked-note').textContent = need ? `Pick ${need} more to continue.`
-    : picked.size ? `${picked.size} picked. Ready when you are.` : 'Ready when you are.';
+    : total >= PLENTY ? `${said}That is plenty.`
+      : total < SUGGESTED ? `${said}Five to ten makes the best rows.`
+        : `${said}Ready when you are.`;
   $('continue').disabled = need > 0;
 }
+
+$('starters-more').addEventListener('click', () => {
+  opening.round = (opening.round + 1) % (MAX_ROUND + 1);
+  loadWelcome();
+});
+
+// Add a show you love: the same search as the rest of the app, its results picked like starters.
+let foundReq = 0, foundTimer = 0;
+function clearFound() {
+  foundReq++;
+  clearTimeout(foundTimer);
+  $('q-welcome').value = '';
+  $('found').hidden = $('found-note').hidden = true;
+}
+$('q-welcome').addEventListener('input', () => {
+  const q = $('q-welcome').value.trim();
+  const id = ++foundReq;
+  clearTimeout(foundTimer);
+  if (q.length < 2) {
+    $('found').hidden = $('found-note').hidden = true;
+    return;
+  }
+  $('found-note').hidden = false;
+  $('found-note').textContent = 'Searching…';
+  foundTimer = setTimeout(async () => {
+    try {
+      const { shows, missing = [] } = await call(`/api/search?q=${encodeURIComponent(q)}`);
+      if (id !== foundReq) return;
+      $('found').replaceChildren(...shows.slice(0, 12).map(c => pickTile(remember(c), new Map())));
+      $('found').hidden = !shows.length;
+      $('found-note').textContent = searchNote(q, shows.length, missing.length);
+    } catch (e) {
+      if (id === foundReq) $('found-note').textContent = e.message;
+    }
+  }, 200);
+});
+$('q-welcome').addEventListener('keydown', e => { if (e.key === 'Escape') clearFound(); });
 
 $('continue').addEventListener('click', () => {
   for (const id of picked) {
@@ -1318,6 +1431,7 @@ $('continue').addEventListener('click', () => {
     }
   }
   picked.clear();
+  clearFound();
   state.onboarded = true;
   save();
   updateCounts();
@@ -1326,6 +1440,7 @@ $('continue').addEventListener('click', () => {
 });
 $('skip').addEventListener('click', () => {
   picked.clear();
+  clearFound();
   state.onboarded = true;
   save();
   go('/');

@@ -97,6 +97,10 @@ select{padding:8px 10px;border:1px solid var(--line);border-radius:7px;backgroun
   font-size:14px;cursor:pointer;color:var(--ink)}
 .chip:hover{border-color:var(--accent);color:var(--accent)}
 .chip[aria-pressed=true]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+.chip:disabled{cursor:default}
+.starters{margin-bottom:22px}
+.starters .chips{margin-top:10px}
+.starters-acts{display:flex;flex-wrap:wrap;gap:6px 18px;margin:14px 0 0}
 
 /* recommendation cards ------------------------------------------------ */
 .cards{display:grid;gap:12px;margin-top:16px}
