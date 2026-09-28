@@ -104,8 +104,8 @@ from build import MODULES                                        # noqa: E402
 from engine import DEFAULT_SETTINGS, QUICK_PICKS                 # noqa: E402
 from fallback import Remote                                      # noqa: E402
 from library import ROW, MORE, GLANCE, SHORTEST, GENRE_ROWS, NEW_DAYS, FALLBACK, lower_first  # noqa: E402
-from library import (Page, FIRST_PAGE, NEXT_PAGE, MOST_ROWS, CREATOR_SHORTEST, NOT_FOR_ME,        # noqa: E402
-                     INTEREST_CAP, HIDDEN, PINNED)
+from library import (Page, Deeper, FIRST_PAGE, NEXT_PAGE, MOST_ROWS, CREATOR_SHORTEST, NOT_FOR_ME,  # noqa: E402
+                     INTEREST_CAP, HIDDEN, PINNED, LONGEST, TIERS)
 from live import (Live, LiveError, Icons, trim_show, trim_episodes, trim_videos,        # noqa: E402
                   trim_seasons, match_rating, IMAGES)
 
@@ -225,13 +225,18 @@ check('every starter has a poster, whatever the seed', all(
 
 # 3b. A first visit's page: the Top 10, what is popular now, all-time favourites, new this
 # year and the best-known genres and formats, no show twice, eight rows first.
+def shown_of(rows):
+    """What the browser says it shows: each row's key, first six ids and, past today's rows, its tier."""
+    return [{'key': r['key'], 'ids': [c['id'] for c in r['items'][:GLANCE]], **({'tier': r['tier']} if 'tier' in r else {})}
+            for r in rows]
+
+
 def whole(body):
     """Every row of a home page, asked for the way the browser asks, with each answer."""
     answers = [lib.home(body)]
     rows = list(answers[0]['rows'])
-    while answers[-1]['more'] and len(answers) < 8:
-        shown = [{'key': r['key'], 'ids': [c['id'] for c in r['items'][:GLANCE]]} for r in rows]
-        answers.append(lib.home({**body, 'shown': shown}))
+    while answers[-1]['more'] and len(rows) < LONGEST:
+        answers.append(lib.home({**body, 'shown': shown_of(rows)}))
         rows += answers[-1]['rows']
     return rows, answers
 
@@ -373,7 +378,9 @@ check('labels lower-case without breaking acronyms',
       lower_first('Crime TV shows') == 'crime TV shows' and lower_first('DIY and makeovers') == 'DIY and makeovers')
 
 # 4c. The whole page for lists of several shapes: its fixed places, its size, and the rules
-# that keep rows from repeating one another.
+# that keep rows from repeating one another. Today's rows (tier 0) come first and keep the
+# rules of a page of 20 to 30 rows; the page goes on past them into the tiers below (4i
+# pages whole pages with stand-in rows in every tier).
 SHAPES = {
     'five shows': {'profile': PROFILE, 'list': [526, 431]},
     'one taste': {'profile': listed('prestige_crime')},
@@ -389,8 +396,12 @@ for shape, body in SHAPES.items():
     saved = [i for i in body['list'] if i in engine.by_id]
     check(f'{shape}: eight rows come first, then six at a time', len(answers[0]['rows']) == FIRST_PAGE
           and all(len(a['rows']) <= NEXT_PAGE for a in answers[1:]) and not answers[-1]['more'])
-    check(f'{shape}: the page holds at most {MOST_ROWS} rows, and at least the first page', FIRST_PAGE <= len(keys) <= MOST_ROWS,
-          len(keys))
+    today = [r for r in page_rows if 'tier' not in r]
+    today_keys = [r['key'] for r in today]
+    check(f'{shape}: today\'s rows come first, at least the first page and at most {MOST_ROWS}',
+          page_rows[:len(today)] == today and FIRST_PAGE <= len(today) <= MOST_ROWS, len(today))
+    check(f'{shape}: the page ends within {LONGEST} rows, each past today\'s saying its tier',
+          len(keys) <= LONGEST and all(1 <= r['tier'] <= TIERS for r in page_rows[len(today):]))
     check(f'{shape}: top picks lead', keys[0] == 'top', keys)
     unrated_saved = [i for i in saved if i not in rated_ids]
     check(f'{shape}: My List is row 2 exactly when it holds an unrated show',
@@ -443,12 +454,13 @@ for shape, body in SHAPES.items():
           not neighbours, neighbours)
     niches = [r['title'] for r in page_rows if r['key'].startswith('niche-')]
     check(f'{shape}: micro-genre names run to five words at most', all(len(t.split()) <= 5 for t in niches), niches)
-    seeds_ = [k for k in keys if k.startswith('seed-')]
-    check(f'{shape}: two to six Because you loved rows', 2 <= len(seeds_) <= 6, seeds_)
+    seeds_ = [k for k in today_keys if k.startswith('seed-')]
+    check(f'{shape}: two to six Because you loved rows among today\'s', 2 <= len(seeds_) <= 6, seeds_)
     page, laid = page_of(body)
     check(f'{shape}: the pages asked for one at a time are the page laid out at once',
           keys == [shelf.key for shelf, _items in laid])
-    served = Counter(shelf.interest for shelf, _items in laid if shelf.interest is not None)
+    laid_today = [(shelf, items) for shelf, items in laid if not page.tier_of.get(shelf.key)]
+    served = Counter(shelf.interest for shelf, _items in laid_today if shelf.interest is not None)
     check(f'{shape}: every interest with 8% or more of the list has a row',
           all(served[k] for k in page.significant), (page.significant, served))
     quota = page.quota
@@ -459,10 +471,10 @@ for shape, body in SHAPES.items():
         check(f'{shape}: with three or more interests, none is planned more than 40% of their rows',
               all(q <= INTEREST_CAP * planned + 1e-9 for q in quota.values()), quota)
     if sum(p['weight'] > 0 for p in body['profile']) < 10:
-        check(f'{shape}: with fewer than ten liked shows, personal rows are at most half the page',
-              2 * sum(shelf.personal for shelf, _items in laid) <= len(laid))
-    seed_interests = Counter(shelf.interest for shelf, _items in laid if shelf.kind_of == 'seed')
-    check(f'{shape}: at most three Because you loved rows for an interest', max(seed_interests.values()) <= 3)
+        check(f'{shape}: with fewer than ten liked shows, personal rows are at most half of today\'s',
+              2 * sum(shelf.personal for shelf, _items in laid_today) <= len(laid_today))
+    seed_interests = Counter(shelf.interest for shelf, _items in laid_today if shelf.kind_of == 'seed')
+    check(f'{shape}: at most three Because you loved rows for an interest among today\'s', max(seed_interests.values()) <= 3)
     for shelf, items in laid:
         cards = [engine.shows[i] for i in items]
         if shelf.key == 'gems':
@@ -549,10 +561,11 @@ check('the hero changes from day to day', len(set(drawn)) >= 3, drawn)
 resting = lib.home({**body, **seeded('2026-10-05'), 'resting': drawn})['hero']['id']
 check('a hero shown in the last week is not drawn again', resting not in drawn)
 
-# 4g. Rows passed over on five days in a fortnight rest at the foot of the page.
-tired_key = next(r['key'] for r in monday[4:] if r['kind'] == 'row' and r['key'] not in ('popular', 'different'))
+# 4g. Rows passed over on five days in a fortnight rest at the foot of today's rows.
+tired_key = next(r['key'] for r in monday[4:] if r['kind'] == 'row' and r['key'] not in ('popular', 'different')
+                 and 'tier' not in r)
 rested = whole({**body, **seeded('2026-10-05'), 'tired': [tired_key]})[0]
-rested_keys = [r['key'] for r in rested]
+rested_keys = [r['key'] for r in rested if 'tier' not in r]
 check('a tired row rests below the first page', tired_key not in rested_keys[:FIRST_PAGE] and
       (tired_key not in rested_keys or rested_keys.index(tired_key) >= len(rested_keys) - 2), (tired_key, rested_keys))
 
@@ -561,8 +574,12 @@ rejects('a language that is not a tag', lambda: lib.home({'profile': [], 'lang':
 rejects('too many languages', lambda: lib.home({'profile': [], 'lang': ['en'] * 9}), 'language tags')
 rejects('a language that is a number', lambda: lib.home({'profile': [], 'lang': 5}), 'language tags')
 rejects('shown rows that are not a list', lambda: lib.home({'profile': [], 'shown': 'top'}), 'shown')
-rejects('too many shown rows', lambda: lib.home({'profile': [], 'shown': [{'key': f'r{n}', 'ids': []} for n in range(MOST_ROWS + 1)]}),
-        f'up to {MOST_ROWS}')
+rejects('too many shown rows', lambda: lib.home({'profile': [], 'shown': [{'key': f'r{n}', 'ids': []} for n in range(LONGEST + 1)]}),
+        f'up to {LONGEST}')
+rejects('a shown row in a tier past the last', lambda: lib.home({'profile': [], 'shown': [{'key': 'top', 'tier': TIERS + 1}]}),
+        'tier')
+rejects('a shown row whose tier is not a number', lambda: lib.home({'profile': [], 'shown': [{'key': 'top', 'tier': '1'}]}),
+        'tier')
 rejects('a shown row with a bad key', lambda: lib.home({'profile': [], 'shown': [{'key': 'Top Picks!', 'ids': []}]}), 'key')
 rejects('a shown row with too many ids', lambda: lib.home({'profile': [], 'shown': [{'key': 'top', 'ids': list(range(7))}]}),
         'up to 6')
@@ -582,6 +599,111 @@ more_today = [c['id'] for c in lib.title({'profile': PROFILE, 'id': 169, **seede
 more_plain = [c['id'] for c in lib.title({'profile': PROFILE, 'id': 169})['more']]
 check("more like this keeps its closest six and takes the day's for the rest",
       more_today[:GLANCE] == more_plain[:GLANCE] and len(more_today) == len(more_plain))
+
+# 4i. Past today's rows, with rows of their own in every tier (stand-ins cut with the page's
+# own helpers, scripts/bench/stub_tiers.py): the page goes on tier by tier until the last is
+# spent, a tier is built only once the page reaches it, and a request can take the page up
+# anywhere, the same each time.
+sys.path.insert(0, str(ROOT / 'scripts' / 'bench'))
+import stub_tiers  # noqa: E402
+
+built = Counter()
+building = Page.tier_rows
+choosing = Deeper.best
+picks = []
+
+
+def counted(page_, tier):
+    built[tier] += 1
+    return building(page_, tier)
+
+
+def watched(deeper, options, p):
+    """Deeper.best, noting whether the row it takes was held back and whether any was not."""
+    shelf, rel = choosing(deeper, options, p)
+    held = {row.key: back for row, _rel, back in options}
+    picks.append((held[shelf.key], not all(held.values())))
+    return shelf, rel
+
+
+Deeper.best = watched
+with stub_tiers.installed(Page, tier_rows=counted):
+    for shape, day in (('five shows', {}), ('twenty-five mixed', seeded('2026-10-05'))):
+        body = {'settings': {}, 'list': [], **SHAPES[shape], **day}
+        page_rows, answers = whole(body)
+        keys = [r['key'] for r in page_rows]
+        today = [r for r in page_rows if 'tier' not in r]
+        tiers = [r.get('tier', 0) for r in page_rows]
+        check(f'{shape}, every tier: the page goes on past today\'s rows into each tier in turn, to the last, and ends',
+              len(page_rows) >= len(today) + 20 and tiers == sorted(tiers) and max(tiers) == TIERS
+              and len(page_rows) < LONGEST, (len(today), Counter(tiers)))
+        check(f'{shape}, every tier: each answer brings a full page but the last, and more is false only at the end',
+              len(answers[0]['rows']) == FIRST_PAGE and all(len(a['rows']) == NEXT_PAGE for a in answers[1:-1])
+              and all(a['more'] for a in answers[:-1]) and not answers[-1]['more'] and answers[-1]['rows'])
+        check(f'{shape}, every tier: no row twice, and no two rows share a title',
+              len(keys) == len(set(keys)) and len({r['title'].casefold() for r in page_rows}) == len(page_rows))
+        heads = [c['id'] for r in page_rows if r['key'] != 'top10' for c in r['items'][:GLANCE]]
+        times = Counter(c['id'] for r in page_rows if r['key'] != 'top10' for c in r['items'])
+        check(f'{shape}, every tier: no two rows open with the same show, and no show is on the page more than twice',
+              len(heads) == len(set(heads)) and max(times.values()) <= 2, times.most_common(2))
+        check(f'{shape}, every tier: every row past today\'s holds {SHORTEST} to {ROW} cards',
+              all(SHORTEST <= len(r['items']) <= ROW for r in page_rows[len(today):]))
+        page, laid = page_of(body)
+        check(f'{shape}, every tier: the pages asked for one at a time are the page laid out at once, cards and all',
+              [page.row(shelf, items) for shelf, items in laid] == page_rows)
+        origin = {shelf.key: shelf.tier for shelf, _items in laid}
+        opened_at = {t: next((n for n, tier in enumerate(tiers) if tier >= t), len(tiers)) for t in range(1, TIERS + 1)}
+        check(f'{shape}, every tier: no row comes before its tier opens, so no tier-2 row before tier 1',
+              all(origin[r['key']] <= r.get('tier', 0) for r in page_rows)
+              and all(origin[k] < t for t, n in opened_at.items() for k in keys[:n]))
+        check(f'{shape}, every tier: a row resting, or whose interest holds its share of the page so far (a share that '
+              f'grows with the page), comes only once nothing else open holds up',
+              picks and not any(held and others for held, others in picks)
+              and sum(page.quotas(4 * page.cap).values()) > sum(page.quotas(page.cap).values()), picks[-5:])
+        picks.clear()
+
+    # body, page_rows and today are the seeded page of twenty-five mixed shows from here.
+    built.clear()
+    lib.home(body)
+    check('the first rows build no tier past today\'s', not built and len(today) > FIRST_PAGE, dict(built))
+    built.clear()
+    lib.home({**body, 'shown': shown_of(today)})
+    check('the rows just past today\'s build tier 1, once', built[1] == 1 and max(built.values()) == 1, dict(built))
+    deep = next(n for n, r in enumerate(page_rows) if r.get('tier', 0) >= 3)
+    built.clear()
+    lib.home({**body, 'shown': shown_of(page_rows[:deep + 1])})
+    check('rows further down build the tiers they reach, each once', {1, 2, 3} <= set(built) and max(built.values()) == 1,
+          dict(built))
+    upto = len(today) + 20
+    ask = {**body, 'shown': shown_of(page_rows[:upto])}
+    again = lib.home(ask)
+    check('a request past today\'s rows gives the same rows each time, the page\'s next ones',
+          lib.home(ask) == again and again['rows'] == page_rows[upto:upto + NEXT_PAGE])
+    shown = shown_of(page_rows[:upto])
+    rated_ids = {p['id'] for p in body['profile']}
+    liked_now = next(c['id'] for c in page_rows[upto - 3]['items'] if c['id'] not in rated_ids)
+    after = lib.home({**body, 'profile': body['profile'] + [{'id': liked_now, 'weight': 1}], 'shown': shown})
+    opened = {i for s in shown for i in s['ids']}
+    check('after a rating deep in the page, the rows shown stay as they are and the next open with none of their shows',
+          after['rows'] and not {s['key'] for s in shown} & {r['key'] for r in after['rows']}
+          and not opened & {c['id'] for r in after['rows'] if r['kind'] == 'row' for c in r['items'][:GLANCE]}
+          and liked_now not in {c['id'] for r in after['rows'] if r['kind'] == 'row' for c in r['items']})
+    kept_before = lib.home({**body, 'shown': [{'key': s['key'], 'ids': s['ids']} for s in shown]})
+    check('a page kept from before rows carried tiers still gets its next rows',
+          kept_before['rows'] and kept_before['more'] and not {s['key'] for s in shown} & {r['key'] for r in kept_before['rows']})
+    tuesday = whole({**body, **seeded('2026-10-06')})[0]
+    deep_monday, deep_tuesday = [r['key'] for r in page_rows if 'tier' in r], [r['key'] for r in tuesday if 'tier' in r]
+    check('rows past today\'s reorder a little from day to day, all below today\'s rows', deep_monday != deep_tuesday
+          and len(set(deep_monday) & set(deep_tuesday)) >= 0.8 * min(len(deep_monday), len(deep_tuesday))
+          and all('tier' not in r for r in tuesday[:len(tuesday) - len(deep_tuesday)]))
+    tired_deep = page_rows[len(today) + 3]['key']
+    rested = whole({**body, 'tired': [tired_deep]})[0]
+    rested_keys = [r['key'] for r in rested]
+    check('a tired row past today\'s rests further down, and no sooner than its tier',
+          tired_deep not in rested_keys or (rested_keys.index(tired_deep) > len(today) + 3
+                                            and rested[rested_keys.index(tired_deep)]['tier'] >= page_rows[len(today) + 3]['tier']),
+          tired_deep)
+Deeper.best = choosing
 
 # 5. A title page explains itself and finds what is like it.
 page = lib.title({'profile': PROFILE, 'settings': {}, 'id': reference['picks'][0]['id']})
@@ -893,7 +1015,18 @@ check('the next rows come over HTTP, with no hero', status == 200 and json.loads
 check('a malformed shown list is a 400 that says why',
       fetch('/api/home', {'profile': [], 'shown': [{'key': 'no spaces'}]}) [:3:2] == (400, b'{"error":"Each shown row needs a key of lower-case letters, digits and hyphens."}'))
 check('a malformed day is a 400', fetch('/api/home', {'profile': [], 'day': 'Monday', 'seed': '0123456789abcdef'})[0] == 400)
-check('a body over 32KB is refused', fetch('/api/home', b'{"profile": [], "x": "' + b'y' * 33000 + b'"}')[0] == 413)
+check('a body over 64KB is refused', fetch('/api/home', b'{"profile": [], "x": "' + b'y' * 66000 + b'"}')[0] == 413)
+# The most a browser at the foot of a page can send: every row with the longest key, and the
+# longest lists of what it has seen, engaged with and passed over.
+longest_ids = sorted((s['id'] for s in engine.shows), reverse=True)
+largest = {'profile': [{'id': i, 'weight': .35} for i in longest_ids[:60]], 'settings': DEFAULT_SETTINGS,
+           'list': longest_ids[60:260], 'day': '2026-10-05', 'seed': '0123456789abcdef', 'lang': ['en-GB'] * 8,
+           'count': NEXT_PAGE, 'seen': {str(i): 49.99 for i in longest_ids[:300]}, 'engaged': longest_ids[:300],
+           'resting': longest_ids[:60], 'tired': [f'{n:02d}' + 'x' * 58 for n in range(40)],
+           'shown': [{'key': f'{n:03d}' + 'x' * 57, 'ids': longest_ids[:GLANCE], 'tier': TIERS} for n in range(LONGEST)]}
+status, _headers, body = fetch('/api/home', largest)
+check('the largest request a page can send fits under the limit', len(json.dumps(largest)) < server.MOST_BODY
+      and status == 200 and json.loads(body)['more'] is False, (len(json.dumps(largest)), status, body[:80]))
 check('a bad title id is a 400', fetch('/api/title', {'profile': [], 'id': -1})[0] == 400)
 check('a body that is not an object is a 400', fetch('/api/home', [1, 2])[0] == 400)
 check('the wrong content type is refused', fetch('/api/home', b'{}', 'text/plain')[0] == 415)

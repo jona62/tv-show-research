@@ -11,8 +11,10 @@ published about theirs. It weighs many candidate rows: more like each favourite,
 micro-genres named from what an interest leans toward, creators, casts and franchises
 a list shares, hidden gems, limited series. It then chooses and orders rows one at a
 time for relevance, less what a row would repeat of the rows above it, and gives each
-interest in the list rows in proportion to its weight (Steck's calibration). Pages
-arrive eight rows at a time and are rebuilt the same from the same request, so a
+interest in the list rows in proportion to its weight (Steck's calibration). Past
+today's rows the page goes on without a set end, tier by tier: more from the list
+itself, each interest's own rows, exploring and browsing, until the last tier is spent.
+Pages arrive eight rows at a time and are rebuilt the same from the same request, so a
 browser asking for more says which rows it already shows. fresh.py turns the day and
 the browser's memory of what it showed into the day's order, cards and hero.
 """
@@ -31,7 +33,7 @@ import struct
 import sys
 
 from engine import FORMAT_GROUPS, TIE_COMMON
-from fresh import dither, pick_one, spread, shuffle_rows, ROW_KEY
+from fresh import dither, pick_one, spread, shuffle_rows, ROW_EPSILON, ROW_KEY
 from starters import Starters
 from taste import COUNTRIES, decade as decade_of
 
@@ -81,8 +83,12 @@ DESCRIPTION = 'Rows of TV shows picked for your taste, with trailers, where to w
 # ------------------------------------------------------------------ the home page
 FIRST_PAGE = 8          # rows in the first answer
 NEXT_PAGE = 6           # rows in each answer after it, asked for as the reader nears the end
-MOST_ROWS = 30          # a page holds at most this many rows
+MOST_ROWS = 30          # today's rows (tier 0) are at most this many
 FEWEST_ROWS = 20        # and, when there is enough to show, at least this many
+TIERS = 4               # tiers past today's rows: the list itself, each interest, exploring, browsing
+LONGEST = 300           # a page without a set end still stops here, which bounds what a request carries
+RECENT = 12             # a deeper tier is judged by its own rows, or this many rows above while it has fewer
+WEAK = 0.5              # and is weak once its best row falls below this share of their median
 PINNED = 2              # cards at the front of a row that keep their places from day to day
 LIST_ROW = 20           # My List's row holds the most recently added
 CREATOR_SHORTEST = 6    # one creator seldom has eight shows, so their row may hold six
@@ -105,8 +111,8 @@ INTEREST_FLOOR = 0.08   # an interest this heavy gets at least one row
 INTEREST_CAP = 0.4      # and none, with three or more interests, holds more of the rows
 MOST_INTERESTS = 8      # interests weighed for rows of their own
 INTEREST_ROWS = 0.55    # the share of a page planned for rows that serve one interest
-SEED_ROWS = (2, 8)      # "Because you loved" rows on a page, fewest and most
-LIGHT_LIST = 10         # below this many liked shows, personal rows are at most half the page
+SEED_ROWS = (2, 8)      # "Because you loved" rows among today's, fewest and most; tier 1 has one for each
+LIGHT_LIST = 10         # below this many liked shows, personal rows are at most half of today's
 REAPPEAR = 0.7          # a show that opened an earlier row counts this much again
 TAG_SPREAD = 0.3        # how hard the first cards of a row avoid looking alike
 PLACE_SHARE = 0.15      # a language or country this share of liked shows is a row
@@ -433,13 +439,15 @@ class Page:
         self.place_in = [({i: n for n, i in enumerate(items)}, len(items)) for items in whole]
         self.ascending = sorted(taste.scores[i] for i in self.usable)
         self.significant = [k for k, s in enumerate(self.share) if s >= INTEREST_FLOOR]
-        # Netflix builds about 40 rows and Prime Video about 20; a page here holds 20 or,
-        # with more interests to serve, up to 30, and stops sooner only when it runs out.
+        # Netflix builds about 40 rows and Prime Video about 20. Today's rows (tier 0) are
+        # 20 or, with more interests to serve, up to 30, fewer only when they run out; the
+        # tiers past them (Deeper) carry the page on from there.
         self.cap = min(MOST_ROWS, max(FEWEST_ROWS, 14 + 3 * len(self.significant)))
         self.light = len(positives) < LIGHT_LIST
         self.day = date.fromisoformat(fresh.day).toordinal() if fresh.day else 0
         self.names = {p['id']: e.shows[e.by_id[p['id']]]['name'] for p in positives}
         self.dropped = {}   # rows left out, and why
+        self.tier_of = {}   # the tier each row past today's was placed in
         self._matching = {}
         countries = Counter(e.shows[e.by_id[p['id']]]['country'] for p in positives)
         self.usual_country = countries.most_common(1)[0][0] if countries else None
@@ -1848,13 +1856,28 @@ class Page:
         return out
 
     def cards(self, shelf, heads, count):
+        """A row's cards (draw), counted as shown."""
+        items = self.draw(shelf, heads, count)
+        if items is not None and shelf.kind == 'row':
+            heads.update(items[:GLANCE])
+            count.update(items)
+        return items
+
+    def draw(self, shelf, heads, count, deep=False):
+        """A row's cards given the cards the rows above opened with (heads) and how often
+        each show is on the page (count), or None when too few are left: no show opens
+        two rows or is on the page more than twice. Past today's rows (deep) each show the
+        page already has goes behind those it has not, the further the more often it is
+        there, so a long page keeps bringing shows it has not had rather than repeating."""
         if shelf.kind != 'row':
             return list(shelf.items)
         pool = [i for i in shelf.items if count[i] < 2]
         if len(pool) < shelf.shortest:
             return None
-        if heads.intersection(pool):
-            score = shelf.score
+        score = shelf.score
+        if deep:
+            pool.sort(key=lambda i: -score.get(i, 0.0) * REAPPEAR ** (count[i] + (i in heads)))
+        elif heads.intersection(pool):
             pool.sort(key=lambda i: -score.get(i, 0.0) * (REAPPEAR if i in heads else 1.0))
         order = self.lib.daily(pool, self.fresh, f'row-{shelf.key}', ROW, PINNED)
         groups = self.lib.groups
@@ -1869,8 +1892,6 @@ class Page:
         items = head + [i for i in order if i not in opened][:ROW - len(head)]
         if len(items) < shelf.shortest:
             return None
-        heads.update(head)
-        count.update(items)
         return items
 
     def opening(self, shelf, ordered, heads):
@@ -1968,14 +1989,22 @@ class Page:
         out = {'key': shelf.key, 'title': shelf.title, 'kind': shelf.kind, 'items': cards}
         if shelf.subtitle:
             out['subtitle'] = shelf.subtitle
+        # A row past today's says which tier it was placed in, for the browser to send
+        # back when it asks for more (Deeper.replay).
+        if self.tier_of.get(shelf.key):
+            out['tier'] = self.tier_of[shelf.key]
         return out
 
     # ------------------------------------------------------------ the page
 
-    def layout(self, shown):
-        """(rows the browser does not show yet, filled; whether more could follow). The
-        same request gives the same rows; when the list changed since the browser's rows
-        were built, those stay as they are and only the rows after them are rebuilt."""
+    def layout(self, shown, want=None):
+        """(rows the browser does not show yet, filled; every row so far). Today's rows
+        (tier 0) are laid out whole, as they always were, and the rows past them one at a
+        time (Deeper): to the page's end without want, else until want + 1 follow the
+        shown ones, enough to say whether more could follow, so a tier is built only once
+        the page reaches it. The same request gives the same rows; when the list changed
+        since the browser's rows were built, those stay as they are and only the rows
+        after them are rebuilt."""
         shelves, queues, different = self.shelves()
         # Matches for the shows the fixed rows carry from outside the pool.
         self.taste.score_others(self.lib.top10 + list(self.saved))
@@ -1984,23 +2013,47 @@ class Page:
             shelves.append(listed)
         order = self.arrange(shelves, queues, different)
         rows = self.settle(self.fill(order))
+        # The shown rows from today's come first; each row below them carries its tier.
+        cut = next((n for n, (_key, _ids, tier) in enumerate(shown) if tier), len(shown))
+        today, below = shown[:cut], shown[cut:]
         keys = [shelf.key for shelf, _items in rows]
-        if [key for key, _ids in shown] == keys[:len(shown)]:
-            return rows[len(shown):], rows
+        if [key for key, _ids, _tier in today] != keys[:len(today)] or (below and len(today) != len(rows)):
+            rows = self.pin(today, shelves, queues, different, whole=bool(below))
+        new = rows[len(today):]
+        if want is not None and len(new) > want:
+            return new, rows
+        # What is left of today's rows goes on to the tiers below.
+        on_page = {row.key for row, _items in rows}
+        pool = [s for s in shelves if s.key not in on_page]
+        pool += [s for queue in queues for s in queue if s.key not in on_page]
+        if different and different.key not in on_page:
+            pool.append(different)
+        deeper = Deeper(self, rows, pool)
+        deeper.replay(below)
+        new += deeper.more(None if want is None else want + 1 - len(new))
+        return new, deeper.rows
+
+    def pin(self, today, shelves, queues, different, whole=False):
+        """Today's rows when the browser's no longer match them (the list changed since,
+        or the day did): the browser's stay as they are and the rest of today's are built
+        after them, unless the browser's rows already go past today's (whole)."""
         known = {s.key: s for s in shelves}
         for queue in queues:
             for s in queue:
                 known.setdefault(s.key, s)
         if different:
             known.setdefault('different', different)
-        pinned = [Pinned(key, [self.e.by_id[i] for i in ids if i in self.e.by_id], known.get(key)) for key, ids in shown]
-        left = [s for s in shelves if s.key not in {key for key, _ids in shown}]
-        queues = [[s for s in queue if s.key not in {key for key, _ids in shown}] for queue in queues]
-        if different and 'different' in {key for key, _ids in shown}:
+        pinned = [Pinned(key, [self.e.by_id[i] for i in ids if i in self.e.by_id], known.get(key))
+                  for key, ids, _tier in today]
+        if whole:
+            return [(row, None) for row in pinned]
+        shown = {key for key, _ids, _tier in today}
+        left = [s for s in shelves if s.key not in shown]
+        queues = [[s for s in queue if s.key not in shown] for queue in queues]
+        if different and 'different' in shown:
             different = None
         order = self.arrange(left, queues, different, pinned)
-        rows = self.settle(self.fill(order, pinned), len(pinned))
-        return rows[len(pinned):], rows
+        return self.settle(self.fill(order, pinned), len(pinned))
 
     def hero(self, rows):
         """The day's hero: drawn from the ten best picks not on My List and not a hero in
@@ -2012,6 +2065,255 @@ class Page:
         visible = {e.shows[i]['id'] for shelf, items in rows[:3] if items for i in items[:GLANCE]}
         chosen = pick_one(eligible, self.fresh, 'hero', top=10, avoid=visible)
         return e.by_id[chosen] if chosen is not None else None
+
+
+class Deeper:
+    """The page past today's rows. Tier 1 opens where today's rows end and its rows join
+    what is left of today's; each next row is the best of them less the penalties today's
+    rows pay, and when the rows left run out or turn weak the next tier opens, until the
+    last is spent and the page ends. A row gets its cards as it is placed, so the page can
+    be taken up wherever a request left it: the rows the browser shows are replayed, not
+    chosen again, and come out the same.
+
+    A tier turns weak against its own rows, not the whole page's: relevance falls as a
+    page goes deeper and each tier starts below the one before, so a bar set by the first
+    page would close every tier within a row or two. Nor against the last few rows alone:
+    a tier whose rows fall away slowly would pull that bar down with it, and run on into
+    rows far weaker than the next tier's. The bar is half the median relevance of the
+    rows since the tier opened, and of the last RECENT rows while it has fewer; once the
+    last tier is open, the same drop ends the page."""
+
+    def __init__(self, page, rows, pool):
+        self.page = page
+        self.rows, self.placed = [], []
+        self.heads, self.count = page.reserved()
+        self.titles, self.served, self.relevances, self.personal = set(), Counter(), [], 0
+        self.pool, self.seen, self.dropped = {}, set(), set()
+        self.glances, self.overlaps, self.nudges, self.quotas = {}, {}, {}, {}
+        self.tier = self.opened = 0
+        for row, items in rows:
+            self.place(row, items, row.relevance, 0)
+        for shelf in pool:
+            self.join(shelf)
+        self.open()
+
+    def open(self):
+        """The next tier's rows join those left, and the bar is set by its rows from here."""
+        self.tier += 1
+        self.opened = len(self.relevances)
+        for shelf in self.page.tier_rows(self.tier):
+            self.join(shelf)
+
+    def bar(self):
+        """The relevance a row needs to be weighed: WEAK times the median of the rows since
+        the deepest tier opened, and of the last RECENT rows while it has fewer."""
+        if not self.relevances:
+            return 0.0
+        return WEAK * statistics.median(self.relevances[min(self.opened, max(0, len(self.relevances) - RECENT)):])
+
+    def join(self, shelf):
+        """One row to a key: a row waits to be placed unless one with its key already is,
+        or is placed, as a browsing row is whose genre today's rows had. A first visit's
+        row left over from today's gives way to a later tier's row with its key, cut for
+        the list, as it gives way to the list's own among today's (shelves)."""
+        waiting = self.pool.get(shelf.key)
+        if shelf.key in self.seen and not (waiting and waiting.kind_of == 'plain' and shelf.kind_of != 'plain'):
+            return
+        self.seen.add(shelf.key)
+        self.pool[shelf.key] = shelf
+        self.dropped.discard(shelf.key)
+        self.glances.pop(shelf.key, None)
+        found = [(self.overlap(shelf, row), row.key) for row in self.placed]
+        self.overlaps[shelf.key] = max((x for x in found if x[0]), default=(0.0, None))
+
+    @staticmethod
+    def overlap(shelf, row):
+        """How much of a row's top twelve a row above holds already. More like a favourite
+        may overlap Top picks, as it may among today's rows."""
+        if not row.top12 or row.kind != 'row' or (shelf.kind_of == 'seed' and row.kind_of == 'top'):
+            return 0.0
+        return len(shelf.top12 & row.top12) / max(1, min(12, len(shelf.top12)))
+
+    def place(self, row, items, rel, tier):
+        """A row on the page with its cards, or, for a row the browser shows that did not
+        come out the same (items None), with its first cards as the browser has them,
+        counted as Page.fill counts them."""
+        self.pool.pop(row.key, None)
+        self.glances.pop(row.key, None)
+        self.overlaps.pop(row.key, None)
+        self.seen.add(row.key)
+        self.rows.append((row, items))
+        self.placed.append(row)
+        row.relevance = rel
+        if tier:
+            self.page.tier_of[row.key] = tier
+        if rel and row.kind_of != 'list':
+            self.relevances.append(rel)
+        shelf = row if isinstance(row, Shelf) else row.shelf
+        if shelf is not None:
+            self.titles.add(shelf.title.casefold())
+        if row.interest is not None:
+            self.served[row.interest] += 1
+        self.personal += bool(row.personal)
+        if items is None:
+            head, shown = list(row.head), list(row.head)
+            if row.shelf:
+                shown += [i for i in row.shelf.items if i not in row.head][:ROW - len(row.head)]
+        elif row.kind == 'row':
+            head, shown = items[:GLANCE], items
+        else:
+            return
+        self.heads.update(head)
+        self.count.update(shown)
+        # A waiting row keeps its first cards and relevance until a row placed takes one.
+        taken = set(head) | {i for i in shown if self.count[i] >= 2}
+        for key in [key for key, (glance, _rel) in self.glances.items() if not taken.isdisjoint(glance)]:
+            del self.glances[key]
+        if row.top12 and row.kind == 'row':
+            for key, shelf in self.pool.items():
+                value = self.overlap(shelf, row)
+                if value > self.overlaps[key][0]:
+                    self.overlaps[key] = (value, row.key)
+
+    def glanced(self, shelf):
+        """A waiting row's first cards as the page stands, and its relevance (Page.relevance)."""
+        found = self.glances.get(shelf.key)
+        if found is None:
+            head, rel = shelf.glance(self.heads, self.count), 0.0
+            if head:
+                weights = POSITION[:len(head)]
+                fit = self.page.fit
+                rel = shelf.evidence * sum(w * fit(i, shelf.interest) for w, i in zip(weights, head)) / sum(weights)
+            found = self.glances[shelf.key] = (head, rel)
+        return found
+
+    def nudge(self, key):
+        """The day's nudge to a row's relevance, so rows past today's reorder a little from
+        day to day as today's do (fresh.shuffle_rows); none without a day."""
+        if key not in self.nudges:
+            self.nudges[key] = math.exp(ROW_EPSILON * self.page.fresh.z('rows', key))
+        return self.nudges[key]
+
+    def quota(self, p):
+        """Rows each interest may hold on a page p rows long: its share of them, planned
+        as today's are (Page.quotas), so the quotas grow with the page."""
+        if p not in self.quotas:
+            self.quotas[p] = self.page.quotas(max(self.page.cap, p))
+        return self.quotas[p]
+
+    def options(self, p):
+        """The rows that may come next, as (row, relevance, held back). A row that repeats
+        a title above, has too few cards left to open with or half repeats a row above is
+        left out for good; one resting (tired) or whose interest holds its share of a page
+        this long is held back. Popular stays below row 10, the Top 10 below row 2 and
+        Something different past the first page, as among today's rows. A first visit's
+        row left over from today's waits for the last tier, where a row to browse by taste
+        may take its key (join)."""
+        page = self.page
+        quota, tired = self.quota(p), page.fresh.tired
+        out = []
+        for key, shelf in self.pool.items():
+            if key in self.dropped or (shelf.kind_of == 'popular' and p < 11) or (key == 'top10' and p < 3) \
+                    or (shelf.kind_of == 'different' and p <= FIRST_PAGE) or (shelf.kind_of == 'plain' and self.tier < TIERS):
+                continue
+            why = None
+            if shelf.title.casefold() in self.titles:
+                why = 'same title as a row above'
+            else:
+                head, rel = self.glanced(shelf)
+                if len(head) < min(GLANCE, shelf.shortest) and shelf.kind == 'row':
+                    why = 'too few cards left to open with'
+                elif self.overlaps[key][0] >= 0.5 and shelf.kind_of not in FIXED_KINDS:
+                    why = f'repeats {self.overlaps[key][1]}'
+            if why:
+                self.dropped.add(key)
+                page.dropped[key] = why
+                continue
+            held = key in tired or (shelf.interest is not None and self.served[shelf.interest] >= quota[shelf.interest])
+            out.append((shelf, rel, held))
+        return out
+
+    def best(self, options, p):
+        """The row with the most relevance, nudged for the day, less the penalties today's
+        rows pay (Page.arrange). With fewer than ten liked shows, while the page would be
+        more than half personal, a row that is not personal comes first if there is one."""
+        page = self.page
+        scale = 0.5 if p <= FIRST_PAGE else 1.5
+        above = self.placed[-2:]
+        total = sum(self.served.values())
+        beyond = lambda k: max(0.0, (self.served[k] + 1) / (total + 1) - page.share[k])
+        mine = lambda shelf: shelf.interest is not None and shelf.interest < len(page.share)
+        least = min((beyond(shelf.interest) for shelf, _rel, _held in options if mine(shelf)), default=0.0)
+        scored = []
+        for shelf, rel, _held in options:
+            same_interest = shelf.interest is not None and any(row.interest == shelf.interest for row in above)
+            same_kind = any(row.kind_of == shelf.kind_of for row in above)
+            excess = beyond(shelf.interest) - least if mine(shelf) else 0.0
+            penalty = 0.5 * self.overlaps[shelf.key][0] + 0.3 * same_interest + 0.3 * same_kind + 0.4 * excess
+            scored.append((rel * self.nudge(shelf.key) - scale * penalty, rel, shelf.key, shelf))
+        best = max(scored, key=lambda x: (x[0], x[1], x[2]))
+        if page.light and best[3].personal and 2 * (self.personal + 1) > p:
+            plain = [x for x in scored if not x[3].personal]
+            if plain:
+                best = max(plain, key=lambda x: (x[0], x[1], x[2]))
+        return best[3], best[1]
+
+    def next(self):
+        """The next row and its cards, or None where the page ends. Only rows that hold up
+        against the rows above are weighed: this deep, a penalty of a few tenths is more
+        than a weak row's whole relevance, and would let it in ahead of good ones. Rows
+        held back have their turn once the rest are spent, before the next tier opens, so
+        a tier's strong rows stay in it (as today's rows rest a tired row at their foot)."""
+        while len(self.placed) < LONGEST:
+            p = len(self.placed) + 1
+            bar = self.bar()
+            options = [option for option in self.options(p) if option[1] >= bar]
+            ready = [option for option in options if not option[2]] or options
+            if ready:
+                shelf, rel = self.best(ready, p)
+            elif self.tier < TIERS:
+                self.open()
+                continue
+            else:
+                return None
+            items = self.page.draw(shelf, self.heads, self.count, deep=True)
+            if items is None:
+                self.dropped.add(shelf.key)
+                self.page.dropped[shelf.key] = 'too few cards'
+                continue
+            self.place(shelf, items, rel, self.tier)
+            return shelf, items
+        return None
+
+    def more(self, want=None):
+        """Up to want more rows, or every row to the page's end, as (row, cards)."""
+        out = []
+        while want is None or len(out) < want:
+            found = self.next()
+            if found is None:
+                break
+            out.append(found)
+        return out
+
+    def replay(self, shown):
+        """Place the rows the browser shows below today's as they were placed, in the
+        tiers they were placed in: with the same cards when they come out the same, as
+        they do while the list and the day stay the same, else with the browser's."""
+        page, e = self.page, self.page.e
+        for key, ids, tier in shown:
+            while self.tier < min(tier, TIERS):
+                self.open()
+            head = [e.by_id[i] for i in ids if i in e.by_id]
+            shelf = self.pool.get(key)
+            if shelf is None:
+                self.place(Pinned(key, head), None, 0.0, self.tier)
+                continue
+            _head, rel = self.glanced(shelf)
+            items = page.draw(shelf, self.heads, self.count, deep=True)
+            if items is not None and (shelf.kind != 'row' or [e.shows[i]['id'] for i in items[:GLANCE]] == ids):
+                self.place(shelf, items, rel, self.tier)
+            else:
+                self.place(Pinned(key, head, shelf), None, rel, self.tier)
 
 
 def ranks(values):
@@ -2084,10 +2386,12 @@ def read_lang(body):
 
 
 def read_shown(body):
-    """The rows the browser already shows, in order, as (key, first show ids)."""
+    """The rows the browser already shows, in order, as (key, first show ids, tier): the
+    tier a row past today's was placed in, and 0 for today's rows and for rows kept from
+    before rows carried one."""
     shown = body.get('shown', [])
-    if not isinstance(shown, list) or len(shown) > MOST_ROWS:
-        raise ValueError(f'Send shown as a list of up to {MOST_ROWS} rows.')
+    if not isinstance(shown, list) or len(shown) > LONGEST:
+        raise ValueError(f'Send shown as a list of up to {LONGEST} rows.')
     out, keys = [], set()
     for row in shown:
         if not isinstance(row, dict) or not isinstance(row.get('key'), str) or not ROW_KEY.match(row['key']):
@@ -2095,10 +2399,13 @@ def read_shown(body):
         ids = row.get('ids', [])
         if not isinstance(ids, list) or len(ids) > GLANCE or any(type(i) is not int or i < 0 for i in ids):
             raise ValueError(f'Send up to {GLANCE} show ids for each shown row.')
+        tier = row.get('tier', 0)
+        if type(tier) is not int or not 0 <= tier <= TIERS:
+            raise ValueError(f'A shown row\'s tier is a whole number from 0 to {TIERS}.')
         if row['key'] in keys:
             raise ValueError('Each shown row should appear only once.')
         keys.add(row['key'])
-        out.append((row['key'], ids))
+        out.append((row['key'], ids, tier))
     return out
 
 
@@ -2516,7 +2823,7 @@ class Library:
         if not positives:
             return self._cold(saved, rated, fresh, lang, shown, count)
         page = Page(self, profile, settings, positives, negatives, rated, candidates, saved, fresh, lang)
-        new, rows = page.layout(shown)
+        new, rows = page.layout(shown, count)
         taste = page.taste
         answer = {
             'personal': True, 'date': e.date, 'day': fresh.day,
@@ -2555,7 +2862,7 @@ class Library:
         e = self.e
         rows = self._cold_rows(saved, rated, fresh, lang, [])
         keys = [key for key, *_rest in rows]
-        if [key for key, _ids in shown] != keys[:len(shown)]:
+        if [key for key, _ids, _tier in shown] != keys[:len(shown)]:
             rows = self._cold_rows(saved, rated, fresh, lang, shown)
         new = rows[len(shown):]
         card = lambda i: self.card(i)
@@ -2584,8 +2891,8 @@ class Library:
         """The first-visit rows as (key, title, kind, items). Rows the browser shows keep
         their places and their shows stay off the rows after them."""
         e = self.e
-        shown_keys = {key for key, _ids in shown}
-        used = {e.by_id[i] for _key, ids in shown for i in ids if i in e.by_id}
+        shown_keys = {key for key, _ids, _tier in shown}
+        used = {e.by_id[i] for _key, ids, _tier in shown for i in ids if i in e.by_id}
         rows, fixed = [], 0
         rows.append(('top10', 'Top 10 shows today', 'top10', self.top10))
         used.update(self.top10)
@@ -2624,7 +2931,7 @@ class Library:
             prefix = [row for row in order if row[0] in shown_keys]
             rest = [row for row in order if row[0] not in shown_keys]
             by_key = {row[0]: row for row in prefix}
-            order = [by_key.get(key, (key, '', 'row', [])) for key, _ids in shown] + rest
+            order = [by_key.get(key, (key, '', 'row', [])) for key, _ids, _tier in shown] + rest
         return order
 
     def browse(self, body):

@@ -3,7 +3,7 @@ import { matrix, svgPath } from './qr.js';
 import { tieText, leaning, leaningHeading } from './format.js';
 import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere, longDate, airs,
   whereToWatch, trailerSearch, searchNote } from './format.js';
-import { pageKey, resumable, shownRows, withoutCard, viewedStore, noteViewed, recentlyViewed } from './format.js';
+import { pageKey, resumable, keptText, shownRows, withoutCard, viewedStore, noteViewed, recentlyViewed } from './format.js';
 import { freshStore, today, dayNumber, noteSeen, noteEngaged, noteRow, noteHero, prune, freshness, watcher }
   from './fresh.js';
 import { daySeed, startersQuery, mergeStarters, browserLanguage, MAX_ROUND, MAX_PICKED } from './starters.js';
@@ -367,11 +367,12 @@ function refresh(delay = 450) {
   homeTimer = setTimeout(loadHome, delay);
 }
 
-// The page kept for this tab: what was shown, for the day and list it was made for.
+// The page kept for this tab: what was shown, for the day and list it was made for. A
+// page grown past KEEP_CHARS keeps its first rows and asks for the rest again (keptText).
 function keepPage() {
   if (!home) return;
   try {
-    sessionStorage.setItem(PAGE_KEY, JSON.stringify({ v: 1, at: Date.now(), day: home.day, key: homeKey, home }));
+    sessionStorage.setItem(PAGE_KEY, keptText({ v: 1, at: Date.now(), day: home.day, key: homeKey, home }));
   } catch { /* storage full or off: the page is simply asked for again next time */ }
 }
 function keptPage(key, day) {
@@ -455,7 +456,7 @@ async function loadMore() {
     Object.assign(home, { more: data.more, taste: data.taste, interests: data.interests, tasteKey: homeKey });
     appendRows(data.rows);
     keepPage();
-    moreButton.hidden = !home.more || !!moreWatch;
+    syncFoot();
   } catch (e) {
     moreButton.hidden = !home?.more;
     toast(e.message);
@@ -467,11 +468,23 @@ async function loadMore() {
 }
 const sentinel = el('div', '', 'more-rows');
 const moreButton = button('btn ghost', 'More rows', () => loadMore());
-sentinel.append(moreButton);
+// The foot of the page, once the server has no more rows: a quiet note and a way back up.
+const pageEnd = el('div', '', 'page-end');
+pageEnd.append(el('p', 'That’s everything for today. Rate more shows to grow your rows.'),
+  button('btn ghost', 'Back to top', () => {
+    $('page').focus({ preventScroll: true });
+    window.scrollTo({ top: 0, behavior: motion() ? 'smooth' : 'auto' });
+  }));
+sentinel.append(moreButton, pageEnd);
 const moreWatch = 'IntersectionObserver' in window
   ? new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) loadMore(); },
     { rootMargin: '0px 0px 100% 0px' })
   : null;
+// More rows where the scroll cannot be watched, and the end once there are no more.
+function syncFoot() {
+  moreButton.hidden = !home?.more || !!moreWatch;
+  pageEnd.hidden = !home || home.more || !home.rows.length;
+}
 
 // Impressions: a card half on screen for a second counts as seen once a day, and a row
 // seen that way counts as passed over for the day unless a card in it is engaged with.
@@ -520,7 +533,7 @@ function renderHome() {
     const first = holder.querySelector('section.row');
     if (first) first.after(listRow()); else holder.insertBefore(listRow(), sentinel);
   }
-  moreButton.hidden = !home.more || !!moreWatch;
+  syncFoot();
   if (moreWatch) {
     moreWatch.unobserve(sentinel);
     if (home.more) moreWatch.observe(sentinel);

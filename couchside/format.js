@@ -169,12 +169,28 @@ export function resumable(kept, { key, day, now }) {
     && idle <= RESUME_MINUTES * 60_000 && Array.isArray(kept.home?.rows));
 }
 
+// A kept page runs to this many characters at most, some two hundred rows.
+export const KEEP_CHARS = 1_000_000;
+
+// A kept page as stored: whole, or, past `most` characters, without its last rows and
+// asking for them again, since the same list on the same day gets the same rows back.
+export function keptText(kept, most = KEEP_CHARS) {
+  const text = JSON.stringify(kept);
+  if (text.length <= most) return text;
+  const rows = kept.home.rows;
+  let over = text.length - most, n = rows.length;
+  while (n > 1 && over > 0) over -= JSON.stringify(rows[--n]).length + 1;
+  return JSON.stringify({ ...kept, home: { ...kept.home, rows: rows.slice(0, n), more: true } });
+}
+
 // The rows a page shows, as the server asks to be told them when it is asked for more:
-// each row's key and the ids of its first six cards. My List's are the list's own, and
-// rows the browser makes itself, such as Recently viewed, are not sent.
+// each row's key, the ids of its first six cards and, for a row past today's, the tier
+// it came in. My List's are the list's own, and rows the browser makes itself, such as
+// Recently viewed, are not sent.
 export function shownRows(rows, listIds = []) {
   return rows.filter(r => r.kind !== 'recent').map(r => ({
     key: r.key, ids: (r.kind === 'list' ? listIds : r.items.map(c => c.id)).slice(0, 6),
+    ...(r.tier ? { tier: r.tier } : {}),
   }));
 }
 
