@@ -98,7 +98,7 @@ check('only a search that found nothing anywhere suggests the spelling', searchN
   && !searchNote('qzx', 1, 0).includes('spelling') && !searchNote('qzx', 0, 2).includes('spelling'));
 // The home page: what a page depends on, when a kept page is shown again, what asking for
 // more carries, merging an action, and Recently viewed.
-const { pageKey, resumable, shownRows, withoutCard, viewedStore, noteViewed, recentlyViewed, RESUME_MINUTES, VIEWED_DAYS }
+const { pageKey, resumable, keptText, shownRows, withoutCard, viewedStore, noteViewed, recentlyViewed, RESUME_MINUTES, VIEWED_DAYS }
   = await import('./format.js');
 const listA = { profile: [{ id: 1, weight: 1 }, { id: 2, weight: .7 }], settings: { known_min: 60, type: 'all' } };
 check('a page key ignores the order of settings', pageKey(listA, [5]) === pageKey({ ...listA, settings: { type: 'all', known_min: 60 } }, [5]));
@@ -120,6 +120,16 @@ const rows = [
 ];
 check('asking for more carries each row\'s key and first six, My List\'s own, and not Recently viewed',
   same(shownRows(rows, [9, 12]), [{ key: 'top', ids: [1, 2, 3, 4, 5, 6] }, { key: 'list', ids: [9, 12] }, { key: 'top10', ids: [3, 10, 11] }]));
+check('a row past today\'s rows says which tier it came in, and a row kept from before says none',
+  same(shownRows([{ key: 'decade-1990s', kind: 'row', tier: 2, items: [{ id: 4 }] }, { key: 'gems', kind: 'row', items: [{ id: 5 }] }]),
+    [{ key: 'decade-1990s', ids: [4], tier: 2 }, { key: 'gems', ids: [5] }]));
+const big = { v: 1, at: 1, day: '2026-10-05', key: 'k', home: { more: false, rows: Array.from({ length: 50 }, (_, n) => ({
+  key: `r${n}`, kind: 'row', items: Array.from({ length: 20 }, (_, m) => ({ id: n * 100 + m, name: 'A show with a long name' })) })) } };
+check('a kept page is stored whole while it fits', keptText(big) === JSON.stringify(big));
+const trimmed = JSON.parse(keptText(big, 40_000));
+check('past its budget it keeps its first rows and asks for the rest again', keptText(big, 40_000).length <= 40_000
+  && trimmed.home.more === true && trimmed.home.rows.length > 1 && trimmed.home.rows.length < 50
+  && same(trimmed.home.rows, big.home.rows.slice(0, trimmed.home.rows.length)) && trimmed.key === 'k');
 const merged = withoutCard(rows, 3);
 check('an acted-on card leaves the rows chosen for you, and every other card keeps its place',
   same(merged[0].items.map(c => c.id), [1, 2, 4, 5, 6, 7, 8]) && merged[0].key === 'top');
