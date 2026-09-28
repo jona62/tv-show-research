@@ -19,12 +19,19 @@ import struct
 import sys
 
 import facets
+import fresh
 from taste import Attributes, Taste
 from titles import Titles
 
 RATINGS = (-1, 0, .35, .7, 1)
 MAX_LIST = 60
 TOP_PICKS = 24
+# Two places go to shows from a little further down the ranking (fresh.explore), but
+# only to one scoring at least this share of the last pick the plain ranking shows: a
+# step to the side, not a step down. Measured against the best pick instead, half its
+# score shut ranks 25 to 72 out of most lists, since the best stands well clear of the
+# rest (the 24th scores a median 0.43 of it over the bench personas).
+DIFFERENT_FLOOR = 0.75
 
 # TVmaze is a television catalogue: there are no films in it, so the only real
 # distinction is the kind of programme. These group the 11 raw types into the
@@ -164,6 +171,13 @@ class Engine:
     # ------------------------------------------------------------ validation
 
     def validate(self, body):
+        """The list, settings and liked shows to match; see read()."""
+        return self.read(body)[:3]
+
+    def read(self, body):
+        """Everything a request carries, checked: the rated list, the settings, the liked
+        shows to match and what the browser has shown lately (fresh.py). Anything
+        malformed raises ValueError with a message fit to show."""
         if not isinstance(body, dict):
             raise ValueError('Send a watched list and settings.')
         profile = body.get('profile', [])
@@ -201,7 +215,7 @@ class Engine:
             if not isinstance(value, str) or value not in allowed:
                 raise ValueError(f'Choose a valid {key} filter.')
             result[key] = value
-        return parsed, result, chosen
+        return parsed, result, chosen, fresh.parse(body)
 
     def validate_similar(self, wanted, profile):
         """The liked shows a request asks to match, in list order. Absent or empty
@@ -348,8 +362,27 @@ class Engine:
         return ([name for j, name in enumerate(self.themes) if s['theme_bits'] & (1 << j)],
                 list(s['genres']))
 
+    def arrange(self, ordered, scores, today):
+        """The ranked shows to show, in order, as (index, rank, place). Without freshness
+        they are the first TOP_PICKS and carry no place, exactly as ranked. With it, the
+        five strongest by rank and fatigue hold the top ('steady'), the rest rotate a
+        little each day among the best DEPTH x TOP_PICKS ('fresh', fresh.dither), and
+        places 12 and 20 go to shows from ranks 25 to 72 scoring at least
+        DIFFERENT_FLOOR of the plain ranking's last pick ('different', fresh.explore)."""
+        if not today:
+            return [(i, n + 1, None) for n, i in enumerate(ordered[:TOP_PICKS])]
+        ids = [self.shows[i]['id'] for i in ordered[:fresh.DEPTH * TOP_PICKS]]
+        rank = {show_id: n + 1 for n, show_id in enumerate(ids)}
+        floor = DIFFERENT_FLOOR * scores[ordered[TOP_PICKS - 1]] if len(ordered) >= TOP_PICKS else 0.0
+        shown = fresh.dither(ids, today, 'next', TOP_PICKS)
+        shown, different = fresh.explore(shown, ids, today, 'next',
+                                         allowed=lambda show_id: scores[self.by_id[show_id]] >= floor)
+        return [(self.by_id[show_id], rank[show_id],
+                 'steady' if n < fresh.PINNED else 'different' if show_id in different else 'fresh')
+                for n, show_id in enumerate(shown)]
+
     def calculate(self, body):
-        profile, settings, chosen = self.validate(body)
+        profile, settings, chosen, today = self.read(body)
         positives = [p for p in profile if p['weight'] > 0]
         negatives = [p for p in profile if p['weight'] < 0]
         # Choosing shows narrows what the picks are matched to, not what your taste
@@ -368,6 +401,9 @@ class Engine:
             'taste': {'leans': [], 'avoids': []}, 'interests': [],
             'breadth': {'themes': [0, len(self.themes)], 'genres': [0, len(self.genres)]},
         }
+        if today:
+            # The day and seed come back as they were sent, to tell one day's page from another's.
+            base['fresh'] = today.echo()
         if not positives:
             base['message'] = 'Rate one show as liked or loved to get recommendations.'
             return base
@@ -428,7 +464,8 @@ class Engine:
                 'ties': self.ties(i, source_index),
                 'interest': ranking.interest_of(i),
             }
-        base['picks'] = [pick(i, rank + 1) for rank, i in enumerate(ordered[:TOP_PICKS])]
+        base['picks'] = [{**pick(i, rank), 'place': place} if place else pick(i, rank)
+                         for i, rank, place in self.arrange(ordered, scores, today)]
 
         # Signal prevalence: how often a signal shows up in your likes vs the eligible pool.
         def mask_for(indices):

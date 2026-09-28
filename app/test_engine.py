@@ -3,6 +3,8 @@
 Run from the repository root:  .venv/bin/python app/test_engine.py
 """
 from pathlib import Path
+import hashlib
+import statistics
 import sys
 import time
 
@@ -254,6 +256,89 @@ for label, body, said in [
         check(f'rejects {label}', False)
     except ValueError as exc:
         check(f'rejects {label}', said in str(exc), str(exc))
+
+# 12. Freshness between visits (fresh.py). Without a day and seed or seen counts the
+# answer is the plain ranking; with them the first five hold, the rest rotate with the
+# day's seed and what was shown lately, and places 12 and 20 go to shows from a little
+# further down.
+seed_of = lambda day: hashlib.sha256(f'test|{day}'.encode()).hexdigest()[:16]
+MON, TUE = '2026-10-05', '2026-10-06'
+fresh_body = lambda day, **extra: {'profile': PROFILE, 'settings': {}, 'day': day, 'seed': seed_of(day), **extra}
+monday, tuesday = app.calculate(fresh_body(MON)), app.calculate(fresh_body(TUE))
+top = ids(strict)
+check('without freshness nothing says a day, a seed or a place',
+      'fresh' not in strict and all('place' not in p for p in strict['picks']))
+check('engaged ids alone change nothing', app.calculate({'profile': PROFILE, 'settings': {}, 'engaged': top[:3]}) == strict)
+check('a day and its seed give the same answer every time', app.calculate(fresh_body(MON)) == monday)
+check('the day and seed are echoed', monday['fresh'] == {'day': MON, 'seed': seed_of(MON)})
+check('another day rotates the picks but keeps most of them',
+      ids(monday) != ids(tuesday) and len(set(ids(monday)) & set(ids(tuesday))) >= 15,
+      str(len(set(ids(monday)) & set(ids(tuesday)))))
+check('the first five hold and are marked steady', ids(monday)[:5] == ids(tuesday)[:5] == top[:5]
+      and all(p['place'] == 'steady' for p in monday['picks'][:5]))
+places = lambda answer: [p['place'] for p in answer['picks']]
+check('places 12 and 20 are a little different and the rest rotate',
+      all(places(a) == ['steady'] * 5 + ['fresh'] * 6 + ['different'] + ['fresh'] * 7 + ['different'] + ['fresh'] * 4
+          for a in (monday, tuesday)), places(monday))
+floor = engine_module.DIFFERENT_FLOOR * strict['picks'][-1]['score']
+check('a different pick comes from ranks 25 to 72 and clears the floor',
+      all(25 <= p['rank'] <= 72 and p['score'] >= floor - .1 for a in (monday, tuesday) for p in a['picks']
+          if p['place'] == 'different'))
+check('every pick keeps its rank in the full ranking', all(
+    p['rank'] == top.index(p['id']) + 1 for p in monday['picks'] if p['rank'] <= 24) and max(p['rank'] for p in monday['picks']) <= 72)
+check('the list keeps its length, without repeats or rated shows',
+      len(set(ids(monday))) == len(monday['picks']) == 24 and not rated & set(ids(monday)))
+check('the rest of the answer is the plain one',
+      {k: v for k, v in monday.items() if k not in ('picks', 'fresh')} == {k: v for k, v in strict.items() if k != 'picks'})
+worn = app.calculate(fresh_body(MON, seen={str(top[2]): 50}))
+check('a show shown day after day gives way at the top', top[2] not in ids(worn)[:5] and ids(worn)[:5] == [*top[:2], *top[3:6]])
+check('unless it was engaged with', ids(app.calculate(fresh_body(MON, seen={str(top[2]): 50}, engaged=[top[2]])))[:5] == top[:5])
+tired = app.calculate({'profile': PROFILE, 'settings': {}, 'seen': {str(top[0]): 50}})
+check('seen counts without a seed move a show down, with no noise and no different places',
+      tired['fresh'] == {'day': None, 'seed': None} and ids(tired)[:5] == [top[1], top[2], top[0], top[3], top[4]]
+      and 'different' not in places(tired))
+few = {'known_min': 95, 'year_min': 2018, 'type': 'documentary', 'status': 'Ended'}
+thin_pool = app.calculate({'profile': PROFILE, 'settings': few, 'day': MON, 'seed': seed_of(MON)})
+plain_pool = app.calculate({'profile': PROFILE, 'settings': few})
+check('a pool too small to rotate shows all of itself', 5 < len(plain_pool['picks']) < 24
+      and sorted(ids(thin_pool)) == sorted(ids(plain_pool)) and ids(thin_pool)[:5] == ids(plain_pool)[:5]
+      and 'different' not in places(thin_pool))
+check('an empty list still echoes the day', app.calculate({'profile': [], 'settings': {}, 'day': MON, 'seed': seed_of(MON)})['fresh']['day'] == MON)
+check('validate keeps its three parts and read adds the freshness',
+      len(app.validate(fresh_body(MON))) == 3 and app.read(fresh_body(MON))[3].seed == seed_of(MON))
+
+# Two weeks of someone who opens the page daily and sees every pick: most of the list
+# carries over, no plain top-ten show is gone for more than three days, nothing below 72.
+shown_on, lists = {}, []
+for n in range(14):
+    day = f'2026-10-{n + 1:02d}'
+    seen = {str(i): min(50, round(sum(.5 ** ((n - d) / 7) for d in ds), 1)) for i, ds in shown_on.items()}
+    answer = app.calculate(fresh_body(day, seen={k: v for k, v in seen.items() if v >= .1}))
+    lists.append(answer)
+    for i in ids(answer):
+        shown_on.setdefault(i, []).append(n)
+carried = statistics.mean(len(set(ids(a)) & set(ids(b))) / 24 for a, b in zip(lists, lists[1:]))
+check('over two weeks most of the list carries over from day to day', carried >= .6, f'{carried:.2f}')
+gone = max(max((len(run) for run in ''.join('x' if i not in ids(a) else ' ' for a in lists).split()), default=0) for i in top[:10])
+check('no top-ten show is gone for more than three days running', gone <= 3, str(gone))
+check('nothing ranked below 72 is shown', max(p['rank'] for a in lists for p in a['picks']) <= 72)
+check('and the fortnight shows more than one list\'s worth', len({i for a in lists for i in ids(a)}) >= 36)
+
+for label, extra, said in [
+    ('a day that is not a date', {'day': '2026-02-30', 'seed': 'ab' * 8}, 'YYYY-MM-DD'),
+    ('a seed that is not hexadecimal', {'day': MON, 'seed': 'not-a-seed'}, 'hexadecimal'),
+    ('a day without a seed', {'day': MON}, 'together'),
+    ('a seen count out of range', {'seen': {'169': 51}}, '0 to 50'),
+    ('seen shows not keyed by id', {'seen': {'Lost': 1}}, 'keyed by their id'),
+    ('too many seen shows', {'seen': {str(i): 1 for i in range(301)}}, 'up to 300'),
+    ('engaged ids that are not numbers', {'engaged': ['169']}, 'show ids'),
+]:
+    for how, call in (('calculate', app.calculate), ('validate', app.validate)):
+        try:
+            call({'profile': PROFILE, 'settings': {}, **extra})
+            check(f'{how} rejects {label}', False)
+        except ValueError as exc:
+            check(f'{how} rejects {label}', said in str(exc), str(exc))
 
 print()
 if failures:
