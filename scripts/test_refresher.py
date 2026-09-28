@@ -1,13 +1,14 @@
-"""Check the model refresher, its TMDB step and its Wikidata step, with the network and
-the builds faked.
+"""Check the model refresher, its TMDB step, its Wikidata step and its clickstream step,
+with the network and the builds faked.
 
 Run from the repository root:  .venv/bin/python scripts/test_refresher.py
 
-Nothing here reaches TVmaze, TMDB or Wikidata. The build steps are stand-ins that write
-small but well-formed model files, and TMDB and the Wikidata query service are pretend
-servers. Validation, the facet build and carrying TMDB data forward really run, as
-child processes, the way the service runs them, and so does the Wikidata fetch where a
-test asks for it.
+Nothing here reaches TVmaze, TMDB, Wikidata or Wikimedia's dumps. The build steps are
+stand-ins that write small but well-formed model files, and TMDB, the Wikidata query
+service and the clickstream dumps are pretend servers. Validation, the facet and
+co-interest builds and carrying TMDB data forward really run, as child processes, the
+way the service runs them, and so do the Wikidata and clickstream fetches where a test
+asks for them.
 
 TV_FULL_TEST=1 adds an end-to-end check: the real build steps, driven by the refresher,
 against the TVmaze pages in data/raw (or TV_FULL_RAW) into a temporary MODEL_ROOT, and a
@@ -42,6 +43,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / 'scripts'
 sys.path.insert(0, str(SCRIPTS))
 
+import clickstream                                              # noqa: E402
+import facets                                                   # noqa: E402
 import refresher                                                # noqa: E402
 import tmdb                                                     # noqa: E402
 import wikidata                                                 # noqa: E402
@@ -49,7 +52,11 @@ import wikidata                                                 # noqa: E402
 NOW = datetime.now(timezone.utc).replace(microsecond=0)
 KEY_V3 = '0123456789abcdef0123456789abcdef'
 KEY_V4 = 'eyJhbGciOiJIUzI1NiJ9.a-read-access-token.signature'
-BUILD_KEYS = ['version', 'built_at', 'snapshot_date', 'shows', 'pipeline', 'seeded_from', 'tmdb', 'facets']
+BUILD_KEYS = ['version', 'built_at', 'snapshot_date', 'shows', 'pipeline', 'seeded_from', 'tmdb', 'facets',
+              'cointerest']
+# The clickstream months the pretend listing names, and a month's counts between three shows.
+PUBLISHED = ['2026-06', '2026-07', '2026-08']
+COUNTS = {'1-2': 120, '1-3': 30, '2-3': 60}
 RECORD_KEYS = ['tmdb_id', 'fetched_at', 'rating', 'watch_link', 'providers', 'trailers', 'backdrop',
                'vote_average', 'vote_count']
 TMP = Path(tempfile.mkdtemp(prefix='refresher-test-'))
@@ -166,18 +173,22 @@ def small_cache(ids, fetched=NOW):
 
 
 class FakeRunner:
-    """Stands in for the build subprocesses. Validation, the facet build and the TMDB
-    carry really run; so does the Wikidata fetch when real_wikidata is set, and
-    otherwise a small cache stands in for it."""
+    """Stands in for the build subprocesses. Validation, the facet and co-interest builds
+    and the TMDB carry really run; so do the Wikidata and clickstream fetches when
+    real_wikidata and real_clickstream are set, and otherwise small caches stand in for
+    them, the clickstream one holding the months in self.published."""
 
-    def __init__(self, shows=100, fail=None, hold=None, real_wikidata=False):
+    def __init__(self, shows=100, fail=None, hold=None, real_wikidata=False, real_clickstream=False):
         self.shows, self.fail, self.hold = shows, fail, hold
         self.calls = []
         self.real = refresher.Processes()
-        self.real_steps = ('validate', 'tmdb carry', 'build_facets') + (('wikidata',) if real_wikidata else ())
+        self.real_steps = (('validate', 'tmdb carry', 'build_facets', 'build_cointerest')
+                           + (('wikidata',) if real_wikidata else ())
+                           + (('clickstream check', 'clickstream') if real_clickstream else ()))
         self.popularity_shows = None
         self.tmdb_code, self.tmdb_error = 0, None
         self.cache_shows = None
+        self.published = list(PUBLISHED)
 
     def names(self):
         return [call['name'] for call in self.calls]
@@ -210,6 +221,18 @@ class FakeRunner:
             Path(argv[argv.index('--out') + 1]).write_bytes(wikidata.encode(cache))
             return result(0, ['RESULT ' + json.dumps({'fetched_at': cache['fetched_at'], 'shows': len(cache['shows']),
                                                       'mapped': cache['mapped']})])
+        elif name == 'clickstream check':
+            return result(0, ['RESULT ' + json.dumps({'published': self.published[-3:]})])
+        elif name == 'clickstream':
+            path = Path(argv[argv.index('--cache') + 1])
+            held = clickstream.read(path) or {'version': 1, 'titles': {}, 'months': {}}
+            wanted = self.published[-int(argv[argv.index('--months') + 1]):]
+            fetched = [month for month in wanted if month not in held['months']]
+            held['titles'] = {str(i): f'Show_{i}' for i in range(1, self.shows + 1)}
+            held['months'].update({month: dict(COUNTS) for month in fetched})
+            clickstream.write(path, held)
+            return result(0, ['RESULT ' + json.dumps({'months': sorted(held['months']), 'wanted': wanted,
+                                                      'fetched': fetched, 'skipped': {}, 'titles': self.shows})])
         elif name == 'tmdb':
             folder = Path(argv[argv.index('--version') + 1])
             log(f"calling TMDB with {env.get('TMDB_API_KEY')}")
@@ -273,6 +296,11 @@ for name in ('theme_rules.json', 'audit.json'):
         check(f'scripts/study/{name} matches output/{name}', original.read_bytes() == copy.read_bytes())
     else:
         check(f'scripts/study/{name} is present', copy.exists())
+check('scripts/facets.py is app/facets.py, the reader the apps load the model with',
+      (SCRIPTS / 'facets.py').read_bytes() == (ROOT / 'app' / 'facets.py').read_bytes())
+check('the clickstream scripts are part of the pipeline, with time limits',
+      {'clickstream.py', 'build_cointerest.py'} <= set(refresher.PIPELINE)
+      and {'clickstream check', 'clickstream', 'build_cointerest'} <= set(refresher.TIMEOUTS))
 
 # 2. Schedule and catch-up decisions ---------------------------------------------------------
 
@@ -404,7 +432,8 @@ check('a full run succeeds', done['outcome'] == 'success', done.get('error'))
 check('current is a relative link to the new version', live(r) == f"versions/{done['version']}")
 check('the swap leaves no temporary link behind', not os.path.lexists(r.root / 'current.tmp'))
 check('the steps run in order', runner.names() == ['validate', 'download', 'build_model', 'build_popularity',
-                                                    'build_art', 'wikidata', 'build_facets', 'validate'], runner.names())
+                                                    'build_art', 'wikidata', 'build_facets', 'clickstream',
+                                                    'build_cointerest', 'validate'], runner.names())
 env = runner.env_for('build_model')
 check('build steps write into the temporary version', env['TV_MODEL_OUT'].endswith(f"versions/{done['version']}.tmp")
       and env['TV_ART_OUT'] == env['TV_MODEL_OUT'] + '/art.bin.gz')
@@ -418,15 +447,28 @@ check('build steps run single-threaded', all(call['env'].get(v) == '1' for call 
 check('the download goes to raw.new and is swapped into raw',
       runner.calls[1]['argv'][-2:] == ['--out', str(r.root / 'raw.new')] and (r.raw / 'manifest.json').exists()
       and not os.path.lexists(r.root / 'raw.new') and not os.path.lexists(r.root / 'raw.old'))
-check('a version holds the four model files, the three facet files and build.json',
+check('a version holds the four model files, the three facet files, the two co-interest files and build.json',
       sorted(p.name for p in (r.versions / done['version']).iterdir())
-      == sorted(['build.json', *refresher.MODEL_FILES, *refresher.FACET_FILES]))
+      == sorted(['build.json', *refresher.MODEL_FILES, *refresher.FACET_FILES, *refresher.COINTEREST_FILES]))
 build = r.current()['build']
 check('build.json describes the build', list(build) == BUILD_KEYS and build['version'] == done['version']
       and build['shows'] == 100 and build['seeded_from'] is None and build['pipeline'] == r.pipeline
       and build['tmdb'] == {'fetched_at': None, 'shows': 0}
       and build['facets'] == {'tokens': 3, 'nonzeros': 100, 'linked': 100, 'aliases': 100,
-                              'wikidata_fetched_at': refresher.iso(NOW)}, build)
+                              'wikidata_fetched_at': refresher.iso(NOW)}
+      and build['cointerest'] == {'months': PUBLISHED, 'shows': 3, 'links': 6}, build)
+coi_env = runner.env_for('build_cointerest')
+check('the co-interest is built into the temporary version from the clickstream cache',
+      coi_env['TV_MODEL_OUT'] == env['TV_MODEL_OUT']
+      and coi_env['TV_COINTEREST'] == str(r.root / 'clickstream' / 'cache.json.gz'))
+check('the clickstream is fetched into its cache in place, three months of it',
+      runner.calls[7]['argv'][-4:] == ['--cache', str(r.root / 'clickstream' / 'cache.json.gz'), '--months', '3'])
+check('and meta.json describes the cache', json.loads((r.root / 'clickstream' / 'meta.json').read_text()) == {
+    'fetched_at': refresher.iso(NOW), 'months': PUBLISHED, 'titles': 100, 'script': r.clickstream_script,
+    'checked_at': refresher.iso(NOW), 'published': PUBLISHED})
+check('no other build step is told where the clickstream cache is',
+      all('TV_COINTEREST' not in runner.env_for(name) for name in ('build_model', 'build_popularity', 'build_art',
+                                                                     'build_facets')))
 facet_env = runner.env_for('build_facets')
 check('the facets are built into the temporary version from the Wikidata cache',
       facet_env['TV_MODEL_OUT'] == env['TV_MODEL_OUT'] and facet_env['TV_RAW_DIR'] == str(r.raw)
@@ -669,7 +711,7 @@ code, _headers, body = call('/api/status')
 status = json.loads(body)
 check('status JSON has every part', code == 200 and {
     'status', 'now', 'current', 'versions', 'running', 'next_run', 'schedule', 'last_success', 'runs', 'tmdb',
-    'pipeline', 'model_root'} <= set(status), sorted(status))
+    'wikidata', 'clickstream', 'pipeline', 'model_root'} <= set(status), sorted(status))
 check('status shows the live version and its build.json', status['current']['version'] == r.current()['version']
       and status['current']['build'] == r.current()['build'])
 check('status lists runs with outcome, duration and steps', status['runs'][0]['outcome'] == 'success'
@@ -718,12 +760,13 @@ after = r.current()
 check('the TMDB-only run makes a new live version', r.state['runs'][0]['kind'] == 'tmdb'
       and r.state['runs'][0]['outcome'] == 'success' and after['version'] != before['version'], r.state['runs'][0])
 check('it runs only the TMDB step and validation', runner.names()[-2:] == ['tmdb', 'validate'])
-check('the model and facet files are the live version\'s, shared not rebuilt',
-      all(os.stat(after['path'] / n).st_ino == os.stat(before['path'] / n).st_ino
-          for n in refresher.MODEL_FILES + refresher.FACET_FILES))
+check('the model, facet and co-interest files are the live version\'s, shared not rebuilt',
+      all((after['path'] / n).is_file() and os.stat(after['path'] / n).st_ino == os.stat(before['path'] / n).st_ino
+          for n in refresher.MODEL_FILES + refresher.FACET_FILES + refresher.COINTEREST_FILES))
 check('build.json carries the model\'s facts forward', all(after['build'][k] == before['build'][k]
-      for k in ('snapshot_date', 'shows', 'pipeline', 'seeded_from', 'facets')) and list(after['build']) == BUILD_KEYS
-      and after['build']['facets']['linked'] == 100)
+      for k in ('snapshot_date', 'shows', 'pipeline', 'seeded_from', 'facets', 'cointerest'))
+      and list(after['build']) == BUILD_KEYS and after['build']['facets']['linked'] == 100
+      and after['build']['cointerest']['links'] == 6)
 
 runner.tmdb_code, runner.tmdb_error = 3, tmdb.REJECTED
 done = run(r)
@@ -1156,6 +1199,10 @@ class FakeWikidata:
         elif tag == 'names':
             rows = [{'item': uri(q), 'name': lit(text, lang)} for q in items
                     for lang, text in known(q).get('labels', []) + known(q).get('aliases', [])]
+        elif 'schema:about' in query:
+            # clickstream.py's one query: the English article of every item with a TVmaze id.
+            rows = [{'tvmaze': lit(v), 'title': lit(d['enwiki'])} for d in self.items.values() if d.get('enwiki')
+                    for v in d.get('P8600', [])]
         else:
             return 400, {}, b'Unknown query'
         body = json.dumps({'head': {'vars': []}, 'results': {'bindings': rows}}).encode()
@@ -1412,8 +1459,8 @@ check('eight days makes it due', r.wikidata_due() == 'the cache is 8 days old')
 fake.fail = True
 old_bytes = cache_file.read_bytes()
 done = run(r)
-check('a failed fetch never fails the run', done['outcome'] == 'success' and runner.names()[-3:] == [
-    'wikidata', 'build_facets', 'validate'], done)
+check('a failed fetch never fails the run', done['outcome'] == 'success' and runner.names()[-4:] == [
+    'wikidata', 'build_facets', 'build_cointerest', 'validate'], done)
 check('it leaves a warning naming the cache kept', any('Wikidata step failed, keeping the cache fetched' in w
                                                        for w in done['warnings']), done['warnings'])
 check('the old cache stays and the facets are built from it', cache_file.read_bytes() == old_bytes
@@ -1436,8 +1483,8 @@ meta_file.write_text(json.dumps({**saved, 'fetched_at': refresher.iso(NOW)}))
 done = run(r)
 check('a broken cache is set aside and the facets built from TVmaze alone', done['outcome'] == 'success'
       and any('would not build from the Wikidata cache' in w for w in done['warnings'])
-      and runner.names()[-3:] == ['build_facets', 'build_facets', 'validate'] and version_facets(r)['linked'] == 0,
-      done['warnings'])
+      and runner.names()[-4:] == ['build_facets', 'build_facets', 'build_cointerest', 'validate']
+      and version_facets(r)['linked'] == 0, done['warnings'])
 
 # No cache and no Wikidata: TVmaze facets, and a warning.
 down = FakeWikidata({}, fail=True)
@@ -1477,7 +1524,389 @@ check('an interrupted fetch\'s leftovers are cleared, and the cache kept',
       sorted(p.name for p in (r.root / 'wikidata').iterdir()) == ['cache.json.gz'])
 fake.close()
 
-# 13. download.py --out --------------------------------------------------------------------------------------------
+# 13. The clickstream and the co-interest -----------------------------------------------------------------------------
+
+
+class FakeClickstream:
+    """A pretend dumps.wikimedia.org/other/clickstream: an index of month folders and, in
+    each, a small gzipped TSV of prev, curr, type and n, as the dumps hold them. A month
+    can answer 500, send a gzip stream cut off part way, or hang until released, and the
+    index can be down. Every request is recorded."""
+
+    def __init__(self, months):
+        self.months = dict(months)
+        self.fail, self.cut, self.hold = set(), set(), set()
+        self.release = threading.Event()
+        self.down = False
+        self.requests = []
+        fake = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                fake.requests.append(self.path)
+                status, body = fake.answer(self.path)
+                try:
+                    self.send_response(status)
+                    self.send_header('Content-Length', str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+
+            def log_message(self, *_args):
+                pass
+
+        self.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.url = f'http://127.0.0.1:{self.server.server_address[1]}/clickstream'
+
+    def close(self):
+        self.release.set()
+        self.server.shutdown()
+        self.server.server_close()
+
+    def files(self, since=0):
+        """The months whose files were asked for, in order."""
+        return [re.search(r'/(\d{4}-\d{2})/', path)[1] for path in self.requests[since:] if path.endswith('.tsv.gz')]
+
+    def answer(self, path):
+        if path == '/clickstream/':
+            if self.down:
+                return 503, b'Service Unavailable'
+            rows = ''.join(f'<a href="{m}/">{m}/</a>{" " * 43}07-Dec-2026 22:47    -\n' for m in sorted(self.months))
+            return 200, f'<html><body><pre><a href="../">../</a>\n{rows}</pre></body></html>'.encode()
+        found = re.fullmatch(r'/clickstream/(\d{4}-\d{2})/clickstream-enwiki-(\d{4}-\d{2})\.tsv\.gz', path)
+        if not found or found[1] != found[2] or found[1] not in self.months:
+            return 404, b'Not Found'
+        month = found[1]
+        if month in self.hold:
+            self.release.wait(30)
+        if month in self.fail:
+            return 500, b'Internal Server Error'
+        body = gzip.compress(self.months[month].encode(), mtime=0)
+        return 200, body[:len(body) // 2] if month in self.cut else body
+
+
+def tsv(*links):
+    """A month of clickstream: the links given, among many from articles that are not shows."""
+    return ''.join([f'{a}\t{b}\t{kind}\t{n}\n' for a, b, kind, n in links]
+                   + [f'Main_Page\tArticle_{i}\tlink\t{10 + i}\n' for i in range(2000)])
+
+
+# Six shows with English articles, and the months the pretend dumps can publish.
+TITLED = {f'Q{i}': {'P8600': [str(i)], 'enwiki': f'Show {i}'} for i in range(1, 7)}
+DUMPS = {
+    '2026-05': tsv(('Show_5', 'Show_6', 'link', 900)),
+    '2026-06': tsv(('Show_1', 'Show_2', 'link', 120), ('Show_2', 'Show_1', 'link', 30), ('Show_1', 'Show_3', 'link', 50)),
+    '2026-07': tsv(('Show_1', 'Show_2', 'link', 100), ('Show_3', 'Show_4', 'link', 40)),
+    '2026-08': tsv(('Show_1', 'Show_2', 'link', 80), ('Show_1', 'Show_1', 'link', 999),
+                   ('Show_2', 'Show_4', 'external', 70)),
+    '2026-09': tsv(('Show_2', 'Show_6', 'link', 500)),
+    '2026-10': tsv(('Show_4', 'Show_5', 'link', 70)),
+    '2026-11': tsv(('Show_1', 'Show_6', 'link', 60)),
+}
+titles = FakeWikidata(TITLED)
+
+
+def clickstream_run(name, dumps):
+    runner = FakeRunner(real_clickstream=True)
+    r = make(name, runner, seed=write_model(TMP / f'seed-{name}', 100), CLICKSTREAM_BASE=dumps.url,
+             WIKIDATA_SPARQL_URL=titles.url)
+    r.boot()
+    return r, runner
+
+
+def links(r):
+    """The live version's co-interest as the pairs of show ids it links, or None."""
+    matrix = facets.cointerest(r.current()['path'], r.current()['build']['shows'])
+    if matrix is None:
+        return None
+    indptr, indices, _values = matrix
+    return {(i + 1, indices[k] + 1) for i in range(len(indptr) - 1) for k in range(indptr[i], indptr[i + 1])}
+
+
+def on_day(r, n):
+    r.clock = lambda: NOW + timedelta(days=n)
+
+
+def coi_months(r):
+    return (r.current()['build'].get('cointerest') or {}).get('months')
+
+
+# The first fetch: no cache, so clickstream.py reads the listing itself and streams the
+# latest three months into the cache, and the co-interest is built from them.
+dumps = FakeClickstream({m: DUMPS[m] for m in ('2026-05', *PUBLISHED)})
+r, runner = clickstream_run('clickstream', dumps)
+done = run(r)
+cache_file, meta_file = r.root / 'clickstream' / 'cache.json.gz', r.root / 'clickstream' / 'meta.json'
+held = clickstream.read(cache_file)
+check('a first run fetches the latest three published months', done['outcome'] == 'success' and not done['warnings']
+      and held is not None and sorted(held['months']) == PUBLISHED, (done['warnings'], held and sorted(held['months'])))
+check('each is streamed once, and the older month not at all', sorted(dumps.files()) == PUBLISHED, dumps.requests)
+check('with no cache there is no separate look at the listing', 'clickstream check' not in runner.names()
+      and dumps.requests.count('/clickstream/') == 1)
+check('the cache counts links between shows\' articles, both ways added', held['months']['2026-06'] == {'1-2': 150, '1-3': 50}
+      and held['months']['2026-08'] == {'1-2': 80} and held['titles']['6'] == 'Show_6', held['months'])
+check('meta.json records the months, the listing and the script', json.loads(meta_file.read_text()) == {
+    'fetched_at': refresher.iso(NOW), 'months': PUBLISHED, 'titles': 6, 'script': r.clickstream_script,
+    'checked_at': refresher.iso(NOW), 'published': PUBLISHED}, meta_file.read_text())
+check('the co-interest lands in the version', all((r.current()['path'] / n).is_file() for n in refresher.COINTEREST_FILES)
+      and links(r) == {(1, 2), (2, 1), (1, 3), (3, 1), (3, 4), (4, 3)}, links(r))
+check('build.json says what it was built from', r.current()['build']['cointerest'] == {
+    'months': PUBLISHED, 'shows': 4, 'links': 6}, r.current()['build']['cointerest'])
+check('the fetch is told where the dumps and the title service are',
+      runner.env_for('clickstream')['CLICKSTREAM_BASE'] == dumps.url
+      and runner.env_for('clickstream')['WIKIDATA_SPARQL_URL'] == titles.url)
+check('the cache is readable by other users, like all the service writes', readable(r.root) is None, readable(r.root))
+status = r.status()
+check('status carries the months held', status['clickstream']['months'] == 3
+      and status['clickstream']['cache']['months'] == PUBLISHED and status['clickstream']['last']['fetched'] == PUBLISHED,
+      status['clickstream'])
+page = refresher.render_page(status)
+check('the page shows them, and the live co-interest', '3 months held: 2026-06, 2026-07, 2026-08' in page
+      and '6 links among 4 shows' in page and 'clickstream, CC0' in page)
+
+since, calls = len(dumps.requests), len(runner.calls)
+done = run(r)
+check('later the same day the dumps are not asked again', done['outcome'] == 'success' and len(dumps.requests) == since
+      and not {'clickstream check', 'clickstream'} & set(runner.names()[calls:])
+      and 'build_cointerest' in runner.names()[calls:] and coi_months(r) == PUBLISHED)
+check('and the log says why', 'names nothing it lacks; not fetching' in (r.logs / f"{done['id']}.log").read_text())
+
+on_day(r, 1)
+since, calls = len(dumps.requests), len(runner.calls)
+done = run(r)
+check('the next day the listing is read, once, and nothing fetched', done['outcome'] == 'success'
+      and runner.names()[calls:].count('clickstream check') == 1 and 'clickstream' not in runner.names()[calls:]
+      and dumps.requests[since:] == ['/clickstream/']
+      and json.loads(meta_file.read_text())['checked_at'] == refresher.iso(NOW + timedelta(days=1)))
+
+# A later month appears: it is found by the next day's look and fetched alone.
+dumps.months['2026-09'] = DUMPS['2026-09']
+calls = len(runner.calls)
+run(r)
+check('a month out later that day waits for the next day\'s look', 'clickstream' not in runner.names()[calls:])
+on_day(r, 2)
+since, calls = len(dumps.requests), len(runner.calls)
+done = run(r)
+check('the next day it is found and fetched alone', done['outcome'] == 'success' and not done['warnings']
+      and runner.names()[calls:].count('clickstream check') == 1 and dumps.files(since) == ['2026-09'],
+      (done['warnings'], dumps.requests[since:]))
+check('the cache keeps the months it had beside it', sorted(clickstream.read(cache_file)['months']) == PUBLISHED + ['2026-09']
+      and json.loads(meta_file.read_text())['months'] == PUBLISHED + ['2026-09'])
+check('and the version is built from the latest three', coi_months(r) == ['2026-07', '2026-08', '2026-09']
+      and (2, 6) in links(r) and (1, 3) not in links(r), links(r))
+
+# A month that breaks off part way, then fails outright: the cache carries on without it.
+dumps.months['2026-10'] = DUMPS['2026-10']
+dumps.cut.add('2026-10')
+on_day(r, 3)
+kept = clickstream.read(cache_file)['months']
+done = run(r)
+check('a month cut off part way never fails the run', done['outcome'] == 'success'
+      and any(w.startswith('The clickstream for 2026-10 did not download') for w in done['warnings']), done['warnings'])
+check('the cache keeps its months, and the version is built from them', clickstream.read(cache_file)['months'] == kept
+      and coi_months(r) == ['2026-07', '2026-08', '2026-09'])
+check('the page says which month is missing', '2026-10 did not download' in refresher.render_page(r.status()))
+dumps.cut.clear()
+dumps.fail.add('2026-10')
+since, calls = len(dumps.requests), len(runner.calls)
+done = run(r)
+check('a missing month is tried again next run, not waiting for the next day\'s look',
+      'clickstream check' not in runner.names()[calls:] and dumps.files(since) == ['2026-10']
+      and any('2026-10 did not download' in w and '500' in w for w in done['warnings']), done['warnings'])
+dumps.fail.clear()
+done = run(r)
+check('once it downloads it is used', done['outcome'] == 'success' and not done['warnings']
+      and coi_months(r) == ['2026-08', '2026-09', '2026-10'] and (4, 5) in links(r), done['warnings'])
+
+# The title query failing fails the whole fetch: the cache stays, and so does the run.
+dumps.months['2026-11'] = DUMPS['2026-11']
+on_day(r, 4)
+titles.fail = True
+before = cache_file.read_bytes()
+done = run(r)
+check('a fetch that fails outright keeps the cache, and the run succeeds', done['outcome'] == 'success'
+      and any(w.startswith('Clickstream step failed, keeping the cache of 2026-06, 2026-07, 2026-08, 2026-09, 2026-10')
+              for w in done['warnings'])
+      and cache_file.read_bytes() == before and coi_months(r) == ['2026-08', '2026-09', '2026-10'], done['warnings'])
+check('the failure is recorded, and shown', 'HTTP Error 503' in (r.state['clickstream'].get('error') or '')
+      and 'the last try' in refresher.render_page(r.status()), r.state['clickstream'])
+titles.fail = False
+
+# Another clickstream.py counts every month again beside the cache, which it replaces
+# only when the count has every month the cache had.
+saved = json.loads(meta_file.read_text())
+meta_file.write_text(json.dumps({**saved, 'script': '000000000000'}))
+since = len(dumps.requests)
+done = run(r)
+recount = next(call for call in reversed(runner.calls) if call['name'] == 'clickstream')
+check('a changed clickstream.py counts every month again, beside the cache', done['outcome'] == 'success'
+      and not done['warnings'] and recount['argv'][-4:] == ['--cache', str(r.root / 'clickstream' / 'cache.new.json.gz'),
+                                                           '--months', '3']
+      and sorted(dumps.files(since)) == ['2026-09', '2026-10', '2026-11'], (done['warnings'], dumps.files(since)))
+check('and the count takes the cache\'s place', sorted(clickstream.read(cache_file)['months']) == ['2026-09', '2026-10', '2026-11']
+      and json.loads(meta_file.read_text())['script'] == r.clickstream_script
+      and not (r.root / 'clickstream' / 'cache.new.json.gz').exists() and coi_months(r) == ['2026-09', '2026-10', '2026-11'])
+meta_file.write_text(json.dumps({**json.loads(meta_file.read_text()), 'script': '000000000000'}))
+dumps.fail.add('2026-10')
+before = cache_file.read_bytes()
+done = run(r)
+check('a count that comes up short leaves the cache as it was', done['outcome'] == 'success'
+      and any('counting again came up without 2026-10' in w for w in done['warnings']) and cache_file.read_bytes() == before
+      and not (r.root / 'clickstream' / 'cache.new.json.gz').exists(), done['warnings'])
+dumps.fail.clear()
+done = run(r)
+check('and the next run counts again', done['outcome'] == 'success' and not done['warnings']
+      and json.loads(meta_file.read_text())['script'] == r.clickstream_script)
+
+# A cache that will not build is set aside for the run, and counted again the next.
+cache_file.write_bytes(b'not a cache')
+calls = len(runner.calls)
+done = run(r)
+check('a cache that will not build is set aside, and the version has no co-interest', done['outcome'] == 'success'
+      and any('would not build from the clickstream cache' in w for w in done['warnings'])
+      and runner.names()[calls:][-3:] == ['build_cointerest', 'build_cointerest', 'validate']
+      and r.current()['build']['cointerest'] is None and links(r) is None, done['warnings'])
+check('its meta.json goes, so the next run looks the cache over', not meta_file.exists())
+done = run(r)
+check('which counts it again from nothing', done['outcome'] == 'success' and not done['warnings']
+      and sorted(clickstream.read(cache_file)['months']) == ['2026-09', '2026-10', '2026-11']
+      and coi_months(r) == ['2026-09', '2026-10', '2026-11']
+      and 'counting it again from nothing' in (r.logs / f"{done['id']}.log").read_text(), done['warnings'])
+dumps.close()
+
+# A listing that will not load: a warning, the cache serves, and it is read next run.
+quiet = FakeClickstream({m: DUMPS[m] for m in PUBLISHED})
+r, runner = clickstream_run('clickstream-listing', quiet)
+run(r)
+on_day(r, 1)
+quiet.down = True
+done = run(r)
+check('a listing that will not load is a warning, and the cache serves', done['outcome'] == 'success'
+      and any(w.startswith('Could not read which clickstream months are out, keeping the cache of 2026-06, 2026-07, 2026-08')
+              for w in done['warnings']) and coi_months(r) == PUBLISHED, done['warnings'])
+check('the day\'s look is still to come', json.loads((r.root / 'clickstream' / 'meta.json').read_text())['checked_at']
+      == refresher.iso(NOW))
+quiet.down = False
+calls = len(runner.calls)
+done = run(r)
+check('so the next run reads it', runner.names()[calls:].count('clickstream check') == 1 and not done['warnings'])
+quiet.close()
+
+# No cache and no clickstream: the version simply has no co-interest.
+gone = FakeClickstream({})
+gone.down = True
+r, runner = clickstream_run('clickstream-none', gone)
+done = run(r)
+check('with no cache and no clickstream the run succeeds, without co-interest', done['outcome'] == 'success'
+      and any(w.startswith('Clickstream step failed, so this version has no co-interest') for w in done['warnings'])
+      and not any((r.current()['path'] / n).exists() for n in refresher.COINTEREST_FILES)
+      and r.current()['build']['cointerest'] is None, done['warnings'])
+check('build_cointerest is told there is none', runner.env_for('build_cointerest')['TV_COINTEREST'] == ''
+      and not (r.root / 'clickstream' / 'cache.json.gz').exists())
+check('the page says the months are still to come', 'No months held yet' in refresher.render_page(r.status()))
+gone.close()
+
+# A cache put in place by hand, say a copy of data/cointerest.json.gz, is taken as it is.
+handed = FakeClickstream({m: DUMPS[m] for m in PUBLISHED})
+r, runner = clickstream_run('clickstream-by-hand', handed)
+clickstream.write(r.root / 'clickstream' / 'cache.json.gz', {
+    'version': 1, 'titles': {}, 'months': {'2026-06': {'1-2': 5}, '2026-07': {'1-2': 5}}})
+done = run(r)
+check('a cache put there by hand is taken as it is, and only what it lacks is fetched', done['outcome'] == 'success'
+      and not done['warnings'] and handed.files() == ['2026-08']
+      and sorted(clickstream.read(r.root / 'clickstream' / 'cache.json.gz')['months']) == PUBLISHED
+      and json.loads((r.root / 'clickstream' / 'meta.json').read_text())['script'] == r.clickstream_script,
+      (done['warnings'], handed.files()))
+handed.close()
+
+# A fetch stopped part way keeps the months it finished.
+slow = FakeClickstream({m: DUMPS[m] for m in PUBLISHED})
+slow.hold.add('2026-08')
+stopped = TMP / 'stopped' / 'cache.json.gz'
+proc = subprocess.Popen([sys.executable, str(SCRIPTS / 'clickstream.py'), '--cache', str(stopped), '--months', '3'],
+                        env={**os.environ, 'CLICKSTREAM_BASE': slow.url, 'WIKIDATA_SPARQL_URL': titles.url},
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+wait_for(lambda: '2026-08' in slow.files())
+proc.kill()
+proc.wait()
+check('a fetch stopped part way keeps the months it finished', stopped.is_file()
+      and sorted(clickstream.read(stopped)['months']) == ['2026-06', '2026-07'])
+slow.close()
+titles.close()
+
+r = make('clickstream-tidy')
+(r.root / 'clickstream' / 'cache.new.json.gz').write_bytes(b'half')
+(r.root / 'clickstream' / 'cache.json.gz.k2j3h4.tmp').write_bytes(b'half')
+(r.root / 'clickstream' / 'cache.json.gz').write_bytes(b'kept')
+r.take_file_lock()
+r.tidy()
+r.release_file_lock()
+check('an interrupted count\'s leftovers are cleared, and the cache kept',
+      sorted(p.name for p in (r.root / 'clickstream').iterdir()) == ['cache.json.gz'])
+
+
+def cointerest_files(folder, rows, linked, months=('2026-08',), magic=b'COI1'):
+    """Co-interest files by hand: linked maps a row to [(column, similarity), ...]."""
+    indptr, indices, values = [0], [], []
+    for i in range(rows):
+        for j, s in linked.get(i, ()):
+            indices.append(j)
+            values.append(s)
+        indptr.append(len(indices))
+    gz(folder / 'cointerest.bin.gz', struct.pack('<4sII', magic, rows, len(indices))
+       + struct.pack(f'<{rows + 1}I', *indptr) + struct.pack(f'<{len(indices)}I', *indices)
+       + struct.pack(f'<{len(values)}f', *values))
+    gz(folder / 'cointerest.json.gz', json.dumps({'version': 1, 'months': list(months), 'pairs': len(indices) // 2,
+                                                  'shows': len(linked), 'license': 'CC0-1.0'}).encode())
+    return folder
+
+
+pair = {0: [(1, 0.5)], 1: [(0, 0.5)]}
+good = cointerest_files(write_model(TMP / 'coi-good', 100), 100, pair)
+check('a version\'s co-interest is validated and summed up', refresher.validate_version(good)['cointerest'] == {
+    'months': ['2026-08'], 'shows': 2, 'links': 2})
+check('a version without co-interest passes, with none',
+      refresher.validate_version(write_model(TMP / 'coi-none', 100))['cointerest'] is None)
+lone = cointerest_files(write_model(TMP / 'coi-lone', 100), 100, pair)
+(lone / 'cointerest.json.gz').unlink()
+rejects('a co-interest matrix without its metadata is refused', lambda: refresher.validate_version(lone),
+        refresher.Invalid, 'cointerest.json.gz missing beside cointerest.bin.gz')
+bad = write_model(TMP / 'coi-bad', 100)
+for label, make_files, said in (
+        ('built for another catalog', lambda: cointerest_files(bad, 99, pair), 'has 99 rows where the catalog has 100'),
+        ('of another kind', lambda: cointerest_files(bad, 100, pair, magic=b'FAC1'), 'is not co-interest data'),
+        ('linking outside the catalog', lambda: cointerest_files(bad, 100, {0: [(100, 0.5)]}), 'not in this catalog'),
+        ('with a similarity of zero', lambda: cointerest_files(bad, 100, {0: [(1, 0.0)]}), 'not above zero'),
+        ('with a similarity that is not a number', lambda: cointerest_files(bad, 100, {0: [(1, float('nan'))]}),
+         'not above zero'),
+        ('naming no months', lambda: cointerest_files(bad, 100, pair, months=()), 'names no clickstream months')):
+    make_files()
+    rejects(f'co-interest {label} is refused', lambda: refresher.validate_version(bad), refresher.Invalid, said)
+cointerest_files(bad, 100, pair)
+gz(bad / 'cointerest.bin.gz', gunzip(bad / 'cointerest.bin.gz')[:-4])
+rejects('a truncated co-interest matrix is refused', lambda: refresher.validate_version(bad), refresher.Invalid,
+        'truncated')
+cointerest_files(bad, 100, pair)
+(bad / 'cointerest.json.gz').write_bytes(b'not gzip')
+rejects('co-interest metadata that does not decompress is refused', lambda: refresher.validate_version(bad),
+        refresher.Invalid, 'cointerest.json.gz does not decompress')
+
+seed = cointerest_files(write_model(TMP / 'seed-coi', 100), 100, pair)
+r = make('seed-coi', FakeRunner(), seed=seed)
+r.boot()
+check('a seed with co-interest carries it into the first version', all((r.current()['path'] / n).is_file()
+      for n in refresher.COINTEREST_FILES) and r.current()['build']['cointerest'] == {
+    'months': ['2026-08'], 'shows': 2, 'links': 2})
+half_seed = cointerest_files(write_model(TMP / 'seed-coi-half', 100), 100, pair)
+(half_seed / 'cointerest.json.gz').unlink()
+r = make('seed-coi-half', FakeRunner(), seed=half_seed)
+r.boot()
+check('a seed with only the matrix leaves it behind', r.current() is not None
+      and not (r.current()['path'] / 'cointerest.bin.gz').exists() and r.current()['build']['cointerest'] is None)
+
+# 14. download.py --out --------------------------------------------------------------------------------------------
 
 pages = {0: [{'id': 1}, {'id': 2}], 1: [{'id': 250}]}
 
@@ -1520,7 +1949,7 @@ check('the --out manifest lists the pages', manifest['pages'] == 2 and manifest[
 check('download --out leaves the default paths alone', not sentinel.exists())
 check('--refresh and --out together are refused', combined == 2)
 
-# 14. End to end with the real build steps (opt in) -------------------------------------------------------------------
+# 15. End to end with the real build steps (opt in) -------------------------------------------------------------------
 
 
 def full_test(raw_dir, manifest):
@@ -1528,11 +1957,14 @@ def full_test(raw_dir, manifest):
     seed.mkdir()
     for name in ('catalog.json.gz', 'vectors.bin.gz', 'popularity.bin.gz'):
         shutil.copyfile(ROOT / 'model' / name, seed / name)
-    # Wikidata is the pretend service: a few real TVmaze ids, so the facets have links.
-    service = FakeWikidata(ITEMS)
+    # Wikidata is the pretend service: a few real TVmaze ids, so the facets have links, and
+    # English articles for them, which a month of pretend clickstream links.
+    service = FakeWikidata({q: {**d, 'enwiki': f"Show {d['P8600'][0]}"} if d.get('P8600') else d
+                            for q, d in ITEMS.items()})
+    dumps = FakeClickstream({'2026-08': tsv(('Show_1', 'Show_2', 'link', 90), ('Show_2', 'Show_7', 'link', 30))})
     config = refresher.Config({'MODEL_ROOT': str(TMP / 'full-root'), 'SEED_MODEL_DIR': str(seed),
                                'RAW_SOURCE_DIR': str(raw_dir), 'AUTO_DELAY_SECONDS': '0',
-                               'WIKIDATA_SPARQL_URL': service.url})
+                               'WIKIDATA_SPARQL_URL': service.url, 'CLICKSTREAM_BASE': dumps.url})
     r = refresher.Refresher(config, quiet=True)
     r.start(schedule=False)
     r.boot()
@@ -1557,7 +1989,10 @@ def full_test(raw_dir, manifest):
           and gunzip(cur['path'] / 'art.bin.gz') == gunzip(ROOT / 'couchside' / 'art.bin.gz'))
     check('the real build makes facets from the Wikidata cache', cur is not None and cur['build']['facets']
           and cur['build']['facets']['linked'] >= 4 and cur['build']['facets']['tokens'] > 1000, cur and cur['build'])
+    check('and co-interest from the clickstream cache', cur is not None
+          and cur['build']['cointerest'] == {'months': ['2026-08'], 'shows': 3, 'links': 4}, cur and cur['build'])
     service.close()
+    dumps.close()
     print('\n  step timings, driven by the refresher:')
     for run_record in reversed(r.state['runs']):
         for s in run_record['steps']:

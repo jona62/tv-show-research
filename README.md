@@ -69,6 +69,12 @@ TVmaze or IMDb id, beside TVmaze's networks for every show, plus each show's nam
 in other languages for search. The Wikidata cache is fetched again once it is a
 week old; when Wikidata is down, the last cache serves, so it never fails a build.
 
+Which shows the same readers look up comes from Wikipedia's monthly clickstream,
+also CC0: once a day the refresher checks for a newly published month and streams
+it without storing it (about 500 MB, three months on the first build), keeping
+only the counts between shows' articles for the latest three months. When a month
+will not download, the months already held serve, and it is tried again next run.
+
 With `TMDB_API_KEY` set, each build also fetches TMDB's US age ratings, streaming
 services, trailers and backdrops for the 23,000 or so best-known shows, 6,000 a
 night, keeping each for at most TMDB's six months. Couchside shows them, credited

@@ -11,7 +11,8 @@ indices u32 (nnz), values f32 (nnz), rows in catalog order, indices ascending.
 cointerest.json.gz: {"version": 1, "months": [...], "pairs": n, "shows": n, "source": ...}
 
 Environment: TV_MODEL_OUT (reads catalog.json.gz there, writes there), TV_COINTEREST
-(the cache; without one, nothing is written and any old files are removed).
+(the cache, data/cointerest.json.gz when unset; set but empty, or naming no file, there
+is none: nothing is written and any old files are removed).
 """
 import gzip
 import json
@@ -28,7 +29,7 @@ import clickstream  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 MODEL = Path(os.environ.get('TV_MODEL_OUT') or ROOT / 'model')
-CACHE = os.environ.get('TV_COINTEREST') or str(ROOT / 'data' / 'cointerest.json.gz')
+CACHE = os.environ.get('TV_COINTEREST', str(ROOT / 'data' / 'cointerest.json.gz'))
 MONTHS = 3
 TOP = 100
 
