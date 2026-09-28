@@ -399,9 +399,11 @@ for shape, body in SHAPES.items():
     check(f'{shape}: Popular sits below row 10', 'popular' not in keys or keys.index('popular') >= 10, keys)
     check(f'{shape}: Something different is never among the first eight', 'different' not in keys[:FIRST_PAGE])
     check(f'{shape}: no row twice', len(keys) == len(set(keys)))
-    heads = [c['id'] for r in page_rows for c in r['items'][:GLANCE]]
+    # The Top 10 is a chart, shown whole: a show trending today may also open a personal row.
+    personal_rows = [r for r in page_rows if r['key'] != 'top10']
+    heads = [c['id'] for r in personal_rows for c in r['items'][:GLANCE]]
     check(f'{shape}: no two rows open with the same show', len(heads) == len(set(heads)))
-    times = Counter(c['id'] for r in page_rows for c in r['items'])
+    times = Counter(c['id'] for r in personal_rows for c in r['items'])
     check(f'{shape}: no show appears more than twice', max(times.values()) <= 2, times.most_common(2))
     sizes = {r['key']: len(r['items']) for r in page_rows}
     check(f'{shape}: the Top 10 holds ten', sizes['top10'] == 10)
@@ -423,7 +425,8 @@ for shape, body in SHAPES.items():
     check(f'{shape}: a row opens with one show at most from a franchise and two from a creator', fine)
     neighbours = []
     net = lambda i: engine.shows[i]['channel']
-    for r in chosen:
+    # Top picks and Because you loved keep the ranking's order past networks (PRECISE_KINDS).
+    for r in [r for r in chosen if r['key'] != 'top' and not r['key'].startswith('seed-')]:
         cards = [engine.by_id[c['id']] for c in r['items']]
         others = {engine.by_id[c['id']] for o in page_rows if o is not r for c in o['items'][:GLANCE]}
         for n in range(PINNED, min(GLANCE, len(cards))):
@@ -436,7 +439,7 @@ for shape, body in SHAPES.items():
             if any(net(j) != net(cards[n]) and j not in others and not lib.facet_sets(j)[0] & franchises
                    and all(creators[t] < 2 for t in lib.facet_sets(j)[1]) for j in cards[n + 1:]):
                 neighbours.append((r['key'], n))
-    check(f'{shape}: past the pinned cards, no two neighbours share a network while another could stand there',
+    check(f'{shape}: past the pinned cards, rows other than Top picks and Because you loved keep a network\'s shows apart',
           not neighbours, neighbours)
     niches = [r['title'] for r in page_rows if r['key'].startswith('niche-')]
     check(f'{shape}: micro-genre names run to five words at most', all(len(t.split()) <= 5 for t in niches), niches)
@@ -459,7 +462,7 @@ for shape, body in SHAPES.items():
         check(f'{shape}: with fewer than ten liked shows, personal rows are at most half the page',
               2 * sum(shelf.personal for shelf, _items in laid) <= len(laid))
     seed_interests = Counter(shelf.interest for shelf, _items in laid if shelf.kind_of == 'seed')
-    check(f'{shape}: at most two Because you loved rows for an interest', max(seed_interests.values()) <= 2)
+    check(f'{shape}: at most three Because you loved rows for an interest', max(seed_interests.values()) <= 3)
     for shelf, items in laid:
         cards = [engine.shows[i] for i in items]
         if shelf.key == 'gems':
@@ -558,8 +561,8 @@ rejects('a language that is not a tag', lambda: lib.home({'profile': [], 'lang':
 rejects('too many languages', lambda: lib.home({'profile': [], 'lang': ['en'] * 9}), 'language tags')
 rejects('a language that is a number', lambda: lib.home({'profile': [], 'lang': 5}), 'language tags')
 rejects('shown rows that are not a list', lambda: lib.home({'profile': [], 'shown': 'top'}), 'shown')
-rejects('too many shown rows', lambda: lib.home({'profile': [], 'shown': [{'key': f'r{n}', 'ids': []} for n in range(25)]}),
-        'up to 24')
+rejects('too many shown rows', lambda: lib.home({'profile': [], 'shown': [{'key': f'r{n}', 'ids': []} for n in range(MOST_ROWS + 1)]}),
+        f'up to {MOST_ROWS}')
 rejects('a shown row with a bad key', lambda: lib.home({'profile': [], 'shown': [{'key': 'Top Picks!', 'ids': []}]}), 'key')
 rejects('a shown row with too many ids', lambda: lib.home({'profile': [], 'shown': [{'key': 'top', 'ids': list(range(7))}]}),
         'up to 6')

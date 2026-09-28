@@ -6,7 +6,7 @@ rebuilt every night. Nothing plays. It is for finding your next show.
 
 ## What is on it
 
-- **Home** is a hero and up to 24 rows, eight at first and more as you scroll.
+- **Home** is a hero and 20 to 30 rows, eight at first and more as you scroll.
   Once you have rated a few shows they are *Top picks for you*, My List,
   *Because you loved* your favourites, micro-genres named from what each of your
   interests leans toward (*British panel games*, *Dark sci-fi dramas*), shows
@@ -104,9 +104,9 @@ like your list* from My List, *New for you*, your genres and themes, the *Top 10
 and *Popular right now*, chosen with your taste and ordered by popularity. One
 *Something different* row shows well-loved shows of a kind your list has none of.
 
-**Choosing and ordering them.** Top picks lead, re-ranked from the best hundred
-so their mix of interests matches your list's (Steck's calibration, lambda 0.4).
-My List comes second when it holds a show you have not rated. Each next row is the
+**Choosing and ordering them.** Top picks lead, in the engine's own order, which
+already gives each of your interests its share; a further calibration pull only
+moved the best picks off the first cards on the bench, so it is off. My List comes second when it holds a show you have not rated. Each next row is the
 candidate with the most relevance (how well its first six cards fit, weighted by
 position, times its evidence: a loved seed 1.0, a micro-genre 0.9, a liked seed
 0.8, a row that is not personal 0.7) less penalties for overlapping a row above,
@@ -115,24 +115,28 @@ and taking its interest past its share. Penalties count half in the first eight
 rows and half again more below them. Interests get rows by quota in proportion to
 their weight: every one with 8% or more gets one, and with three or more none is
 planned more than 40%. Within an interest the rows come in order: *Because you
-loved*, a micro-genre, a creator, franchise or star, then a second *Because you
-loved*. The Top 10 floats between rows 3 and 10, Popular sits below row 10, and
-*Something different* never among the first eight. A page holds up to 24 rows,
-about 10 plus 2 for each interest and at least 14 when there is that much worth
-showing: it stops early once the best row left fits less than half as well as the
-median row shown. With fewer than ten liked shows, half the page at most is
+loved*, a micro-genre, a creator, franchise or star, a second *Because you
+loved*, more micro-genres, and a third. The Top 10 floats between rows 3 and 10,
+Popular sits below row 10, and *Something different* never among the first
+eight. A page holds 20 rows, or 14 plus 3 for each interest up to 30, and past
+the twentieth stops early once the best row left fits less than half as well as
+the median row shown. No two rows share a title. With fewer than ten liked shows, half the page at most is
 personal and the rest is what a first visit sees.
 
 **No row repeats another.** No two rows open with the same show, a show appears
 twice at most (and a show that opened a row above counts for less the second
-time), and a row half of whose top twelve is already in a row above is left out.
-A row's first six hold one show from a franchise at most and two from a creator,
-and no two neighbours from one network. Rated shows stay out of every row but the
-Top 10, and so does anything very close to a show you marked *Not for me*.
+time), and a row half of whose top twelve is already in a row above is left out
+(a *Because you loved* row may overlap Top picks, which its favourite's interest
+leads). A row's first six hold one show from a franchise at most and two from a
+creator, and, except in Top picks and *Because you loved*, whose order is their
+point, no two neighbours from one network. The Top 10 is a chart shown whole, so a
+show trending today may open another row too. Rated shows stay out of every row
+but the Top 10, and so does anything very close to a show you marked *Not for me*.
 
 **Within a row** the usual order weighs taste 0.65, popularity 0.2 and rating
-0.15; *Because you loved* weighs closeness to its show 0.5, taste 0.35 and
-popularity 0.15; hidden gems taste 0.6 and rating 0.4; the Top 10 and Popular go
+0.15; *Because you loved* goes as the engine ranks more like one show: closeness
+to it, less the pull of anything you disliked, times how well each show fits the
+taste of that show's interest; hidden gems taste 0.6 and rating 0.4; the Top 10 and Popular go
 by popularity. The clearest example of a micro-genre, franchise or creator leads
 its row, the first six are spread so they do not look alike, and a card may carry
 one call-out, such as *Same creator as Breaking Bad* or *Stars Kelly Macdonald*.
@@ -292,10 +296,19 @@ them, and what the home page keeps for a visit, asks for more with, merges after
 action and shows as recently viewed.
 
 `scripts/bench/home_bench.py` compares the home page with an earlier one over the
-71 bench personas: a fifth of each persona's loves is held out, and it counts how
+71 bench personas: one of each persona's loves is held out, and it counts how
 many come back among the first six cards of the first three and first eight rows,
 whether every interest with 15% or more of the list has one of the first eight
-rows, and how often a card repeats on the page.
+rows, and how often a card repeats on the page. Against the page before this one
+(eleven fixed rows):
+
+| | before | now |
+|---|---:|---:|
+| held-out loves in the first 3 rows | 51% | 51% |
+| held-out loves in the first 8 rows | 66% | 68% |
+| every interest of 15% or more in the first 8 rows | 100% | 100% |
+| rows per page | 10.9 | 19.7 |
+| repeated cards per page | 93 | 70 |
 
 ## Deploy
 

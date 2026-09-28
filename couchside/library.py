@@ -81,13 +81,16 @@ DESCRIPTION = 'Rows of TV shows picked for your taste, with trailers, where to w
 # ------------------------------------------------------------------ the home page
 FIRST_PAGE = 8          # rows in the first answer
 NEXT_PAGE = 6           # rows in each answer after it, asked for as the reader nears the end
-MOST_ROWS = 24          # a page holds at most this many rows
-FEWEST_ROWS = 14        # and, when there is enough to show, at least this many
+MOST_ROWS = 30          # a page holds at most this many rows
+FEWEST_ROWS = 20        # and, when there is enough to show, at least this many
 PINNED = 2              # cards at the front of a row that keep their places from day to day
 LIST_ROW = 20           # My List's row holds the most recently added
 CREATOR_SHORTEST = 6    # one creator seldom has eight shows, so their row may hold six
 TOP_POOL = 100          # Top picks are calibrated from this many of the plain ranking
-CALIBRATION = 0.4       # Steck's lambda: how hard Top picks are pulled to the list's mix
+# Steck's lambda for pulling Top picks toward the list's mix of interests. The engine's
+# ranking already gives each interest its share (engine.Ranking), and on the bench any
+# further pull only moved the best picks off the first cards, so it is off.
+CALIBRATION = 0.0
 SIMILAR = 0.3           # closeness at which a show counts as similar to a seed
 NEIGHBOURS = 12         # similar shows a seed needs before it can lead a row
 NOT_FOR_ME = 0.5        # closeness to a show marked Not for me that keeps a show off the page
@@ -102,7 +105,7 @@ INTEREST_FLOOR = 0.08   # an interest this heavy gets at least one row
 INTEREST_CAP = 0.4      # and none, with three or more interests, holds more of the rows
 MOST_INTERESTS = 8      # interests weighed for rows of their own
 INTEREST_ROWS = 0.55    # the share of a page planned for rows that serve one interest
-SEED_ROWS = (2, 6)      # "Because you loved" rows on a page, fewest and most
+SEED_ROWS = (2, 8)      # "Because you loved" rows on a page, fewest and most
 LIGHT_LIST = 10         # below this many liked shows, personal rows are at most half the page
 REAPPEAR = 0.7          # a show that opened an earlier row counts this much again
 TAG_SPREAD = 0.3        # how hard the first cards of a row avoid looking alike
@@ -121,6 +124,10 @@ EVIDENCE = {'top': 1.0, 'loved': 1.0, 'liked': 0.8, 'niche': 0.9, 'cast': 0.9, '
             'theme': 0.7, 'plain': 0.7, 'language': 0.75, 'different': 0.6}
 # Row kinds whose places are set rather than chosen.
 FIXED_KINDS = ('top', 'list', 'top10')
+# Rows whose order is their point: Top picks and Because you loved keep the ranking's
+# order past franchise and creator limits, without spreading a network's shows apart,
+# since a big streamer's shows are many and alike only in where they stream.
+PRECISE_KINDS = ('top', 'seed')
 
 # How an interest's leanings read in a row's name ("Dark British crime dramas",
 # "Mockumentaries from the 2000s"): an adjective, a country or language, a subgenre and
@@ -423,7 +430,9 @@ class Page:
         self.place_in = [({i: n for n, i in enumerate(items)}, len(items)) for items in whole]
         self.ascending = sorted(taste.scores[i] for i in self.usable)
         self.significant = [k for k, s in enumerate(self.share) if s >= INTEREST_FLOOR]
-        self.cap = min(MOST_ROWS, max(FEWEST_ROWS, 10 + 2 * len(self.significant)))
+        # Netflix builds about 40 rows and Prime Video about 20; a page here holds 20 or,
+        # with more interests to serve, up to 30, and stops sooner only when it runs out.
+        self.cap = min(MOST_ROWS, max(FEWEST_ROWS, 14 + 3 * len(self.significant)))
         self.light = len(positives) < LIGHT_LIST
         self.day = date.fromisoformat(fresh.day).toordinal() if fresh.day else 0
         self.names = {p['id']: e.shows[e.by_id[p['id']]]['name'] for p in positives}
@@ -510,6 +519,18 @@ class Page:
         items = sorted(score, key=lambda i: (-score[i], self.e.shows[i]['id']))[:SEED_POOL]
         return items, {i: score[i] for i in items}
 
+    def seed_order(self, close, k=None):
+        """A seed's row as the engine ranks more like one show: closeness to the seed, less
+        the pull of anything disliked, times how well each show fits the taste of the
+        interest the seed belongs to (engine.Ranking with one scoring show). On the bench
+        this kept the strongest matches on a row's first cards, where a blend of places
+        pushed them past it."""
+        tastes = self.ranking.interest_tastes
+        taste = tastes[k] if k is not None and k < len(tastes) else None
+        score = {i: v * (taste.factor(i) if taste else 1.0) for v, i in close if v > 0}
+        items = sorted(score, key=lambda i: (-score[i], self.e.shows[i]['id']))[:SEED_POOL]
+        return items, {i: score[i] for i in items}
+
     # ------------------------------------------------------------ candidate rows
 
     def members(self, k):
@@ -536,7 +557,7 @@ class Page:
         _count, close = self.near(p['id'], k)
         if not close:
             return None
-        items, score = self.closeness_row(close, k)
+        items, score = self.seed_order(close, k)
         loved = p['weight'] == 1
         verb = 'loved' if loved else 'liked'
         return Shelf(f'seed-{p["id"]}', f'Because you {verb} {self.names[p["id"]]}', 'seed', items, score,
@@ -719,7 +740,7 @@ class Page:
                        key=lambda k: -self.share[k])[:MOST_INTERESTS]
         names = set()
         for k in heavy:
-            seeds = [row for row in (self.seed_row(p, k) for p in self.seeds(k)[:2]) if row]
+            seeds = [row for row in (self.seed_row(p, k) for p in self.seeds(k)[:3]) if row]
             recipes = self.recipes(k)
             niches = list({row.key: row for row in (self.niche_row(k, parts) for parts in recipes)
                            if row and row.key not in names}.values())
@@ -729,7 +750,7 @@ class Page:
             queue += ranked_people[:1] + seeds[1:2]
             if recipes:
                 queue.append(self.acclaimed_row(k, recipes[0]))
-            queue += niches[1:] + ranked_people[1:]
+            queue += niches[1:] + seeds[2:3] + ranked_people[1:]
             queues[k] = [s for s in queue if len(s.items) >= s.shortest]
         if creators:
             rows.append(creators)
@@ -744,10 +765,10 @@ class Page:
                     genre_weight[g] += p['weight']
             for t in themes:
                 theme_weight[t] += p['weight']
-        for g in sorted(genre_weight, key=lambda g: (-genre_weight[g], g))[:3]:
+        for g in sorted(genre_weight, key=lambda g: (-genre_weight[g], g))[:5]:
             found, score = self.default(self.take(lambda i, g=g: g in e.shows[i]['genres']))
             rows.append(Shelf(f'genre-{g}'.lower(), GENRE_ROWS[g], 'genre', found, score, evidence=EVIDENCE['genre']))
-        for t in sorted(theme_weight, key=lambda t: (-theme_weight[t], t))[:2]:
+        for t in sorted(theme_weight, key=lambda t: (-theme_weight[t], t))[:3]:
             bit = 1 << e.themes.index(t)
             found, score = self.default(self.take(lambda i, bit=bit: e.shows[i]['theme_bits'] & bit))
             rows.append(Shelf(f'theme-{slug(THEME_ROWS[t])}', THEME_ROWS[t], 'genre', found, score,
@@ -786,7 +807,7 @@ class Page:
         pool = self.usable[:TOP_POOL]
         group = self.ranking.group
         target = self.share
-        if len(target) < 2 or not pool:
+        if len(target) < 2 or not pool or not CALIBRATION:
             return pool[:3 * ROW]
         alpha = 0.01
         counts = [0] * len(target)
@@ -1007,14 +1028,26 @@ class Page:
             beyond = lambda k: max(0.0, (interest_rows[k] + 1) / (interest_total + 1) - self.share[k])
             least = min((beyond(s.interest) for s in options if s.interest is not None
                          and s.interest < len(self.share)), default=0.0)
+            # Rows already shown come back as keys; their names are the candidates'.
+            titles = {(getattr(row, 'title', None) or getattr(by_key.get(row.key), 'title', '')).casefold()
+                      for row in placed} - {''}
             for s in options:
+                if s.title.casefold() in titles:
+                    # Two rows may reach one name (a genre row and a micro-genre both
+                    # called Thrillers); a page shows it once.
+                    dropped.add(s.key)
+                    self.dropped[s.key] = 'same title as a row above'
+                    continue
                 rel = self.relevance(s, heads, count)
                 if len(s.glance(heads, count)) < min(GLANCE, s.shortest) and s.kind == 'row':
                     dropped.add(s.key)
                     self.dropped[s.key] = 'too few cards left to open with'
                     continue
+                # More like a favourite overlaps Top picks by nature when the favourite is from
+                # the list's main interest; its first cards still differ, so only other rows count.
                 overlap, like = max(((len(s.top12 & row.top12) / max(1, min(12, len(s.top12))), row.key)
-                                     for row in placed if row.top12 and row.kind == 'row'), default=(0.0, None))
+                                     for row in placed if row.top12 and row.kind == 'row'
+                                     and not (s.kind_of == 'seed' and row.kind_of == 'top')), default=(0.0, None))
                 if overlap >= 0.5 and s.kind_of not in FIXED_KINDS:
                     dropped.add(s.key)
                     self.dropped[s.key] = f'repeats {like}'
@@ -1037,7 +1070,7 @@ class Page:
                 if not plain:
                     break
                 value, rel, _key, best = max(plain, key=lambda x: (x[0], x[1], x[2]))
-            if len(placed) >= FIRST_PAGE and relevances and not unserved and not overweight \
+            if len(placed) >= FEWEST_ROWS and relevances and not unserved and not overweight \
                     and best.kind_of not in FIXED_KINDS and max(x[1] for x in scored) < 0.5 * statistics.median(relevances):
                 if not top10 or 'top10' in taken or 'top10' in tired:
                     break
@@ -1141,12 +1174,13 @@ class Page:
         return rows
 
     def reserved(self):
-        """What the Top 10 and My List open with, held back from every other row's first
-        cards, and counted as shown once."""
+        """What My List opens with, held back from every other row's first cards and counted
+        as shown once. The Top 10 is not held back: it always shows all ten, and a show
+        trending today may still open Top picks, as it does on Netflix."""
         heads, count = set(), Counter()
-        for items in (self.lib.top10, list(reversed(self.saved))[:LIST_ROW]):
-            heads.update(items[:GLANCE])
-            count.update(items)
+        items = list(reversed(self.saved))[:LIST_ROW]
+        heads.update(items[:GLANCE])
+        count.update(items)
         return heads, count
 
     # ------------------------------------------------------------ cards
@@ -1181,7 +1215,10 @@ class Page:
             score = shelf.score
             pool.sort(key=lambda i: -score.get(i, 0.0) * (REAPPEAR if i in heads else 1.0))
         order = self.lib.daily(pool, self.fresh, f'row-{shelf.key}', ROW, PINNED)
-        order = spread(order, self.lib.groups, keep=PINNED)
+        groups = self.lib.groups
+        if shelf.kind_of in PRECISE_KINDS:
+            groups = lambda i: [g for g in self.lib.groups(i) if g[0] != 'network']
+        order = spread(order, groups, keep=PINNED)
         chosen = set(order)
         head = self.opening(shelf, order + [i for i in pool if i not in chosen], heads)
         if len(head) < min(GLANCE, shelf.shortest):
@@ -1205,9 +1242,10 @@ class Page:
         candidates = [i for i in ordered if i not in heads]
         allowed = lambda i: not (lib.facet_sets(i)[0] & franchises) and \
             not any(creators[c] >= 2 for c in lib.facet_sets(i)[1])
+        precise = shelf.kind_of in PRECISE_KINDS
         while len(head) < GLANCE:
             pinned = len(head) < PINNED
-            last = network(head[-1]) if head and not pinned else None
+            last = network(head[-1]) if head and not pinned and not precise else None
             best, value, weighed = None, None, 0
             for n, i in enumerate(candidates):
                 if not allowed(i) or (last and network(i) == last):
