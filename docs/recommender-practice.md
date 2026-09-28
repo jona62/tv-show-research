@@ -97,6 +97,23 @@ Two extensions were measured and left out: adding eleven other Wikipedias' click
 some non-English personas up and others down, and six months instead of three changed
 nothing beyond noise.
 
+## Plot text
+
+Story closeness compares plot summaries by the words they share (TF-IDF). Two small
+sentence-embedding models (all-MiniLM-L6-v2 and bge-small-en-v1.5) and LSA were
+measured in its place and beside it. The embeddings do read plots better: by plot
+alone, a show liked alongside another sits a median 2,500th of 25,000 rather than
+3,700th, while LSA did worse than the words themselves. Inside the engine that made
+no difference beyond noise, because taste, facets and co-interest already decide the
+top 24: the tuned personas lost a little, the held-out ones gained a little, and each
+change came down to one or two shows swapping places near the top. Leaving
+characters' first names out of the words lifted only two of the benchmark's
+favourites. An embedding model would add a 23 to 133 MB model and two libraries to
+the refresher, 43 to 86 MB of neighbours to each version and about a fifth to each
+request's time, so TF-IDF stays. Every persona is built from well-known shows, so the
+benchmark cannot say whether meaning helps where it might matter most: obscure or new
+shows with no co-interest or facets.
+
 ## What Next Watch and Couchside do
 
 Both apps keep no accounts, so everything personal lives in the browser and is
