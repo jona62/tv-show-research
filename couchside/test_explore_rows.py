@@ -202,6 +202,9 @@ for shape, body in LISTS.items():
     check(f'{shape}: no row to explore repeats another', not repeats, repeats)
     repeats = [(b.key, a.key) for a in tiers[3] for b in tiers[4] if len(a.top12 & b.top12) >= 0.5 * min(12, len(b.top12))]
     check(f'{shape}: no browse row repeats a row to explore', not repeats, repeats)
+    tried = {r.key.removeprefix('explore-') for r in tiers[3] if r.key.startswith('explore-')}
+    twice = [r.key for r in tiers[4] if r.key.split('-', 1)[1] in tried]
+    check(f'{shape}: a genre or format with a row to try is not browsed again under its plain name', not twice, twice)
 
     # Tier 4: every genre, theme and format, as the first page cuts them.
     for r in tiers[4]:

@@ -1573,11 +1573,14 @@ class Page:
         rows = [(f'genre-{g}'.lower(), title, 'genre', g) for g, title in GENRE_ROWS.items()]
         rows += [(f'theme-{slug(title)}', title, 'theme', t) for t, title in THEME_ROWS.items()]
         rows += [(f'browse-{f}', f'{self.FORMAT_NAMES[f]} for you', 'format', f) for f in FORMAT_ROWS]
-        # A genre the list has not touched has its row in tier 3, from the same shows.
-        before = [row.top12 for row in self.explore_formats() + self.explore_genres() + [self.different()] if row]
+        # A genre or format the list has not touched has its row in tier 3, from the same
+        # shows ("Legal dramas to try"), and is not browsed again under its plain name.
+        explored = [row for row in self.explore_formats() + self.explore_genres() if row]
+        tried = {row.key for row in explored}
+        before = [row.top12 for row in explored + [self.different()] if row]
         out = []
         for key, title, sort, value in rows:
-            if len(found.get((sort, value), ())) < SHORTEST or title in named:
+            if len(found.get((sort, value), ())) < SHORTEST or title in named or f'explore-{slug(value)}' in tried:
                 continue
             items, score = self.default(found[sort, value])
             top = frozenset(items[:12])
@@ -2098,11 +2101,15 @@ class Deeper:
         self.open()
 
     def open(self):
-        """The next tier's rows join those left, and the bar is set by its rows from here."""
-        self.tier += 1
+        """The next tier's rows join those left, and the bar is set by its rows from here.
+        Exploring opens with browsing: on its own it put fifteen rows to try in a row
+        before the first row to browse, while together the penalty for repeating a sort of
+        row spreads the rows to try among the rows to browse."""
         self.opened = len(self.relevances)
-        for shelf in self.page.tier_rows(self.tier):
-            self.join(shelf)
+        for tier in (TIERS - 1, TIERS) if self.tier == TIERS - 2 else (self.tier + 1,):
+            self.tier = tier
+            for shelf in self.page.tier_rows(tier):
+                self.join(shelf)
 
     def bar(self):
         """The relevance a row needs to be weighed: WEAK times the median of the rows since
