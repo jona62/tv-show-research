@@ -729,9 +729,393 @@ class Page:
                                   subtitle=fans_of([self.names[p['id']] for p in holders[c]])))
         return found, creators_row
 
+    # ------------------------------------------------------------ tier 1: more from the list
+
+    # How much a tier 1 row's evidence counts, on EVIDENCE's scale; seed rows keep tier 0's.
+    # In the order of the held-out loves a row of each kind holds on the bench's personas.
+    PERSONAL_EVIDENCE = {'fans': 0.85, 'fans-liked': 0.7, 'cast-shared': 0.85, 'cast': 0.7, 'subject': 0.8,
+                         'setting': 0.7, 'decade': 0.75, 'channel': 0.7}
+    CAST_PER_SHOW = 2       # Starring rows one liked show may give, so an ensemble does not flood the page
+    # How well a row cut from a few shows (one actor's, one subject's) must open: the fit
+    # of its first cards, which a row from the best fits of a genre reaches with ease.
+    OPENING_FIT = 0.85
+    REGULARS = 20           # a cast list this short names only a show's regulars
+    REGULAR_SHARE = 0.5     # an actor with this share of their credits in such lists is a regular
+    NOT_CHANNELS = ('Syndication',)     # TVmaze's networks that are not a channel anyone tunes to
+    CLASSICS = 1980         # liked shows from before this year share one decade row
+    SUBJECT_ROWS = 4        # subject rows at most
+    SUBJECT_WORDS = 6       # words in a subject row's title at most
+    # Subjects that read better named another way than their Wikidata label.
+    SUBJECT_NAMES = {'New York City Police Department': 'the NYPD', 'Los Angeles Police Department': 'the LAPD',
+                     'Federal Bureau of Investigation': 'the FBI', 'Central Intelligence Agency': 'the CIA',
+                     'Chicago Police Department': 'the Chicago police', 'police': 'the police',
+                     'LGBTQ': 'LGBTQ lives', 'supernatural': 'the supernatural', 'paranormal': 'the paranormal',
+                     'mafia': 'the mafia', 'universe': 'the universe', 'unidentified flying object': 'UFOs'}
+    EVENT = re.compile(r'\b(?:War|Wars|Holocaust|attacks|disaster|Revolution|Rebellion|Crisis|Troubles|Battle|'
+                       r'Crusades?|pandemic)\b')
+    ORGANISATION = re.compile(r'\b(?:Department|Bureau|Agency|Service|Police|Office|Army|Navy|Corps|Party)\b')
+    PERIOD = re.compile(r'\d{3}0s|\d{1,2}(?:st|nd|rd|th) century(?: BC)?')
+    # Nouns that name a whole, not one of many ("shows about revenge", not "revenges").
+    UNCOUNTED = re.compile(r'(?:ing|ism|ics|ence|ance|tion|sion|ment|ship|logy|phy|ness|cy|ia|s)$')
+    ABSTRACT = {'music', 'revenge', 'travel', 'crime', 'love', 'sport', 'food', 'money', 'nature', 'murder',
+                'incest', 'homicide', 'football', 'baseball', 'basketball', 'hockey', 'dance', 'war', 'life', 'art',
+                'magic', 'fashion', 'death', 'time', 'space', 'law', 'justice', 'sex', 'history', 'slavery', 'poetry',
+                'faith', 'religion', 'health', 'grief', 'destiny', 'change', 'technology', 'society', 'surgery',
+                'mythology', 'cannabis', 'liberty', 'philosophy', 'comedy', 'satire', 'evolution', 'ecology'}
+    # Places that take "the": the United States, the Russian Empire, the Arctic.
+    THE_FIRST = ('United', 'Republic', "People's", 'Soviet', 'Russian', 'Roman', 'Ottoman', 'Holy', 'Czech')
+    THE_LAST = ('Empire', 'Union', 'Republic', 'Kingdom', 'Islands', 'Isles', 'Ocean', 'Sea', 'Mountains', 'Alps',
+                'Valley', 'Desert', 'Netherlands', 'Philippines', 'Bahamas', 'Arctic', 'Antarctic', 'Caribbean',
+                'Outback', 'Moon', 'Internet', 'Underground', 'States', 'Emirates', 'Midlands', 'Highlands')
+
     def personal_rows(self):
-        """Tier 1: more rows from the list itself, for when the first page's run out."""
-        return []
+        """Tier 1: more rows from the list itself, for when the first page's run out: more
+        like each liked show past the few the first page queues, what its fans also look up,
+        more of the casts, and the channels, subjects and decades liked shows share. Each
+        kind comes best first, and a key or a title only once."""
+        e = self.e
+        liked = sorted((p for p in self.positives if p['weight'] >= .7),
+                       key=lambda p: (-p['weight'], -self.order[p['id']]))
+        owner = {p['id']: k for k, interest in enumerate(self.interests) for p in interest}
+        usable = set(self.usable)
+        seeds = {p['id']: self.seed_row(p, owner[p['id']]) for p in liked
+                 if p['id'] in owner and self.near(p['id'], owner[p['id']])[0] >= NEIGHBOURS}
+        top = self.calibrated()
+        mine = self.more_seeds(liked, seeds)
+        rows, seeds = list(mine.values()), {**seeds, **mine}
+        if e.co:
+            rows += self.fans_rows(liked, owner, usable, seeds, top)
+        if e.facets:
+            rows += self.cast_rows(liked, owner, usable)
+            rows += self.subject_rows(liked, owner, usable, top)
+            rows += self.channel_rows(liked, owner, top)
+        rows += self.decade_rows(liked, owner, top)
+        out, keys, titles = [], set(), set()
+        for row in rows:
+            if row and len(row.items) >= row.shortest and row.key not in keys and row.title.casefold() not in titles:
+                keys.add(row.key)
+                titles.add(row.title.casefold())
+                out.append(row)
+        return out
+
+    def more_seeds(self, liked, seeds):
+        """Because you loved or liked each liked show with enough close matches, past the
+        three seeds shelves() queues for each interest heavy enough for rows of its own, as
+        {show id: row}. Favourites of one interest open their rows with much the same shows,
+        and the page drops a row that repeats half of one above, so a seed row that would is
+        cut apart from the seed rows before it (the first page's, then this tier's), and every
+        liked show keeps a row of its own."""
+        queued = {p['id'] for k in self.heavy_interests() for p in self.seeds(k)[:3]}
+        before = [seeds[i].items for i in sorted(queued) if seeds.get(i)]
+        out = {}
+        for p in liked:
+            row = seeds.get(p['id'])
+            if not row or p['id'] in queued:
+                continue
+            if any(self.repeats(row.items, other) >= 0.5 for other in before):
+                # No scores: the page would sort by them, undoing apart()'s order.
+                row = Shelf(row.key, row.title, row.kind_of, self.apart(row.items, before), interest=row.interest,
+                            evidence=row.evidence, seed=row.seed, diverse=row.diverse)
+            before.append(row.items)
+            out[p['id']] = row
+        return out
+
+    def heavy_interests(self):
+        """The interests heavy enough for rows of their own on the first page, heaviest
+        first, as shelves() takes them."""
+        return sorted((k for k, s in enumerate(self.share) if s >= INTEREST_FLOOR / 2),
+                      key=lambda k: -self.share[k])[:MOST_INTERESTS]
+
+    def fans_rows(self, liked, owner, usable, seeds, top):
+        """<Show> fans also look up: the shows that readers of a liked show's Wikipedia
+        article also look up (engine.cointerest, which leaves out the show's own franchise),
+        award ceremonies aside, weighed half on how strong the link is and half on taste.
+        Closeness already counts these links, so a show's seed row mostly opens with the
+        same shows; a fans row is made only where it would not repeat half of that row's
+        first twelve cards, or Top picks', which the page would drop as a repeat. Cut apart
+        from its seed row instead, it keeps the weakest links and seldom a show the list
+        loves."""
+        e = self.e
+        out = []
+        for p in liked:
+            j, k = e.by_id[p['id']], owner.get(p['id'])
+            links = {i: s for i, s in e.cointerest(j) if i in usable and e.shows[i]['type'] != 'Award Show'}
+            if len(links) < SHORTEST:
+                continue
+            strength, taste = ranks(links), ranks({i: self.taste_of(i, k) for i in links})
+            score = {i: 0.5 * strength[i] + 0.5 * taste[i] for i in links}
+            items = sorted(score, key=lambda i: (-score[i], e.shows[i]['id']))
+            above = [top] + ([seeds[p['id']].items] if seeds.get(p['id']) else [])
+            if any(self.repeats(items, other) >= 0.5 for other in above):
+                continue
+            out.append(Shelf(f'fans-{p["id"]}', f'{self.names[p["id"]]} fans also look up', 'fans', items, score,
+                             interest=k, seed=j,
+                             evidence=self.PERSONAL_EVIDENCE['fans' if p['weight'] == 1 else 'fans-liked'],
+                             subtitle='What readers of its Wikipedia page also look up'))
+        return out
+
+    @staticmethod
+    def repeats(items, other):
+        """The share of items' first twelve cards among other's first twelve, as arrange()
+        measures a row against the rows above it."""
+        head = set(items[:12])
+        return len(head & set(other[:12])) / max(1, min(12, len(head)))
+
+    @staticmethod
+    def apart(items, others):
+        """items less the cards any of the other rows opens with, and with fewer than half of
+        any one's first twelve among their own first twelve. Cards past that go after the
+        twelfth or, in a row too short to reach it, are left out."""
+        opening = {i for other in others for i in other[:GLANCE]}
+        tops = [set(other[:12]) for other in others]
+        head, rest, count = [], [], [0] * len(tops)
+        for i in items:
+            if i in opening:
+                continue
+            hits = [n for n, top in enumerate(tops) if i in top]
+            if len(head) < 12 and all(count[n] < 5 for n in hits):
+                head.append(i)
+                for n in hits:
+                    count[n] += 1
+            else:
+                rest.append(i)
+        if len(head) == 12:
+            return head + rest
+        # Short of twelve, a row is measured against its own length.
+        while any(2 * c >= len(head) > 0 for c in count):
+            n = next(n for n, c in enumerate(count) if 2 * c >= len(head))
+            drop = next(i for i in reversed(head) if i in tops[n])
+            head.remove(drop)
+            count = [c - (drop in top) for c, top in zip(count, tops)]
+        return head
+
+    def past_top(self, items, score, top):
+        """A filtered row's cards and scores, or, when half or more of its first twelve are
+        Top picks' (a decade most of the list is from), the cards past what Top picks shows,
+        in order: the page would drop the row as a repeat of Top picks."""
+        if self.repeats(items, top) < 0.5:
+            return items, score
+        return self.apart(items, [top]), None
+
+    def cast_rows(self, liked, owner, usable):
+        """Starring rows past the four people_rows() makes: first anyone else in two or more
+        liked shows, then the regulars of each loved show, newest first, whose other shows
+        fit the list well. A regular is mostly credited in cast lists short enough to hold
+        only regulars; a guest actor is mostly credited in the long lists of long-running
+        shows, and a row would not be starring them. One liked show gives CAST_PER_SHOW rows
+        at most, so an ensemble does not flood the page."""
+        lib, e = self.lib, self.e
+        count, backers = Counter(), {}
+        for p in self.positives:
+            for c in sorted(lib.facet_sets(e.by_id[p['id']])[3]):
+                count[c] += 1
+                backers.setdefault(c, []).append(p)
+        shared = sorted((c for c, n in count.items() if n >= 2), key=lambda c: (-count[c], c))
+        wanted = [(c, 'cast-shared') for c in shared[4:] if self.regular(c) >= self.REGULAR_SHARE]
+        for p in liked:
+            if p['weight'] < 1:
+                continue
+            mine = []
+            for c in lib.facet_sets(e.by_id[p['id']])[3]:
+                if count[c] == 1:
+                    regular = self.regular(c)
+                    if regular >= self.REGULAR_SHARE:
+                        mine.append((-regular, c))
+            wanted += [(c, 'cast') for _r, c in sorted(mine)]
+        given, out = Counter(), []
+        for c, kind in wanted:
+            behind = backers[c]
+            if any(given[p['id']] >= self.CAST_PER_SHOW for p in behind):
+                continue
+            found = lib.holders('cast', [c]) & usable
+            if len(found) < SHORTEST:
+                continue
+            k = self.lead_interest(owner, behind)
+            items, score = self.default(found, k)
+            row = Shelf(f'cast-{slug(e.facets.keys[c])}', f'Starring {e.facets.labels[c]}', 'cast', items, score,
+                        interest=k, evidence=self.PERSONAL_EVIDENCE[kind], callouts=False,
+                        subtitle=fans_of([self.names[p['id']] for p in behind]))
+            if kind == 'cast' and not self.opens_well(row):
+                continue
+            given.update(p['id'] for p in behind)
+            out.append(row)
+        return out
+
+    def regular(self, c):
+        """The share of actor c's credits in cast lists of REGULARS names or fewer."""
+        f = self.e.facets
+        start, end = f.family_ranges[f.families.index('cast')]
+        shows = [f.post_rows[n] for n in range(f.col_ptr[c], f.col_ptr[c + 1])]
+        short = 0
+        for i in shows:
+            lo, hi = f.row_ptr[i], f.row_ptr[i + 1]
+            short += bisect_left(f.columns, end, lo, hi) - bisect_left(f.columns, start, lo, hi) <= self.REGULARS
+        return short / len(shows) if shows else 0.0
+
+    def opens_well(self, row):
+        """Whether a row's first cards fit the list at least OPENING_FIT, on its interest's scale."""
+        return self.relevance(row, set(), Counter()) >= self.OPENING_FIT * row.evidence
+
+    def shared_by(self, liked, family):
+        """The facet columns of a family that liked shows carry, with the shows behind each."""
+        f = self.e.facets
+        start, end = f.family_ranges[f.families.index(family)]
+        backers = {}
+        for p in liked:
+            for c, _v in f.row(self.e.by_id[p['id']]):
+                if start <= c < end:
+                    backers.setdefault(c, []).append(p)
+        return backers
+
+    @staticmethod
+    def key_slug(label, key):
+        """A row key from a name, or from its facet key when the name has no letters a key
+        can hold, as with Россия 1."""
+        text = slug(label)
+        return text if re.search('[a-z]', text) and text != 'row' else slug(key)
+
+    def lead_interest(self, owner, behind):
+        """The interest most of a row's liked shows are in."""
+        return Counter(owner.get(p['id']) for p in behind).most_common(1)[0][0]
+
+    def subject_rows(self, liked, owner, usable, top):
+        """Shows about what two or more liked shows are about: Wikidata's main subjects, with
+        the places and periods shows are set in, for those with enough shows that fit and
+        whose best fit well. The most shared come first, then topics before times and
+        places, the narrowest first. A subject only one liked show has seldom led to another
+        show the list loves."""
+        f = self.e.facets
+        backers = self.shared_by(liked, 'subject')
+        found = []
+        for c, behind in backers.items():
+            if len(behind) < 2:
+                continue
+            title, rank = self.subject_title(f.labels[c])
+            if not title or len(title.split()) > self.SUBJECT_WORDS:
+                continue
+            shows = self.lib.holders('subject', [c]) & usable
+            if len(shows) >= SHORTEST:
+                found.append(((-len(behind), rank, len(shows), c), c, title, shows))
+        out = []
+        for _order, c, title, shows in sorted(found, key=itemgetter(0)):
+            k = self.lead_interest(owner, backers[c])
+            items, score = self.past_top(*self.default(shows, k), top)
+            row = Shelf(f'subject-{self.key_slug(f.labels[c], f.keys[c])}', title, 'subject', items, score,
+                        interest=k, subtitle=fans_of([self.names[p['id']] for p in backers[c]]),
+                        evidence=self.PERSONAL_EVIDENCE['setting' if title.startswith('Shows set') else 'subject'])
+            if self.opens_well(row):
+                out.append(row)
+                if len(out) == self.SUBJECT_ROWS:
+                    break
+        return out
+
+    def subject_title(self, label):
+        """A subject row's title and how specific the subject is, 0 for a topic, 1 for a
+        time, an event or an agency and 2 for a place; no title for what cannot be said.
+        Wikidata keeps common nouns in lower case and proper nouns as they are."""
+        if label in self.SUBJECT_NAMES:
+            return f'Shows about {self.SUBJECT_NAMES[label]}', 0 if label[:1].islower() else 1
+        if label == 'future' or self.PERIOD.fullmatch(label):
+            return f'Shows set in the {label}', 1
+        if re.fullmatch(r'\d{3,4}', label):
+            return f'Shows set in {label}', 1
+        if label[:1].islower():
+            if label in NOUNS:
+                return upper_first(NOUNS[label]), 0
+            return f'Shows about {self.plural(label)}', 0
+        if not label[:1].isalpha():
+            return None, 3
+        if self.EVENT.search(label):
+            if label.startswith('The '):
+                return f'Shows about the {label[4:]}', 1
+            return f'Shows about {"" if label.startswith("World War") else "the "}{label}', 1
+        if self.ORGANISATION.search(label):
+            return f'Shows about the {label}', 1
+        words = label.split()
+        the = 'the ' if words[0] in self.THE_FIRST or words[-1] in self.THE_LAST else ''
+        return f'Shows set in {the}{label}', 2
+
+    def plural(self, label):
+        """'serial killers' from 'serial killer', leaving 'organized crime' as it is."""
+        words = label.split()
+        last = words[-1]
+        if last in self.ABSTRACT or self.UNCOUNTED.search(last):
+            return label
+        if last.endswith(('x', 'z', 'ch', 'sh')):
+            last += 'es'
+        elif last.endswith('y') and last[-2:-1] not in 'aeiou':
+            last = last[:-1] + 'ies'
+        elif last.endswith('man'):
+            last = last[:-3] + 'men'
+        else:
+            last += 's'
+        return ' '.join(words[:-1] + [last])
+
+    def channel_rows(self, liked, owner, top):
+        """A row for each channel behind two or more liked shows (TVmaze's network or web
+        channel), for the interest most of them are in."""
+        f = self.e.facets
+        backers = self.shared_by(liked, 'network')
+        out = []
+        for c in sorted((c for c in backers if len(backers[c]) >= 2), key=lambda c: (-len(backers[c]), c)):
+            label = f.labels[c]
+            if label in self.NOT_CHANNELS:
+                continue
+            shows = self.lib.holders('network', [c])
+            k = self.lead_interest(owner, backers[c])
+            items, score = self.past_top(*self.default(self.take(lambda i: i in shows), k), top)
+            name = f'Channel {label}' if label.isdigit() else label
+            out.append(Shelf(f'channel-{self.key_slug(label, f.keys[c])}', f'{name} shows for you', 'channel', items,
+                             score, interest=k, evidence=self.PERSONAL_EVIDENCE['channel'],
+                             subtitle=fans_of([self.names[p['id']] for p in backers[c]])))
+        return out
+
+    def decade_rows(self, liked, owner, top):
+        """A row for each decade two or more liked shows premiered in, those before
+        CLASSICS together as classics. The first page already cuts an interest's main
+        subject by its decades ("Crime dramas from the 2010s"), so a decade row that would
+        repeat one of those goes past it, to the rest of the decade for the list."""
+        shows, by_id = self.e.shows, self.e.by_id
+        backers = {}
+        for p in liked:
+            year = shows[by_id[p['id']]]['year']
+            if year:
+                backers.setdefault(self.era_of(year), []).append(p)
+        cuts = self.decade_cuts()
+        out = []
+        for era in sorted((d for d in backers if len(backers[d]) >= 2), key=lambda d: (-len(backers[d]), d)):
+            first, last = (1, self.CLASSICS) if not era else (era, era + 10)
+            k = self.lead_interest(owner, backers[era])
+            found = self.take(lambda i: first <= (shows[i]['year'] or 0) < last)
+            items, score = self.past_top(*self.default(found, k), top)
+            if any(self.repeats(items, other) >= 0.5 for other in cuts.get(era, ())):
+                items, score = self.apart(items, cuts[era]), None
+            if era:
+                title = f'{era % 100:02d}s shows for you' if era < 2000 else f'{era}s shows for you'
+                key = f'decade-{era}'
+            else:
+                title, key = f'Classics before {self.CLASSICS}', f'decade-before-{self.CLASSICS}'
+            out.append(Shelf(key, title, 'decade', items, score, interest=k, evidence=self.PERSONAL_EVIDENCE['decade'],
+                             subtitle=fans_of([self.names[p['id']] for p in backers[era]])))
+        return out
+
+    def era_of(self, year):
+        """A premiere year's decade row: its decade, or 0 for the classics before CLASSICS."""
+        return 0 if year < self.CLASSICS else year // 10 * 10
+
+    def decade_cuts(self):
+        """The cards of the first page's micro-genres that are cut by a decade (recipes()),
+        as {decade row: [cards of each]}."""
+        cuts = {}
+        for k in self.heavy_interests():
+            for parts in self.recipes(k):
+                era = next((part for part in parts if part['role'] == 'era'), None)
+                row = self.niche_row(k, parts) if era else None
+                # A micro-genre too small for its decade leaves the decade out of its name.
+                if row and row.title.endswith(era['words']):
+                    year = int(re.search(r'\d{4}', era['words']).group())
+                    cuts.setdefault(self.era_of(year), []).append(row.items)
+        return cuts
 
     def shelves(self):
         """Every candidate row: those that belong to an interest, queued in the order an
