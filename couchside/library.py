@@ -5,20 +5,39 @@ several at once (top picks, more like each show you loved, the best of a genre f
 you, what is new), so this works out how close everything sits to each rated show
 once per request and cuts every row from that. Nothing about a person is kept
 between requests.
+
+The home page (Page) follows what Netflix, Prime Video, YouTube and Spotify have
+published about theirs. It weighs many candidate rows: more like each favourite,
+micro-genres named from what an interest leans toward, creators, casts and franchises
+a list shares, hidden gems, limited series. It then chooses and orders rows one at a
+time for relevance, less what a row would repeat of the rows above it, and gives each
+interest in the list rows in proportion to its weight (Steck's calibration). Pages
+arrive eight rows at a time and are rebuilt the same from the same request, so a
+browser asking for more says which rows it already shows. fresh.py turns the day and
+the browser's memory of what it showed into the day's order, cards and hero.
 """
 from array import array
+from bisect import bisect_left
+from collections import Counter
 from datetime import date
+from functools import lru_cache
+from operator import itemgetter
 import gzip
+import heapq
+import math
+import re
+import statistics
 import struct
 import sys
 
-from engine import FORMAT_GROUPS, QUICK_PICKS
+from engine import FORMAT_GROUPS, QUICK_PICKS, TIE_COMMON
+from fresh import dither, pick_one, spread, shuffle_rows, ROW_KEY
+from taste import COUNTRIES, decade as decade_of
 
 IMAGE = 'https://static.tvmaze.com/uploads/images/{size}/{bucket}/{image}.jpg'
 ROW = 20            # cards in a row
-SHORTEST = 6        # a row with fewer cards than this is left out
+SHORTEST = 8        # a row with fewer cards than this is left out
 MORE = 12           # cards under More like this
-SEEDS = 3           # "Because you loved" rows
 GLANCE = 6          # cards a row shows before scrolling, kept distinct across rows
 MAX_SAVED = 200     # My List, the same ceiling the transfer code carries
 
@@ -57,22 +76,178 @@ FORMAT_ROWS = {'animation': 'Animated series', 'documentary': 'Documentaries', '
 NEW_DAYS = 150      # a show premiered this recently before the snapshot wears a New badge
 DESCRIPTION = 'Rows of TV shows picked for your taste, with trailers, where to watch and My List.'
 
+# ------------------------------------------------------------------ the home page
+FIRST_PAGE = 8          # rows in the first answer
+NEXT_PAGE = 6           # rows in each answer after it, asked for as the reader nears the end
+MOST_ROWS = 24          # a page holds at most this many rows
+FEWEST_ROWS = 14        # and, when there is enough to show, at least this many
+PINNED = 2              # cards at the front of a row that keep their places from day to day
+LIST_ROW = 20           # My List's row holds the most recently added
+CREATOR_SHORTEST = 6    # one creator seldom has eight shows, so their row may hold six
+TOP_POOL = 100          # Top picks are calibrated from this many of the plain ranking
+CALIBRATION = 0.4       # Steck's lambda: how hard Top picks are pulled to the list's mix
+SIMILAR = 0.3           # closeness at which a show counts as similar to a seed
+NEIGHBOURS = 12         # similar shows a seed needs before it can lead a row
+NOT_FOR_ME = 0.5        # closeness to a show marked Not for me that keeps a show off the page
+NICHE = 12              # shows a micro-genre needs before it is a row
+DEPTH_POOL = 3000       # how far down the ranking, overall or in an interest, a filtered row looks
+FILTER_POOL = 150       # matches a filtered row weighs before cutting to a row
+SEED_POOL = 80          # the closest shows weighed for a seed's row
+FITTING = 3000          # a seed's row looks among the best this many fits, overall and in its interest
+ROTATE = 3              # a day's seed rotates among an interest's best this many
+INTEREST_FLOOR = 0.08   # an interest this heavy gets at least one row
+INTEREST_CAP = 0.4      # and none, with three or more interests, holds more of the rows
+MOST_INTERESTS = 8      # interests weighed for rows of their own
+INTEREST_ROWS = 0.55    # the share of a page planned for rows that serve one interest
+SEED_ROWS = (2, 6)      # "Because you loved" rows on a page, fewest and most
+LIGHT_LIST = 10         # below this many liked shows, personal rows are at most half the page
+REAPPEAR = 0.7          # a show that opened an earlier row counts this much again
+TAG_SPREAD = 0.3        # how hard the first cards of a row avoid looking alike
+PLACE_SHARE = 0.15      # a language or country this share of liked shows is a row
+HIDDEN = (0.4, 0.75, 0.2)   # hidden gems: popularity percentile at most, rating quantile, top taste share
+CALLOUTS = 10           # cards in a row that may carry a call-out
+POSITION = [1 / math.log2(k + 2) for k in range(GLANCE)]     # how much each of the first cards counts
+SHARP = 8               # a card's fit for weighing rows: the share of the pool it outranks, to this power
+# Rating to interest weight, with recent ratings counting more than old ones.
+INTEREST_WEIGHT = {1: 1.0, .7: 0.6, .35: 0.2}
+# How much a row's evidence counts: rows seeded by a loved show say most about a person,
+# rows that serve one interest more than rows cut across the whole list, and rows that
+# are not personal least.
+EVIDENCE = {'top': 1.0, 'loved': 1.0, 'liked': 0.8, 'niche': 0.9, 'cast': 0.9, 'acclaimed': 0.85, 'place': 0.85,
+            'creators': 0.8, 'gems': 0.8, 'limited': 0.8, 'new': 0.8, 'like-list': 0.8, 'genre': 0.75,
+            'theme': 0.7, 'plain': 0.7, 'language': 0.75, 'different': 0.6}
+# Row kinds whose places are set rather than chosen.
+FIXED_KINDS = ('top', 'list', 'top10')
+
+# How an interest's leanings read in a row's name ("Dark British crime dramas",
+# "Mockumentaries from the 2000s"): an adjective, a country or language, a subgenre and
+# an era, five words at most. A noun is a whole plural. A topic takes the form most of
+# the interest's shows share (crime dramas, crime anime, crime documentaries). Leanings
+# not listed are left out of names rather than guessed at.
+NOUNS = {
+    'sitcom': 'sitcoms', 'animated sitcom': 'animated sitcoms', 'teen sitcom': 'teen sitcoms',
+    'mockumentary': 'mockumentaries', 'pseudo documentary': 'mockumentaries', 'panel game': 'panel games',
+    'game show': 'game shows', 'police procedural': 'police procedurals', 'procedural': 'procedurals',
+    'police drama': 'police dramas', 'medical drama': 'medical dramas', 'legal drama': 'legal dramas',
+    'political drama': 'political dramas', 'historical drama': 'period dramas', 'period drama': 'period dramas',
+    'teen drama': 'teen dramas', 'family drama': 'family dramas', 'romantic drama': 'romantic dramas',
+    'comedy drama': 'comedy dramas', 'musical drama': 'musical dramas', 'romantic comedy': 'romantic comedies',
+    'animated comedy': 'animated comedies', 'black comedy': 'dark comedies', 'soap opera': 'soaps',
+    'telenovela': 'telenovelas', 'sketch show': 'sketch shows', 'cooking show': 'cooking shows',
+    'talent show': 'talent shows', 'variety show': 'variety shows', 'late night talk show': 'late-night talk shows',
+    'talk show': 'talk shows', 'nature documentary': 'nature documentaries', 'true crime': 'true crime',
+    'popular science': 'science documentaries', 'space opera': 'space operas', 'anthology': 'anthology series',
+    'action thriller': 'action thrillers', 'psychological thriller': 'psychological thrillers',
+    'thriller': 'thrillers', 'espionage': 'spy thrillers', 'spy': 'spy thrillers', 'western': 'Westerns',
+    'docudrama': 'docudramas', 'docu soap': 'docusoaps', 'melodrama': 'melodramas', 'superhero': 'superhero shows',
+    'zombie': 'zombie shows', 'vampire': 'vampire shows', 'time travel': 'time-travel stories',
+    'coming of age': 'coming-of-age stories', 'mystery': 'mysteries', 'detective and mystery': 'mysteries',
+    'detective': 'detective shows', 'competition': 'reality competitions', 'documentary': 'documentaries',
+    'adult animation': 'adult animation', 'parody': 'parodies', 'biography': 'biopics',
+    "children's": "children's shows", 'educational': 'educational shows', 'slice of life': 'slice-of-life stories',
+    'survival': 'survival stories', 'musical': 'musicals', 'post apocalyptic': 'post-apocalyptic stories',
+    'dystopian': 'dystopian stories', 'satire': 'satires', 'neo noir': 'neo-noir', 'isekai': 'isekai anime',
+    'mecha': 'mecha anime', 'magical girl': 'magical girl anime', 'iyashikei': 'iyashikei anime',
+    'tokusatsu': 'tokusatsu shows', 'nordic noir': 'Nordic noir', 'korean drama': 'K-dramas',
+    'sageuk': 'Korean period dramas', 'indian soap opera': 'Indian soaps', 'telenarconovela': 'narco dramas',
+    # TVmaze's genres and formats
+    'Mystery': 'mysteries', 'Thriller': 'thrillers', 'Comedy': 'comedies', 'Legal': 'legal dramas',
+    'Medical': 'medical dramas', 'Espionage': 'spy thrillers', 'Western': 'Westerns', 'Food': 'food shows',
+    'Travel': 'travel shows', 'DIY': 'DIY shows', 'Children': "children's shows",
+    'Panel Show': 'panel shows', 'Talk Show': 'talk shows', 'Game Show': 'game shows', 'Variety': 'variety shows',
+    'Anime': 'anime', 'Animation': 'animated shows', 'Documentary': 'documentaries', 'Reality': 'reality shows',
+}
+# A core that says no more than its form ("anime" for an anime interest) leads last.
+GENERIC = ('anime', 'animated shows', 'documentaries', 'reality shows', 'dramas', 'comedies')
+SINGULAR = {'slice of life': 'slice-of-life', 'coming of age': 'coming-of-age', 'post apocalyptic': 'post-apocalyptic',
+            'time travel': 'time-travel', 'magical girl': 'magical girl'}
+TOPICS = {
+    'crime': 'crime', 'Crime': 'crime', 'fantasy': 'fantasy', 'Fantasy': 'fantasy', 'dark fantasy': 'fantasy',
+    'science fiction': 'sci-fi', 'Science-Fiction': 'sci-fi', 'adventure': 'adventure', 'Adventure': 'adventure',
+    'action and adventure': 'action', 'action': 'action', 'Action': 'action', 'horror': 'horror',
+    'Horror': 'horror', 'supernatural': 'supernatural', 'Supernatural': 'supernatural', 'historical': 'period',
+    'History': 'period', 'political': 'political', 'medical': 'medical', 'war': 'war', 'War': 'war',
+    'sports': 'sports', 'Sports': 'sports', 'music': 'music', 'Music': 'music', 'nature': 'nature',
+    'Nature': 'nature', 'family': 'family', 'Family': 'family', 'teen': 'teen', 'youth': 'teen',
+    'school': 'school', 'romance': 'romance', 'Romance': 'romance', 'Drama': 'drama',
+}
+# Nouns that already name where their shows come from, so no country goes in front.
+REGIONAL = ('Nordic noir', 'K-dramas', 'Korean period dramas', 'Indian soaps', 'telenovelas', 'narco dramas')
+# (word, whether it goes before the country, and the leanings behind it). "Dark British
+# crime dramas" but "British period dramas".
+ADJECTIVES = [
+    ('Dark', True, ('dark fantasy', 'black comedy', 'neo noir', 'noir', 'psychological thriller', 'psychological horror')),
+    ('Dystopian', True, ('dystopian',)), ('Post-apocalyptic', True, ('post apocalyptic',)),
+    ('Satirical', True, ('satire', 'political satire')), ('Psychological', False, ('psychological',)),
+    ('Supernatural', False, ('supernatural', 'paranormal', 'Supernatural')), ('Political', False, ('political',)),
+    ('Period', False, ('historical', 'period drama', 'historical drama', 'History')),
+    ('Romantic', False, ('romance', 'romantic comedy', 'romantic drama', 'Romance')),
+    ('Teen', False, ('teen', 'youth', 'coming of age', 'teen drama')),
+]
+# The forms a topic takes, and what a show needs to have that form.
+FORMS = {
+    'anime': (('genre', 'Anime'), ('subgenre', 'anime')), 'animated': (('format', 'Animation'),),
+    'documentaries': (('format', 'Documentary'),), 'reality': (('format', 'Reality'),),
+    'dramas': (('genre', 'Drama'),), 'comedies': (('genre', 'Comedy'),),
+}
+# The browser's language, from its tag, as the catalogue names languages.
+LANGUAGES = {
+    'es': 'Spanish', 'fr': 'French', 'de': 'German', 'it': 'Italian', 'pt': 'Portuguese', 'nl': 'Dutch',
+    'sv': 'Swedish', 'no': 'Norwegian', 'nb': 'Norwegian', 'nn': 'Norwegian', 'da': 'Danish', 'fi': 'Finnish',
+    'is': 'Icelandic', 'pl': 'Polish', 'cs': 'Czech', 'sk': 'Slovak', 'hu': 'Hungarian', 'ro': 'Romanian',
+    'el': 'Greek', 'tr': 'Turkish', 'ru': 'Russian', 'uk': 'Ukrainian', 'ja': 'Japanese', 'ko': 'Korean',
+    'zh': 'Chinese', 'th': 'Thai', 'hi': 'Hindi', 'ar': 'Arabic', 'he': 'Hebrew', 'id': 'Indonesian',
+    'ms': 'Malay', 'vi': 'Vietnamese', 'tl': 'Tagalog', 'fil': 'Tagalog', 'ta': 'Tamil', 'te': 'Telugu',
+    'bn': 'Bengali', 'mr': 'Marathi', 'ml': 'Malayalam', 'kn': 'Kannada', 'pa': 'Punjabi', 'ur': 'Urdu',
+    'fa': 'Persian', 'ca': 'Catalan', 'eu': 'Basque', 'gl': 'Galician', 'hr': 'Croatian', 'sr': 'Serbian',
+    'sl': 'Slovenian', 'bg': 'Bulgarian', 'et': 'Estonian', 'lv': 'Latvian', 'lt': 'Lithuanian',
+    'af': 'Afrikaans', 'sq': 'Albanian', 'ka': 'Georgian', 'kk': 'Kazakh', 'mn': 'Mongolian', 'cy': 'Welsh',
+}
+LANG_TAG = re.compile(r'[A-Za-z]{2,3}(?:-[A-Za-z0-9]{1,8}){0,3}$')
+# A limited series says so: in its summary, in Wikidata's genres, or in the awards it won.
+LIMITED_WORDS = re.compile(r'\b(?:limited[- ]series|mini[- ]?series|(?:two|three|four|five|six|seven|eight|nine|ten|'
+                           r'\d{1,2})[- ]part (?:drama|series|thriller|miniseries|documentary|adaptation|story|event)|'
+                           r'limited (?:drama|event series|run))\b', re.I)
+LIMITED_GENRES = ('miniseries', 'limited run')
+LIMITED_AWARDS = ('Primetime Emmy Award for Outstanding Limited Miniseries',
+                  'Primetime Emmy Award for Outstanding Miniseries or Movie',
+                  'Golden Globe Award for Best Limited or Anthology Series or Television Film',
+                  'Satellite Award for Best Miniseries', 'Satellite Award for Best Miniseries or Television Film',
+                  "Critics' Choice Television Award for Best Movie/Miniseries")
+
 
 def lower_first(label):
     """'Crime TV shows' as 'crime TV shows', leaving 'DIY and makeovers' alone."""
     return label[0].lower() + label[1:] if label[1:2].islower() else label
 
 
+def upper_first(text):
+    return text[:1].upper() + text[1:]
+
+
+def slug(text, most=40):
+    return re.sub(r'[^a-z0-9]+', '-', text.lower()).strip('-')[:most].strip('-') or 'row'
+
+
+def fans_of(names):
+    """'For fans of Breaking Bad and The Wire', from up to two names."""
+    names = [n for n in names if n][:2]
+    return f'For fans of {" and ".join(names)}' if names else ''
+
+
 class Rows:
     """Rows being cut for one page. The first cards of a row are the ones a screen shows
     at a glance, so those skip anything an earlier row already opened with. The rest
     keep their own order: a row about Breaking Bad should still hold the shows closest
-    to it."""
+    to it. With a day and a seed, each row after its first two cards is the day's."""
 
-    def __init__(self, library, taste):
-        self.lib, self.taste, self.used, self.rows = library, taste, set(), []
+    def __init__(self, library, taste, fresh=None):
+        self.lib, self.taste, self.fresh, self.used, self.rows = library, taste, fresh, set(), []
 
     def add(self, key, title, items, kind='row', fresh=True):
+        if self.fresh:
+            today = dither(items, self.fresh, f'browse-{key}', ROW, pinned=PINNED)
+            items = today + [i for i in items if i not in set(today)]
         if fresh:
             head = [i for i in items if i not in self.used][:GLANCE]
             items = head + [i for i in items if i not in head][:ROW - len(head)]
@@ -125,6 +300,11 @@ class Taste:
             return None
         return max(1, min(99, round(score / self.best * 99)))
 
+    def unit(self, i):
+        """The match as a share of the best pick, from 0 to 1."""
+        score = self.extra.get(i, self.scores[i])
+        return min(1.0, score / self.best) if score > 0 and self.best > 0 else 0.0
+
     def closest(self, i):
         """The liked show a title sits nearest to, with the signals they share."""
         source = max(self.positives, key=lambda p: self.affinities[p['id']][i])
@@ -139,6 +319,1083 @@ class Taste:
                 'loved': source['weight'] == 1, 'shared': labels[:3],
                 'fits': self.ranking.fits(i),
                 'ties': self.e.ties(i, self.e.by_id[source['id']])}
+
+
+class Shelf:
+    """A candidate row: its cards in order before today's freshness, and what the page
+    builder weighs it by. kind_of says what sort of row it is (a seed, a micro-genre,
+    a creator), for keeping two of a sort apart; interest is the interest it serves."""
+
+    def __init__(self, key, title, kind_of, items, score=None, *, kind='row', interest=None, personal=True,
+                 evidence=0.85, subtitle='', shortest=SHORTEST, seed=None, callouts=True, diverse=True, proto=None):
+        self.key, self.title, self.kind_of, self.kind = key, title, kind_of, kind
+        self.items = list(dict.fromkeys(items))
+        if proto is not None:
+            # The clearest example of the row's theme goes first, from its best five.
+            best = max(self.items[:5], key=lambda i: (proto(i), -self.items.index(i)), default=None)
+            if best is not None:
+                self.items.remove(best)
+                self.items.insert(0, best)
+        self.score = score if score is not None else {i: 1 / (n + 1) for n, i in enumerate(self.items)}
+        if proto is not None and self.items:
+            self.score = {**self.score, self.items[0]: max(self.score.values()) + 1}
+        self.interest, self.personal, self.evidence = interest, personal, evidence
+        self.subtitle, self.shortest, self.seed = subtitle, shortest, seed
+        self.callouts, self.diverse = callouts, diverse
+        self.top12 = frozenset(self.items[:12])
+        self.relevance = 0.0
+
+    def glance(self, heads, count):
+        """The cards this row would open with, given what the rows above opened with."""
+        if self.kind != 'row':
+            return self.items[:GLANCE]
+        out = []
+        for i in self.items:
+            if i not in heads and count[i] < 2:
+                out.append(i)
+                if len(out) == GLANCE:
+                    break
+        return out
+
+
+class Pinned:
+    """A row the browser already shows, known by its key and first cards."""
+
+    def __init__(self, key, head, shelf=None):
+        self.key, self.head, self.shelf = key, head, shelf
+        self.kind_of = shelf.kind_of if shelf else None
+        self.interest = shelf.interest if shelf else None
+        self.personal = shelf.personal if shelf else False
+        self.kind = shelf.kind if shelf else 'row'
+        self.top12 = shelf.top12 if shelf else frozenset(head)
+        self.relevance = shelf.relevance if shelf else 0.0
+
+
+class Page:
+    """One person's home page: every candidate row, the rows chosen and their order, the
+    cards in each and the hero. Everything comes from the request, so the same request
+    on the same day gives the same page."""
+
+    def __init__(self, lib, profile, settings, positives, negatives, rated, candidates, saved, fresh, lang=None):
+        self.lib, self.e = lib, lib.e
+        self.profile, self.positives, self.negatives = profile, positives, negatives
+        self.rated, self.saved, self.fresh, self.lang = rated, saved, fresh, lang
+        self.taste = taste = Taste(lib, positives, negatives, settings, candidates)
+        self.ranking = taste.ranking
+        self.stats = lib.pool_stats(settings)
+        e = self.e
+        ranked = taste.ranked()
+        # Anything very close to a show marked Not for me stays off the page.
+        self.excluded = set()
+        if negatives and candidates:
+            gather = itemgetter(*candidates) if len(candidates) > 1 else (lambda values: (values[candidates[0]],))
+            for p in negatives:
+                values = gather(taste.affinities[p['id']])
+                self.excluded.update(i for i, v in zip(candidates, values) if v >= NOT_FOR_ME)
+        self.usable = [i for i in ranked if i not in self.excluded]
+        self.depth = self.usable[:DEPTH_POOL]
+        # The list's interests, each weighed by its ratings (love 1, like 0.6, OK 0.2),
+        # recent ones counting up to two thirds more than old ones.
+        self.order = {p['id']: n for n, p in enumerate(profile)}
+        n = len(profile)
+        self.weight = {p['id']: INTEREST_WEIGHT.get(p['weight'], 0.0) * (0.6 + 0.4 * 0.5 ** ((n - 1 - self.order[p['id']]) / 15))
+                       for p in positives}
+        self.interests = self.ranking.interests
+        weights = [sum(self.weight[p['id']] for p in interest) for interest in self.interests]
+        total = sum(weights) or 1.0
+        self.share = [w / total for w in weights]
+        # The engine scales each interest's scores by its share, so a row for a small
+        # interest orders its cards by that interest's own scale.
+        top = max(self.ranking.share, default=1.0) or 1.0
+        self.relshare = [s / top for s in self.ranking.share]
+        whole = [[] for _ in self.interests]
+        group = self.ranking.group
+        for i in self.usable:
+            k = group.get(i)
+            if k is not None and k < len(whole):
+                whole[k].append(i)
+        self.by_interest = [items[:DEPTH_POOL] for items in whole]
+        # Where each show ranks, overall and within the interest it was scored for.
+        self.place_of = {i: n for n, i in enumerate(self.usable)}
+        self.place_in = [({i: n for n, i in enumerate(items)}, len(items)) for items in whole]
+        self.ascending = sorted(taste.scores[i] for i in self.usable)
+        self.significant = [k for k, s in enumerate(self.share) if s >= INTEREST_FLOOR]
+        self.cap = min(MOST_ROWS, max(FEWEST_ROWS, 10 + 2 * len(self.significant)))
+        self.light = len(positives) < LIGHT_LIST
+        self.day = date.fromisoformat(fresh.day).toordinal() if fresh.day else 0
+        self.names = {p['id']: e.shows[e.by_id[p['id']]]['name'] for p in positives}
+        self.dropped = {}   # rows left out, and why
+        self._matching = {}
+        countries = Counter(e.shows[e.by_id[p['id']]]['country'] for p in positives)
+        self.usual_country = countries.most_common(1)[0][0] if countries else None
+        self._near = {}
+
+    # ------------------------------------------------------------ scales
+
+    def taste_of(self, i, k=None):
+        """How well show i fits the list, from 0 to 1; for an interest's own rows, on that
+        interest's scale."""
+        value = self.taste.unit(i)
+        if k is not None and k < len(self.relshare) and self.relshare[k] > 0:
+            value = min(1.0, value / self.relshare[k])
+        return value
+
+    def fit(self, i, k=None):
+        """How well show i fits the list, for weighing rows: the share of the pool it
+        outranks (on its interest's own ranking for an interest's row), to the SHARP
+        power, so the top few percent count most without the steep fall of the match."""
+        if k is not None and k < len(self.place_in) and i in self.place_in[k][0]:
+            places, size = self.place_in[k]
+            share = 1 - places[i] / size
+        elif i in self.place_of:
+            share = 1 - self.place_of[i] / len(self.usable)
+        else:
+            score = self.taste.extra.get(i, self.taste.scores[i])
+            share = bisect_left(self.ascending, score) / len(self.ascending) if self.ascending and score > 0 else 0.0
+        return share ** SHARP
+
+    def pop(self, i):
+        return self.stats['popularity'][self.e.popularity[i]]
+
+    def quality(self, i):
+        rating = self.e.shows[i]['rating']
+        if not rating:
+            return 0.5
+        return (max(-1.5, min(1.5, (rating - 7.2) / 1.2)) + 1.5) / 3
+
+    def default(self, items, k=None):
+        """The usual order for a row: 0.65 taste, 0.2 popularity and 0.15 quality, taste
+        as a place among the row's shows and popularity as a percentile of the pool."""
+        taste = ranks({i: self.taste_of(i, k) for i in items})
+        score = {i: 0.65 * taste[i] + 0.2 * self.pop(i) + 0.15 * self.quality(i) for i in items}
+        return sorted(score, key=lambda i: (-score[i], self.e.shows[i]['id'])), score
+
+    def take(self, test, pool=None, most=FILTER_POOL):
+        out = []
+        for i in self.depth if pool is None else pool:
+            if test(i):
+                out.append(i)
+                if len(out) >= most:
+                    break
+        return out
+
+    def near(self, show_id, k=None):
+        """The shows closest to one rated show among those that fit the list, as (how many
+        count as similar, the closest few as (closeness, index), closest first). Closeness
+        to a show marked Not for me is taken off, as the engine takes it off its ranking."""
+        if (show_id, k) not in self._near:
+            affinity = self.taste.affinities.get(show_id) or self.e.blend(self.e.by_id[show_id], self.taste.settings)
+            pool = list(dict.fromkeys(self.usable[:FITTING] + (self.by_interest[k][:FITTING] if k is not None else [])))
+            close = [(v, i) for v, i in zip(itemgetter(*pool)(affinity) if len(pool) > 1 else
+                                            [affinity[i] for i in pool], pool) if v >= SIMILAR]
+            self._near[show_id, k] = (len(close), self.penalised(heapq.nlargest(2 * SEED_POOL, close)))
+        return self._near[show_id, k]
+
+    def penalised(self, close):
+        if not self.negatives:
+            return close[:SEED_POOL]
+        share = self.taste.settings['dislike'] / len(self.negatives)
+        arrays = [self.taste.affinities[p['id']] for p in self.negatives]
+        out = [(v - share * sum(a[i] for a in arrays), i) for v, i in close]
+        return sorted(out, reverse=True)[:SEED_POOL]
+
+    # ------------------------------------------------------------ candidate rows
+
+    def members(self, k):
+        """An interest's liked shows, loves first and then newest first."""
+        return sorted(self.interests[k], key=lambda p: (-p['weight'], -self.order[p['id']]))
+
+    def seeds(self, k):
+        """The interest's seeds for the day: loves before likes, each with enough similar
+        shows, the best three taking turns to lead."""
+        found = []
+        for p in self.members(k):
+            if p['weight'] < .7:
+                continue
+            if self.near(p['id'], k)[0] >= NEIGHBOURS:
+                found.append(p)
+            if len(found) == ROTATE:
+                break
+        if len(found) > 1:
+            turn = self.day % len(found)
+            found = found[turn:] + found[:turn]
+        return found
+
+    def seed_row(self, p, k):
+        _count, close = self.near(p['id'], k)
+        if not close:
+            return None
+        near, taste = ranks({i: v for v, i in close}), ranks({i: self.taste_of(i, k) for _v, i in close})
+        score = {i: 0.5 * near[i] + 0.35 * taste[i] + 0.15 * self.pop(i) for _v, i in close}
+        items = sorted(score, key=lambda i: (-score[i], self.e.shows[i]['id']))
+        loved = p['weight'] == 1
+        verb = 'loved' if loved else 'liked'
+        return Shelf(f'seed-{p["id"]}', f'Because you {verb} {self.names[p["id"]]}', 'seed', items, score,
+                     interest=k, evidence=EVIDENCE['loved' if loved else 'liked'], seed=self.e.by_id[p['id']],
+                     diverse=False)
+
+    def recipes(self, k):
+        """Micro-genres for interest k, strongest first, each as a list of parts."""
+        lib = self.lib
+        taste = self.ranking.interest_tastes[k]
+        leans = [(f['family'], f['label']) for f in taste.summary(limit=8)['leans']]
+        members = [self.e.by_id[p['id']] for p in self.interests[k]]
+        if not leans:
+            leans = lib.traits(members)
+        form = lib.form(members)
+        cores, used = [], set()
+        for family, label in leans:
+            core = lib.core(family, label, form)
+            if core and core['words'] not in used:
+                used.add(core['words'])
+                cores.append(core)
+        # A core that only restates the form, or a format, says the least, so it leads
+        # only when nothing else does.
+        cores.sort(key=lambda c: (phrase_of([c] + ([c['form']] if c.get('form') else [])) in GENERIC,
+                                  c['family'] == 'format'))
+        place = next((lib.place(family, label) for family, label in leans if family in ('country', 'language')
+                      and lib.place(family, label)), None)
+        era = next((lib.era(label) for family, label in leans if family == 'decade'), None)
+        adjective = next((a for a in (lib.adjective(label) for _family, label in leans) if a), None)
+        out = []
+
+        def recipe(core, place, adjective, era):
+            parts = [core]
+            if core.get('form'):
+                parts.append(core['form'])
+            if place and not core.get('regional') and not (core.get('anime') and place['label'] == 'Japanese'):
+                parts.append(place)
+            if adjective and adjective['words'].lower() not in phrase_of(parts).lower():
+                parts.append(adjective)
+            if era:
+                parts.append(era)
+            while len(name_of(parts).split()) > 5 and any(p['role'] != 'core' for p in parts):
+                parts.remove(next(p for role in ('era', 'adjective', 'place', 'form') for p in parts if p['role'] == role))
+            if name_of(parts) not in [name_of(r) for r in out]:
+                out.append(parts)
+        for core in cores[:2]:
+            recipe(core, place, adjective, era)
+        # The interest's main subject split by the decades and countries two or more of
+        # its shows come from: distinct rows even for a list with one taste.
+        if cores:
+            shows = self.e.shows
+            decades = Counter(decade_of(shows[i]['year']) for i in members if shows[i]['year'])
+            for label, n in decades.most_common(2):
+                if n >= 2 and lib.era(label):
+                    recipe(cores[0], None, None, lib.era(label))
+            places = Counter(shows[i]['country'] for i in members if shows[i]['country'])
+            for code, n in places.most_common(2):
+                found = lib.place('country', COUNTRIES.get(code, code))
+                if n >= 2 and found and code != self.usual_country:
+                    recipe(cores[0], found, None, None)
+        return out
+
+    def matching(self, k, part):
+        """Where in interest k's ranking the shows with a part are, as a set of places,
+        worked out once per part and request."""
+        key = (k, part['role'], part['words'])
+        if key not in self._matching:
+            test = self.lib.recipe_test([part])
+            self._matching[key] = frozenset(n for n, i in enumerate(self.by_interest[k]) if test(i))
+        return self._matching[key]
+
+    def niche_row(self, k, parts):
+        """A micro-genre row, dropping its most specific word until twelve shows qualify."""
+        pool = self.by_interest[k]
+        parts = list(parts)
+        while True:
+            places = frozenset.intersection(*(self.matching(k, part) for part in parts))
+            if len(places) >= NICHE:
+                break
+            droppable = [p for p in parts if p['role'] != 'core']
+            if not droppable:
+                return None
+            parts.remove(min(droppable, key=lambda p: len(self.matching(k, p))))
+        items, score = self.default([pool[n] for n in sorted(places)[:FILTER_POOL]], k)
+        name = name_of(parts)
+        core = parts[0]
+        return Shelf(f'niche-{slug(name, 50)}', name, 'niche', items, score, interest=k, evidence=EVIDENCE['niche'],
+                     subtitle=fans_of(self.interest_names(k)), proto=self.lib.proto(core))
+
+    def interest_names(self, k):
+        return [self.names[p['id']] for p in self.members(k)]
+
+    def acclaimed_row(self, k, parts):
+        core = parts[0]
+        subject = [core] + ([core['form']] if core.get('form') else [])
+        words = phrase_of(subject)
+        pool = self.by_interest[k]
+        places = frozenset.intersection(*(self.matching(k, part) for part in subject))
+        rating = lambda i: self.e.shows[i]['rating'] or 0
+        found = [pool[n] for n in sorted(places) if rating(pool[n]) >= 8][:FILTER_POOL]
+        items, score = self.default(found, k)
+        return Shelf(f'acclaimed-{slug(words)}', f'Critically acclaimed {words}', 'acclaimed', items, score,
+                     interest=k, evidence=EVIDENCE['acclaimed'], subtitle=fans_of(self.interest_names(k)))
+
+    def people_rows(self):
+        """More from the world of a liked show, from its creator, and starring someone in
+        two or more liked shows. Returns {interest: [shelves]} and the pooled creators row."""
+        lib, e = self.lib, self.e
+        usable = set(self.usable)
+        owner = {p['id']: k for k, interest in enumerate(self.interests) for p in interest}
+        found = {k: [] for k in range(len(self.interests))}
+        pooled, pooled_from = set(), {}
+        liked = sorted(self.positives, key=lambda p: (-p['weight'], -self.order[p['id']]))
+        worlds = set()
+        for p in liked:
+            if p['weight'] < .7:
+                continue
+            j, k = e.by_id[p['id']], owner.get(p['id'])
+            franchises, creators, _makers, _cast = lib.facet_sets(j)
+            shared = lib.holders('franchise', franchises) & usable
+            key = frozenset(shared)
+            if len(shared) >= SHORTEST and key not in worlds and k is not None:
+                worlds.add(key)
+                items, score = self.default(shared, k)
+                strength = lambda i, j=j: lib.overlap(i, j, 'franchise')
+                found[k].append(Shelf(f'world-{p["id"]}', f'More from the world of {self.names[p["id"]]}', 'people',
+                                      items, score, interest=k, evidence=EVIDENCE['loved' if p['weight'] == 1 else 'liked'],
+                                      callouts=False, proto=strength))
+            made = lib.holders('maker', creators) & usable
+            if len(made) >= CREATOR_SHORTEST and k is not None:
+                items, score = self.default(made, k)
+                found[k].append(Shelf(f'creator-{p["id"]}', f'From the creator of {self.names[p["id"]]}', 'people',
+                                      items, score, interest=k, shortest=CREATOR_SHORTEST, callouts=False,
+                                      evidence=EVIDENCE['loved' if p['weight'] == 1 else 'liked'],
+                                      proto=lambda i, c=creators: len(lib.facet_sets(i)[1] & c)))
+            elif made:
+                pooled |= made
+                for i in made:
+                    pooled_from.setdefault(i, self.names[p['id']])
+        creators_row = None
+        if len(pooled) >= SHORTEST:
+            items, score = self.default(pooled)
+            behind = list(dict.fromkeys(pooled_from[i] for i in items[:GLANCE]))
+            creators_row = Shelf('creators', 'From creators you love', 'people', items, score, evidence=EVIDENCE['creators'],
+                                 subtitle=fans_of(behind), callouts=False)
+        # Someone in two or more liked shows.
+        cast = Counter()
+        holders = {}
+        for p in self.positives:
+            for c in lib.facet_sets(e.by_id[p['id']])[3]:
+                cast[c] += 1
+                holders.setdefault(c, []).append(p)
+        stars = sorted((c for c, n in cast.items() if n >= 2), key=lambda c: (-cast[c], c))
+        for c in stars[:4]:
+            shared = lib.holders('cast', [c]) & usable
+            if len(shared) < SHORTEST:
+                continue
+            ks = Counter(owner.get(p['id']) for p in holders[c])
+            k = ks.most_common(1)[0][0]
+            if k is None:
+                continue
+            items, score = self.default(shared, k)
+            label = e.facets.labels[c]
+            found[k].append(Shelf(f'cast-{slug(e.facets.keys[c])}', f'Starring {label}', 'people', items, score,
+                                  interest=k, evidence=EVIDENCE['cast'], callouts=False,
+                                  subtitle=fans_of([self.names[p['id']] for p in holders[c]])))
+        return found, creators_row
+
+    def shelves(self):
+        """Every candidate row: those that belong to an interest, queued in the order an
+        interest adds them, and the rest."""
+        e, lib = self.e, self.lib
+        rows, queues = [], [[] for _ in self.interests]
+        top = self.calibrated()
+        if top:
+            rows.append(Shelf('top', 'Top picks for you', 'top', top, evidence=EVIDENCE['top'], diverse=False))
+        people, creators = self.people_rows() if e.facets else ({}, None)
+        # Rows for the interests with enough weight to hold one, heaviest first.
+        heavy = sorted((k for k, s in enumerate(self.share) if s >= INTEREST_FLOOR / 2),
+                       key=lambda k: -self.share[k])[:MOST_INTERESTS]
+        names = set()
+        for k in heavy:
+            seeds = [row for row in (self.seed_row(p, k) for p in self.seeds(k)[:2]) if row]
+            recipes = self.recipes(k)
+            niches = list({row.key: row for row in (self.niche_row(k, parts) for parts in recipes)
+                           if row and row.key not in names}.values())
+            names.update(row.key for row in niches)
+            queue = seeds[:1] + niches[:1]
+            ranked_people = sorted(people.get(k, []), key=lambda s: (-self.relevance(s, set(), Counter()), s.key))
+            queue += ranked_people[:1] + seeds[1:2]
+            if recipes:
+                queue.append(self.acclaimed_row(k, recipes[0]))
+            queue += niches[1:] + ranked_people[1:]
+            queues[k] = [s for s in queue if len(s.items) >= s.shortest]
+        if creators:
+            rows.append(creators)
+        year = lib.year
+        found, score = self.default(self.take(lambda i: e.shows[i]['year'] >= year - 1))
+        rows.append(Shelf('new', 'New for you', 'new', found, score, evidence=EVIDENCE['new']))
+        genre_weight, theme_weight = Counter(), Counter()
+        for p in self.positives:
+            themes, genres = e.signals(e.by_id[p['id']])
+            for g in genres:
+                if g in GENRE_ROWS:
+                    genre_weight[g] += p['weight']
+            for t in themes:
+                theme_weight[t] += p['weight']
+        for g in sorted(genre_weight, key=lambda g: (-genre_weight[g], g))[:3]:
+            found, score = self.default(self.take(lambda i, g=g: g in e.shows[i]['genres']))
+            rows.append(Shelf(f'genre-{g}'.lower(), GENRE_ROWS[g], 'genre', found, score, evidence=EVIDENCE['genre']))
+        for t in sorted(theme_weight, key=lambda t: (-theme_weight[t], t))[:2]:
+            bit = 1 << e.themes.index(t)
+            found, score = self.default(self.take(lambda i, bit=bit: e.shows[i]['theme_bits'] & bit))
+            rows.append(Shelf(f'theme-{slug(THEME_ROWS[t])}', THEME_ROWS[t], 'genre', found, score,
+                              evidence=EVIDENCE['theme']))
+        rows.append(self.gems())
+        found, score = self.default(self.take(lambda i: i in lib.limited))
+        rows.append(Shelf('limited', 'Limited series for you', 'limited', found, score, evidence=EVIDENCE['limited']))
+        for place in self.places():
+            if place.interest in heavy:
+                queues[place.interest].append(place)
+            else:
+                place.interest = None
+                rows.append(place)
+        like = self.like_list()
+        if like:
+            rows.append(like)
+        rows.append(Shelf('top10', 'Top 10 shows today', 'top10', lib.top10, kind='top10', personal=False,
+                          evidence=EVIDENCE['plain'], callouts=False, diverse=False))
+        rows.append(self.popular())
+        # A first visit's rows: half the page for a short list, and for any list a
+        # fallback when its own rows run out.
+        rows += self.plain_rows()
+        different = self.different()
+        # One row to a key: a first visit's genre row gives way to the list's own.
+        keys = {s.key for queue in queues for s in queue}
+        kept = []
+        for r in rows:
+            if r and len(r.items) >= r.shortest and r.key not in keys:
+                keys.add(r.key)
+                kept.append(r)
+        return kept, queues, different
+
+    def calibrated(self):
+        """Top picks: the best hundred re-ranked so their mix of interests matches the
+        list's (Steck, 2018), greedily, trading score for closeness to that mix."""
+        pool = self.usable[:TOP_POOL]
+        group = self.ranking.group
+        target = self.share
+        if len(target) < 2 or not pool:
+            return pool[:3 * ROW]
+        alpha = 0.01
+        counts = [0] * len(target)
+        chosen, left = [], list(pool)
+
+        def divergence(extra):
+            n = len(chosen) + 1
+            total = 0.0
+            for k, p in enumerate(target):
+                if p <= 0:
+                    continue
+                q = (counts[k] + (1 if k == extra else 0)) / n
+                total += p * math.log(p / ((1 - alpha) * q + alpha * p))
+            return total
+        while left and len(chosen) < 3 * ROW:
+            best, value = None, None
+            for i in left:
+                k = group.get(i)
+                v = (1 - CALIBRATION) * self.taste.unit(i) - CALIBRATION * divergence(k)
+                if value is None or v > value:
+                    best, value = i, v
+            chosen.append(best)
+            left.remove(best)
+            k = group.get(best)
+            if k is not None and k < len(counts):
+                counts[k] += 1
+        return chosen
+
+    def gems(self):
+        """Hidden gems: little known, well rated and among the best fits for the list."""
+        most_pop, rating_q, share = HIDDEN
+        cut = self.usable[:max(1, int(len(self.usable) * share))]
+        floor = self.stats['rating_q75']
+        found = [i for i in cut if self.pop(i) <= most_pop and (self.e.shows[i]['rating'] or 0) >= floor][:FILTER_POOL]
+        taste = ranks({i: self.taste_of(i) for i in found})
+        score = {i: 0.6 * taste[i] + 0.4 * self.quality(i) for i in found}
+        items = sorted(score, key=lambda i: (-score[i], self.e.shows[i]['id']))
+        return Shelf('gems', 'Hidden gems for you', 'gems', items, score, evidence=EVIDENCE['gems'])
+
+    def places(self):
+        """A row for a language or country a good share of the liked shows come from,
+        when it is not the list's usual one. It belongs to the interest most of those
+        shows are in."""
+        e, out = self.e, []
+        liked = [e.by_id[p['id']] for p in self.positives]
+        owner = {e.by_id[p['id']]: k for k, interest in enumerate(self.interests) for p in interest}
+        for family in ('language', 'country'):
+            tally = Counter(e.shows[i][family] for i in liked if e.shows[i][family])
+            if not tally:
+                continue
+            usual = tally.most_common(1)[0][0]
+            for value, n in tally.most_common():
+                if value == usual or n / len(liked) < PLACE_SHARE:
+                    continue
+                if family == 'country' and any(r.key.startswith('lang-') for r in out):
+                    continue
+                label = COUNTRIES.get(value, value) if family == 'country' else value
+                k = Counter(owner.get(i) for i in liked if e.shows[i][family] == value).most_common(1)[0][0]
+                found, score = self.default(self.take(lambda i, v=value: e.shows[i][family] == v), k)
+                key = f'lang-{slug(value)}' if family == 'language' else f'country-{slug(value)}'
+                out.append(Shelf(key, f'{label} shows for you', 'place', found, score, interest=k,
+                                 evidence=EVIDENCE['place']))
+                break
+        return out
+
+    def like_list(self):
+        """More like the shows waiting on My List, by closeness to the newest five."""
+        saved = [i for i in reversed(self.saved) if self.e.shows[i]['id'] not in self.rated][:5]
+        pool = self.usable[:FITTING]
+        if not saved or len(pool) < 2:
+            return None
+        arrays = [self.e.blend(i, self.taste.settings) for i in saved]
+        keep = set(saved)
+        gather = itemgetter(*pool)
+        sums = [0.0] * len(pool)
+        for affinity in arrays:
+            sums = [a + b for a, b in zip(sums, gather(affinity))]
+        close = self.penalised(heapq.nlargest(2 * SEED_POOL, ((v / len(arrays), i) for v, i in zip(sums, pool)
+                                                           if i not in keep)))
+        if not close:
+            return None
+        near, taste = ranks({i: v for v, i in close}), ranks({i: self.taste_of(i) for _v, i in close})
+        score = {i: 0.5 * near[i] + 0.35 * taste[i] + 0.15 * self.pop(i) for _v, i in close}
+        items = sorted(score, key=lambda i: (-score[i], self.e.shows[i]['id']))
+        names = [self.e.shows[i]['name'] for i in saved[:2]]
+        return Shelf('like-list', 'More like your list', 'like-list', items, score, evidence=EVIDENCE['like-list'],
+                     subtitle=f'Like {" and ".join(names)} on your list')
+
+    def popular(self):
+        """Popular right now, blended with taste to choose which, ordered by popularity."""
+        lib, e = self.lib, self.e
+        usable = self.taste.scores
+        found = [i for i in lib.popular_pool if usable[i] > 0 and i not in self.excluded]
+        blend = {i: 0.5 * self.taste_of(i) + 0.5 * self.pop(i) for i in found}
+        found = sorted(blend, key=lambda i: (-blend[i], e.shows[i]['id']))[:3 * ROW]
+        items = sorted(found, key=lambda i: (-e.popularity[i], -(e.shows[i]['rating'] or 0), e.shows[i]['id']))
+        return Shelf('popular', 'Popular right now', 'popular', items, personal=False, evidence=EVIDENCE['plain'],
+                     callouts=False, diverse=False)
+
+    def plain_rows(self):
+        """For a list still short of ten liked shows, the rows a first visit sees."""
+        out, scores = [], self.taste.scores
+        fits = lambda items: [i for i in items if scores[i] > 0 and i not in self.excluded]
+        if self.lang and self.lang in self.lib.by_language:
+            out.append(Shelf(f'popular-{slug(self.lang)}', f'Popular in {self.lang}', 'language',
+                             fits(self.lib.by_language[self.lang]), personal=False, evidence=EVIDENCE['language'],
+                             callouts=False, diverse=False))
+        for key, title, items in self.lib.plain_rows():
+            out.append(Shelf(key, title, 'plain', fits(items), personal=False, evidence=EVIDENCE['plain'],
+                             callouts=False, diverse=False))
+        return out
+
+    def different(self):
+        """Something different: a genre or format the list has nothing of, from the ones
+        it would take to best, with the day choosing among the closest few."""
+        e, lib = self.e, self.lib
+        liked = [e.by_id[p['id']] for p in self.positives]
+        disliked = [e.by_id[p['id']] for p in self.negatives]
+        options = []
+        for key, label in [*GENRE_ROWS.items(), *FORMAT_ROWS.items()]:
+            if key in ('Drama', 'Comedy'):
+                continue
+            if any(lib._fits(key, i) for i in liked + disliked):
+                continue
+            found = [i for i in lib.shelf_by_key.get(key, ()) if self.taste.scores[i] > 0 and i not in self.excluded]
+            if len(found) < SHORTEST:
+                continue
+            fit = statistics.fmean(self.taste_of(i) for i in found[:10])
+            options.append((fit, key, label, found))
+        if not options:
+            return None
+        options.sort(key=lambda o: (-o[0], o[1]))
+        options = options[:4]
+        _fit, key, label, found = max(options, key=lambda o: (self.fresh.z('different', o[1]) - 0.5 * options.index(o), o[1]))
+        taste = ranks({i: self.taste_of(i) for i in found})
+        score = {i: 0.5 * self.quality(i) + 0.3 * taste[i] + 0.2 * self.pop(i) for i in found}
+        items = sorted(score, key=lambda i: (-score[i], e.shows[i]['id']))
+        return Shelf('different', 'Something different', 'different', items, score, personal=False,
+                     evidence=EVIDENCE['different'], callouts=False,
+                     subtitle=f'Well-loved {label if label == "Westerns" else lower_first(label)}, a change from your usual')
+
+    def list_row(self):
+        """My List, most recently added first, when it holds a show not yet rated."""
+        saved = list(reversed(self.saved))[:LIST_ROW]
+        if not any(self.e.shows[i]['id'] not in self.rated for i in saved):
+            return None
+        return Shelf('list', 'My List', 'list', saved, kind='list', personal=False, shortest=1, callouts=False,
+                     diverse=False)
+
+    # ------------------------------------------------------------ choosing rows
+
+    def relevance(self, shelf, heads, count):
+        head = shelf.glance(heads, count)
+        if not head:
+            return 0.0
+        weights = POSITION[:len(head)]
+        k = shelf.interest
+        return shelf.evidence * sum(w * self.fit(i, k) for w, i in zip(weights, head)) / sum(weights)
+
+    def arrange(self, shelves, queues, different, pinned=()):
+        """The rows in order. Each next row is the candidate with the most relevance less
+        penalties for what it repeats: overlap with a row above, the same interest or the
+        same sort of row in the two rows above, and taking its interest past its share.
+        Penalties count half in the first eight rows and half again more below."""
+        placed = list(pinned)
+        heads, count = self.reserved()
+        for row in pinned:
+            heads.update(row.head)
+            count.update(row.head)
+        by_key = {s.key: s for s in shelves}
+        for queue in queues:
+            for s in queue:
+                by_key.setdefault(s.key, s)
+        taken = {row.key for row in pinned}
+        interest_rows = Counter(row.interest for row in pinned if row.interest is not None)
+        seeds = sum(1 for row in pinned if row.kind_of == 'seed')
+        personal = sum(1 for row in pinned if row.personal)
+        dropped = set()
+        top10 = by_key.get('top10')
+        tired = self.fresh.tired
+        cap = self.cap - (1 if different else 0)
+        relevances = [row.relevance for row in placed if row.relevance]
+        quota = self.quotas(cap)
+
+        def queue_head(k):
+            for s in queues[k]:
+                if s.key not in taken and s.key not in dropped:
+                    return s
+            return None
+        while len(placed) < cap:
+            p = len(placed) + 1
+            options = []
+            if p == 1 and 'top' in by_key and 'top' not in taken:
+                options = [by_key['top']]
+            elif p == 2 and 'list' in by_key and 'list' not in taken:
+                options = [by_key['list']]
+            elif p == 10 and top10 and 'top10' not in taken and 'top10' not in tired:
+                options = [top10]
+            else:
+                options = [s for s in shelves if s.key not in taken and s.key not in dropped
+                           and s.kind_of not in ('top', 'list') and s.interest is None]
+                options += [s for s in (queue_head(k) for k in range(len(queues))) if s]
+                options = [s for s in options if not (s.key == 'top10' and p < 3)
+                           and not (s.kind_of == 'popular' and p < 11)]
+                if seeds >= SEED_ROWS[1]:
+                    options = [s for s in options if s.kind_of != 'seed']
+                if self.light and personal >= self.cap // 2:
+                    options = [s for s in options if not s.personal]
+                options = [s for s in options if s.interest is None or interest_rows[s.interest] < quota[s.interest]]
+                # Every interest heavy enough has a row before the page fills up.
+                unserved = [k for k in self.significant if not interest_rows[k] and queue_head(k)]
+                if unserved and cap - len(placed) <= len(unserved):
+                    options = [queue_head(k) for k in unserved]
+                elif seeds < SEED_ROWS[0] and cap - len(placed) <= SEED_ROWS[0] - seeds:
+                    options = [s for s in options if s.kind_of == 'seed'] or options
+            scored = []
+            scale = 0.5 if p <= FIRST_PAGE else 1.5
+            above = placed[-2:]
+            interest_total = sum(interest_rows.values())
+            beyond = lambda k: max(0.0, (interest_rows[k] + 1) / (interest_total + 1) - self.share[k])
+            least = min((beyond(s.interest) for s in options if s.interest is not None
+                         and s.interest < len(self.share)), default=0.0)
+            for s in options:
+                rel = self.relevance(s, heads, count)
+                if len(s.glance(heads, count)) < min(GLANCE, s.shortest) and s.kind == 'row':
+                    dropped.add(s.key)
+                    self.dropped[s.key] = 'too few cards left to open with'
+                    continue
+                overlap, like = max(((len(s.top12 & row.top12) / max(1, min(12, len(s.top12))), row.key)
+                                     for row in placed if row.top12 and row.kind == 'row'), default=(0.0, None))
+                if overlap >= 0.5 and s.kind_of not in FIXED_KINDS:
+                    dropped.add(s.key)
+                    self.dropped[s.key] = f'repeats {like}'
+                    continue
+                same_interest = s.interest is not None and any(row.interest == s.interest for row in above)
+                same_kind = any(row.kind_of == s.kind_of for row in above)
+                excess = 0.0
+                if s.interest is not None and s.interest < len(self.share):
+                    excess = beyond(s.interest) - least
+                penalty = 0.5 * overlap + 0.3 * same_interest + 0.3 * same_kind + 0.4 * excess
+                scored.append((rel - scale * penalty, rel, s.key, s))
+            if not scored:
+                break
+            value, rel, _key, best = max(scored, key=lambda x: (x[0], x[1], x[2]))
+            unserved = [k for k in self.significant if not interest_rows[k] and queue_head(k)]
+            if len(placed) >= FIRST_PAGE and relevances and not unserved and best.kind_of not in FIXED_KINDS \
+                    and max(x[1] for x in scored) < 0.5 * statistics.median(relevances):
+                if not top10 or 'top10' in taken or 'top10' in tired:
+                    break
+                best, rel = top10, self.relevance(top10, heads, count)
+            best.relevance = rel
+            placed.append(best)
+            taken.add(best.key)
+            head = best.glance(heads, count)
+            if best.kind == 'row':
+                heads.update(head)
+                count.update(i for i in best.items[:ROW] if count[i] < 2)
+            if rel and best.kind_of != 'list':
+                relevances.append(rel)
+            if best.interest is not None:
+                interest_rows[best.interest] += 1
+            seeds += best.kind_of == 'seed'
+            personal += best.personal
+        # Today's order: the first rows stay, the rest reorder a little from day to day,
+        # and rows passed over lately rest at the end.
+        if pinned:
+            fixed = len(pinned)
+        else:
+            fixed, seen = 0, 0
+            for n, row in enumerate(placed):
+                if row.personal and row.kind_of not in ('list', 'top10'):
+                    seen += 1
+                if row.kind_of in ('top', 'list') or seen <= 2:
+                    fixed = n + 1
+                if seen >= 2:
+                    break
+        order = shuffle_rows(placed, self.fresh, key_of=lambda row: row.key, fixed=fixed)
+        order = self.repair(order, fixed)
+        if different and 'different' not in taken and len(order) > FIRST_PAGE:
+            order.insert(max(12, fixed + 1) - 1 if len(order) >= 11 else len(order), different)
+        return order
+
+    def quotas(self, cap):
+        """How many rows each interest may hold: its share of the rows planned for
+        interests, at least one when it is heavy enough, and with three or more heavy
+        interests no more than INTEREST_CAP of them (Steck's calibration, by quota)."""
+        planned = max(len(self.significant), round(cap * INTEREST_ROWS))
+        ceiling = max(1, int(INTEREST_CAP * planned)) if len(self.significant) >= 3 else planned
+        return Counter({k: min(ceiling, max(1 if k in self.significant else 0, round(share * planned)))
+                        for k, share in enumerate(self.share)})
+
+    def repair(self, order, fixed):
+        """Part two neighbours that serve the same interest or are the same sort of row,
+        then keep the Top 10 within the first ten rows and Popular below them."""
+        order = list(order)
+        tired = self.fresh.tired
+        placed = ('top10', 'popular')
+
+        def clash(a, b):
+            return (a.interest is not None and a.interest == b.interest) or \
+                (a.kind_of == b.kind_of and a.kind_of != 'plain')
+        for n in range(max(1, fixed), len(order)):
+            if not clash(order[n - 1], order[n]) or order[n].key in placed:
+                continue
+            for m in range(n + 1, min(len(order), n + 4)):
+                row = order[m]
+                if not clash(order[n - 1], row) and row.key not in placed and row.key not in tired:
+                    order.insert(n, order.pop(m))
+                    break
+        where = {row.key: n for n, row in enumerate(order)}
+        if 'top10' in where and 'top10' not in tired and where['top10'] >= 10 and where['top10'] >= fixed:
+            order.insert(max(9, fixed), order.pop(where['top10']))
+        where = {row.key: n for n, row in enumerate(order)}
+        if 'popular' in where and where['popular'] < 10 and where['popular'] >= fixed:
+            order.insert(min(10, len(order) - 1), order.pop(where['popular']))
+        return order
+
+    def settle(self, rows, fixed=0):
+        """Once rows that could not fill are gone, Popular still sits below the tenth
+        row (or is left out of a shorter page) and Something different below the
+        first eight (or is left out)."""
+        rows = list(rows)
+        for key, first in (('popular', 10), ('different', FIRST_PAGE)):
+            where = next((n for n, (shelf, _items) in enumerate(rows) if shelf.key == key), None)
+            if where is None or where >= first or where < fixed:
+                continue
+            row = rows.pop(where)
+            if len(rows) >= first:
+                rows.insert(first, row)
+        return rows
+
+    def reserved(self):
+        """What the Top 10 and My List open with, held back from every other row's first
+        cards, and counted as shown once."""
+        heads, count = set(), Counter()
+        for items in (self.lib.top10, list(reversed(self.saved))[:LIST_ROW]):
+            heads.update(items[:GLANCE])
+            count.update(items)
+        return heads, count
+
+    # ------------------------------------------------------------ cards
+
+    def fill(self, order, pinned=()):
+        """Cards for each row in order: the first two keep their places, the rest are the
+        day's, no two rows open with the same show, no show appears more than twice, and a
+        row opens with at most one show from a franchise and two from a creator."""
+        heads, count = self.reserved()
+        out = []
+        for n, shelf in enumerate(order):
+            if n < len(pinned):
+                row = pinned[n]
+                heads.update(row.head)
+                count.update(row.head)
+                if row.shelf:
+                    count.update([i for i in row.shelf.items if i not in row.head][:ROW - len(row.head)])
+                out.append((row, None))
+                continue
+            items = self.cards(shelf, heads, count)
+            if items is not None:
+                out.append((shelf, items))
+        return out
+
+    def cards(self, shelf, heads, count):
+        if shelf.kind != 'row':
+            return list(shelf.items)
+        pool = [i for i in shelf.items if count[i] < 2]
+        if len(pool) < shelf.shortest:
+            return None
+        if heads.intersection(pool):
+            score = shelf.score
+            pool.sort(key=lambda i: -score.get(i, 0.0) * (REAPPEAR if i in heads else 1.0))
+        order = dither(pool, self.fresh, f'row-{shelf.key}', ROW, pinned=PINNED)
+        order = spread(order, self.lib.groups, keep=PINNED)
+        chosen = set(order)
+        head = self.opening(shelf, order + [i for i in pool if i not in chosen], heads)
+        if len(head) < min(GLANCE, shelf.shortest):
+            return None
+        opened = set(head)
+        items = head + [i for i in order if i not in opened][:ROW - len(head)]
+        if len(items) < shelf.shortest:
+            return None
+        heads.update(head)
+        count.update(items)
+        return items
+
+    def opening(self, shelf, ordered, heads):
+        """A row's first cards: none another row opened with, one per franchise, two per
+        creator, no two neighbours from one network past the pinned cards, and, when the
+        row allows, not alike: each next card is the best of the next eight that qualify,
+        less TAG_SPREAD times its likeness to the cards already chosen."""
+        lib = self.lib
+        network = lambda i: self.e.shows[i]['channel']
+        head, franchises, creators = [], set(), Counter()
+        candidates = [i for i in ordered if i not in heads]
+        allowed = lambda i: not (lib.facet_sets(i)[0] & franchises) and \
+            not any(creators[c] >= 2 for c in lib.facet_sets(i)[1])
+        while len(head) < GLANCE:
+            pinned = len(head) < PINNED
+            last = network(head[-1]) if head and not pinned else None
+            best, value, weighed = None, None, 0
+            for n, i in enumerate(candidates):
+                if not allowed(i) or (last and network(i) == last):
+                    continue
+                v = -0.05 * n
+                if shelf.diverse and not pinned:
+                    v -= TAG_SPREAD * max((lib.alike(i, j) for j in head), default=0.0)
+                if value is None or v > value:
+                    best, value = i, v
+                weighed += 1
+                if pinned or weighed == 8:
+                    break
+            if best is None:
+                # Only a neighbour from the same network is left: better that than a gap.
+                best = next((i for i in candidates if allowed(i)), None)
+                if best is None:
+                    break
+            candidates.remove(best)
+            fr, cr = lib.facet_sets(best)[:2]
+            franchises |= fr
+            creators.update(cr)
+            head.append(best)
+        return head
+
+    def callout(self, shelf, i):
+        """One concrete tie a card has with a liked show: a world, a creator or a star."""
+        lib, e = self.lib, self.e
+        franchises, _creators, makers, cast = lib.facet_sets(i)
+        if shelf.seed is not None:
+            j = shelf.seed
+            theirs = lib.facet_sets(j)
+            name = e.shows[j]['name']
+            if franchises & theirs[0]:
+                return f'Same world as {name}'
+            if makers & theirs[1]:
+                return f'Same creator as {name}'
+            stars = sorted(cast & theirs[3])
+            return f'Stars {e.facets.labels[stars[0]]}' if stars else None
+        owners = self.owners()
+        for family, tokens in (('franchise', franchises), ('maker', makers), ('cast', cast)):
+            for c in sorted(tokens):
+                j = owners.get((family, c))
+                if j is None or j == i:
+                    continue
+                if family == 'franchise':
+                    return f'Same world as {e.shows[j]["name"]}'
+                if family == 'maker':
+                    return f'Same creator as {e.shows[j]["name"]}'
+                return f'Stars {e.facets.labels[c]}'
+        return None
+
+    def owners(self):
+        """For each rare franchise, creator and cast token of the liked shows, the liked
+        show it came from, loves first and newest first."""
+        if not hasattr(self, '_owners'):
+            lib, e = self.lib, self.e
+            common = TIE_COMMON * e.n
+            self._owners = {}
+            for p in sorted(self.positives, key=lambda p: (-p['weight'], -self.order[p['id']])):
+                j = e.by_id[p['id']]
+                franchises, creators, _makers, cast = lib.facet_sets(j)
+                for family, tokens in (('franchise', franchises), ('maker', creators), ('cast', cast)):
+                    for c in tokens:
+                        if e.facets.df[c] <= common:
+                            self._owners.setdefault((family, c), j)
+        return self._owners
+
+    def row(self, shelf, items):
+        taste, lib = self.taste, self.lib
+        cards = [lib.card(i, taste) for i in items]
+        if shelf.callouts and self.e.facets:
+            for n, (i, card) in enumerate(zip(items, cards)):
+                if n >= CALLOUTS:
+                    break
+                said = self.callout(shelf, i)
+                if said:
+                    card['callout'] = said
+        out = {'key': shelf.key, 'title': shelf.title, 'kind': shelf.kind, 'items': cards}
+        if shelf.subtitle:
+            out['subtitle'] = shelf.subtitle
+        return out
+
+    # ------------------------------------------------------------ the page
+
+    def layout(self, shown):
+        """(rows the browser does not show yet, filled; whether more could follow). The
+        same request gives the same rows; when the list changed since the browser's rows
+        were built, those stay as they are and only the rows after them are rebuilt."""
+        shelves, queues, different = self.shelves()
+        # Matches for the shows the fixed rows carry from outside the pool.
+        self.taste.score_others(self.lib.top10 + list(self.saved))
+        listed = self.list_row()
+        if listed:
+            shelves.append(listed)
+        order = self.arrange(shelves, queues, different)
+        rows = self.settle(self.fill(order))
+        keys = [shelf.key for shelf, _items in rows]
+        if [key for key, _ids in shown] == keys[:len(shown)]:
+            return rows[len(shown):], rows
+        known = {s.key: s for s in shelves}
+        for queue in queues:
+            for s in queue:
+                known.setdefault(s.key, s)
+        if different:
+            known.setdefault('different', different)
+        pinned = [Pinned(key, [self.e.by_id[i] for i in ids if i in self.e.by_id], known.get(key)) for key, ids in shown]
+        left = [s for s in shelves if s.key not in {key for key, _ids in shown}]
+        queues = [[s for s in queue if s.key not in {key for key, _ids in shown}] for queue in queues]
+        if different and 'different' in {key for key, _ids in shown}:
+            different = None
+        order = self.arrange(left, queues, different, pinned)
+        rows = self.settle(self.fill(order, pinned), len(pinned))
+        return rows[len(pinned):], rows
+
+    def hero(self, rows):
+        """The day's hero: drawn from the ten best picks not on My List and not a hero in
+        the last week, preferring one the first rows do not already open with."""
+        e = self.e
+        saved = set(self.saved)
+        eligible = [e.shows[i]['id'] for i in self.usable if i not in saved]
+        eligible = [i for i in eligible if i not in self.fresh.resting][:10] or eligible[:1]
+        visible = {e.shows[i]['id'] for shelf, items in rows[:3] if items for i in items[:GLANCE]}
+        chosen = pick_one(eligible, self.fresh, 'hero', top=10, avoid=visible)
+        return e.by_id[chosen] if chosen is not None else None
+
+
+def ranks(values):
+    """Each key's place among the values as a share, 1 for the highest and 0 for the
+    lowest, so terms on different scales can be weighed against each other."""
+    order = sorted(values, key=lambda i: -values[i])
+    last = max(1, len(order) - 1)
+    return {i: 1 - n / last for n, i in enumerate(order)}
+
+
+def phrase_of(parts):
+    """The subject of a micro-genre as it reads mid-sentence: "crime dramas", "Nordic noir"."""
+    role = {p['role']: p for p in parts}
+    core, form = role['core'], role.get('form')
+    if core['kind'] != 'noun':
+        return topic_phrase(core, form)
+    if form and form['words'] == 'anime' and not core.get('anime'):
+        return f'{core["singular"]} anime'
+    return core['words']
+
+
+def name_of(parts):
+    """A micro-genre's name from its parts: [adjective] [country] [subgenre] [era]."""
+    role = {p['role']: p for p in parts}
+    phrase = phrase_of(parts)
+    adjective = role.get('adjective')
+    words = []
+    if adjective and adjective['before']:
+        words.append(adjective['words'])
+    if 'place' in role:
+        words.append(role['place']['words'])
+    if adjective and not adjective['before']:
+        words.append(adjective['words'].lower() if words else adjective['words'])
+    words.append(phrase)
+    if 'era' in role:
+        words.append(role['era']['words'])
+    return upper_first(' '.join(words))
+
+
+def topic_phrase(core, form):
+    topic = core['words']
+    kind = form['words'] if form else None
+    if kind == 'anime':
+        return f'{topic} anime'
+    if kind == 'animated':
+        return f'animated {topic} shows'
+    if kind == 'documentaries':
+        return f'{topic} documentaries'
+    if kind == 'reality':
+        return f'{topic} reality shows'
+    word = 'romantic' if topic == 'romance' else topic
+    if kind == 'dramas':
+        return 'dramas' if topic == 'drama' else f'{word} dramas'
+    if kind == 'comedies':
+        return f'{word} comedies'
+    return {'romance': 'romances', 'drama': 'dramas'}.get(topic, f'{topic} shows')
+
+
+def read_lang(body):
+    """The browser's language, as the catalogue names it, when it is not English."""
+    tags = body.get('lang', [])
+    if isinstance(tags, str):
+        tags = [tags]
+    if not isinstance(tags, list) or len(tags) > 8 or any(not isinstance(t, str) or not LANG_TAG.match(t) for t in tags):
+        raise ValueError('Send lang as up to 8 language tags, such as en-GB.')
+    if not tags:
+        return None
+    primary = tags[0].split('-')[0].lower()
+    return None if primary == 'en' else LANGUAGES.get(primary)
+
+
+def read_shown(body):
+    """The rows the browser already shows, in order, as (key, first show ids)."""
+    shown = body.get('shown', [])
+    if not isinstance(shown, list) or len(shown) > MOST_ROWS:
+        raise ValueError(f'Send shown as a list of up to {MOST_ROWS} rows.')
+    out, keys = [], set()
+    for row in shown:
+        if not isinstance(row, dict) or not isinstance(row.get('key'), str) or not ROW_KEY.match(row['key']):
+            raise ValueError('Each shown row needs a key of lower-case letters, digits and hyphens.')
+        ids = row.get('ids', [])
+        if not isinstance(ids, list) or len(ids) > GLANCE or any(type(i) is not int or i < 0 for i in ids):
+            raise ValueError(f'Send up to {GLANCE} show ids for each shown row.')
+        if row['key'] in keys:
+            raise ValueError('Each shown row should appear only once.')
+        keys.add(row['key'])
+        out.append((row['key'], ids))
+    return out
+
+
+def read_count(body, shown):
+    count = body.get('count', NEXT_PAGE if shown else FIRST_PAGE)
+    if type(count) is not int or not 0 <= count <= FIRST_PAGE:
+        raise ValueError(f'Ask for 0 to {FIRST_PAGE} rows.')
+    return count
 
 
 class Library:
@@ -198,6 +1455,53 @@ class Library:
             if top is not None:
                 fronted.add(top)
                 self.genres.append({'key': key, 'label': label, 'poster': self.poster(top)})
+        self._home_setup()
+
+    def _home_setup(self):
+        """What the home page needs that is the same for everyone."""
+        e = self.e
+        shelf = self.shelf
+        rating = lambda i: e.shows[i]['rating'] or 0
+        # All-time favourites: premiered before 2010, well known and well rated.
+        self.classics = sorted((i for i in shelf if e.shows[i]['year'] and e.shows[i]['year'] < 2010 and rating(i) >= 8),
+                               key=lambda i: (-(e.popularity[i] + 10 * rating(i)), e.shows[i]['id']))
+        # Popular right now weighs the well known that are not in the Top 10.
+        self.popular_pool = [i for i in shelf if i not in self.top10_set]
+        self.shelf_by_key = {key: [i for i in shelf if self._fits(key, i)] for key in [*GENRE_ROWS, *FORMAT_ROWS]}
+        known = set(e.metadata['language'])
+        self.languages = {code: name for code, name in LANGUAGES.items() if name in known}
+        self.by_language = {}
+        for i in sorted((i for i, s in enumerate(e.shows) if s['recommendable'] and self.images[i]
+                         and e.popularity[i] >= 70 and s['language'] in self.languages.values()),
+                        key=lambda i: (-e.popularity[i], -rating(i), e.shows[i]['id'])):
+            self.by_language.setdefault(e.shows[i]['language'], []).append(i)
+        # Limited series, from their summaries, Wikidata's genres and the awards they won.
+        self.limited = {i for i, s in enumerate(e.shows) if s['recommendable'] and LIMITED_WORDS.search(s['summary'] or '')}
+        f = e.facets
+        self.facet_column = {}
+        if f:
+            for family_index, family in enumerate(f.families):
+                start, end = f.family_ranges[family_index]
+                for c in range(start, end):
+                    self.facet_column.setdefault((family, f.labels[c]), c)
+            for family, labels in (('genre', LIMITED_GENRES), ('award', LIMITED_AWARDS)):
+                for c in (self.facet_column.get((family, label)) for label in labels):
+                    if c is not None:
+                        self.limited.update(f.post_rows[p] for p in range(f.col_ptr[c], f.col_ptr[c + 1])
+                                            if e.shows[f.post_rows[p]]['recommendable'])
+        # Leanings as the values the taste model keeps, for testing shows against them.
+        a = e.attributes
+        self.values = {}
+        for family in ('language', 'format', 'country', 'decade', 'network'):
+            for v, label in enumerate(a.labels[family]):
+                if label is not None:
+                    self.values[(family, label)] = v
+                    if family == 'country':
+                        self.values[(family, COUNTRIES.get(label, label))] = v
+        for family in ('genre', 'theme', 'subgenre'):
+            for bit, label in enumerate(a.labels.get(family, ())):
+                self.values[(family, label)] = bit
+        self._pools = {}
 
     # ------------------------------------------------------------ shapes
 
@@ -235,6 +1539,230 @@ class Library:
             picked += [i for i in items if i not in picked][:3]
         return [self.card(i) for i in picked[:40]]
 
+    # ------------------------------------------------------------ what shows share
+
+    @lru_cache(maxsize=20000)
+    def facet_sets(self, i):
+        """Show i's franchise tokens, creators (Wikidata's creators, told apart from its
+        writers, producers and directors by weight), every maker and its cast."""
+        f = self.e.facets
+        if not f:
+            return frozenset(), frozenset(), frozenset(), frozenset()
+        franchise, makers, cast = set(), {}, set()
+        families = f.families
+        for c, value in f.row(i):
+            family = families[f.token_family[c]]
+            if family == 'franchise':
+                franchise.add(c)
+            elif family == 'maker':
+                # A creator weighs 1 and anyone else 0.6 before scaling, so a creator's
+                # value over the token's rarity stands above the rest.
+                makers[c] = value / max(math.log(self.e.n / max(f.df[c], 1)), 1e-6)
+            elif family == 'cast':
+                cast.add(c)
+        creators = frozenset()
+        if makers:
+            top = max(makers.values())
+            lead = {c for c, r in makers.items() if r >= 0.9 * top}
+            if len(makers) <= 2 or (len(lead) < len(makers) and len(lead) <= 3):
+                creators = frozenset(lead)
+        return frozenset(franchise), creators, frozenset(makers), frozenset(cast)
+
+    def holders(self, family, tokens):
+        """Every show carrying any of the tokens (maker tokens match any maker)."""
+        f = self.e.facets
+        out = set()
+        for c in tokens:
+            out.update(f.post_rows[p] for p in range(f.col_ptr[c], f.col_ptr[c + 1]))
+        return out
+
+    def overlap(self, i, j, family):
+        mine = self.facet_sets(i)[0] if family == 'franchise' else self.facet_sets(i)[2]
+        theirs = self.facet_sets(j)[0] if family == 'franchise' else self.facet_sets(j)[2]
+        return len(mine & theirs)
+
+    def groups(self, i):
+        """What a show's neighbours should not all share: its network and franchises."""
+        channel = self.e.shows[i]['channel']
+        return ([('network', channel)] if channel else []) + [('franchise', c) for c in self.facet_sets(i)[0]]
+
+    @lru_cache(maxsize=20000)
+    def tags(self, i):
+        s, a = self.e.shows[i], self.e.attributes
+        sub = a.masks['subgenre'][i] if 'subgenre' in a.masks else 0
+        return s['genre_bits'] | s['theme_bits'] << 32 | sub << 64
+
+    def alike(self, i, j):
+        a, b = self.tags(i), self.tags(j)
+        union = (a | b).bit_count()
+        return (a & b).bit_count() / union if union else 0.0
+
+    def pool_stats(self, settings):
+        """For the pool a request's settings allow: each popularity's percentile and the
+        rating a quarter of rated shows reach. The same for everyone with those settings."""
+        key = tuple(sorted((k, v) for k, v in settings.items() if k in (
+            'language', 'type', 'status', 'year_min', 'runtime_min', 'rating_min', 'known_min')))
+        if key not in self._pools:
+            e = self.e
+            kind = settings['type']
+            formats = None if kind == 'all' else set(FORMAT_GROUPS.get(kind, (kind,)))
+            pool = [i for i in range(e.n) if e.eligible(i, settings, formats)]
+            counts = Counter(e.popularity[i] for i in pool)
+            table, below = [], 0
+            for v in range(256):
+                table.append((below + counts[v] / 2) / len(pool) if pool else 0.0)
+                below += counts[v]
+            ratings = sorted(e.shows[i]['rating'] for i in pool if e.shows[i]['rating'])
+            q75 = ratings[int(0.75 * (len(ratings) - 1))] if ratings else 10.0
+            if len(self._pools) > 16:
+                self._pools.clear()
+            self._pools[key] = {'popularity': table, 'rating_q75': q75, 'pool': pool}
+        return self._pools[key]
+
+    # ------------------------------------------------------------ micro-genres
+
+    def form(self, members):
+        """The form most of an interest's shows take, for naming a topic."""
+        if not members:
+            return None
+        shows = self.e.shows
+        share = lambda test: sum(1 for i in members if test(i)) / len(members)
+        if share(lambda i: 'Anime' in shows[i]['genres'] or (shows[i]['type'] == 'Animation'
+                                                              and shows[i]['language'] == 'Japanese')) >= 0.6:
+            return 'anime'
+        for words, kind in (('animated', 'Animation'), ('documentaries', 'Documentary'), ('reality', 'Reality')):
+            if share(lambda i, kind=kind: shows[i]['type'] == kind) >= 0.6:
+                return words
+        comedy = share(lambda i: 'Comedy' in shows[i]['genres'])
+        drama = share(lambda i: 'Drama' in shows[i]['genres'])
+        if comedy >= 0.6 and comedy > drama:
+            return 'comedies'
+        if drama >= 0.6:
+            return 'dramas'
+        return None
+
+    def traits(self, members):
+        """Leanings for an interest too small to have any: what its shows all share,
+        rarest first."""
+        a, e = self.e.attributes, self.e
+        found = []
+        for family in ('subgenre', 'genre'):
+            if family not in a.masks:
+                continue
+            common = ~0
+            for i in members:
+                common &= a.masks[family][i]
+            bits = [b for b in range(len(a.labels[family])) if common >> b & 1 and a.base[family][b] < 0.3]
+            found += sorted(((a.base[family][b], family, a.labels[family][b]) for b in bits))
+        for family in ('country', 'language', 'decade', 'format'):
+            values = {a.values[family][i] for i in members}
+            if len(values) == 1:
+                v = values.pop()
+                if v and a.base[family][v] < 0.3:
+                    found.append((a.base[family][v], family, a.label(family, v)))
+        found.sort(key=lambda f: f[0])
+        return [(family, label) for _base, family, label in found]
+
+    def core(self, family, label, form):
+        """What a leaning names as a row's subject, or None."""
+        if family not in ('subgenre', 'genre', 'format'):
+            return None
+        tests = self.attr_tests([(family, label)])
+        if not tests:
+            return None
+        anime_form = form == 'anime'
+        form_part = None
+        if form and form in FORMS:
+            form_tests = self.attr_tests(FORMS[form])
+            if form_tests:
+                form_part = {'role': 'form', 'words': form, 'tests': form_tests}
+        if label in NOUNS:
+            words = NOUNS[label]
+            core = {'role': 'core', 'kind': 'noun', 'words': words, 'tests': tests, 'family': family, 'source': label,
+                    'regional': words in REGIONAL, 'anime': words.endswith('anime'),
+                    'singular': SINGULAR.get(label, label.lower())}
+            if anime_form and not words.endswith('anime') and family == 'subgenre':
+                core['form'] = form_part
+            return core
+        if label in TOPICS:
+            topic = TOPICS[label]
+            return {'role': 'core', 'kind': 'topic', 'words': topic, 'tests': tests, 'family': family,
+                    'source': label, 'form': form_part, 'anime': anime_form}
+        return None
+
+    def place(self, family, label):
+        if (family, label) not in self.values or label == 'English':
+            return None
+        return {'role': 'place', 'words': label, 'label': label, 'tests': self.attr_tests([(family, label)])}
+
+    def era(self, label):
+        if ('decade', label) not in self.values:
+            return None
+        words = f'from {label}' if label.startswith('before') else f'from the {label}'
+        return {'role': 'era', 'words': words, 'tests': self.attr_tests([('decade', label)])}
+
+    def adjective(self, label):
+        for word, before, sources in ADJECTIVES:
+            if label in sources:
+                tests = self.attr_tests([('subgenre' if s[:1].islower() else 'genre', s) for s in sources])
+                if tests:
+                    return {'role': 'adjective', 'words': word, 'before': before, 'tests': tests, 'sources': sources}
+        return None
+
+    def attr_tests(self, attributes):
+        """(family, value) pairs for leanings the catalogue knows, skipping any it does not."""
+        out = []
+        for family, label in attributes:
+            if family == 'genre' and label[:1].islower():
+                family = 'subgenre'
+            key = (family, label)
+            if key in self.values and (family != 'subgenre' or 'subgenre' in self.e.attributes.masks):
+                out.append((family, self.values[key]))
+        return tuple(out)
+
+    def recipe_test(self, parts):
+        """A test for shows that have every part (and, within a part, any of its leanings)."""
+        checks = [self.part_test(part) for part in parts]
+        if len(checks) == 1:
+            return checks[0]
+        return lambda i: all(check(i) for check in checks)
+
+    def part_test(self, part):
+        """A test for one part: a show has it when it has any of the part's leanings."""
+        a = self.e.attributes
+        masks, values = {}, {}
+        for family, value in part['tests']:
+            if family in ('subgenre', 'genre', 'theme'):
+                masks[family] = masks.get(family, 0) | 1 << value
+            else:
+                values.setdefault(family, set()).add(value)
+        checks = [(lambda column, mask: lambda i: column[i] & mask)(a.masks[f], m) for f, m in masks.items()]
+        checks += [(lambda column, allowed: lambda i: column[i] in allowed)(a.values[f], frozenset(v))
+                   for f, v in values.items()]
+        if not checks:
+            return lambda i: False
+        if len(checks) == 1:
+            return checks[0]
+        return lambda i: any(check(i) for check in checks)
+
+    def proto(self, core):
+        """How clearly a show stands for a core subgenre: its weight among its genres."""
+        f = self.e.facets
+        column = self.facet_column.get(('genre', core.get('source', ''))) if f else None
+        if column is None:
+            return lambda i: 1 / max(1, len(self.e.shows[i]['genres']))
+        return lambda i: next((v for c, v in f.row(i) if c == column), 0.0)
+
+    # ------------------------------------------------------------ rows for everyone
+
+    def plain_rows(self):
+        """The rows a first visit sees after the Top 10 and Popular, as (key, title, items)
+        in the order they are tried."""
+        out = [('classics', 'All-time favourites', self.classics),
+               ('this-year', 'New this year', self.fresh)]
+        out += self.cold
+        return out
+
     # ------------------------------------------------------------ requests
 
     def read_list(self, body):
@@ -248,115 +1776,138 @@ class Library:
         return [self.e.by_id[i] for i in dict.fromkeys(ids) if i in self.e.by_id]
 
     def prepare(self, body):
-        profile, settings, _chosen = self.e.validate(body)
+        """The request checked: its list split by rating, its settings, the pool those
+        settings allow less what is rated, and what the browser has shown (fresh.py)."""
+        profile, settings, _chosen, fresh = self.e.read(body)
         positives = [p for p in profile if p['weight'] > 0]
         negatives = [p for p in profile if p['weight'] < 0]
         rated = {p['id'] for p in profile}
-        kind = settings['type']
-        formats = None if kind == 'all' else set(FORMAT_GROUPS.get(kind, (kind,)))
-        candidates = [i for i, s in enumerate(self.e.shows)
-                      if s['id'] not in rated and self.e.eligible(i, settings, formats)]
-        return profile, settings, positives, negatives, rated, candidates
+        pool = self.pool_stats(settings)['pool']
+        candidates = [i for i in pool if self.e.shows[i]['id'] not in rated]
+        return profile, settings, positives, negatives, rated, candidates, fresh
 
     def home(self, body):
-        profile, settings, positives, negatives, rated, candidates = self.prepare(body)
+        """The home page, or the next rows of it. A first request gets the hero and the
+        first eight rows; one that says which rows it shows (shown) gets the next six."""
+        profile, settings, positives, negatives, rated, candidates, fresh = self.prepare(body)
         saved = self.read_list(body)
+        lang = read_lang(body)
+        shown = read_shown(body)
+        count = read_count(body, shown)
         e = self.e
         if not positives:
-            return self._cold(saved, rated)
-        taste = Taste(self, positives, negatives, settings, candidates)
-        top = taste.ranked()
-        unrated = lambda items: [i for i in items if e.shows[i]['id'] not in rated]
-        fixed = self.top10 + unrated(self.acclaimed) + unrated(self.popular) + unrated(self.fresh) + saved
-        taste.score_others(fixed)
-
-        out = Rows(self, taste)
-        add = out.add
-
-        # Seeds for "Because you loved": one from each interest, heaviest first, so the
-        # rows cover what the list is about; within an interest, loved before liked and
-        # newest first. A list with fewer interests than rows fills up the same way.
-        order = {p['id']: n for n, p in enumerate(profile)}
-        favourite = lambda p: (-p['weight'], -order[p['id']])
-        seeds = [min(interest, key=favourite) for interest in taste.ranking.interests][:SEEDS]
-        seeds += sorted((p for p in positives if p not in seeds), key=favourite)[:SEEDS - len(seeds)]
-        seed_rows = []
-        for seed in seeds:
-            verb = 'loved' if seed['weight'] == 1 else 'liked'
-            name = e.shows[e.by_id[seed['id']]]['name']
-            seed_rows.append((f'seed-{seed["id"]}', f'Because you {verb} {name}', taste.ranked([seed])))
-
-        genre_weight, theme_weight = {}, {}
-        for p in positives:
-            themes, genres = e.signals(e.by_id[p['id']])
-            for g in genres:
-                if g in GENRE_ROWS:
-                    genre_weight[g] = genre_weight.get(g, 0) + p['weight']
-            for t in themes:
-                theme_weight[t] = theme_weight.get(t, 0) + p['weight']
-        genres = sorted(genre_weight, key=lambda g: (-genre_weight[g], g))[:2]
-        themes = sorted(theme_weight, key=lambda t: (-theme_weight[t], t))[:1]
-
-        add('top', 'Top picks for you', top)
-        if seed_rows:
-            add(*seed_rows[0])
-        out.fixed('top10', 'Top 10 shows today', self.top10, 'top10')
-        for g in genres[:1]:
-            add(f'genre-{g}'.lower(), GENRE_ROWS[g], [i for i in top if g in e.shows[i]['genres']])
-        if len(seed_rows) > 1:
-            add(*seed_rows[1])
-        add('new', 'New for you', [i for i in top if e.shows[i]['year'] >= self.year - 1])
-        for t in themes:
-            bit = 1 << e.themes.index(t)
-            add('theme', THEME_ROWS[t], [i for i in top if e.shows[i]['theme_bits'] & bit])
-        for g in genres[1:]:
-            add(f'genre-{g}'.lower(), GENRE_ROWS[g], [i for i in top if g in e.shows[i]['genres']])
-        if len(seed_rows) > 2:
-            add(*seed_rows[2])
-        by_taste = lambda items: sorted(items, key=lambda i: (-(taste.match(i) or 0), e.shows[i]['id']))
-        add('acclaimed', 'Critically acclaimed', by_taste(unrated(self.acclaimed)))
-        add('popular', 'Popular right now', unrated(self.popular), fresh=False)
-
-        hero = top[0] if top else self.top10[0]
-        taste.score_others([hero])
-        names = {p['id']: e.shows[e.by_id[p['id']]]['name'] for p in positives}
-        return {
-            'personal': True, 'date': e.date,
-            'hero': {**self.detail(hero, taste), 'because': taste.closest(hero) if top else None},
-            'rows': out.rows,
+            return self._cold(saved, rated, fresh, lang, shown, count)
+        page = Page(self, profile, settings, positives, negatives, rated, candidates, saved, fresh, lang)
+        new, rows = page.layout(shown)
+        taste = page.taste
+        answer = {
+            'personal': True, 'date': e.date, 'day': fresh.day,
+            'rows': [page.row(shelf, items) for shelf, items in new[:count]],
+            'more': len(new) > count,
             # What the list leans toward and away from, and the interests it holds, for
             # showing a person their own taste.
             'taste': e.taste(profile).summary(),
-            'interests': [{**interest, 'names': [names[i] for i in interest['shows']]}
-                          for interest in taste.ranking.describe()],
-            'top10': [self.card(i, taste) for i in self.top10],
-            'fresh': [self.card(i, taste) for i in by_taste(unrated(self.fresh))[:ROW]],
-            'soon': [{**self.card(i), 'premiered': e.shows[i]['premiered']} for i in self.soon],
+            'interests': [{**interest, 'names': [page.names[i] for i in interest['shows']]}
+                          for interest in page.ranking.describe()],
             # My List is drawn by the page, which keeps it instant; these carry its matches.
             'list': [self.card(i, taste) for i in saved],
-            'message': '' if top else 'Nothing matches these settings. Widen the catalogue in your profile menu.',
+            'message': '' if page.usable else 'Nothing matches these settings. Widen the catalogue in your profile menu.',
         }
+        if not shown:
+            hero = page.hero(rows) if page.usable else self.top10[0]
+            if hero is None:
+                hero = self.top10[0]
+            taste.score_others([hero])
+            popular = next((items for shelf, items in rows if shelf.key == 'popular'), None)
+            by_taste = lambda items: sorted(items, key=lambda i: (-(taste.match(i) or 0), e.shows[i]['id']))
+            unrated = [i for i in self.fresh if e.shows[i]['id'] not in rated]
+            answer.update({
+                'hero': {**self.detail(hero, taste), 'because': taste.closest(hero) if page.usable else None},
+                'top10': [self.card(i, taste) for i in self.top10],
+                'fresh': [self.card(i, taste) for i in by_taste(unrated)[:ROW]],
+                'soon': [{**self.card(i), 'premiered': e.shows[i]['premiered']} for i in self.soon],
+                'popular': [self.card(i, taste) for i in (popular or page.popular().items[:ROW])],
+            })
+        return answer
 
-    def _cold(self, saved, rated):
-        rows = [{'key': 'top10', 'title': 'Top 10 shows today', 'kind': 'top10',
-                 'items': [self.card(i) for i in self.top10]}]
-        rows.append({'key': 'popular', 'title': 'Popular right now', 'kind': 'row', 'items': [self.card(i) for i in self.popular]})
-        for key, title, items in self.cold:
-            rows.append({'key': key, 'title': title, 'kind': 'row',
-                         'items': [self.card(i) for i in items if self.e.shows[i]['id'] not in rated][:ROW]})
-        rows.insert(3, {'key': 'acclaimed', 'title': 'Critically acclaimed', 'kind': 'row',
-                        'items': [self.card(i) for i in self.acclaimed[:ROW]]})
-        return {
-            'personal': False, 'date': self.e.date,
-            'hero': {**self.detail(self.top10[0]), 'because': None},
-            'rows': [r for r in rows if len(r['items']) >= SHORTEST],
-            'top10': [self.card(i) for i in self.top10],
-            'fresh': [self.card(i) for i in self.fresh[:ROW]],
-            'soon': [{**self.card(i), 'premiered': self.e.shows[i]['premiered']} for i in self.soon],
-            'list': [self.card(i) for i in saved],
-            'message': '',
+    def _cold(self, saved, rated, fresh, lang, shown, count):
+        """A page before anything is rated: what is popular now, all-time favourites, new
+        this year, and a row for each of the best-known genres and formats, no show twice.
+        A browser in another language than English also gets that language's most popular."""
+        e = self.e
+        rows = self._cold_rows(saved, rated, fresh, lang, [])
+        keys = [key for key, *_rest in rows]
+        if [key for key, _ids in shown] != keys[:len(shown)]:
+            rows = self._cold_rows(saved, rated, fresh, lang, shown)
+        new = rows[len(shown):]
+        card = lambda i: self.card(i)
+        answer = {
+            'personal': False, 'date': e.date, 'day': fresh.day,
+            'rows': [{'key': key, 'title': title, 'kind': kind, 'items': [card(i) for i in items]}
+                     for key, title, kind, items in new[:count]],
+            'more': len(new) > count,
+            'list': [card(i) for i in saved], 'message': '',
             'taste': {'leans': [], 'avoids': []}, 'interests': [],
         }
+        if not shown:
+            ranked = [e.shows[i]['id'] for i in self.top10]
+            hero = e.by_id[pick_one(ranked, fresh, 'hero', top=10)]
+            popular = next((items for key, _t, _k, items in rows if key == 'popular'), self.popular)
+            answer.update({
+                'hero': {**self.detail(hero), 'because': None},
+                'top10': [card(i) for i in self.top10],
+                'fresh': [card(i) for i in self.fresh[:ROW]],
+                'soon': [{**card(i), 'premiered': e.shows[i]['premiered']} for i in self.soon],
+                'popular': [card(i) for i in popular],
+            })
+        return answer
+
+    def _cold_rows(self, saved, rated, fresh, lang, shown):
+        """The first-visit rows as (key, title, kind, items). Rows the browser shows keep
+        their places and their shows stay off the rows after them."""
+        e = self.e
+        shown_keys = {key for key, _ids in shown}
+        used = {e.by_id[i] for _key, ids in shown for i in ids if i in e.by_id}
+        rows, fixed = [], 0
+        rows.append(('top10', 'Top 10 shows today', 'top10', self.top10))
+        used.update(self.top10)
+        listed = list(reversed(saved))[:LIST_ROW]
+        if any(e.shows[i]['id'] not in rated for i in listed):
+            rows.append(('list', 'My List', 'list', listed))
+            used.update(listed)
+
+        def take(source):
+            return [i for i in source if i not in used and e.shows[i]['id'] not in rated]
+
+        def add(key, title, source, fix=False):
+            nonlocal fixed
+            pool = take(source)
+            items = dither(pool, fresh, f'row-{key}', ROW, pinned=PINNED)
+            if len(items) >= SHORTEST:
+                used.update(items)
+                rows.append((key, title, 'row', items))
+                if fix:
+                    fixed = len(rows)
+        add('popular', 'Popular right now', self.popular_pool, fix=True)
+        if lang and lang in self.by_language:
+            add(f'popular-{slug(lang)}', f'Popular in {lang}', self.by_language[lang], fix=True)
+        add('classics', 'All-time favourites', self.classics)
+        add('this-year', 'New this year', self.fresh)
+        genres = 0
+        for key, title, items in self.cold:
+            if genres == 8:
+                break
+            before = len(rows)
+            add(key, title, items)
+            genres += len(rows) > before
+        fixed = max(fixed, 1)
+        order = rows[:fixed] + shuffle_rows(rows[fixed:], fresh, key_of=lambda row: row[0], fixed=0)
+        if shown:
+            prefix = [row for row in order if row[0] in shown_keys]
+            rest = [row for row in order if row[0] not in shown_keys]
+            by_key = {row[0]: row for row in prefix}
+            order = [by_key.get(key, (key, '', 'row', [])) for key, _ids in shown] + rest
+        return order
 
     def browse(self, body):
         """Rows for one genre or format: ranked for you once you have rated something,
@@ -364,13 +1915,13 @@ class Library:
         key = body.get('genre') if isinstance(body, dict) else None
         if not isinstance(key, str) or (key not in GENRE_ROWS and key not in FORMAT_ROWS):
             raise ValueError('Choose a genre to browse.')
-        profile, settings, positives, negatives, rated, candidates = self.prepare(body)
+        profile, settings, positives, negatives, rated, candidates, fresh = self.prepare(body)
         e = self.e
         label = GENRE_ROWS.get(key) or FORMAT_ROWS[key]
         noun = lower_first(label)
         shelf = [i for i in self.shelf if self._fits(key, i) and e.shows[i]['id'] not in rated]
         taste = Taste(self, positives, negatives, settings, candidates) if positives else None
-        out = Rows(self, taste)
+        out = Rows(self, taste, fresh)
         rating = lambda i: e.shows[i]['rating'] or 0
         acclaimed = [i for i in shelf if rating(i) >= 8]
         if taste:
@@ -392,7 +1943,7 @@ class Library:
         show_id = body.get('id') if isinstance(body, dict) else None
         if type(show_id) is not int or show_id not in self.e.by_id:
             raise ValueError('That show is not in this catalog.')
-        profile, settings, positives, negatives, rated, candidates = self.prepare(body)
+        profile, settings, positives, negatives, rated, candidates, fresh = self.prepare(body)
         e, i = self.e, self.e.by_id[show_id]
         taste = Taste(self, positives, negatives, settings, candidates) if positives else None
         # More like this: closeness to this one show, less the pull of anything disliked,
@@ -402,7 +1953,9 @@ class Library:
                           {p['id']: e.blend(e.by_id[p['id']], settings) for p in negatives})
         pool = [j for j in candidates if j != i]
         near = e.rank(pool, [{'id': show_id, 'weight': 1}], negatives, affinities, settings, positives or None)
-        more = sorted((j for j in pool if near[j] > 0), key=lambda j: (-near[j], e.shows[j]['id']))[:MORE]
+        ranked = sorted((j for j in pool if near[j] > 0), key=lambda j: (-near[j], e.shows[j]['id']))
+        # The closest few stay put; the rest of the twelve are the day's.
+        more = dither(ranked, fresh, f'more-{show_id}', MORE, pinned=GLANCE)
         if taste:
             taste.score_others([i, *more])
         show = self.detail(i, taste)

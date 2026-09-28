@@ -26,6 +26,9 @@ LIVE_SLOTS = threading.BoundedSemaphore(12)
 # The app keeps its page in the path, so these are the page too and a refresh stays put.
 PAGES = ('/', '/index.html', '/new', '/list', '/search', '/browse', '/welcome')
 POSTS = ('/api/home', '/api/title', '/api/shows', '/api/browse')
+# A request for more of the home page carries the rows it shows and what the browser has
+# shown lately (up to 300 titles), so bodies may run past 16KB.
+MOST_BODY = 32768
 LIVE_ROUTES = ('/api/extra', '/api/episodes', '/api/trailer', '/api/rating')
 # Posters come from TVmaze, trailer thumbnails from YouTube's image server, backdrops
 # and service logos from TMDB's, and a trailer plays in YouTube's no-cookie player only
@@ -328,8 +331,8 @@ class Handler(SimpleHTTPRequestHandler):
             length = int(self.headers.get('Content-Length', '0'))
         except ValueError:
             length = 0
-        if not 0 < length <= 16384:
-            self.send_json({'error': 'Send a JSON body under 16KB.'}, 413)
+        if not 0 < length <= MOST_BODY:
+            self.send_json({'error': 'Send a JSON body under 32KB.'}, 413)
             return
         if self.headers.get_content_type() != 'application/json':
             self.send_json({'error': 'Send application/json.'}, 415)
@@ -345,8 +348,11 @@ class Handler(SimpleHTTPRequestHandler):
             elif not isinstance(payload, dict):
                 raise ValueError('Send your list and settings as an object.')
             elif route == '/api/home':
+                # The first eight rows and the hero, or, for a request that says which rows
+                # it already shows, the next ones (library.Library.home).
                 home = LIBRARY.home(payload)
-                home['hero']['tmdb'] = TMDB.get(home['hero']['id'])
+                if home.get('hero'):
+                    home['hero']['tmdb'] = TMDB.get(home['hero']['id'])
                 self.send_json(home)
             elif route == '/api/browse':
                 self.send_json(LIBRARY.browse(payload))
