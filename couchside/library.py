@@ -1338,17 +1338,246 @@ class Page:
                      evidence=EVIDENCE['different'], callouts=False,
                      subtitle=f'Well-loved {label if label == "Westerns" else lower_first(label)}, a change from your usual')
 
+    # ------------------------------------------------------------ rows past the first page
+
+    # Rows past the first page say less about a person than the first page's rows of
+    # the same sort (its gems, new and limited rows weigh 0.8, its genre rows 0.75 and
+    # Something different 0.6), so each weighs less.
+    INTEREST_EVIDENCE = {'gems': 0.7, 'new': 0.7, 'short': 0.65, 'popular': 0.6}
+    EXPLORE_EVIDENCE = {'language': 0.65, 'format': 0.55, 'genre': 0.5}
+    BROWSE_EVIDENCE = {'genre': 0.6, 'theme': 0.55, 'format': 0.55}
+    FIT_FLOOR = 0.6         # the mean fit a chosen row's first cards need (fit())
+    OWN_SHARE = 0.6         # an interest with this share of its shows in one language or format keeps to it
+    HALF_HOUR = 35          # minutes: an episode this long or shorter is a half-hour one
+    EXPLORE_LANGUAGES = 4   # language rows at most
+    EXPLORE_FEW = 0.2       # a format this share of the liked shows or less is one to explore
+    # A genre as it reads in "Westerns to try", where GENRE_ROWS' title does not.
+    EXPLORE_NOUNS = {'Children': "children's shows", 'Crime': 'crime shows', 'DIY': 'DIY shows',
+                     'Family': 'family shows', 'Horror': 'horror shows', 'Romance': 'romances'}
+    # A format as it reads in "Documentaries to try" and "Documentaries for you", apart from the
+    # first-visit rows' titles (FORMAT_ROWS).
+    FORMAT_NAMES = {'animation': 'Animated series', 'documentary': 'Documentaries', 'unscripted': 'Reality TV'}
+
+    def head_fits(self, items, k=None):
+        """Whether a row's first cards fit the list, or interest k, well enough for the
+        row to be chosen for it."""
+        head = items[:GLANCE]
+        return bool(head) and statistics.fmean(self.fit(i, k) for i in head) >= self.FIT_FLOOR
+
+    def subject_of(self, k, taken=()):
+        """What interest k is about, for its own rows: the core of its strongest
+        micro-genre, as Critically acclaimed rows name it ("crime dramas"), or of the next
+        when too few of its shows are that or a heavier interest has the name. An interest
+        mostly of one format keeps to it, and one mostly in a language other than English
+        keeps to that and says so ("Korean thrillers"): TVmaze's popularity leans English
+        and toward anime, and without them a K-drama interest's popular romantic dramas
+        were Poldark and Doc Martin, a Japanese drama interest's were anime. Returns (the
+        name, the interest's shows it fits, best first), or (None, [])."""
+        e = self.e
+        pool = self.by_interest[k]
+        members = [e.shows[e.by_id[p['id']]] for p in self.interests[k]]
+        own, count = Counter(s['language'] for s in members).most_common(1)[0]
+        if own in (None, 'English') or count < self.OWN_SHARE * len(members):
+            own = None
+        kinds = Counter(next((g for g, types in FORMAT_GROUPS.items() if s['type'] in types), None) for s in members)
+        form, count = kinds.most_common(1)[0]
+        types = FORMAT_GROUPS[form] if form and count >= self.OWN_SHARE * len(members) else None
+        for parts in self.recipes(k):
+            core = parts[0]
+            subject = [core] + ([core['form']] if core.get('form') else [])
+            words = phrase_of(subject)
+            if own and not core.get('regional') and not (own == 'Japanese' and words.endswith('anime')):
+                words = f'{own} {words}'
+            if words in taken:
+                continue
+            places = frozenset.intersection(*(self.matching(k, part) for part in subject))
+            shows = [pool[m] for m in sorted(places) if (own is None or e.shows[pool[m]]['language'] == own)
+                     and (types is None or e.shows[pool[m]]['type'] in types)]
+            if len(shows) >= 2 * SHORTEST:
+                return words, shows
+        return None, []
+
     def interest_rows(self):
-        """Tier 2: each interest's own version of the rows that cut across the list."""
-        return []
+        """Tier 2: each interest's own hidden gems, popular, new and half-hour shows,
+        named for what it is about ("Hidden gem crime dramas") and cut from its shows that
+        are that. Finished series to binge were tried and left out: three in four shows
+        have ended, so the row was the interest's micro-genre again."""
+        e, lib = self.e, self.lib
+        heavy = sorted((k for k, s in enumerate(self.share) if s >= INTEREST_FLOOR / 2),
+                       key=lambda k: -self.share[k])[:MOST_INTERESTS]
+        popular = frozenset(lib.popular_pool)
+        floor = self.stats['rating_q75']
+        short = lambda i: 0 < (e.shows[i]['runtime'] or 0) <= self.HALF_HOUR
+        # An interest that is most of the list would only repeat the first page's own
+        # gems, New for you and Popular right now; theirs are worked out when first needed.
+        across = {}
+
+        def repeats(kind, items):
+            if kind not in across:
+                head = (self.gems().items if kind == 'gems' else self.popular().items if kind == 'popular' else
+                        self.default(self.take(lambda i: e.shows[i]['year'] >= lib.year - 1))[0])
+                across[kind] = frozenset(head[:12])
+            top = frozenset(items[:12])
+            return len(top & across[kind]) >= 0.5 * min(12, len(top))
+        out, taken = [], set()
+        for k in heavy:
+            words, shows = self.subject_of(k, taken)
+            if not words:
+                continue
+            taken.add(words)
+            rows = []
+            # Hidden gems as gems() finds them, among the interest's own best fits.
+            places, size = self.place_in[k]
+            cut = max(1, int(size * HIDDEN[2]))
+            found = [i for i in shows if places[i] < cut and self.pop(i) <= HIDDEN[0]
+                     and (e.shows[i]['rating'] or 0) >= floor][:FILTER_POOL]
+            taste = ranks({i: self.taste_of(i, k) for i in found})
+            score = {i: 0.6 * taste[i] + 0.4 * self.quality(i) for i in found}
+            rows.append(('gems', f'Hidden gem {words}', sorted(score, key=lambda i: (-score[i], e.shows[i]['id'])), score))
+            # Popular as popular() orders it, taste choosing which and popularity the order,
+            # from the interest's best fits in the popular pool.
+            found = [i for i in shows if i in popular][:FILTER_POOL]
+            blend = {i: 0.5 * self.taste_of(i, k) + 0.5 * self.pop(i) for i in found}
+            found = sorted(blend, key=lambda i: (-blend[i], e.shows[i]['id']))[:3 * ROW]
+            found.sort(key=lambda i: (-e.popularity[i], -(e.shows[i]['rating'] or 0), e.shows[i]['id']))
+            rows.append(('popular', f'Popular {words}', found, None))
+            found = [i for i in shows if e.shows[i]['year'] >= lib.year - 1][:FILTER_POOL]
+            rows.append(('new', f'New {words}', *self.default(found, k)))
+            members = [e.by_id[p['id']] for p in self.interests[k]]
+            if 2 * sum(map(short, members)) < len(members):
+                found = [i for i in shows if short(i)][:FILTER_POOL]
+                rows.append(('short', f'Half-hour {words}', *self.default(found, k)))
+            subtitle = fans_of(self.interest_names(k))
+            for kind, title, items, score in rows:
+                if len(items) < SHORTEST or not self.head_fits(items, k) or (kind != 'short' and repeats(kind, items)):
+                    continue
+                out.append(Shelf(f'{kind}-{slug(words)}', title, f'interest-{kind}', items, score, interest=k,
+                                 evidence=self.INTEREST_EVIDENCE[kind], subtitle=subtitle,
+                                 callouts=kind != 'popular', diverse=kind != 'popular'))
+        return out
 
     def explore_rows(self):
-        """Tier 3: languages, formats and genres the list has not reached, by taste."""
-        return []
+        """Tier 3: a handful of languages the list has nothing in, genres it has not
+        touched and formats it has few of, each only where its best shows fit the list,
+        the best fitting first. Something different is one of these a day and says so
+        already, and a genre may be a format again (anime and animation, nature and
+        documentaries), so a row that repeats one before it is left out."""
+        before = [row.top12 for row in [self.different()] if row]
+        out = []
+        for row in self.explore_languages() + self.explore_genres() + self.explore_formats():
+            if all(len(row.top12 & other) < 0.5 * min(12, len(row.top12)) for other in before):
+                out.append(row)
+                before.append(row.top12)
+        return out
+
+    def explore_languages(self):
+        """Languages nothing liked is in, from the list's best fits, ordered as places()
+        orders the languages it likes."""
+        e = self.e
+        liked = {e.shows[e.by_id[p['id']]]['language'] for p in self.positives}
+        # A row for a country the list likes may already carry a language's name.
+        near = {row.title for row in self.places()}
+        found = {}
+        for i in self.depth:
+            language = e.shows[i]['language']
+            if language and language != 'English' and language not in liked:
+                found.setdefault(language, []).append(i)
+        options = []
+        for language, items in found.items():
+            title = f'{language} shows for you'
+            if len(items) < SHORTEST or title in near:
+                continue
+            items, score = self.default(items[:FILTER_POOL])
+            if self.head_fits(items):
+                options.append((statistics.fmean(self.fit(i) for i in items[:GLANCE]), language, title, items, score))
+        options.sort(key=lambda o: (-o[0], o[1]))
+        return [Shelf(f'lang-{slug(language)}', title, 'explore-language', items, score, personal=False,
+                      evidence=self.EXPLORE_EVIDENCE['language'])
+                for _fit, language, title, items, score in options[:self.EXPLORE_LANGUAGES]]
+
+    def explore_formats(self):
+        """Documentaries, animation and reality for a list with few of them."""
+        e, lib = self.e, self.lib
+        liked = [e.by_id[p['id']] for p in self.positives]
+        rows = (self.explore_row(key, f'{label} to try', 'format') for key, label in self.FORMAT_NAMES.items()
+                if sum(lib._fits(key, i) for i in liked) <= self.EXPLORE_FEW * len(liked))
+        return sorted((row for row in rows if row), key=lambda row: -statistics.fmean(self.fit(i) for i in row.items[:GLANCE]))
+
+    def explore_genres(self):
+        """Every genre the list has not touched, liked or not, as Something different
+        chooses among them (different() makes one of these a day)."""
+        e, lib = self.e, self.lib
+        rated = [e.by_id[p['id']] for p in self.positives + self.negatives]
+        rows = (self.explore_row(key, f'{upper_first(self.EXPLORE_NOUNS.get(key, lower_first(title)))} to try', 'genre')
+                for key, title in GENRE_ROWS.items()
+                if key not in ('Drama', 'Comedy') and not any(lib._fits(key, i) for i in rated))
+        return sorted((row for row in rows if row), key=lambda row: -statistics.fmean(self.fit(i) for i in row.items[:GLANCE]))
+
+    def explore_row(self, key, title, sort):
+        """A genre or format to explore: its well-known shows among the list's best fits,
+        the well loved first as Something different orders them, or None when too few fit
+        or its first cards do not fit well enough."""
+        e = self.e
+        found = sorted((i for i in self.lib.shelf_by_key.get(key, ()) if self.place_of.get(i, DEPTH_POOL) < DEPTH_POOL),
+                       key=self.place_of.get)[:FILTER_POOL]
+        if len(found) < SHORTEST:
+            return None
+        taste = ranks({i: self.taste_of(i) for i in found})
+        score = {i: 0.5 * self.quality(i) + 0.3 * taste[i] + 0.2 * self.pop(i) for i in found}
+        items = sorted(score, key=lambda i: (-score[i], e.shows[i]['id']))
+        if not self.head_fits(items):
+            return None
+        return Shelf(f'explore-{slug(key)}', title, f'explore-{sort}', items, score, personal=False,
+                     evidence=self.EXPLORE_EVIDENCE[sort], callouts=False, subtitle='A change from your usual')
 
     def browse_rows(self):
-        """Tier 4: the genre, theme and format rows, by taste."""
-        return []
+        """Tier 4: every genre, theme and format row with enough shows among the list's
+        best fits, each cut and ordered as the first page's genre and theme rows are
+        (default(take())). Genres and themes keep the first page's keys, so none shows
+        twice; formats take keys and names of their own, since the first-visit rows hold
+        theirs ("Documentaries for you", not "Documentaries"). A micro-genre cut down to
+        its subject may have a row's name ("Mysteries") and stands in for it, and a row
+        that repeats a tier 3 row or Something different is left to that."""
+        e = self.e
+        named = set()
+        for k in sorted((k for k, s in enumerate(self.share) if s >= INTEREST_FLOOR / 2),
+                        key=lambda k: -self.share[k])[:MOST_INTERESTS]:
+            for parts in self.recipes(k):
+                core = parts[0]
+                named.add(upper_first(phrase_of([core])))
+                if core.get('form'):
+                    named.add(upper_first(phrase_of([core, core['form']])))
+        group = {kind: key for key, kinds in FORMAT_GROUPS.items() if key in FORMAT_ROWS for kind in kinds}
+        # What take() finds for each of the 62 rows, in one pass rather than 62.
+        found = {}
+        for i in self.depth:
+            s = e.shows[i]
+            tags = [('genre', g) for g in s['genres']] + [('format', group.get(s['type']))]
+            bits = s['theme_bits']
+            while bits:
+                low = bits & -bits
+                tags.append(('theme', e.themes[low.bit_length() - 1]))
+                bits ^= low
+            for tag in tags:
+                items = found.setdefault(tag, [])
+                if len(items) < FILTER_POOL:
+                    items.append(i)
+        rows = [(f'genre-{g}'.lower(), title, 'genre', g) for g, title in GENRE_ROWS.items()]
+        rows += [(f'theme-{slug(title)}', title, 'theme', t) for t, title in THEME_ROWS.items()]
+        rows += [(f'browse-{f}', f'{self.FORMAT_NAMES[f]} for you', 'format', f) for f in FORMAT_ROWS]
+        # A genre the list has not touched has its row in tier 3, from the same shows.
+        before = [row.top12 for row in self.explore_formats() + self.explore_genres() + [self.different()] if row]
+        out = []
+        for key, title, sort, value in rows:
+            if len(found.get((sort, value), ())) < SHORTEST or title in named:
+                continue
+            items, score = self.default(found[sort, value])
+            top = frozenset(items[:12])
+            if any(len(top & other) >= 0.5 * min(12, len(top)) for other in before):
+                continue
+            out.append(Shelf(key, title, f'browse-{sort}', items, score, personal=False,
+                             evidence=self.BROWSE_EVIDENCE[sort]))
+        return out
 
     def list_row(self):
         """My List, most recently added first, when it holds a show not yet rated."""
