@@ -15,7 +15,8 @@ export const joinNames = names => names.length < 2 ? (names[0] || '')
   : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
 
 // What two shows concretely share, as a phrase: part of Breaking Bad, by Vince Gilligan.
-const TIES = { franchise: l => `part of ${l}`, maker: l => `by ${l}`, cast: l => `with ${l}`, network: l => `also on ${l}` };
+const TIES = { franchise: l => `part of ${l}`, maker: l => `by ${l}`, cast: l => `with ${l}`, network: l => `also on ${l}`,
+  fans: () => 'its fans look this up too' };
 export const tieText = t => (TIES[t.family] || (l => l))(t.label);
 
 const decade = l => l.startsWith('before') ? l : `the ${l}`;

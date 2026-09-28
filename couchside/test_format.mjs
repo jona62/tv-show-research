@@ -9,6 +9,7 @@ check('a franchise tie reads as belonging', tieText({ family: 'franchise', label
 check('a maker tie reads as authorship', tieText({ family: 'maker', label: 'Vince Gilligan' }) === 'by Vince Gilligan');
 check('a network tie reads as a channel', tieText({ family: 'network', label: 'HBO' }) === 'also on HBO');
 check('any other tie is its label', tieText({ family: 'genre', label: 'mockumentary' }) === 'mockumentary');
+check('a reader link says its fans look it up', tieText({ family: 'fans', label: '' }) === 'its fans look this up too');
 check('a decade leaning reads in a sentence', leaning({ family: 'decade', label: '2000s' }) === 'the 2000s');
 check('the earliest decade has no article', leaning({ family: 'decade', label: 'before 1960' }) === 'before 1960');
 check('a language leaning names shows', leaning({ family: 'language', label: 'Korean' }) === 'shows in Korean');

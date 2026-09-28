@@ -82,6 +82,17 @@ chose rather than a published one, it says so.
   localised picker made new users 5 to 10% likelier to return
   ([Pinterest](https://medium.com/pinterest-engineering/personalizing-pinterests-new-user-experience-abroad-60f8f55177ac)).
 
+## Behaviour without accounts
+
+The services above learn most from what their members watch together; these apps
+have no members' histories to learn from. The nearest public, legal equivalent is
+Wikipedia's monthly clickstream (CC0): how many readers went from one article to
+another ([Wikimedia](https://dumps.wikimedia.org/other/clickstream/)). Among the
+articles about the catalogue's shows, it says which shows the same people are
+curious about, for about 13,000 of them. Added to closeness, it raised the share of
+held-out favourites in the top 24 from 44% to 54% on personas nobody tuned on.
+TMDB's recommendations would be richer, but its terms forbid using its data for this.
+
 ## What Next Watch and Couchside do
 
 Both apps keep no accounts, so everything personal lives in the browser and is

@@ -1,7 +1,7 @@
 // Couchside's service worker. Pages and files always come from the network when it is
 // there, so a deploy is never hidden behind an old copy. Without a connection, a page
 // asking for it back is served from a small cache, with what that page needs.
-const VERSION = 'efd066e63a2b';
+const VERSION = 'c0333e030aa5';
 const CACHE = `couchside-${VERSION}`;
 const SHELL = ['/offline.html', '/style.css', '/favicon.svg', '/icon-192.png'];
 

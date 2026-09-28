@@ -57,6 +57,16 @@ FACET_WEIGHTS = {'franchise': 2.0, 'maker': 0.5, 'cast': 0.0, 'genre': 0.0, 'sub
 # nothing and is left out.
 TIE_ORDER = ('franchise', 'maker', 'cast', 'genre', 'subject', 'network')
 TIE_COMMON = 0.01
+# Wikipedia's clickstream: readers of one show's article who go on to another's
+# (scripts/build_cointerest.py). A link of similarity s adds CO_WEIGHT x s^CO_POWER to
+# closeness, on the same footing as the facet bonus; the low power lets a modest link
+# count almost as much as a strong one, since the clickstream drops pairs under ten a
+# month. Pairs that share a franchise are skipped: the franchise already links them,
+# and readers comparing an original with its reboot say nothing about liking both.
+# Tuned on scripts/bench's personas and confirmed on its holdout.
+CO_WEIGHT = 3.0
+CO_POWER = 0.33
+CO_TIE = 0.25       # a link this strong (after the power) is named when a pick explains itself
 
 DEFAULT_SETTINGS = {
     'text': 40, 'themes': 35, 'genres': 25, 'facets': 30,
@@ -130,6 +140,7 @@ class Engine:
             known = [f for f in FACET_WEIGHTS if f in self.facets.families]
             total = sum(FACET_WEIGHTS[f] for f in known) or 1
             self.facet_weights = {f: FACET_WEIGHTS[f] / total for f in known}
+        self.co = facets.cointerest(model, self.n)
         self.attributes = Attributes(self, self.subgenres())
         self.quick_picks = [self.card(self.by_id[i]) for i in QUICK_PICKS if i in self.by_id]
         self.titles = Titles(self.shows, self.popularity, model / 'search.json.gz')
@@ -277,12 +288,36 @@ class Engine:
             masks.append(mask)
         return labels, masks
 
+    def franchises(self, i):
+        """Show i's franchise tokens in the facets, for telling linked shows apart."""
+        f = self.facets
+        if not f or 'franchise' not in f.families:
+            return frozenset()
+        start, end = f.family_ranges[f.families.index('franchise')]
+        return frozenset(c for c, _v in f.row(i) if start <= c < end)
+
+    def cointerest(self, i):
+        """(show j, strength after the power) for the shows show i's readers also look up,
+        leaving out any it shares a franchise with."""
+        if not self.co:
+            return []
+        indptr, indices, values = self.co
+        mine = self.franchises(i)
+        out = []
+        for k in range(indptr[i], indptr[i + 1]):
+            j = indices[k]
+            if mine and mine & self.franchises(j):
+                continue
+            out.append((j, values[k] ** CO_POWER))
+        return out
+
     def ties(self, i, j):
         """What two shows concretely share beyond plot words: a franchise, a maker, cast,
-        a Wikidata genre, a subject or a network, strongest first within each kind."""
+        a Wikidata genre, a subject or a network, strongest first within each kind, and
+        whether one's readers often look up the other."""
         f = self.facets
         if not f:
-            return []
+            return [{'family': 'fans', 'label': ''}] if any(k == i and s >= CO_TIE for k, s in self.cointerest(j)) else []
         mine = dict(f.row(i))
         common = TIE_COMMON * self.n
         shared = [(TIE_ORDER.index(f.families[f.token_family[c]]), -v * mine[c], c)
@@ -298,6 +333,10 @@ class Engine:
                 continue
             seen.add((family, label))
             out.append({'family': family, 'label': label})
+        # Readers of the liked show often go on to this one: its fans look it up too.
+        if not any(t['family'] == 'franchise' for t in out) and \
+                any(k == i and s >= CO_TIE for k, s in self.cointerest(j)):
+            out.insert(min(1, len(out)), {'family': 'fans', 'label': ''})
         return out[:4]
 
     @lru_cache(maxsize=32)
@@ -319,6 +358,14 @@ class Engine:
             table = [(mine & m).bit_count() / math.sqrt(n * c) if c else 0.0 for m, c in zip(masks, counts)]
             return array('f', map(table.__getitem__, where))
         near = self.facets.similarity(index, self.facet_weights) if self.facets else None
+        linked = self.cointerest(index)
+        if linked:
+            # Added where the facet bonus is, scaled so the default facet setting gives
+            # CO_WEIGHT; a request that turns facets off turns this off with them.
+            near = near if near is not None else array('f', bytes(4 * self.n))
+            scale = CO_WEIGHT / (DEFAULT_SETTINGS['facets'] / 100)
+            for j, strength in linked:
+                near[j] += scale * strength
         return text, bits('theme_bits'), bits('genre_bits'), near
 
     def blend(self, index, settings):

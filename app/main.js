@@ -601,7 +601,7 @@ const within = f => (WITHIN[f.family] || (l => l))(f.label);
 const listed = words => words.length > 1 ? `${words.slice(0, -1).join(', ')} and ${words.at(-1)}` : words[0] || '';
 // What two shows concretely share, as it would be said.
 const TIE = {
-  franchise: l => `Part of ${l}`, maker: l => `By ${l}`, cast: l => `With ${l}`,
+  franchise: l => `Part of ${l}`, maker: l => `By ${l}`, cast: l => `With ${l}`, fans: () => 'Its fans look this up too',
   network: l => `Also on ${l}`, genre: l => cap(l), subject: l => cap(l),
 };
 const tie = t => (TIE[t.family] || cap)(t.label);

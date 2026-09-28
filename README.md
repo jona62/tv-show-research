@@ -10,7 +10,9 @@ whole list leans toward: its languages, formats, networks, eras, subgenres, and 
 well known and well rated its shows are, learned from your ratings and dislikes.
 A list with several tastes gets picks for each. [scripts/bench](scripts/bench/)
 measures it against 71 viewer personas: on the 20 nobody tuned on, a held-out
-favourite lands in the top 24 picks 44% of the time, up from 10%. Picks and rows
+favourite lands in the top 24 picks 54% of the time, up from 10%. Besides each
+show's own data it uses which shows the same readers look up on Wikipedia, from the
+public clickstream. Picks and rows
 stay fresh from day to day, and first visits are drawn per browser; what that
 borrows from Netflix and others is in [docs/recommender-practice.md](docs/recommender-practice.md).
 

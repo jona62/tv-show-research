@@ -271,7 +271,11 @@ TVmaze's networks, read by `facets.py`) once. A pick has to do two things.
 
 - **Sit close to shows you liked.** Closeness to one show blends plot wording,
   themes and genres as the *Tune* preset weighs them, plus a bonus for sharing a
-  franchise (a spin-off, sequel or shared universe) or a maker. Candidates are
+  franchise (a spin-off, sequel or shared universe) or a maker, and one for being
+  a show the same readers look up on Wikipedia (co-interest from the public
+  clickstream: readers of Breaking Bad's article go on to Mad Men's and The
+  Sopranos'), which is the one signal here about what people are into rather
+  than what a show is. Candidates are
   scored with a weighted mean across your liked shows, blended with the single
   strongest match, less a penalty for looking like what you disliked.
 - **Fit what your whole list leans toward.** `taste.py` compares how often your

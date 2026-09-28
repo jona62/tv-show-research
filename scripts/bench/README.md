@@ -93,18 +93,19 @@ profile, which is the first place to look when a persona scores badly.
 ## Baseline
 
 `baseline.json` is the current engine (closeness, Wikidata franchise and maker
-links, the taste model and interests) on the 2026-09-07 model, under its own
-defaults. `closeness-only.json` is the engine before any of that, as of
+links, co-interest from Wikipedia's clickstream, the taste model and interests) on
+the 2026-09-07 model, under its own defaults. The middle column below is the same
+engine before co-interest. `closeness-only.json` is the engine before any of that, as of
 `b7ae920` (`app/engine.py` hash `b87bbf85692e`), which ranked by plot, theme and
 genre closeness alone under the old defaults (floor 85, from 1990). Compare a
 change with `--compare scripts/bench/baseline.json`.
 
-| personas.json (tuned on) | closeness only | current |
-|---|---:|---:|
-| default: leave-one-out HR@24 / HR@100 | 13.3% / 27.8% | 46.9% / 69.6% |
-| default: MRR, median rank | 0.033, 504 | 0.176, 31 |
-| default: targets filtered | 118 of 622 | 11 of 622 |
-| default: few-shot HR@24 | 10.2% | 37.7% |
+| personas.json (tuned on) | closeness only | taste model | + co-interest |
+|---|---:|---:|---:|
+| default: leave-one-out HR@24 / HR@100 | 13.3% / 27.8% | 46.9% / 69.6% | 56.9% / 77.5% |
+| default: MRR, median rank | 0.033, 504 | 0.176, 31 | 0.250, 15 |
+| default: targets filtered | 118 of 622 | 11 of 622 | 11 of 622 |
+| default: few-shot HR@24 | 10.2% | 37.7% | 44.0% |
 | wide: leave-one-out HR@24 / HR@100 | 5.8% / 11.6% | 45.2% / 67.5% |
 | wide: MRR, median rank | 0.019, 1,913 | 0.173, 36 |
 | wide: few-shot HR@24 | 3.8% | 34.6% |
@@ -128,13 +129,13 @@ somewhat. `holdout.json` holds 20 more personas (264 ratings) written afterwards
 without looking at any engine output, that nothing was tuned on; it is the honest
 measure:
 
-| holdout.json (never tuned on) | closeness only | current |
-|---|---:|---:|
-| default: leave-one-out HR@24 / HR@100 | 9.8% / 18.0% | 44.3% / 63.5% |
-| default: MRR, median rank | 0.037, 1,695 | 0.165, 36 |
-| default: few-shot HR@24 | 8.8% | 35.2% |
-| wide: leave-one-out HR@24 / HR@100 | 7.0% / 18.4% | 43.9% / 63.5% |
-| dislikes in the top 24 of loves and likes alone | 3 of 20 | 0 of 20 |
+| holdout.json (never tuned on) | closeness only | taste model | + co-interest |
+|---|---:|---:|---:|
+| default: leave-one-out HR@24 / HR@100 | 9.8% / 18.0% | 44.3% / 63.5% | 54.5% / 71.3% |
+| default: MRR, median rank | 0.037, 1,695 | 0.165, 36 | 0.225, 16 |
+| default: few-shot HR@24 | 8.8% | 35.2% | 40.4% |
+| wide: leave-one-out HR@24 / HR@100 | 7.0% / 18.4% | 43.9% / 63.5% | 54.5% / 72.1% |
+| dislikes in the top 24 of loves and likes alone | 3 of 20 | 0 of 20 | 0 of 20 |
 
 ```sh
 .venv/bin/python scripts/bench/taste_bench.py --personas scripts/bench/holdout.json --jobs 4 \

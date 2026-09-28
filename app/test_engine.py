@@ -340,6 +340,32 @@ for label, extra, said in [
         except ValueError as exc:
             check(f'{how} rejects {label}', said in str(exc), str(exc))
 
+# Co-interest from Wikipedia's clickstream: readers of one show's article who go on to
+# another's add to closeness, except between shows a franchise already links.
+import facets as facets_module                                   # noqa: E402
+import tempfile                                                  # noqa: E402
+if app.co:
+    bb, bcs, mad = app.by_id[169], app.by_id[618], next(i for i, s in enumerate(app.shows) if s['name'] == 'Mad Men')
+    linked = dict(app.cointerest(bb))
+    check('co-interest links Breaking Bad to shows its readers look up', mad in linked, sorted(linked)[:5])
+    check('but not to a show it shares a franchise with', bcs not in linked)
+    plain_near = app.facets.similarity(bb, app.facet_weights)[mad]
+    check('a co-interest link adds to the facet closeness', app.components(bb)[3][mad] > plain_near + 1e-6)
+    off = app.blend(bb, {**DEFAULT_SETTINGS, 'facets': 0})
+    on = app.blend(bb, DEFAULT_SETTINGS)
+    check('turning facets off turns co-interest off too', on[mad] > off[mad])
+    check('a strong enough link is named as a tie', {'family': 'fans', 'label': ''} in app.ties(mad, bb)
+          or linked.get(mad, 0) < engine_module.CO_TIE)
+    empty = Path(tempfile.mkdtemp())
+    check('a model without co-interest reads as none', facets_module.cointerest(empty, app.n) is None)
+    try:
+        facets_module.cointerest(ROOT / 'model', app.n + 1)
+        check('co-interest for another catalog size is refused', False)
+    except ValueError as exc:
+        check('co-interest for another catalog size is refused', 'rows' in str(exc), str(exc))
+else:
+    print('skip  the model has no co-interest yet')
+
 print()
 if failures:
     sys.exit(f'{len(failures)} check(s) failed: {", ".join(failures)}')

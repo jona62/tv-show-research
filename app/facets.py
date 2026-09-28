@@ -182,3 +182,35 @@ def load(model_dir, n):
     return Facets(meta, arrays)
 
 
+
+
+def cointerest(model_dir, n):
+    """Who else a show's readers look up on Wikipedia, from cointerest.bin.gz
+    (scripts/build_cointerest.py): (indptr, indices, values) as typed arrays, a row per
+    catalog show in order, or None when the model has none. ValueError when the file is
+    there but does not fit a catalog of n shows."""
+    path = Path(model_dir) / 'cointerest.bin.gz'
+    if not path.exists():
+        return None
+    try:
+        with gzip.open(path, 'rb') as f:
+            magic, rows, nnz = struct.unpack('<4sII', f.read(12))
+            if magic != b'COI1':
+                raise ValueError('cointerest.bin.gz is not co-interest data.')
+            if rows != n:
+                raise ValueError(f'cointerest.bin.gz has {rows:,} rows where the catalog has {n:,}.')
+            arrays = []
+            for code, count in (('I', rows + 1), ('I', nnz), ('f', nnz)):
+                values = array(code)
+                values.frombytes(f.read(4 * count))
+                if sys.byteorder != 'little':
+                    values.byteswap()
+                if len(values) != count:
+                    raise ValueError('cointerest.bin.gz is truncated.')
+                arrays.append(values)
+    except (OSError, EOFError, struct.error, zlib.error) as exc:
+        raise ValueError(f'cointerest.bin.gz does not read: {exc}') from None
+    indptr, indices, values = arrays
+    if indptr[-1] != nnz or any(indptr[k] > indptr[k + 1] for k in range(rows)):
+        raise ValueError('cointerest.bin.gz has a broken row index.')
+    return indptr, indices, values
