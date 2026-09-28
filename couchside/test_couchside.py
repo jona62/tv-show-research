@@ -98,9 +98,9 @@ import server                                                    # noqa: E402
 import follow                                                    # noqa: E402
 import tmdb                                                      # noqa: E402
 from build import MODULES                                        # noqa: E402
-from engine import DEFAULT_SETTINGS                              # noqa: E402
+from engine import DEFAULT_SETTINGS, QUICK_PICKS                 # noqa: E402
 from fallback import Remote                                      # noqa: E402
-from library import ROW, MORE, GLANCE, SHORTEST, GENRE_ROWS, NEW_DAYS, lower_first  # noqa: E402
+from library import ROW, MORE, GLANCE, SHORTEST, GENRE_ROWS, NEW_DAYS, FALLBACK, lower_first  # noqa: E402
 from live import (Live, LiveError, Icons, trim_show, trim_episodes, trim_videos,        # noqa: E402
                   trim_seasons, match_rating, IMAGES)
 
@@ -128,7 +128,8 @@ def rejects(label, fn, said):
 # 1. One engine for both apps, with its taste model, its search and the search's
 # TVmaze fallback, the model follower and the facet reader, each copied unchanged.
 check('the build copies every one of them',
-      {'engine.py', 'taste.py', 'titles.py', 'fallback.py', 'follow.py', 'facets.py', 'fresh.py'} <= set(MODULES))
+      {'engine.py', 'taste.py', 'titles.py', 'fallback.py', 'follow.py', 'facets.py', 'fresh.py', 'starters.py'}
+      <= set(MODULES))
 for name in MODULES:
     check(f'{name} is Next Watch\'s, unchanged',
           (ROOT / 'app' / name).read_bytes() == (ROOT / 'couchside' / name).read_bytes())
@@ -211,7 +212,12 @@ check('every card on a first visit has a poster', all(c['poster'] for r in cold[
 check('no match is claimed without ratings', all(c['match'] is None for r in cold['rows'] for c in r['items']))
 check('the hero leads the top 10', cold['hero']['id'] == cold['top10'][0]['id'])
 check('coming soon is dated after the snapshot', cold['soon'] and all(c['premiered'] > engine.date for c in cold['soon']))
-check('starters are recognisable and many', len(lib.starters) >= 30 and lib.starters[0]['id'] == 169)
+check('the page carries a few fallback starters with posters, led by a quick pick',
+      len(lib.starters) == FALLBACK and all(c['poster'] for c in lib.starters) and lib.starters[0]['id'] in QUICK_PICKS
+      and len({c['id'] for c in lib.starters}) == FALLBACK)
+check('every starter has a poster, whatever the seed', all(
+    lib.images[slot.index] for seed in ('0123456789abcdef', 'fedcba9876543210', None)
+    for slot in lib.starting.choose(seed, 0, (), 'ko')))
 
 # 4. A rated list gets rows built from it.
 home = lib.home({'profile': PROFILE, 'settings': {}, 'list': [526, 999_999_999, 431]})
@@ -606,6 +612,42 @@ check('browse answers over HTTP', status == 200 and json.loads(body)['rows'])
 check('browsing nowhere is a 400', fetch('/api/browse', {'profile': [], 'genre': 'Nowhere'})[0] == 400)
 check('an unknown api path is a 404', fetch('/api/nope')[0] == 404)
 
+# 7a. First-visit starters: poster cards, drawn per visitor, adapting to picks.
+def starters(query, headers=None):
+    status, headers, body = fetch('/api/starters?' + query, headers=headers)
+    return status, headers, json.loads(body)
+
+
+SEED = '0123456789abcdef'
+status, headers, first = starters(f'seed={SEED}&lang=en-US')
+cards = first['shows']
+check('starters answer 24 poster cards, each saying why it is there', status == 200 and len(cards) == 24
+      and all(c['poster'] and c['name'] and c['why'] in ('anchor', 'facet', 'explore') for c in cards)
+      and len({c['id'] for c in cards}) == 24)
+check('starters are never cached', headers.get('Cache-Control') == 'no-store')
+check('the same seed gives the same starters', starters(f'seed={SEED}&lang=en-US')[2] == first)
+check('another visitor gets others', len({c['id'] for c in cards} & {c['id'] for c in starters(
+    'seed=fedcba9876543210&lang=en-US')[2]['shows']}) < 12)
+picked = cards[4]['id']
+after = starters(f'seed={SEED}&lang=en-US&picked={picked}')[2]['shows']
+check('a pick stays in its place, and three others swap for a contrast, a neighbour and an unexplored kind',
+      after[4]['id'] == picked and after[4]['why'] == 'picked' and sorted(
+          a['why'] for a, b in zip(after, cards) if a['id'] != b['id'] and a['id'] != picked)
+      == ['contrast', 'nearest', 'unexplored'])
+check('the next round shows different shows', len({c['id'] for c in cards} & {
+    c['id'] for c in starters(f'seed={SEED}&lang=en-US&round=1')[2]['shows']}) <= 3)
+korean = starters(f'seed={SEED}', headers={'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8'})[2]['shows']
+check('without lang the Accept-Language header speaks: seven Korean starters', sum(
+    engine.shows[engine.by_id[c['id']]]['language'] == 'Korean' for c in korean) >= 7
+      and sum(c['why'] == 'locale' for c in korean) == 7)
+check('a seedless request gets the plain screen, the Stranger Things poster from this model\'s art in round 1',
+      any(str(MOVED_POSTER) in (c['poster'] or '') for c in starters('round=1')[2]['shows']))
+for query, what in [('seed=xyz', 'a bad seed'), ('round=51', 'a round past 50'), ('picked=1,x', 'a bad pick'),
+                    ('picked=' + ','.join(map(str, range(1, 22))), 'too many picks'), ('lang=en_GB', 'a bad language'),
+                    ('lang=' + 'a' * 36, 'a long language tag'), ('count=100', 'too many starters')]:
+    status, _headers, body = starters(query)
+    check(f'starters refuse {what}', status == 400 and body['error'])
+
 # 7b. TMDB first, and the live sources asked only for what it lacks.
 before = len(asked['kino'])
 status, _headers, body = fetch('/api/trailer?id=2993')
@@ -644,8 +686,9 @@ boot = json.loads(re.search(rb'<script type="application/json" id="boot">(.*?)</
 check('the page carries the loaded model\'s date and count', boot['date'] == MODEL_DATE and boot['count'] == engine.n
       and f'Catalogue snapshot {MODEL_DATE}.'.encode() in page_root
       and f'{engine.n:,} series from {MODEL_DATE}.'.encode() in page_root)
-check('and its first-visit posters', [c['id'] for c in boot['starters']] == [c['id'] for c in lib.starters]
-      and any(str(MOVED_POSTER) in (c['poster'] or '') for c in boot['starters']))
+check('and its fallback starters, with the posters of the model it loaded',
+      [c['id'] for c in boot['starters']] == [c['id'] for c in lib.starters]
+      and all(c['poster'] == lib.poster(engine.by_id[c['id']]) for c in boot['starters']))
 NOTICE = b'This website uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.'
 check('TMDB is credited in the footer and in How Couchside works', page_root.count(NOTICE) == 2
       and page_root.count(b'<a class="tmdb-logo" href="https://www.themoviedb.org"><img src="/tmdb.svg"') == 2)
@@ -668,7 +711,7 @@ check('the 404 and offline pages stay as built', fetch('/nope')[2] == (ROOT / 'c
 check('the new sources and model files are not served',
       all(fetch(path)[0] == 404 for path in ('/tmdb.py', '/follow.py', '/facets.py', '/titles.py', '/fallback.py',
                                              '/tmdb.json.gz', '/build.json', '/facets.bin.gz', '/facets.json.gz',
-                                             '/search.json.gz')))
+                                             '/search.json.gz', '/starters.py')))
 httpd.shutdown()
 
 # 8. Following the model: leave for a complete new one, and for nothing else.

@@ -2,8 +2,9 @@ import { fitRows, chooseSpokes, drawFit, short } from './fit.js';
 import { encode, decode, LIMITS } from './transfer.js';
 import { matrix, svgPath } from './qr.js';
 import { prune, few } from './similar.js';
-import { today, freshStore, noteSeen, noteEngaged, prune as forget, freshness, watcher } from './fresh.js';
+import { today, freshStore, noteSeen, noteEngaged, prune as forget, freshness, watcher, seedFor } from './fresh.js';
 import { visitKey, resumable, merge, shownStore, noteShown, pruneShown, lastShown, dayName } from './visits.js';
+import { startersQuery, mergeStarters, browserLanguage, MAX_ROUND, MAX_PICKED } from './starters.js';
 
 const boot = JSON.parse(document.getElementById('boot').textContent);
 const $ = id => document.getElementById(id);
@@ -381,16 +382,71 @@ function renderMissing(missing) {
 }
 
 /* --------------------------------------------------------- quick picks */
+// First-visit shows come from /api/starters: drawn for this browser and day across
+// distinct kinds of show, three swapping for related and unexplored ones each time a
+// show is added (starters.py says how). The quick picks the server filled in stand in
+// when the request fails. The strip stays until the list holds ten shows, where five to
+// ten gives the sharpest picks, or until Done adding. The day's seed comes from the
+// fresh store's salt, like the picks'; without one the server gives the plain screen.
+const STARTERS_UNTIL = 10;
+const starters = { shows: [], round: 0, asked: '', req: 0, seed: null, done: false };
+const startersPicked = () => state.profile.map(p => p.id).slice(0, MAX_PICKED);
+
 function renderPicks() {
+  const open = !starters.done && state.profile.length < STARTERS_UNTIL;
+  $('starters').hidden = !open;
+  if (!open) return;
+  const asking = `${starters.round}|${startersPicked().join(',')}`;
+  if (asking !== starters.asked) loadStarters(asking);
+  drawStarters();
+}
+
+async function loadStarters(asking) {
+  starters.asked = asking;
+  const id = ++starters.req;
+  starters.seed ??= fresh ? seedFor(fresh.salt, today()).catch(() => '') : Promise.resolve('');
+  const query = startersQuery({ seed: await starters.seed, round: starters.round, picked: startersPicked(),
+                                lang: browserLanguage() });
+  try {
+    const res = await fetch('/api/starters?' + query);
+    const body = await res.json();
+    if (id !== starters.req) return;
+    if (!res.ok) throw new Error(body.error);
+    starters.shows = mergeStarters(starters.shows, body.shows, has);
+  } catch {
+    if (id !== starters.req) return;
+    starters.asked = '';
+    if (!starters.shows.length) starters.shows = boot.picks;
+  }
+  drawStarters();
+}
+
+function drawStarters() {
   const holder = $('picks');
   holder.replaceChildren();
-  for (const s of boot.picks) {
+  for (const s of starters.shows) {
     const chip = button(s.name, 'chip', () => add(s, 1));
     chip.setAttribute('aria-pressed', String(has(s.id)));
     chip.disabled = has(s.id);
     holder.append(chip);
   }
+  const n = state.profile.length;
+  const hint = !n ? 'Tap to add, or search above.'
+    : n < 5 ? `${n} added. Five to ten shows gives the sharpest picks.`
+      : `${n} added. Add a few more, or read on.`;
+  // A live region, so it is rewritten only when the sentence changes.
+  if ($('starters-hint').textContent !== hint) $('starters-hint').textContent = hint;
+  $('starters-done').hidden = !n;
 }
+$('starters-more').addEventListener('click', () => {
+  starters.round = (starters.round + 1) % (MAX_ROUND + 1);
+  renderPicks();
+});
+$('starters-done').addEventListener('click', () => {
+  starters.done = true;
+  renderPicks();
+  $('next').focus();
+});
 
 /* ------------------------------------------------------------ requests */
 function note(text, bad = false) {

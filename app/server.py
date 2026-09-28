@@ -11,6 +11,7 @@ from engine import Engine
 from fallback import Remote, answer
 from page import fill
 import follow
+import starters
 
 HERE = Path(__file__).resolve().parent
 PUBLIC = HERE / 'public'
@@ -37,6 +38,8 @@ SOURCE = model_dir()
 # two versions; follow.py notices the move and the restart loads the new one whole.
 MODEL = Path(os.path.realpath(SOURCE))
 ENGINE = Engine(MODEL)
+# The first-visit pool, built from the same model (starters.py).
+STARTERS = starters.Starters(ENGINE)
 # The built page leaves this model's count, date and first-visit data to be filled here.
 TEMPLATE = PUBLIC / 'index.html'
 PAGE = fill(TEMPLATE.read_text(), ENGINE).encode() if TEMPLATE.exists() else b''
@@ -103,6 +106,9 @@ class Handler(SimpleHTTPRequestHandler):
             except (BrokenPipeError, ConnectionResetError, TimeoutError):
                 pass    # the page moved on to a longer search while TVmaze answered
             return
+        if path == '/api/starters':
+            self.starters()
+            return
         if path.startswith('/api/'):
             self.send_json({'error': 'Not found.'}, 404)
             return
@@ -110,6 +116,20 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_page()
             return
         super().do_GET()
+
+    def starters(self):
+        """First-visit shows for a seed, a round, the shows picked so far and a language,
+        each as a chip needs it and with why it is there."""
+        try:
+            seed, rnd, picked, lang, count = starters.parse(parse_qs(urlsplit(self.path).query),
+                                                            self.headers.get('Accept-Language', ''))
+        except ValueError as exc:
+            self.send_json({'error': str(exc)}, 400)
+            return
+        shows = ENGINE.shows
+        self.send_json({'round': rnd, 'shows': [
+            {**{k: shows[i][k] for k in ('id', 'name', 'year', 'channel')}, 'why': why}
+            for i, why, _facet in STARTERS.choose(seed, rnd, picked, lang, count)]})
 
     def do_POST(self):
         route = urlsplit(self.path).path

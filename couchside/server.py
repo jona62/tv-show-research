@@ -15,6 +15,7 @@ from library import Library, DESCRIPTION
 from live import (Live, LiveError, Icons, KINOCHECK, ITUNES, trim_videos, trim_seasons,
                   match_rating, itunes_search)
 import follow
+import starters
 import tmdb
 
 HERE = Path(__file__).resolve().parent
@@ -260,6 +261,14 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if path == '/api/icon':
             self.icon(query.get('host', [''])[0])
+            return
+        if path == '/api/starters':
+            try:
+                seed, rnd, picked, lang, count = starters.parse(query, self.headers.get('Accept-Language', ''))
+            except ValueError as exc:
+                self.send_json({'error': str(exc)}, 400)
+                return
+            self.send_json({'round': rnd, 'shows': LIBRARY.starters_for(seed, rnd, picked, lang, count)})
             return
         if path.startswith('/api/'):
             self.send_json({'error': 'Not found.'}, 404)
