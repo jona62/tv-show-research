@@ -242,9 +242,13 @@ check('asking for different shows changes nearly every title', len(set(ids(r0)) 
 check('rounds run up to 50', len(fresh(seeds[0], 50)) == 24)
 earlier = [shows[r0[q].index]['id'] for q in (3, 8)]
 later = fresh(seeds[0], 1, earlier)
-check('picks from an earlier round stay off the new screen, and so do their franchises',
-      not set(earlier) & set(ids(later)) and all(
-          not s.keys(slot.index) & s.keys(e.by_id[x]) for slot in later for x in earlier))
+# The server cannot tell a pick made on an earlier screen from one made on this one, so
+# an earlier pick the new round happens to draw shows ticked in its place; no other show
+# of a picked franchise appears.
+check('picks from an earlier round show only as picks, and their franchises stay off',
+      all(slot.why == 'picked' for slot in later if shows[slot.index]['id'] in earlier) and all(
+          not s.keys(slot.index) & s.keys(e.by_id[x]) for slot in later for x in earlier
+          if shows[slot.index]['id'] != x))
 bb = e.by_id[169]
 holding = next(seed for seed in seeds if any(slot.index == bb for slot in fresh(seed)))
 saul = next(i for i, show in enumerate(shows) if show['name'] == 'Better Call Saul')

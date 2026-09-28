@@ -86,6 +86,11 @@ UNEXPLORED = 0.6        # share of the unpicked titles from facets with no pick 
 SWAPS = 3               # unpicked slots each pick swaps
 LOCALE_TOP = 40         # titles kept for each language and each country
 QUOTAS = {'formats': 4, 'decades': 3, 'cartoons': 1, 'unscripted': 1, 'foreign': 2}
+# For a browser in English, or one that names no language, world facets are drawn at this
+# share of their weight: at full weight about six of 24 titles came from languages such
+# a visitor seldom knows, and a starter nobody recognises teaches nothing. The foreign
+# quota still puts two on every screen.
+WORLD_SHARE = 0.3
 # Wikidata's genres for sexual content, which TVmaze does not always file as adult.
 EXPLICIT = frozenset({'erotic', 'erotica', 'erotic thriller', 'ecchi', 'hentai', 'lot of sex scenes drama',
                       'sex comedy', 'softcore pornography'})
@@ -586,10 +591,11 @@ class Starters:
         return tuple(out)
 
     @lru_cache(maxsize=1024)
-    def facet_order(self, seed, rnd, surface='facets'):
+    def facet_order(self, seed, rnd, surface='facets', world=1.0):
         """Facets in a round's order: a Gumbel draw weighted by the square root of each
-        facet's summed popularity."""
-        keyed = {n: math.log(self.weights[n]) + gumbel(seed, f'{surface}-{rnd}', repr(self.facet_keys[n]))
+        facet's summed popularity, world facets at ``world`` times that weight."""
+        keyed = {n: math.log(self.weights[n] * (world if self.facet_keys[n][2] == 'World' else 1.0))
+                 + gumbel(seed, f'{surface}-{rnd}', repr(self.facet_keys[n]))
                  for n in range(len(self.pool))}
         return tuple(sorted(keyed, key=lambda n: (-keyed[n], n)))
 
@@ -609,7 +615,8 @@ class Starters:
         elif language == 'English' and region and region != 'US' and self.locale_items('country', region):
             sources = [('country', region, flexible)]
         flexible = max(flexible, sum(n for _kind, _name, n in sources))
-        return anchors, count - anchors - flexible, flexible, tuple(sources)
+        world = WORLD_SHARE if language in (None, 'English') else 1.0
+        return anchors, count - anchors - flexible, flexible, tuple(sources), world
 
     def choose(self, seed=None, rnd=0, picked=(), lang='', count=COUNT):
         """The screen for a seed, a round, the ids picked so far and a language tag, as
@@ -683,7 +690,7 @@ class Screen:
 
     def fill(self, plan):
         s, seed, rnd = self.s, self.seed, self.rnd
-        n_anchors, n_facets, _flexible, sources = plan
+        n_anchors, n_facets, _flexible, sources, world = plan
         order = s.anchor_ranking(seed)
         for k in range(len(order)):
             if len(self.slots) == n_anchors:
@@ -707,7 +714,7 @@ class Screen:
                     self.warm[i] = items[i]
                     got += 1
             short = wanted - got
-        order, need, taken, left = s.facet_order(seed, rnd), quotas(self.count), set(), n_facets
+        order, need, taken, left = s.facet_order(seed, rnd, world=world), quotas(self.count), set(), n_facets
 
         def take(n, why='facet'):
             i = self.first_fit(s.ranking(seed, n), rnd)
@@ -741,7 +748,7 @@ class Screen:
             if n not in taken and take(n):
                 left -= 1
         # Whatever is left explores facets not on screen yet, drawn afresh.
-        explore = s.facet_order(seed, rnd, 'explore')
+        explore = s.facet_order(seed, rnd, 'explore', world)
         for n in explore:
             if len(self.slots) >= self.count:
                 break
