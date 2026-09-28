@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT / 'couchside'))
 
 from engine import Engine, FORMAT_GROUPS                                      # noqa: E402
 from fresh import Fresh                                                       # noqa: E402
-from library import (Library, Page, EVIDENCE, GENRE_ROWS, THEME_ROWS, FORMAT_ROWS, HIDDEN, GLANCE,  # noqa: E402
+from library import (Library, Page, EVIDENCE, GENRE_ROWS, THEME_ROWS, FORMAT_ROWS, HIDDEN,  # noqa: E402
                      fans_of, slug)
 
 engine = Engine(ROOT / 'model')
