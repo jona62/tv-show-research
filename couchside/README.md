@@ -339,16 +339,30 @@ action and shows as recently viewed.
 71 bench personas: one of each persona's loves is held out, and it counts how
 many come back among the first six cards of the first three and first eight rows,
 whether every interest with 15% or more of the list has one of the first eight
-rows, and how often a card repeats on the page. Against the page before this one
-(eleven fixed rows):
+rows, and how often a card repeats on the page. Over the whole page it counts the
+rows, where each held-out love first opens a row, the shows and how many rows are
+not personal; it times the first request and each request for more; and it checks
+that today's rows are the earlier page's, keys, order and cards. Against the last
+page with a fixed length (`7dafad2`, the default `--old`), with every tier's own
+rows, on an Apple M3 Pro:
 
-| | before | now |
+| | fixed length | without end |
 |---|---:|---:|
-| held-out loves in the first 3 rows | 51% | 51% |
-| held-out loves in the first 8 rows | 66% | 68% |
-| every interest of 15% or more in the first 8 rows | 100% | 100% |
-| rows per page | 10.9 | 19.7 |
-| repeated cards per page | 93 | 70 |
+| held-out loves in the first 3 rows | 61% | 61% |
+| held-out loves in the first 8 rows | 76% | 76% |
+| held-out loves anywhere on the page | 82% | 86% |
+| every interest of 15% or more in the first 8 rows | 99% | 99% |
+| rows per page, median (fewest to most) | 20 (17 to 24) | 82 (66 to 96) |
+| distinct shows per page | 302 | 1,273 |
+| repeated cards per page | 69 | 293 |
+| rows that are not personal | 32% | 68% |
+| first request, median and 95th percentile | 122 and 149 ms | 122 and 149 ms |
+| each request for more, the same | 117 and 147 ms | 158 and 193 ms |
+
+Today's rows match the page with a fixed length for all 71 personas. Held out
+this way, a love mostly turns up in the first eight rows; the rows past today's
+add a few more, and a page of shows the list has not had yet. `--stub-tiers` runs
+the same with stand-in rows for the tiers.
 
 ## Deploy
 
