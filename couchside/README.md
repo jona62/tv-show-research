@@ -6,13 +6,15 @@ rebuilt every night. Nothing plays. It is for finding your next show.
 
 ## What is on it
 
-- **Home** is a hero and rows. Once you have rated a few shows the rows are
-  *Top picks for you*, *Because you loved* one favourite from each of your
-  interests, the
-  *Top 10 shows today*, your strongest genre and theme, *New for you*,
-  *Critically acclaimed* and *Popular right now*. A first visit picks three or
-  more shows from 24 posters drawn for it, or any show by search, or skips and gets
-  rows by popularity.
+- **Home** is a hero and up to 24 rows, eight at first and more as you scroll.
+  Once you have rated a few shows they are *Top picks for you*, My List,
+  *Because you loved* your favourites, micro-genres named from what each of your
+  interests leans toward (*British panel games*, *Dark sci-fi dramas*), shows
+  from the creators, franchises and stars your list shares, hidden gems, limited
+  series, the *Top 10 shows today* and more, each interest given rows in
+  proportion to its weight. The page changes a little each day and holds still
+  within a visit. A first visit picks three or more shows from 24 posters drawn
+  for it, or any show by search, or skips and gets rows by popularity.
 - **A title page** opens over any screen with the match, years, age rating,
   seasons, why it surfaced (the liked show it sits closest to and what they
   share), where to watch it, the summary, cast, genres, themes and network, every
@@ -77,21 +79,108 @@ results picked like any poster. Three picks are needed, five to ten make the bes
 rows, the prompts stop at ten, and *Skip for now* still skips. The page carries
 twelve posters from the plain screen in case the request fails.
 
-## How the rows are built
+## How the home page is built
 
 `library.py` wraps the Next Watch engine, taste model and interests included
 (see Next Watch's README). For each request it works out once how close every
 show sits to each rated show and scores everything with one ranking, then cuts
-every row from that: the plain ranking for Top picks, one rated show from each
-interest for *Because you loved* (judged by that interest's taste), the ranking
-filtered by genre, theme or year for the rest. The first six cards
-of each row skip anything an earlier row opened with, so rows do not repeat at a
-glance, while the rest of a row keeps its own order. Top picks rank exactly as
-Next Watch does, and a test holds them to it.
+every candidate row from that. It follows what Netflix, Prime Video, YouTube and
+Spotify have published about their home pages.
+
+**Candidate rows.** For each interest in your list (the engine's groups of liked
+shows, weighed by rating, love 1, like 0.6, OK 0.2, with recent ratings counting
+more): *Because you loved* (or *liked*) one of its shows, loves first, needing
+twelve similar shows that fit your list, the day rotating among its best three;
+micro-genres named from what the interest leans toward, an adjective, a country,
+a subgenre and an era in five words at most (*Dark sci-fi dramas*, *British panel
+games*, *Mockumentaries from the 2000s*), dropping the most specific word until
+twelve shows qualify; *More from the world of* a liked show, from its franchise;
+*From the creator of* one (six or more shows), else *From creators you love*;
+*Starring* someone in two or more liked shows; and *Critically acclaimed* with
+the interest's name. For the list as a whole: *Hidden gems* (little known, rated
+in the top quarter, among your best fifth), *Limited series*, a language or
+country a sixth of your liked shows share when it is not your usual one, *More
+like your list* from My List, *New for you*, your genres and themes, the *Top 10*
+and *Popular right now*, chosen with your taste and ordered by popularity. One
+*Something different* row shows well-loved shows of a kind your list has none of.
+
+**Choosing and ordering them.** Top picks lead, re-ranked from the best hundred
+so their mix of interests matches your list's (Steck's calibration, lambda 0.4).
+My List comes second when it holds a show you have not rated. Each next row is the
+candidate with the most relevance (how well its first six cards fit, weighted by
+position, times its evidence: a loved seed 1.0, a micro-genre 0.9, a liked seed
+0.8, a row that is not personal 0.7) less penalties for overlapping a row above,
+serving the same interest or being the same sort of row as the two rows above,
+and taking its interest past its share. Penalties count half in the first eight
+rows and half again more below them. Interests get rows by quota in proportion to
+their weight: every one with 8% or more gets one, and with three or more none is
+planned more than 40%. Within an interest the rows come in order: *Because you
+loved*, a micro-genre, a creator, franchise or star, then a second *Because you
+loved*. The Top 10 floats between rows 3 and 10, Popular sits below row 10, and
+*Something different* never among the first eight. A page holds up to 24 rows,
+about 10 plus 2 for each interest and at least 14 when there is that much worth
+showing: it stops early once the best row left fits less than half as well as the
+median row shown. With fewer than ten liked shows, half the page at most is
+personal and the rest is what a first visit sees.
+
+**No row repeats another.** No two rows open with the same show, a show appears
+twice at most (and a show that opened a row above counts for less the second
+time), and a row half of whose top twelve is already in a row above is left out.
+A row's first six hold one show from a franchise at most and two from a creator,
+and no two neighbours from one network. Rated shows stay out of every row but the
+Top 10, and so does anything very close to a show you marked *Not for me*.
+
+**Within a row** the usual order weighs taste 0.65, popularity 0.2 and rating
+0.15; *Because you loved* weighs closeness to its show 0.5, taste 0.35 and
+popularity 0.15; hidden gems taste 0.6 and rating 0.4; the Top 10 and Popular go
+by popularity. The clearest example of a micro-genre, franchise or creator leads
+its row, the first six are spread so they do not look alike, and a card may carry
+one call-out, such as *Same creator as Breaking Bad* or *Stars Kelly Macdonald*.
+Rows for one interest carry *For fans of* two of its shows.
+
+**Eight rows at a time.** The first answer brings the hero and eight rows; as you
+scroll within a screen of the end the page asks for six more (or offers *More
+rows* where it cannot watch the scroll). The server keeps nothing between
+requests, so the request says which rows the page shows and their first six
+cards, and the same request builds the same page. A rating or My List change in
+the meantime changes only the rows not shown yet.
 
 A match uses Next Watch's scale: 99% is your best pick and everything else is
 measured against it. It says how close a show sits to what you liked and how well
 it fits your list's leanings, not that you will enjoy the show.
+
+## What changes between visits
+
+The browser sends the day (rolling over at 04:00), a seed made from the day and a
+salt that never leaves it, and a memory of what it showed (fresh.js, shared with
+Next Watch and kept under `couchside-fresh`): each title half on screen for a
+second counts as seen once a day, as a count halving every week, and opening a
+title, rating it, listing it, playing its trailer or following a link out spares
+it for two weeks. From that (fresh.py on the server):
+
+- The same list on the same day gives the same page. The next day My List, Top
+  picks and the first personal row keep their places while the rows below
+  reorder a little, and a different favourite may lead its *Because you loved*.
+- In each row the first two cards stay put and the rest are the day's, drawn from
+  two to three times the row's length, with titles you keep passing over giving
+  way to others.
+- A row you pass over on five days in a fortnight without opening anything in it
+  rests below the fold for a week.
+- The hero is drawn once a day from your ten best picks, never one you rated, one
+  on My List or a hero of the last week, and preferably not one the first rows
+  already open with.
+- *Recently viewed*, after the third row, holds titles you opened in the last two
+  weeks and neither rated nor listed; the browser builds it.
+
+Within a visit the page holds still: coming back within half an hour on the same
+day with the same list shows it again as it was, a rating or a My List change
+takes that card out of the rows and leaves every other card and row in place, and
+counting what was seen never redraws anything.
+
+Before anything is rated the page is the Top 10, *Popular right now*, *All-time
+favourites* (before 2010, well known and well rated), *New this year* and six to
+eight of the best-known genres and formats, no show twice, with *Popular in* the
+browser's language when that is not English, under the invitation to pick shows.
 
 ## How search finds a show
 
@@ -180,7 +269,12 @@ node couchside/test_format.mjs
 
 The first runs everything over a temporary model laid out the way the refresher
 leaves one: the repository's model dated a day later, with a poster moved,
-hand-made TMDB data and a few other titles. It covers the rows, browsing, badges,
+hand-made TMDB data and a few other titles. It holds the home page to its rules
+for lists of several shapes (fixed rows, sizes, no row opening like another, no
+show three times, franchise, creator and network limits, every interest served,
+calibrated top picks), and checks paging, a day's page against the next day's,
+fatigue and engagement, the hero, resting rows, the first visit's rows and every
+new field. It covers the rows, browsing, badges,
 title pages and validation; that the catalog, posters and TMDB data come from
 `MODEL_DIR`; TMDB's trimming, and that a bad or missing file means no TMDB data;
 TMDB first and every fallback, over HTTP; the live sources against fakes
@@ -194,7 +288,14 @@ pick and follow a browser's language; and the follower's decisions. It also fail
 `engine.py`, `titles.py`, `fallback.py`, `follow.py`, `starters.py` or any other
 module copied here ever differs from Next Watch's. The
 second covers the page's small helpers, where to watch and what search says among
-them.
+them, and what the home page keeps for a visit, asks for more with, merges after an
+action and shows as recently viewed.
+
+`scripts/bench/home_bench.py` compares the home page with an earlier one over the
+71 bench personas: a fifth of each persona's loves is held out, and it counts how
+many come back among the first six cards of the first three and first eight rows,
+whether every interest with 15% or more of the list has one of the first eight
+rows, and how often a card repeats on the page.
 
 ## Deploy
 

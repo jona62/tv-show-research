@@ -95,5 +95,44 @@ check('search says what it found', searchNote('lost', 3, 0) === 'Shows matching 
 check('shows only TVmaze has are not in the catalogue yet', searchNote('new show', 0, 1) === 'Nothing in the catalogue matches “new show” yet.');
 check('only a search that found nothing anywhere suggests the spelling', searchNote('qzx', 0, 0) === 'Nothing matches “qzx”. Check the spelling.'
   && !searchNote('qzx', 1, 0).includes('spelling') && !searchNote('qzx', 0, 2).includes('spelling'));
+// The home page: what a page depends on, when a kept page is shown again, what asking for
+// more carries, merging an action, and Recently viewed.
+const { pageKey, resumable, shownRows, withoutCard, viewedStore, noteViewed, recentlyViewed, RESUME_MINUTES, VIEWED_DAYS }
+  = await import('./format.js');
+const listA = { profile: [{ id: 1, weight: 1 }, { id: 2, weight: .7 }], settings: { known_min: 60, type: 'all' } };
+check('a page key ignores the order of settings', pageKey(listA, [5]) === pageKey({ ...listA, settings: { type: 'all', known_min: 60 } }, [5]));
+check('a page key changes with a rating or My List', pageKey(listA, [5]) !== pageKey(listA, [5, 6])
+  && pageKey(listA, [5]) !== pageKey({ ...listA, profile: [{ id: 1, weight: .7 }, { id: 2, weight: .7 }] }, [5]));
+const kept = { v: 1, at: 1_000_000, day: '2026-10-05', key: 'k', home: { rows: [] } };
+const now = kept.at + (RESUME_MINUTES - 1) * 60_000;
+check('a kept page comes back within half an hour, the same day and list', resumable(kept, { key: 'k', day: '2026-10-05', now }));
+check('but not after', !resumable(kept, { key: 'k', day: '2026-10-05', now: kept.at + (RESUME_MINUTES + 1) * 60_000 }));
+check('nor on another day or for another list', !resumable(kept, { key: 'k', day: '2026-10-06', now })
+  && !resumable(kept, { key: 'other', day: '2026-10-05', now }));
+check('nor when it is not a page', !resumable(null, { key: 'k', day: '2026-10-05', now })
+  && !resumable({ ...kept, home: null }, { key: 'k', day: '2026-10-05', now }) && !resumable({ ...kept, v: 2 }, { key: 'k', day: '2026-10-05', now }));
+const rows = [
+  { key: 'top', kind: 'row', items: [1, 2, 3, 4, 5, 6, 7, 8].map(id => ({ id })) },
+  { key: 'list', kind: 'list', items: [{ id: 9 }] },
+  { key: 'recent', kind: 'recent', items: [{ id: 3 }] },
+  { key: 'top10', kind: 'top10', items: [3, 10, 11].map(id => ({ id })) },
+];
+check('asking for more carries each row\'s key and first six, My List\'s own, and not Recently viewed',
+  same(shownRows(rows, [9, 12]), [{ key: 'top', ids: [1, 2, 3, 4, 5, 6] }, { key: 'list', ids: [9, 12] }, { key: 'top10', ids: [3, 10, 11] }]));
+const merged = withoutCard(rows, 3);
+check('an acted-on card leaves the rows chosen for you, and every other card keeps its place',
+  same(merged[0].items.map(c => c.id), [1, 2, 4, 5, 6, 7, 8]) && merged[0].key === 'top');
+check('the Top 10 keeps its ten', same(merged[3].items.map(c => c.id), [3, 10, 11]));
+const day = 20_000;
+let viewed = viewedStore([{ id: 1, d: day - 20, name: 'Old' }, { id: 2, d: day - 3, name: 'Two', poster: 'javascript:x' }, 'junk',
+  { id: 'x', d: day }]);
+check('viewed titles are read defensively, posters only from TVmaze', viewed.length === 2 && viewed[1].poster === null);
+viewed = noteViewed(viewed, { id: 3, name: 'Three', year: 2020, poster: 'https://static.tvmaze.com/p.jpg' }, day);
+viewed = noteViewed(viewed, { id: 2, name: 'Two' }, day);
+check('a title opened again moves to the end, once', same(viewed.map(v => v.id), [1, 3, 2]));
+check('recently viewed is the last fortnight, newest first', same(recentlyViewed(viewed, day).map(v => v.id), [2, 3])
+  && VIEWED_DAYS === 14);
+check('rated and listed titles leave it', same(recentlyViewed(viewed, day, { rated: new Set([2]), saved: new Set([3]) }), []));
+
 console.log(fails ? `\n${fails} failed` : '\nall format checks passed');
 process.exit(fails ? 1 : 0);
