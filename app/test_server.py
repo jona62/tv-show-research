@@ -90,7 +90,7 @@ def check(name, ok, detail=''):
 
 engine = server.ENGINE
 PUBLIC = ROOT / 'app' / 'public'
-ASSETS = ('style.css', 'main.js', 'fit.js', 'similar.js', 'transfer.js', 'qr.js', 'fresh.js', 'starters.js',
+ASSETS = ('style.css', 'main.js', 'fit.js', 'similar.js', 'transfer.js', 'qr.js', 'fresh.js', 'visits.js', 'starters.js',
           'favicon.svg')
 
 # 1. The model is the one MODEL_DIR leads to, read from where the link led at startup.
@@ -188,6 +188,41 @@ first_load = len(page) + sum((PUBLIC / name).stat().st_size for name in ASSETS)
 badge = float(re.search(rb'loads (\d+\.\d) KB', page)[1])
 check('the size badge states the page as served, under the budget',
       abs(badge * 1000 - first_load) < 200 and first_load < 512_000, (badge, first_load))
+
+
+def recommend(payload):
+    request = Request(base + '/api/recommend', data=json.dumps(payload).encode(), method='POST',
+                      headers={'Content-Type': 'application/json'})
+    try:
+        with urlopen(request, timeout=60) as response:
+            return response.status, response.headers, json.loads(response.read())
+    except HTTPError as exc:
+        return exc.code, exc.headers, json.loads(exc.read())
+
+
+# Freshness rides in the request: the day, its seed, what was shown and engaged with.
+LIST = [{'id': 169, 'weight': 1}, {'id': 82, 'weight': .7}, {'id': 80, 'weight': -1}]
+TODAY = {'day': '2026-10-05', 'seed': '0123456789abcdef', 'seen': {'1871': 2.5, '179': .4}, 'engaged': [179],
+         'resting': [], 'tired': []}
+status, headers, plain = recommend({'profile': LIST, 'settings': {}})
+check('picks come back as ranked when a request says nothing of freshness',
+      status == 200 and len(plain['picks']) == 24 and 'fresh' not in plain and headers.get('Cache-Control') == 'no-store')
+status, _headers, today = recommend({'profile': LIST, 'settings': {}, **TODAY})
+check('the endpoint takes the fresh fields and echoes the day and seed',
+      status == 200 and today['fresh'] == {'day': TODAY['day'], 'seed': TODAY['seed']}
+      and [p['id'] for p in today['picks'][:5]] == [p['id'] for p in plain['picks'][:5]]
+      and [n + 1 for n, p in enumerate(today['picks']) if p['place'] == 'different'] == [12, 20])
+check('and answers the same fields the same way', recommend({'profile': LIST, 'settings': {}, **TODAY})[2] == today)
+for label, extra, said in [
+    ('a malformed day', {'day': '5 October'}, 'YYYY-MM-DD'),
+    ('a malformed seed', {'seed': 'ABC'}, 'hexadecimal'),
+    ('a seed without its day', {'day': None}, 'together'),
+    ('a seen count that is not a number', {'seen': {'1871': 'often'}}, '0 to 50'),
+    ('engaged titles by name', {'engaged': ['Lost']}, 'show ids'),
+    ('row keys that are not keys', {'tired': ['Top Picks!']}, 'row keys'),
+]:
+    status, _headers, answer = recommend({'profile': LIST, 'settings': {}, **TODAY, **extra})
+    check(f'the endpoint refuses {label} with the reason', status == 400 and said in answer.get('error', ''), answer)
 httpd.shutdown()
 
 # 4. Whatever model is loaded fills the page, and nothing in it can end the boot block.

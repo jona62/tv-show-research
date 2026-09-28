@@ -66,6 +66,7 @@
       <p id="warn" class="warn" hidden></p>
       <div id="cards" class="cards"></div>
       <p id="none" class="warn" hidden></p>
+      <p id="earlier" class="earlier" hidden>Missing one you saw? <button id="open-earlier" class="link" type="button"></button></p>
     </div>
   </section>
 
@@ -154,14 +155,23 @@
 <footer>
   <p><button id="open-about" class="link" type="button">How this works</button></p>
   <p>Data from <a href="https://www.tvmaze.com/">TVmaze</a> · <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> · <span class="nb">snapshot __DATASET_DATE__</span></p>
-  <a class="club" href="https://512kb.club/" aria-label="512KB Club, green team: this page loads 114.3 KB of uncompressed resources">
-    <span>512KB CLUB</span><span>114.3 KB</span>
+  <a class="club" href="https://512kb.club/" aria-label="512KB Club, green team: this page loads 133.8 KB of uncompressed resources">
+    <span>512KB CLUB</span><span>133.8 KB</span>
   </a>
 </footer>
 
 <dialog id="why"><div class="sheet">
   <button class="icon close" type="button" data-close aria-label="Close">✕</button>
   <div id="why-body"></div>
+</div></dialog>
+
+<dialog id="earlier-sheet" aria-labelledby="earlier-h"><div class="sheet">
+  <button class="icon close" type="button" data-close aria-label="Close">✕</button>
+  <h2 id="earlier-h" class="sheet-h">Yesterday's picks</h2>
+  <p class="hint">Picks from then that have rotated out of today's list. Watched one since? Add it to your shows, as liked, and rate it there. Or save it for later.</p>
+  <ul id="earlier-list" class="earlier-list"></ul>
+  <p id="earlier-none" class="hint" hidden>Nothing left to find from then.</p>
+  <p id="earlier-said" class="said" role="status" aria-live="polite"></p>
 </div></dialog>
 
 <dialog id="tune"><div class="sheet">
@@ -246,8 +256,9 @@
   <h2 class="sheet-h">How this works</h2>
   <p>Every pick is scored against the shows you rated: plot wording, theme signals read from summaries, and genre tags. Your closest match pulls harder than the rest, and anything close to what you disliked is pushed down. Tick <i>More like this</i> on one or more of your shows and every pick is scored against those alone; dislikes still count.</p>
   <p>A match score is similarity, not a promise you’ll enjoy it. Themes come from English summary text, so titles with thin descriptions match on genre alone.</p>
+  <p>The first five picks hold their places from day to day. Below them the list turns over a little each day among your strongest matches, and a show that has sat on your screen for days makes way for another; anything you open, save or rate is spared that for two weeks. Two places, marked <i>A little different</i>, go to shows from a little further down. Within a visit the list is never reshuffled: a pick you act on leaves, and new ones join at the end.</p>
   <p>__CATALOG_COUNT__ television series in this snapshot, from scripted drama to animation, documentary and reality. There are no films: the catalogue does not carry them.</p>
-  <p> Your list stays in this browser. No account, nothing stored on a server.</p>
+  <p> Your list stays in this browser. No account, nothing stored on a server. So does the record of which picks you have seen: a request carries only how often each was shown lately, which ones you engaged with, and the day with a seed that says nothing about you.</p>
 </div></dialog>
 
 <script type="application/json" id="boot">__BOOTSTRAP__</script>

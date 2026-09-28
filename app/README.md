@@ -30,8 +30,48 @@ Four screens and nothing else:
 The tab you are on sits in the path (`/saved`, `/taste`, `/shows`), so a refresh or
 a bookmark lands on the same one. Light by default, dark on request, one layout
 that works at 375px and on a desktop.
-First load is about 100 KB of HTML, CSS and JS, as the page's own badge states; the 512 KB ceiling is enforced by
+First load is about 130 KB of HTML, CSS and JS, as the page's own badge states; the 512 KB ceiling is enforced by
 the build.
+
+## What changes between visits
+
+The picks are not the same list every day, nor a new one every time.
+
+- **The first five hold.** Places 1 to 5 are the strongest picks by rank and by how
+  often they have been on screen lately. Nothing random touches them.
+- **The rest turn over a little each day.** Places 6 to 24 are drawn from your best
+  72 by rank, by that same fatigue and by the day's noise (`fresh.py`). Over a month of
+  daily visits by the bench personas, about two thirds of the list carries over from
+  one day to the next, no top-ten pick is gone for more than two days running, and
+  nothing ranked below 72 appears.
+- **Two places are a little different.** Places 12 and 20 go to shows from ranks 25
+  to 72 that score at least three quarters of what the 24th pick scores, and say so.
+- **What sits on screen gives way; what you touch does not.** A pick counts as seen
+  once at least half of it has been on screen for a second while the tab is visible,
+  once a day at most. The counts halve every week and move nothing until the next
+  day. Opening a pick on TVmaze, asking *Why this?*, saving or rating it spares it
+  for 14 days.
+- **Within a visit nothing is reshuffled.** A reload, or a return on the same day
+  within 30 minutes of your last activity with the same list and settings, shows the
+  same picks without asking the server. *Seen it* and *Not for me* take that card
+  away and add a pick at the end; every other card stays put. A rating changed on
+  *Your shows* keeps the cards the new answer still holds, in their order, and adds
+  its new ones at the end. Changing *Tune* or what the picks are matched to lays
+  them out afresh; otherwise a new layout waits for the next visit.
+- **Yesterday's picks can be found again.** Three days of shown picks are kept,
+  names and all, and *Yesterday's picks* below the list offers the ones since rotated
+  out and not rated, to add to your shows or save.
+
+The day is the browser's local date, turning over at 04:00, and the seed is the
+first 16 hex digits of SHA-256 of a salt and the day; the salt never leaves the
+browser, so days cannot be linked to each other or to anyone. The memory is
+`fresh.js`, kept in this browser as `next-watch-fresh` and `next-watch-shown`, and
+the visit as `next-watch-visit` in the tab. A request adds the day, the seed, a
+decayed seen count per title and the ids engaged with lately. The answer echoes the
+day and seed as `fresh`, and each pick gives its true `rank` and its `place`:
+`steady`, `fresh` or `different`. A request without them gets the plain ranking,
+byte for byte, which is what the tests and `scripts/bench` see, and so does a
+browser with no storage or no Web Crypto (a page not served over https).
 
 ## What is in the catalogue
 
@@ -124,6 +164,9 @@ crosses 512 KB.
 node app/test_similar.mjs
 node app/test_transfer.mjs
 node app/test_qr.mjs
+.venv/bin/python app/test_fresh.py
+node app/test_fresh.mjs
+node app/test_visits.mjs
 ```
 
 The first verifies the app engine ranks identically to the research recommender under
@@ -145,7 +188,13 @@ shows survive a change to the list and how they are named. The fifth round-trips
 codes, including a full 60-plus-200 list, and checks that damaged, truncated and
 wrong-version codes are refused rather than half-applied. The sixth holds the QR
 encoder to its recorded matrices, its version boundaries, and the structure a
-scanner depends on.
+scanner depends on. The last three cover freshness: `fresh.py` over sixty simulated
+days, `fresh.js`'s memory and its one-second rule with a stand-in observer, and
+`visits.js`, which merges an answer into the cards on screen, decides when a kept
+visit can be shown again, and keeps the days of picks to find one again.
+`test_engine.py` checks fresh answers too: the same day and seed give the same
+answer, the first five hold, places 12 and 20 come from ranks 25 to 72, two weeks of
+daily visits keep to the guardrails, and malformed fields are refused.
 
 ## Deploy
 
@@ -220,7 +269,9 @@ It renders the page once at startup and answers `/` and the three tab paths with
 it, so a refresh keeps the tab; everything else in `public/` is served as files.
 
 `main.js` renders; `fit.js` holds the taste chart and its pure value maths;
-`similar.js` holds the rules for which chosen shows the picks are matched to.
+`similar.js` holds the rules for which chosen shows the picks are matched to;
+`fresh.js` (shared with Couchside) remembers what was on screen, and `visits.js`
+holds what stays put within a visit.
 The catalog metadata and starter titles ride in the page, so a first visit needs
 no round trip. `build.py` leaves them, with the count and snapshot date, as
 placeholders that `server.py` fills from the model it loaded (`page.py`), and

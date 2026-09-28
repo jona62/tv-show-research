@@ -54,5 +54,38 @@ check('past the cap, the titles seen longest ago go first', Object.keys(big.titl
 prune(big, '2026-12-30');
 check('days older than eight weeks are forgotten', Object.keys(big.titles).length === 0);
 
+// The impression rule, with stand-ins for the browser's observer and the page's visibility.
+const { watcher } = await import('./fresh.js');
+const listeners = new Set(), observers = [];
+globalThis.document = {
+  visibilityState: 'visible',
+  addEventListener: (type, fn) => type === 'visibilitychange' && listeners.add(fn),
+  removeEventListener: (type, fn) => listeners.delete(fn),
+};
+globalThis.IntersectionObserver = class {
+  constructor(report) { this.report = report; observers.push(this); }
+  observe() {} unobserve() {} disconnect() {}
+};
+const turn = state => { document.visibilityState = state; for (const fn of [...listeners]) fn(); };
+const pause = ms => new Promise(done => setTimeout(done, ms));
+const counted = [];
+const watch = watcher(id => counted.push(id), { dwell: 20 });
+const io = observers.at(-1);
+const on = (el, ratio) => io.report([{ target: el, isIntersecting: ratio > 0, intersectionRatio: ratio }]);
+const [a, b, c, d] = [1, 2, 3, 4].map(id => ({ id, isConnected: true }));
+for (const el of [a, b, c, d]) watch.observe(el, el.id);
+on(a, 1); on(b, .4); on(c, .6);
+await pause(5); on(c, 0);
+await pause(60);
+check('half on screen for the dwell counts; less, or not for long enough, does not', counted.join() === '1', counted);
+on(a, 1); await pause(60);
+check('a title counts once', counted.join() === '1', counted);
+turn('hidden'); on(d, .8); await pause(60);
+check('nothing counts while the tab is hidden', counted.join() === '1', counted);
+turn('visible'); await pause(60);
+check('coming back to the tab counts what is still on screen', counted.join() === '1,4', counted);
+watch.stop();
+check('stopping lets go of the page', listeners.size === 0);
+
 console.log(failed ? `${failed} check(s) failed` : 'all fresh checks passed');
 process.exit(failed ? 1 : 0);

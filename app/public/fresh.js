@@ -150,31 +150,50 @@ export async function freshness(store, day) {
 // per element. Returns observe(element, id) and a stop() for tearing down.
 export function watcher(onSeen, { threshold = 0.5, dwell = 1000 } = {}) {
   if (typeof IntersectionObserver === 'undefined') return { observe() {}, stop() {} };
-  const timers = new Map(), ids = new WeakMap(), done = new WeakSet();
+  // showing: elements at least half on screen now, whether or not the tab is visible.
+  const timers = new Map(), ids = new WeakMap(), done = new WeakSet(), showing = new Set();
   const visible = () => document.visibilityState === 'visible';
+  const start = el => {
+    if (!timers.has(el)) timers.set(el, setTimeout(() => {
+      timers.delete(el);
+      if (!el.isConnected || !visible()) return;
+      done.add(el);
+      showing.delete(el);
+      io.unobserve(el);
+      onSeen(ids.get(el));
+    }, dwell));
+  };
   const io = new IntersectionObserver(entries => {
     for (const entry of entries) {
       const el = entry.target;
       if (done.has(el)) continue;
-      if (entry.isIntersecting && entry.intersectionRatio >= threshold && visible()) {
-        if (!timers.has(el)) timers.set(el, setTimeout(() => {
+      if (entry.isIntersecting && entry.intersectionRatio >= threshold) {
+        showing.add(el);
+        if (visible()) start(el);
+      } else {
+        showing.delete(el);
+        if (timers.has(el)) {
+          clearTimeout(timers.get(el));
           timers.delete(el);
-          if (!el.isConnected || !visible()) return;
-          done.add(el);
-          io.unobserve(el);
-          onSeen(ids.get(el));
-        }, dwell));
-      } else if (timers.has(el)) {
-        clearTimeout(timers.get(el));
-        timers.delete(el);
+        }
       }
     }
   }, { threshold: [0, threshold, 1] });
-  document.addEventListener('visibilitychange', () => {
-    if (!visible()) { for (const t of timers.values()) clearTimeout(t); timers.clear(); }
-  });
+  // A hidden tab stops every clock; coming back starts them again for what is still on
+  // screen, which the observer would not report again since nothing moved.
+  const onVisibility = () => {
+    if (visible()) for (const el of showing) start(el);
+    else { for (const t of timers.values()) clearTimeout(t); timers.clear(); }
+  };
+  document.addEventListener('visibilitychange', onVisibility);
   return {
     observe(el, id) { if (!done.has(el)) { ids.set(el, id); io.observe(el); } },
-    stop() { io.disconnect(); for (const t of timers.values()) clearTimeout(t); timers.clear(); },
+    stop() {
+      io.disconnect();
+      document.removeEventListener('visibilitychange', onVisibility);
+      for (const t of timers.values()) clearTimeout(t);
+      timers.clear();
+      showing.clear();
+    },
   };
 }
