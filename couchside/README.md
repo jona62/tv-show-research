@@ -6,14 +6,16 @@ rebuilt every night. Nothing plays. It is for finding your next show.
 
 ## What is on it
 
-- **Home** is a hero and 20 to 30 rows, eight at first and more as you scroll.
-  Once you have rated a few shows they are *Top picks for you*, My List,
-  *Because you loved* your favourites, micro-genres named from what each of your
-  interests leans toward (*British panel games*, *Dark sci-fi dramas*), shows
-  from the creators, franchises and stars your list shares, hidden gems, limited
-  series, the *Top 10 shows today* and more, each interest given rows in
-  proportion to its weight. The page changes a little each day and holds still
-  within a visit. A first visit picks three or more shows from 24 posters drawn
+- **Home** is a hero and rows that go on as you scroll, eight at first and six
+  at a time after. Once you have rated a few shows the first twenty or thirty are
+  *Top picks for you*, My List, *Because you loved* your favourites, micro-genres
+  named from what each of your interests leans toward (*British panel games*,
+  *Dark sci-fi dramas*), shows from the creators, franchises and stars your list
+  shares, hidden gems, limited series, the *Top 10 shows today* and more, each
+  interest given rows in proportion to its weight. Past them come more rows from
+  your own list, each interest's own rows, rows to explore and rows to browse,
+  until the page says that is everything for today. The page changes a little
+  each day and holds still within a visit. A first visit picks three or more shows from 24 posters drawn
   for it, or any show by search, or skips and gets rows by popularity.
 - **A title page** opens over any screen with the match, years, age rating,
   seasons, why it surfaced (the liked show it sits closest to and what they
@@ -118,10 +120,32 @@ planned more than 40%. Within an interest the rows come in order: *Because you
 loved*, a micro-genre, a creator, franchise or star, a second *Because you
 loved*, more micro-genres, and a third. The Top 10 floats between rows 3 and 10,
 Popular sits below row 10, and *Something different* never among the first
-eight. A page holds 20 rows, or 14 plus 3 for each interest up to 30, and past
-the twentieth stops early once the best row left fits less than half as well as
-the median row shown. No two rows share a title. With fewer than ten liked shows, half the page at most is
-personal and the rest is what a first visit sees.
+eight. Today's rows (tier 0) are 20, or 14 plus 3 for each interest up to 30, and
+past the twentieth stop early once the best row left fits less than half as well
+as the median row shown. No two rows share a title. With fewer than ten liked
+shows, half of today's rows at most are personal and the rest are what a first
+visit sees.
+
+**Past today's rows** the page goes on in four tiers, each built only once the
+page reaches it: 1, more from the list itself (*Because you loved* every liked
+show, what its fans also look up, casts, channels, subjects and decades liked
+shows share); 2, each interest's own hidden gems, popular, new and half-hour
+shows; 3, languages, formats and genres the list has not reached, to explore;
+and 4, the genres, themes and formats to browse, by taste. Where today's rows
+end, tier 1 opens and its rows join what is left of today's. Each next row is
+the one with the most relevance less the same penalties, among the rows that
+hold up: half the median relevance of the rows since their tier opened, or of
+the last twelve while it has fewer. A tier is judged by its own rows because
+each starts lower than the one before: a bar set by the first page would close a
+tier within a row or two, and one that followed the last few rows down would let
+a tier run on into rows far weaker than the next tier's. When nothing left holds
+up the next tier opens, and once the fourth is spent the page ends, at 300 rows
+at most. Interest quotas grow with the page, *Because you loved* has no limit,
+and a row whose interest already holds its share, or that is resting, waits
+until the rest of its tier is spent. With fewer than ten liked shows, rows that
+are not personal come first while the page is past half personal. A first
+visit's row left over from today's waits for the last tier, where a row to browse
+by taste with its key takes its place.
 
 **No row repeats another.** No two rows open with the same show, a show appears
 twice at most (and a show that opened a row above counts for less the second
@@ -129,7 +153,8 @@ time), and a row half of whose top twelve is already in a row above is left out
 (a *Because you loved* row may overlap Top picks, which its favourite's interest
 leads). A row's first six hold one show from a franchise at most and two from a
 creator, and, except in Top picks and *Because you loved*, whose order is their
-point, no two neighbours from one network. The Top 10 is a chart shown whole, so a
+point, no two neighbours from one network. Past today's rows, the shows a page
+already has go behind those it has not. The Top 10 is a chart shown whole, so a
 show trending today may open another row too. Rated shows stay out of every row
 but the Top 10, and so does anything very close to a show you marked *Not for me*.
 
@@ -144,10 +169,15 @@ Rows for one interest carry *For fans of* two of its shows.
 
 **Eight rows at a time.** The first answer brings the hero and eight rows; as you
 scroll within a screen of the end the page asks for six more (or offers *More
-rows* where it cannot watch the scroll). The server keeps nothing between
-requests, so the request says which rows the page shows and their first six
-cards, and the same request builds the same page. A rating or My List change in
-the meantime changes only the rows not shown yet.
+rows* where it cannot watch the scroll), and once there are no more it says
+*That's everything for today*, with a button back to the top. The server keeps
+nothing between requests, so the request says which rows the page shows, their
+first six cards and, past today's rows, the tier each came in, and the same
+request builds the same page. Today's rows are laid out whole each time, as they
+always were; the rows past them get their cards as they are placed, so the ones
+the browser shows are replayed rather than chosen again and only the rows asked
+for, and one more to say whether more follow, are laid out. A rating or My List
+change in the meantime changes only the rows not shown yet.
 
 A match uses Next Watch's scale: 99% is your best pick and everything else is
 measured against it. It says how close a show sits to what you liked and how well
@@ -165,11 +195,14 @@ it for two weeks. From that (fresh.py on the server):
 - The same list on the same day gives the same page. The next day My List, Top
   picks and the first personal row keep their places while the rows below
   reorder a little, and a different favourite may lead its *Because you loved*.
+  Past today's rows the day nudges each row's relevance, so they reorder a
+  little among themselves, always below today's.
 - In each row the first two cards stay put and the rest are the day's, drawn from
   two to three times the row's length, with titles you keep passing over giving
   way to others.
 - A row you pass over on five days in a fortnight without opening anything in it
-  rests below the fold for a week.
+  rests for a week: at the foot of today's rows, or, past them, until the rest of
+  its tier is spent.
 - The hero is drawn once a day from your ten best picks, never one you rated, one
   on My List or a hero of the last week, and preferably not one the first rows
   already open with.
@@ -179,7 +212,9 @@ it for two weeks. From that (fresh.py on the server):
 Within a visit the page holds still: coming back within half an hour on the same
 day with the same list shows it again as it was, a rating or a My List change
 takes that card out of the rows and leaves every other card and row in place, and
-counting what was seen never redraws anything.
+counting what was seen never redraws anything. A kept page is about 4KB a row; one
+that grows past a million characters (some two hundred rows) keeps its first rows
+and asks for the rest again, which come back the same.
 
 Before anything is rated the page is the Top 10, *Popular right now*, *All-time
 favourites* (before 2010, well known and well rated), *New this year* and six to
@@ -278,7 +313,12 @@ for lists of several shapes (fixed rows, sizes, no row opening like another, no
 show three times, franchise, creator and network limits, every interest served,
 calibrated top picks), and checks paging, a day's page against the next day's,
 fatigue and engagement, the hero, resting rows, the first visit's rows and every
-new field. It covers the rows, browsing, badges,
+new field. With stand-in rows for the tiers past today's (`scripts/bench/stub_tiers.py`)
+it pages whole pages to their end: no row or title twice, *more* false only at the
+end, no row before its tier opens, a tier built only once the page reaches it, the
+same request giving the same rows, the page laid out at once matching the page
+asked for, and the rows shown kept after a rating deep down; and it sends the
+largest request a page can. It covers the rows, browsing, badges,
 title pages and validation; that the catalog, posters and TMDB data come from
 `MODEL_DIR`; TMDB's trimming, and that a bad or missing file means no TMDB data;
 TMDB first and every fallback, over HTTP; the live sources against fakes
