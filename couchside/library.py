@@ -1073,15 +1073,18 @@ class Page:
         return out
 
     def explore_rows(self):
-        """Tier 3: a handful of languages the list has nothing in, formats it has few of
-        and genres it has not touched, each only where its best shows fit the list, the
-        best fitting first."""
-        rows = self.explore_languages() + self.explore_formats() + self.explore_genres()
-        # Something different is one of these a day, and says so already.
-        different = self.different()
-        if different:
-            rows = [row for row in rows if len(row.top12 & different.top12) < 0.5 * min(12, len(row.top12))]
-        return rows
+        """Tier 3: a handful of languages the list has nothing in, genres it has not
+        touched and formats it has few of, each only where its best shows fit the list,
+        the best fitting first. Something different is one of these a day and says so
+        already, and a genre may be a format again (anime and animation, nature and
+        documentaries), so a row that repeats one before it is left out."""
+        before = [row.top12 for row in [self.different()] if row]
+        out = []
+        for row in self.explore_languages() + self.explore_genres() + self.explore_formats():
+            if all(len(row.top12 & other) < 0.5 * min(12, len(row.top12)) for other in before):
+                out.append(row)
+                before.append(row.top12)
+        return out
 
     def explore_languages(self):
         """Languages nothing liked is in, from the list's best fits, ordered as places()

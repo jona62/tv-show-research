@@ -195,8 +195,13 @@ for shape, body in LISTS.items():
                   and not any(genre in shows[i]['genres'] for i in liked + disliked))
     different = page.different()
     if different:
-        check(f'{shape}: no row to explore repeats Something different', all(
+        check(f'{shape}: no row to explore or browse repeats Something different', all(
             len(r.top12 & different.top12) < 0.5 * min(12, len(r.top12)) for r in tiers[3] + tiers[4]))
+    repeats = [(a.key, b.key) for n, a in enumerate(tiers[3]) for b in tiers[3][:n]
+               if len(a.top12 & b.top12) >= 0.5 * min(12, len(a.top12))]
+    check(f'{shape}: no row to explore repeats another', not repeats, repeats)
+    repeats = [(b.key, a.key) for a in tiers[3] for b in tiers[4] if len(a.top12 & b.top12) >= 0.5 * min(12, len(b.top12))]
+    check(f'{shape}: no browse row repeats a row to explore', not repeats, repeats)
 
     # Tier 4: every genre, theme and format, as the first page cuts them.
     for r in tiers[4]:
