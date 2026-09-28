@@ -25,9 +25,9 @@ HERE = Path(__file__).resolve().parent
 APP = HERE.parent / 'app'
 PUBLIC = HERE / 'public'
 OWN = ('style.css', 'main.js', 'format.js')
-SHARED = ('transfer.js', 'qr.js')
+SHARED = ('transfer.js', 'qr.js', 'fresh.js')
 # Next Watch's server modules, copied beside this server so it deploys by itself.
-MODULES = ('engine.py', 'taste.py', 'titles.py', 'fallback.py', 'follow.py', 'facets.py')
+MODULES = ('engine.py', 'taste.py', 'titles.py', 'fallback.py', 'follow.py', 'facets.py', 'fresh.py')
 BRAND = ('favicon.ico', 'favicon.svg', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png',
          'icon-maskable-512.png', 'og.jpg', 'tmdb.svg')
 def manifest(description):

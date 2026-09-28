@@ -128,7 +128,7 @@ def rejects(label, fn, said):
 # 1. One engine for both apps, with its taste model, its search and the search's
 # TVmaze fallback, the model follower and the facet reader, each copied unchanged.
 check('the build copies every one of them',
-      {'engine.py', 'taste.py', 'titles.py', 'fallback.py', 'follow.py', 'facets.py'} <= set(MODULES))
+      {'engine.py', 'taste.py', 'titles.py', 'fallback.py', 'follow.py', 'facets.py', 'fresh.py'} <= set(MODULES))
 for name in MODULES:
     check(f'{name} is Next Watch\'s, unchanged',
           (ROOT / 'app' / name).read_bytes() == (ROOT / 'couchside' / name).read_bytes())
