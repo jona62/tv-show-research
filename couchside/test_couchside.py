@@ -4,6 +4,7 @@ Run from the repository root:  .venv/bin/python couchside/test_couchside.py
 Nothing here reaches TVmaze, TMDB or anything else: live clients are driven by fakes,
 and the server reads a temporary model laid out the way the refresher leaves one.
 """
+from collections import Counter
 from datetime import date, timedelta
 from http.server import ThreadingHTTPServer
 from functools import partial
@@ -16,9 +17,11 @@ import gzip
 import hashlib
 import io
 import json
+import math
 import os
 import re
 import shutil
+import statistics
 import struct
 import sys
 import tempfile
@@ -101,6 +104,8 @@ from build import MODULES                                        # noqa: E402
 from engine import DEFAULT_SETTINGS, QUICK_PICKS                 # noqa: E402
 from fallback import Remote                                      # noqa: E402
 from library import ROW, MORE, GLANCE, SHORTEST, GENRE_ROWS, NEW_DAYS, FALLBACK, lower_first  # noqa: E402
+from library import (Page, FIRST_PAGE, NEXT_PAGE, MOST_ROWS, CREATOR_SHORTEST, NOT_FOR_ME,        # noqa: E402
+                     INTEREST_CAP, HIDDEN, PINNED)
 from live import (Live, LiveError, Icons, trim_show, trim_episodes, trim_videos,        # noqa: E402
                   trim_seasons, match_rating, IMAGES)
 
@@ -210,7 +215,6 @@ check('a first visit still gets full rows', len(cold['rows']) >= 8 and all(len(r
 check('top 10 holds ten current shows', len(cold['top10']) == 10 and all(c['year'] >= lib.year - 5 for c in cold['top10']))
 check('every card on a first visit has a poster', all(c['poster'] for r in cold['rows'] for c in r['items']))
 check('no match is claimed without ratings', all(c['match'] is None for r in cold['rows'] for c in r['items']))
-check('the hero leads the top 10', cold['hero']['id'] == cold['top10'][0]['id'])
 check('coming soon is dated after the snapshot', cold['soon'] and all(c['premiered'] > engine.date for c in cold['soon']))
 check('the page carries a few fallback starters with posters, led by a quick pick',
       len(lib.starters) == FALLBACK and all(c['poster'] for c in lib.starters) and lib.starters[0]['id'] in QUICK_PICKS
@@ -219,14 +223,98 @@ check('every starter has a poster, whatever the seed', all(
     lib.images[slot.index] for seed in ('0123456789abcdef', 'fedcba9876543210', None)
     for slot in lib.starting.choose(seed, 0, (), 'ko')))
 
+# 3b. A first visit's page: the Top 10, what is popular now, all-time favourites, new this
+# year and the best-known genres and formats, no show twice, eight rows first.
+def whole(body):
+    """Every row of a home page, asked for the way the browser asks, with each answer."""
+    answers = [lib.home(body)]
+    rows = list(answers[0]['rows'])
+    while answers[-1]['more'] and len(answers) < 8:
+        shown = [{'key': r['key'], 'ids': [c['id'] for c in r['items'][:GLANCE]]} for r in rows]
+        answers.append(lib.home({**body, 'shown': shown}))
+        rows += answers[-1]['rows']
+    return rows, answers
+
+
+def seeded(day):
+    return {'day': day, 'seed': hashlib.sha256(f'test|{day}'.encode()).hexdigest()[:16]}
+
+
+def page_of(body):
+    """The Page for a request, laid out as the first request lays it out."""
+    profile, settings, positives, negatives, rated, candidates, today_ = lib.prepare(body)
+    page = Page(lib, profile, settings, positives, negatives, rated, candidates, lib.read_list(body), today_)
+    return page, page.layout([])[1]
+
+
+def listed(*keys, most=60):
+    """A list gathered from bench personas, loves, likes and dislikes as rated there."""
+    found, seen = [], set()
+    by_key = {p['key']: p for p in PERSONAS}
+    for key in keys:
+        for role, weight in (('loves', 1), ('likes', .7), ('dislikes', -1)):
+            for s in by_key[key][role]:
+                if s['id'] in engine.by_id and s['id'] not in seen and len(found) < most:
+                    seen.add(s['id'])
+                    found.append({'id': s['id'], 'weight': weight})
+    return found
+
+
+PERSONAS = json.loads((ROOT / 'scripts' / 'bench' / 'personas.json').read_text())['personas']
+
+
+cold_rows, cold_answers = whole({'profile': [], 'settings': {}})
+cold_keys = [r['key'] for r in cold_rows]
+cold_by = {r['key']: r for r in cold_rows}
+check('a first visit gets eight rows first and the rest when asked',
+      len(cold_answers[0]['rows']) == FIRST_PAGE and cold_answers[0]['more'] and len(cold_answers) == 2
+      and 0 < len(cold_answers[1]['rows']) <= NEXT_PAGE and not cold_answers[1]['more'], [len(a['rows']) for a in cold_answers])
+check('a first visit leads with the Top 10 and what is popular now', cold_keys[:2] == ['top10', 'popular'], cold_keys)
+check('it has all-time favourites and new this year', {'classics', 'this-year'} <= set(cold_keys), cold_keys)
+cold_genres = [k for k in cold_keys if k.startswith(('genre-', 'format-'))]
+check('and six to eight rows of the best-known genres and formats', 6 <= len(cold_genres) <= 8, cold_genres)
+cold_ids = [c['id'] for r in cold_rows for c in r['items']]
+check('no show appears twice on a first visit', len(cold_ids) == len(set(cold_ids)))
+check('all-time favourites premiered before 2010 and are well rated',
+      all(c['year'] < 2010 and engine.shows[engine.by_id[c['id']]]['rating'] >= 8 for c in cold_by['classics']['items']))
+check("new this year is this year's", all(c['year'] == lib.year for c in cold_by['this-year']['items']))
+spanish = lib.home({'profile': [], 'settings': {}, 'lang': ['es-MX', 'en']})
+spanish_rows = {r['key']: r for r in spanish['rows']}
+check('a browser in Spanish also gets what is popular in Spanish', 'popular-spanish' in spanish_rows
+      and spanish_rows['popular-spanish']['title'] == 'Popular in Spanish'
+      and all(engine.shows[engine.by_id[c['id']]]['language'] == 'Spanish' for c in spanish_rows['popular-spanish']['items']))
+check('a browser in English gets no language row',
+      not any(r['key'].startswith('popular-') for r in lib.home({'profile': [], 'lang': 'en-GB'})['rows']))
+top10_ids = [c['id'] for c in cold['top10']]
+check('without a day the hero leads the Top 10', cold['hero']['id'] == top10_ids[0])
+heroes = [lib.home({'profile': [], **seeded(f'2026-10-{d:02d}')})['hero']['id'] for d in range(1, 15)]
+check('with a day the hero is drawn from the Top 10, and changes', set(heroes) <= set(top10_ids) and len(set(heroes)) >= 3,
+      heroes)
+rest = lib.home({'profile': [], **seeded('2026-10-01'), 'resting': top10_ids[:9]})['hero']['id']
+check('a hero of the last week rests', rest == top10_ids[9], rest)
+
 # 4. A rated list gets rows built from it.
 home = lib.home({'profile': PROFILE, 'settings': {}, 'list': [526, 999_999_999, 431]})
 rows = {r['key']: r for r in home['rows']}
 reference = engine.calculate({'profile': PROFILE, 'settings': {}})
 check('a rated list is personal', home['personal'] is True)
-check('top picks rank exactly as Next Watch does',
-      [c['id'] for c in rows['top']['items']] == [p['id'] for p in reference['picks'][:ROW]])
-check('the hero is the best pick at 99', home['hero']['id'] == reference['picks'][0]['id'] and home['hero']['match'] == 99)
+page4, _laid4 = page_of({'profile': PROFILE, 'settings': {}, 'list': [526, 999_999_999, 431]})
+top_ids = [c['id'] for c in rows['top']['items']]
+check('top picks come from the best hundred the plain ranking gives',
+      set(top_ids) <= {engine.shows[i]['id'] for i in page4.usable[:100]})
+
+
+def divergence(ids):
+    """How far a set of picks' mix of interests is from the list's (Kullback-Leibler)."""
+    groups = Counter(page4.ranking.group.get(engine.by_id[i]) for i in ids)
+    return sum(p * math.log(p / (0.99 * groups[k] / len(ids) + 0.01 * p)) for k, p in enumerate(page4.share) if p > 0)
+
+
+check("top picks are calibrated to the list's mix of interests at least as closely as the plain ranking",
+      divergence(top_ids) <= divergence([p['id'] for p in reference['picks'][:ROW]]) + 1e-9,
+      (round(divergence(top_ids), 3), round(divergence([p['id'] for p in reference['picks'][:ROW]]), 3)))
+best10 = [engine.shows[i]['id'] for i in page4.usable if engine.shows[i]['id'] not in (526, 431)][:10]
+check('the hero is one of the ten best picks not on My List', home['hero']['id'] in best10 and home['hero']['match'])
 check('the hero says which show it came from', home['hero']['because']['id'] in RATED and home['hero']['because']['name'])
 personal = [r for r in home['rows'] if r['key'] != 'top10']
 check('nothing rated comes back in a row', not RATED & {c['id'] for r in personal for c in r['items']})
@@ -281,6 +369,211 @@ check('every browsable genre has a poster for its tile', len(lib.genres) >= 20 a
 check('no two genre tiles share a poster', len({g['poster'] for g in lib.genres}) == len(lib.genres))
 check('labels lower-case without breaking acronyms',
       lower_first('Crime TV shows') == 'crime TV shows' and lower_first('DIY and makeovers') == 'DIY and makeovers')
+
+# 4c. The whole page for lists of several shapes: its fixed places, its size, and the rules
+# that keep rows from repeating one another.
+SHAPES = {
+    'five shows': {'profile': PROFILE, 'list': [526, 431]},
+    'one taste': {'profile': listed('prestige_crime')},
+    'twenty-five mixed': {'profile': listed('prestige_crime', 'british_panel', 'cozy_mystery', most=25), 'list': [2993]},
+    'sixty mixed': {'profile': listed('prestige_crime', 'british_panel', 'cozy_mystery', 'shonen_anime',
+                                      'adult_animation'), 'list': [169, 526, 919]},
+}
+for shape, body in SHAPES.items():
+    body = {'settings': {}, 'list': [], **body}
+    page_rows, answers = whole(body)
+    keys = [r['key'] for r in page_rows]
+    rated_ids = {p['id'] for p in body['profile']}
+    saved = [i for i in body['list'] if i in engine.by_id]
+    check(f'{shape}: eight rows come first, then six at a time', len(answers[0]['rows']) == FIRST_PAGE
+          and all(len(a['rows']) <= NEXT_PAGE for a in answers[1:]) and not answers[-1]['more'])
+    check(f'{shape}: the page holds at most {MOST_ROWS} rows, and at least the first page', FIRST_PAGE <= len(keys) <= MOST_ROWS,
+          len(keys))
+    check(f'{shape}: top picks lead', keys[0] == 'top', keys)
+    unrated_saved = [i for i in saved if i not in rated_ids]
+    check(f'{shape}: My List is row 2 exactly when it holds an unrated show',
+          (keys[1] == 'list') == bool(unrated_saved) and keys.count('list') <= 1, keys[:3])
+    check(f'{shape}: the Top 10 sits between rows 3 and 10', 'top10' in keys and 2 <= keys.index('top10') <= 9, keys)
+    check(f'{shape}: Popular sits below row 10', 'popular' not in keys or keys.index('popular') >= 10, keys)
+    check(f'{shape}: Something different is never among the first eight', 'different' not in keys[:FIRST_PAGE])
+    check(f'{shape}: no row twice', len(keys) == len(set(keys)))
+    heads = [c['id'] for r in page_rows for c in r['items'][:GLANCE]]
+    check(f'{shape}: no two rows open with the same show', len(heads) == len(set(heads)))
+    times = Counter(c['id'] for r in page_rows for c in r['items'])
+    check(f'{shape}: no show appears more than twice', max(times.values()) <= 2, times.most_common(2))
+    sizes = {r['key']: len(r['items']) for r in page_rows}
+    check(f'{shape}: the Top 10 holds ten', sizes['top10'] == 10)
+    check(f'{shape}: every other row holds {SHORTEST} to {ROW} cards, a creator\'s at least {CREATOR_SHORTEST}',
+          all(SHORTEST <= n <= ROW or (k.startswith('creator-') and CREATOR_SHORTEST <= n <= ROW)
+              for k, n in sizes.items() if k not in ('top10', 'list')), sizes)
+    chosen = [r for r in page_rows if r['kind'] == 'row']
+    check(f'{shape}: no row chosen for you holds a rated show', not rated_ids & {c['id'] for r in chosen for c in r['items']})
+    disliked = [engine.blend(engine.by_id[p['id']], DEFAULT_SETTINGS) for p in body['profile'] if p['weight'] < 0]
+    check(f'{shape}: nothing very close to a show marked Not for me', all(
+        a[engine.by_id[c['id']]] < NOT_FOR_ME for a in disliked for r in chosen for c in r['items']))
+    fine = True
+    for r in chosen:
+        head = [engine.by_id[c['id']] for c in r['items'][:GLANCE]]
+        franchises = Counter(t for i in head for t in lib.facet_sets(i)[0])
+        creators = Counter(t for i in head for t in lib.facet_sets(i)[1])
+        if (franchises and max(franchises.values()) > 1) or (creators and max(creators.values()) > 2):
+            fine = False
+    check(f'{shape}: a row opens with one show at most from a franchise and two from a creator', fine)
+    neighbours = []
+    net = lambda i: engine.shows[i]['channel']
+    for r in chosen:
+        cards = [engine.by_id[c['id']] for c in r['items']]
+        others = {engine.by_id[c['id']] for o in page_rows if o is not r for c in o['items'][:GLANCE]}
+        for n in range(PINNED, min(GLANCE, len(cards))):
+            if not net(cards[n]) or net(cards[n]) != net(cards[n - 1]):
+                continue
+            # Only a card that could open the row counts as another that could stand there.
+            head = cards[:n]
+            franchises = set().union(*(lib.facet_sets(i)[0] for i in head))
+            creators = Counter(t for i in head for t in lib.facet_sets(i)[1])
+            if any(net(j) != net(cards[n]) and j not in others and not lib.facet_sets(j)[0] & franchises
+                   and all(creators[t] < 2 for t in lib.facet_sets(j)[1]) for j in cards[n + 1:]):
+                neighbours.append((r['key'], n))
+    check(f'{shape}: past the pinned cards, no two neighbours share a network while another could stand there',
+          not neighbours, neighbours)
+    niches = [r['title'] for r in page_rows if r['key'].startswith('niche-')]
+    check(f'{shape}: micro-genre names run to five words at most', all(len(t.split()) <= 5 for t in niches), niches)
+    seeds_ = [k for k in keys if k.startswith('seed-')]
+    check(f'{shape}: two to six Because you loved rows', 2 <= len(seeds_) <= 6, seeds_)
+    page, laid = page_of(body)
+    check(f'{shape}: the pages asked for one at a time are the page laid out at once',
+          keys == [shelf.key for shelf, _items in laid])
+    served = Counter(shelf.interest for shelf, _items in laid if shelf.interest is not None)
+    check(f'{shape}: every interest with 8% or more of the list has a row',
+          all(served[k] for k in page.significant), (page.significant, served))
+    quota = page.quota
+    check(f'{shape}: no interest holds more rows than its share allows', all(served[k] <= quota[k] for k in served),
+          (served, quota))
+    if len(page.significant) >= 3:
+        planned = sum(quota.values())
+        check(f'{shape}: with three or more interests, none is planned more than 40% of their rows',
+              all(q <= INTEREST_CAP * planned + 1e-9 for q in quota.values()), quota)
+    seed_interests = Counter(shelf.interest for shelf, _items in laid if shelf.kind_of == 'seed')
+    check(f'{shape}: at most two Because you loved rows for an interest', max(seed_interests.values()) <= 2)
+    for shelf, items in laid:
+        cards = [engine.shows[i] for i in items]
+        if shelf.key == 'gems':
+            floor = page.stats['rating_q75']
+            check(f'{shape}: hidden gems are little known and well rated',
+                  all(page.pop(i) <= HIDDEN[0] and (engine.shows[i]['rating'] or 0) >= floor for i in items))
+        if shelf.key == 'limited':
+            check(f'{shape}: limited series are limited series', all(i in lib.limited for i in items))
+        if shelf.key == 'new':
+            check(f'{shape}: new for you is new', all(s['year'] >= lib.year - 1 for s in cards))
+        if shelf.key.startswith('acclaimed-'):
+            check(f'{shape}: {shelf.title} is rated 8 or more', all(s['rating'] >= 8 for s in cards))
+        if shelf.key.startswith('cast-'):
+            column = next(c for c in lib.facet_sets(items[0])[3] if shelf.title == f'Starring {engine.facets.labels[c]}')
+            liked_with = [p for p in body['profile'] if p['weight'] > 0 and column in lib.facet_sets(engine.by_id[p['id']])[3]]
+            check(f'{shape}: {shelf.title} stars in two or more liked shows and every card', len(liked_with) >= 2
+                  and all(column in lib.facet_sets(i)[3] for i in items))
+        if shelf.key.startswith('seed-'):
+            seed = next(p for p in body['profile'] if p['id'] == int(shelf.key[5:]))
+            verb = 'loved' if seed['weight'] == 1 else 'liked'
+            check(f'{shape}: {shelf.title} says {verb}', shelf.title.startswith(f'Because you {verb} '))
+    callouts = [c['callout'] for r in page_rows for c in r['items'] if c.get('callout')]
+    check(f'{shape}: call-outs name a concrete tie', all(t.startswith(('Same world as ', 'Same creator as ', 'Stars '))
+                                                        for t in callouts), callouts[:3])
+    subtitles = [r['subtitle'] for r in page_rows if r.get('subtitle')]
+    check(f'{shape}: subtitles never explain a row by popularity', not any('popular' in t.lower() for t in subtitles))
+
+# 4d. Paging: the same request gives the same page, and one sent after the list changed
+# keeps the rows shown and builds only the rest.
+body = {'profile': SHAPES['twenty-five mixed']['profile'], 'settings': {}, 'list': [2993], **seeded('2026-10-05')}
+first = lib.home(body)
+check('the same first request gives the same answer', lib.home(body) == first)
+shown = [{'key': r['key'], 'ids': [c['id'] for c in r['items'][:GLANCE]]} for r in first['rows']]
+second = lib.home({**body, 'shown': shown})
+check('asking again for the next rows gives the same rows', lib.home({**body, 'shown': shown}) == second)
+check('the next rows carry no hero, and the list\'s taste', 'hero' not in second and second['taste'] and second['rows'])
+check('asking for no rows gives the taste alone', lib.home({**body, 'shown': shown, 'count': 0})['rows'] == []
+      and lib.home({**body, 'shown': shown, 'count': 0})['taste'] == second['taste'])
+liked_now = next(c['id'] for c in first['rows'][0]['items'] if c['id'] not in {p['id'] for p in body['profile']})
+after = lib.home({**body, 'profile': body['profile'] + [{'id': liked_now, 'weight': 1}], 'shown': shown})
+after_keys = [r['key'] for r in after['rows']]
+check('after a rating, the rows shown stay out of the next answer', not {s['key'] for s in shown} & set(after_keys)
+      and after['rows'], after_keys)
+opened = {i for s in shown for i in s['ids']}
+check('and the rows built after them open with none of their shows',
+      not opened & {c['id'] for r in after['rows'] for c in r['items'][:GLANCE]})
+check('and hold nothing just rated', liked_now not in {c['id'] for r in after['rows'] for c in r['items']
+                                                       if r['kind'] == 'row'})
+
+# 4e. Freshness: a day's page is fixed by the day and seed, and the next day's differs.
+monday = whole({**body, **seeded('2026-10-05')})[0]
+check('the same day and seed give the same page', whole({**body, **seeded('2026-10-05')})[0] == monday)
+tuesday = whole({**body, **seeded('2026-10-06')})[0]
+check('the next day gives another page', tuesday != monday)
+check('but top picks lead and keep their first two cards', monday[0]['key'] == tuesday[0]['key'] == 'top'
+      and [c['id'] for c in monday[0]['items'][:PINNED]] == [c['id'] for c in tuesday[0]['items'][:PINNED]])
+kept = [len({c['id'] for c in r['items']} & {c['id'] for c in t['items']}) / len(r['items'])
+        for r in monday for t in tuesday if r['key'] == t['key'] and r['kind'] == 'row' and r['key'] != 'different']
+check('most of a row carries over to the next day', statistics.mean(kept) >= 0.6, round(statistics.mean(kept), 2))
+check('and rows further down change', [r['key'] for r in monday] != [r['key'] for r in tuesday]
+      or any(r['items'] != t['items'] for r, t in zip(monday, tuesday)))
+plain = whole({**body})[0]
+worn = [c['id'] for c in plain[0]['items'][2:6]]
+tired_page = whole({**body, 'seen': {str(i): 20 for i in worn}})[0]
+check('titles shown on many recent days give way to others', not set(worn) <= {c['id'] for c in tired_page[0]['items'][:GLANCE]})
+check('unless they were engaged with', whole({**body, 'seen': {str(i): 20 for i in worn}, 'engaged': worn})[0] == plain)
+
+# 4f. The hero: drawn from the ten best picks, never rated, on My List or a recent hero,
+# and not one the first rows already open with.
+profile_ids = {p['id'] for p in body['profile']}
+page, laid = page_of({**body, **seeded('2026-10-05')})
+best = [engine.shows[i]['id'] for i in page.usable if engine.shows[i]['id'] not in body['list']][:10]
+drawn = []
+for d in range(1, 15):
+    answer = lib.home({**body, **seeded(f'2026-10-{d:02d}')})
+    drawn.append(answer['hero']['id'])
+    opening = {c['id'] for r in answer['rows'][:3] for c in r['items'][:GLANCE]}
+    if answer['hero']['id'] in opening and not set(best) - opening:
+        opening = set()
+    check(f'the hero on 2026-10-{d:02d} is one of the ten best, not rated, not listed, not opening a top row',
+          answer['hero']['id'] in best and answer['hero']['id'] not in profile_ids and answer['hero']['id'] not in body['list']
+          and answer['hero']['id'] not in opening)
+check('the hero changes from day to day', len(set(drawn)) >= 3, drawn)
+resting = lib.home({**body, **seeded('2026-10-05'), 'resting': drawn})['hero']['id']
+check('a hero shown in the last week is not drawn again', resting not in drawn)
+
+# 4g. Rows passed over on five days in a fortnight rest at the foot of the page.
+tired_key = next(r['key'] for r in monday[4:] if r['kind'] == 'row' and r['key'] not in ('popular', 'different'))
+rested = whole({**body, **seeded('2026-10-05'), 'tired': [tired_key]})[0]
+rested_keys = [r['key'] for r in rested]
+check('a tired row rests below the first page', tired_key not in rested_keys[:FIRST_PAGE] and
+      (tired_key not in rested_keys or rested_keys.index(tired_key) >= len(rested_keys) - 2), (tired_key, rested_keys))
+
+# 4h. The new fields are checked like the rest.
+rejects('a language that is not a tag', lambda: lib.home({'profile': [], 'lang': ['english!']}), 'language tags')
+rejects('too many languages', lambda: lib.home({'profile': [], 'lang': ['en'] * 9}), 'language tags')
+rejects('a language that is a number', lambda: lib.home({'profile': [], 'lang': 5}), 'language tags')
+rejects('shown rows that are not a list', lambda: lib.home({'profile': [], 'shown': 'top'}), 'shown')
+rejects('too many shown rows', lambda: lib.home({'profile': [], 'shown': [{'key': f'r{n}', 'ids': []} for n in range(25)]}),
+        'up to 24')
+rejects('a shown row with a bad key', lambda: lib.home({'profile': [], 'shown': [{'key': 'Top Picks!', 'ids': []}]}), 'key')
+rejects('a shown row with too many ids', lambda: lib.home({'profile': [], 'shown': [{'key': 'top', 'ids': list(range(7))}]}),
+        'up to 6')
+rejects('a shown row with ids that are not numbers', lambda: lib.home({'profile': [], 'shown': [{'key': 'top', 'ids': ['1']}]}),
+        'up to 6')
+rejects('a row shown twice', lambda: lib.home({'profile': [], 'shown': [{'key': 'top'}, {'key': 'top'}]}), 'only once')
+rejects('a count that is too big', lambda: lib.home({'profile': [], 'count': 9}), '0 to 8')
+rejects('a count that is not a number', lambda: lib.home({'profile': [], 'count': '6'}), '0 to 8')
+rejects('a day without its seed', lambda: lib.home({'profile': [], 'day': '2026-10-05'}), 'together')
+rejects('a malformed seed', lambda: lib.home({'profile': [], 'day': '2026-10-05', 'seed': 'zz'}), 'hexadecimal')
+rejects('seen counts that are not numbers', lambda: lib.home({'profile': [], 'seen': {'169': 'x'}}), '0 to 50')
+rejects('tired rows that are not keys', lambda: lib.home({'profile': [], 'tired': ['Top!']}), 'row keys')
+browsed = lib.browse({'profile': PROFILE, 'settings': {}, 'genre': 'Crime', **seeded('2026-10-05')})
+check('browsing takes a day too, and keeps each row\'s first two', browsed['rows'][0]['items'][:PINNED] ==
+      lib.browse({'profile': PROFILE, 'settings': {}, 'genre': 'Crime', **seeded('2026-10-06')})['rows'][0]['items'][:PINNED])
+more_today = [c['id'] for c in lib.title({'profile': PROFILE, 'id': 169, **seeded('2026-10-05')})['more']]
+more_plain = [c['id'] for c in lib.title({'profile': PROFILE, 'id': 169})['more']]
+check("more like this keeps its closest six and takes the day's for the rest",
+      more_today[:GLANCE] == more_plain[:GLANCE] and len(more_today) == len(more_plain))
 
 # 5. A title page explains itself and finds what is like it.
 page = lib.title({'profile': PROFILE, 'settings': {}, 'id': reference['picks'][0]['id']})
@@ -582,6 +875,17 @@ check('TVmaze failing is an empty answer, not an error', status == 200
       and json.loads(body) == {'shows': [], 'missing': [], 'missing_first': False})
 status, _headers, body = fetch('/api/home', {'profile': PROFILE, 'settings': DEFAULT_SETTINGS})
 check('home answers over HTTP', status == 200 and json.loads(body)['personal'] is True)
+answer = json.loads(body)
+shown_rows = [{'key': r['key'], 'ids': [c['id'] for c in r['items'][:6]]} for r in answer['rows']]
+status, _headers, body = fetch('/api/home', {'profile': PROFILE, 'settings': DEFAULT_SETTINGS, 'shown': shown_rows,
+                                             'day': '2026-10-05', 'seed': '0123456789abcdef', 'lang': ['fr-CA'],
+                                             'seen': {'169': 2.5}, 'engaged': [82], 'resting': [44933], 'tired': ['gems']})
+check('the next rows come over HTTP, with no hero', status == 200 and json.loads(body)['rows']
+      and 'hero' not in json.loads(body))
+check('a malformed shown list is a 400 that says why',
+      fetch('/api/home', {'profile': [], 'shown': [{'key': 'no spaces'}]}) [:3:2] == (400, b'{"error":"Each shown row needs a key of lower-case letters, digits and hyphens."}'))
+check('a malformed day is a 400', fetch('/api/home', {'profile': [], 'day': 'Monday', 'seed': '0123456789abcdef'})[0] == 400)
+check('a body over 32KB is refused', fetch('/api/home', b'{"profile": [], "x": "' + b'y' * 33000 + b'"}')[0] == 413)
 check('a bad title id is a 400', fetch('/api/title', {'profile': [], 'id': -1})[0] == 400)
 check('a body that is not an object is a 400', fetch('/api/home', [1, 2])[0] == 400)
 check('the wrong content type is refused', fetch('/api/home', b'{}', 'text/plain')[0] == 415)

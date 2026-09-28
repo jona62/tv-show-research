@@ -149,3 +149,63 @@ export function airs(days) {
   if (days.length === 5 && !days.includes('Saturday') && !days.includes('Sunday')) return 'New episodes weekdays';
   return `New episodes ${joinNames(days.map(d => `${d}s`))}`;
 }
+
+/* ---------------------------------------------------------------- the home page */
+// What a home page depends on, the same however the settings happen to be ordered: the
+// ratings, the settings and My List.
+export function pageKey({ profile, settings }, list) {
+  return JSON.stringify([profile.map(p => [p.id, p.weight]),
+    Object.keys(settings).sort().map(k => [k, settings[k]]), list]);
+}
+
+export const RESUME_MINUTES = 30;
+
+// Whether a kept page can be shown again as it was: made today for the same list and My
+// List, and in use within the last RESUME_MINUTES.
+export function resumable(kept, { key, day, now }) {
+  const idle = now - kept?.at;
+  return Boolean(kept && kept.v === 1 && kept.key === key && kept.day === day && idle >= 0
+    && idle <= RESUME_MINUTES * 60_000 && Array.isArray(kept.home?.rows));
+}
+
+// The rows a page shows, as the server asks to be told them when it is asked for more:
+// each row's key and the ids of its first six cards. My List's are the list's own, and
+// rows the browser makes itself, such as Recently viewed, are not sent.
+export function shownRows(rows, listIds = []) {
+  return rows.filter(r => r.kind !== 'recent').map(r => ({
+    key: r.key, ids: (r.kind === 'list' ? listIds : r.items.map(c => c.id)).slice(0, 6),
+  }));
+}
+
+// The rows once a card has been acted on: it leaves every row the page chose for you,
+// while the Top 10 keeps its ten and My List follows the list itself.
+export const withoutCard = (rows, id) =>
+  rows.map(r => (r.kind === 'row' ? { ...r, items: r.items.filter(c => c.id !== id) } : r));
+
+export const VIEWED_DAYS = 14;
+export const VIEWED_KEEP = 40;
+
+// Titles opened lately, from storage: junk is dropped and posters come only from TVmaze.
+export function viewedStore(raw) {
+  return (Array.isArray(raw) ? raw : []).filter(v => v && Number.isInteger(v.id) && v.id > 0 && Number.isInteger(v.d))
+    .slice(-VIEWED_KEEP).map(v => ({
+      id: v.id, d: v.d, name: typeof v.name === 'string' ? v.name : '', year: Number.isInteger(v.year) ? v.year : null,
+      poster: typeof v.poster === 'string' && v.poster.startsWith('https://static.tvmaze.com/') ? v.poster : null,
+    }));
+}
+
+// The list with a title opened on day number `now` added last, once.
+export const noteViewed = (viewed, card, now) => viewedStore([...viewed.filter(v => v.id !== card.id),
+  { id: card.id, d: now, name: card.name, year: card.year, poster: card.poster }]);
+
+// Recently viewed: titles whose page was opened in the last VIEWED_DAYS days and that
+// have been neither rated nor added to My List since, most recent first.
+export function recentlyViewed(viewed, now, { rated = new Set(), saved = new Set(), most = 20 } = {}) {
+  const out = [];
+  for (const v of [...viewed].reverse()) {
+    if (now - v.d > VIEWED_DAYS || v.d > now || rated.has(v.id) || saved.has(v.id)) continue;
+    out.push(v);
+    if (out.length === most) break;
+  }
+  return out;
+}

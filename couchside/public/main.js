@@ -3,6 +3,9 @@ import { matrix, svgPath } from './qr.js';
 import { tieText, leaning, leaningHeading } from './format.js';
 import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere, longDate, airs,
   whereToWatch, trailerSearch, searchNote } from './format.js';
+import { pageKey, resumable, shownRows, withoutCard, viewedStore, noteViewed, recentlyViewed } from './format.js';
+import { freshStore, today, dayNumber, noteSeen, noteEngaged, noteRow, noteHero, prune, freshness, watcher }
+  from './fresh.js';
 import { daySeed, startersQuery, mergeStarters, browserLanguage, MAX_ROUND, MAX_PICKED } from './starters.js';
 
 const boot = JSON.parse(document.getElementById('boot').textContent);
@@ -93,6 +96,47 @@ try {
 
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* private mode */ }
+}
+
+// What this browser has shown and what you engaged with (fresh.js), so each day's page
+// is fresh: kept under its own key, one salt per browser, pruned on every load. Writes
+// are batched, since a scroll can see dozens of titles.
+const FRESH_KEY = 'couchside-fresh';
+let memory;
+try { memory = freshStore(JSON.parse(localStorage.getItem(FRESH_KEY))); } catch { memory = freshStore(null); }
+prune(memory, today());
+let memoryTimer = 0;
+function keepMemory(now = false) {
+  clearTimeout(memoryTimer);
+  const write = () => { try { localStorage.setItem(FRESH_KEY, JSON.stringify(memory)); } catch { /* private mode */ } };
+  if (now) write(); else memoryTimer = setTimeout(write, 1000);
+}
+// Written at once, so the welcome page's starters (starters.js) find this salt, not a second.
+keepMemory(true);
+// Engaging with a title (opening it, rating it, listing it, its trailer, a link out)
+// spares it from fatigue for two weeks; engaging with a card also wakes the row it is in.
+function engaged(id, row = '') {
+  const day = today();
+  noteEngaged(memory, id, day);
+  if (row) noteRow(memory, row, day, true);
+  keepMemory();
+}
+// What a request carries about the day: its date, its seed and the memory's counts. A
+// browser without crypto.subtle (a page not served over https) sends none.
+async function freshFields() {
+  try { return await freshness(memory, today()); } catch { return {}; }
+}
+const TAG = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8}){0,3}$/;
+const languages = () => (navigator.languages?.length ? [...navigator.languages] : [navigator.language || ''])
+  .filter(t => TAG.test(t)).slice(0, 8);
+
+// Titles opened lately, for Recently viewed.
+const VIEWED_KEY = 'couchside-viewed';
+let viewed = [];
+try { viewed = viewedStore(JSON.parse(localStorage.getItem(VIEWED_KEY))); } catch { /* first visit */ }
+function noteOpened(c) {
+  viewed = noteViewed(viewed, c, dayNumber(today()));
+  try { localStorage.setItem(VIEWED_KEY, JSON.stringify(viewed)); } catch { /* private mode */ }
 }
 
 /* ---------------------------------------------------------------- bits */
@@ -308,29 +352,71 @@ window.addEventListener('popstate', route);
 window.addEventListener('scroll', syncNav, { passive: true });
 
 /* ---------------------------------------------------------------- home */
-let home = null, homeKey = '', homeReq = 0, homeAbort = null, homeTimer = 0;
+// The page arrives eight rows at a time: the first answer brings the hero and the first
+// eight, and as the reader nears the end the next six are asked for, telling the server
+// which rows are already shown so it builds the same page. Within a visit the page holds
+// still: a reload within half an hour on the same day with the same list shows it again
+// as it was, and a rating or a My List change merges into it rather than laying it out
+// again. Impressions are only written down, never a reason to re-render.
+let home = null, homeKey = '', homeReq = 0, homeAbort = null, homeTimer = 0, moreBusy = false;
+const PAGE_KEY = 'couchside-home';
+const currentKey = () => pageKey(taste(), state.saved.map(s => s.id));
 
 function refresh(delay = 450) {
   clearTimeout(homeTimer);
   homeTimer = setTimeout(loadHome, delay);
 }
 
+// The page kept for this tab: what was shown, for the day and list it was made for.
+function keepPage() {
+  if (!home) return;
+  try {
+    sessionStorage.setItem(PAGE_KEY, JSON.stringify({ v: 1, at: Date.now(), day: home.day, key: homeKey, home }));
+  } catch { /* storage full or off: the page is simply asked for again next time */ }
+}
+function keptPage(key, day) {
+  try {
+    const kept = JSON.parse(sessionStorage.getItem(PAGE_KEY));
+    return resumable(kept, { key, day, now: Date.now() }) ? kept.home : null;
+  } catch { return null; }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') { keepPage(); keepMemory(true); }
+});
+window.addEventListener('pagehide', () => { keepPage(); keepMemory(true); });
+
+function rememberHome(data) {
+  if (data.hero) remember(data.hero);
+  for (const r of data.rows) r.items.forEach(remember);
+  for (const list of [data.top10, data.fresh, data.soon, data.list, data.popular]) (list || []).forEach(remember);
+}
+
 async function loadHome() {
-  const key = JSON.stringify(taste());
+  const key = currentKey();
   if (home && key === homeKey) return;
   const id = ++homeReq;
   homeAbort?.abort();
   homeAbort = new AbortController();
+  const day = today();
+  const kept = keptPage(key, day);
+  if (kept) {
+    home = kept;
+    homeKey = key;
+    rememberHome(home);
+    renderHome();
+    return;
+  }
   if (!home) renderHomeLoading();
   try {
-    const data = await post('/api/home', { ...taste(), list: state.saved.map(s => s.id) }, homeAbort.signal);
+    const data = await post('/api/home', {
+      ...taste(), list: state.saved.map(s => s.id), ...await freshFields(), lang: languages(),
+    }, homeAbort.signal);
     if (id !== homeReq) return;
-    home = data;
+    home = { ...data, day, tasteKey: key };
     homeKey = key;
-    remember(data.hero);
-    for (const r of data.rows) r.items.forEach(remember);
-    for (const list of [data.top10, data.fresh, data.soon, data.list]) list.forEach(remember);
+    rememberHome(data);
     renderHome();
+    keepPage();
     if (view === 'new') renderNew();
     if (view === 'list') renderList();
     if (view === 'search' && where().q.trim().length < 2) suggestions();
@@ -344,6 +430,53 @@ async function loadHome() {
     }
   }
 }
+
+// What asking for more rows carries: the list as it is now, the day, and the rows shown.
+async function moreBody(count) {
+  const listIds = state.saved.slice().reverse().map(s => s.id);
+  return {
+    ...taste(), list: state.saved.map(s => s.id), ...await freshFields(), lang: languages(),
+    shown: shownRows(home.rows, listIds), count,
+  };
+}
+
+// The next rows, once the reader is within a screen of the end. After a rating or a My
+// List change the request carries the new list, so the rows not yet shown are built
+// from it while those on screen stay as they are.
+async function loadMore() {
+  if (!home?.more || moreBusy) return;
+  moreBusy = true;
+  const id = homeReq;
+  try {
+    const data = await post('/api/home', await moreBody(6));
+    if (id !== homeReq || !home) return;
+    rememberHome(data);
+    home.rows.push(...data.rows);
+    Object.assign(home, { more: data.more, taste: data.taste, interests: data.interests, tasteKey: homeKey });
+    appendRows(data.rows);
+    keepPage();
+    moreButton.hidden = !home.more || !!moreWatch;
+  } catch (e) {
+    moreButton.hidden = !home?.more;
+    toast(e.message);
+  } finally {
+    moreBusy = false;
+    // Rows that arrive short of filling the screen leave the end in view: look again.
+    if (moreWatch && home?.more) { moreWatch.unobserve(sentinel); moreWatch.observe(sentinel); }
+  }
+}
+const sentinel = el('div', '', 'more-rows');
+const moreButton = button('btn ghost', 'More rows', () => loadMore());
+sentinel.append(moreButton);
+const moreWatch = 'IntersectionObserver' in window
+  ? new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) loadMore(); },
+    { rootMargin: '0px 0px 100% 0px' })
+  : null;
+
+// Impressions: a card half on screen for a second counts as seen once a day, and a row
+// seen that way counts as passed over for the day unless a card in it is engaged with.
+const seenWatch = watcher(id => { noteSeen(memory, id, today()); keepMemory(); });
+const rowWatch = watcher(key => { noteRow(memory, key, today()); keepMemory(); });
 
 function skelRow() {
   const sec = el('section', '', 'row');
@@ -366,6 +499,9 @@ function renderHomeLoading() {
 
 function renderHome() {
   renderHero(home.hero);
+  // The hero rests for a week once shown, so the next days' are others.
+  noteHero(memory, home.hero.id, today());
+  keepMemory();
   const holder = $('rows');
   holder.replaceChildren();
   if (!home.personal) {
@@ -377,11 +513,60 @@ function renderHome() {
     holder.append(invite);
   }
   if (home.message) holder.append(el('p', home.message, 'row-empty'));
-  home.rows.forEach((r, n) => {
-    holder.append(rowEl(r));
-    if (n === 0) holder.append(listRow());
-  });
-  if (!home.rows.length) holder.append(listRow());
+  holder.append(sentinel);
+  appendRows(home.rows);
+  // My List keeps a place after the first row even while empty, so adding a show shows it.
+  if (!$('row-list')) {
+    const first = holder.querySelector('section.row');
+    if (first) first.after(listRow()); else holder.insertBefore(listRow(), sentinel);
+  }
+  moreButton.hidden = !home.more || !!moreWatch;
+  if (moreWatch) {
+    moreWatch.unobserve(sentinel);
+    if (home.more) moreWatch.observe(sentinel);
+  }
+}
+
+// Rows go in before the sentinel as they arrive; Recently viewed, which the browser
+// makes itself, goes in after the third.
+function appendRows(rows) {
+  const holder = $('rows');
+  for (const r of rows) {
+    holder.insertBefore(r.kind === 'list' ? listRow() : rowEl(r, { watch: true }), sentinel);
+    if (!$('row-recent') && holder.querySelectorAll('section.row').length === 3) {
+      holder.insertBefore(recentRow(), sentinel);
+    }
+  }
+  if (!$('row-recent') && !home.more) holder.insertBefore(recentRow(), sentinel);
+}
+
+// After a rating or a My List change: the card leaves the rows chosen for you, and every
+// other card and row keeps its place. The rows not yet shown will come from the new list.
+// A first liked show turns a first visit's page into a personal one, so that one reloads.
+function settleHome(id) {
+  if (!home) return;
+  if (!home.personal && state.profile.some(p => p.weight > 0)) { refresh(); return; }
+  home.rows = withoutCard(home.rows, id);
+  for (const card of $('rows').querySelectorAll(`section.row[data-kind="row"] .card[data-id="${id}"]`)) {
+    card.closest('li')?.remove();
+  }
+  homeKey = currentKey();
+  updateRecentRow();
+  keepPage();
+}
+
+// Recently viewed: titles you opened in the last fortnight and have not rated or listed.
+function recentRow() {
+  const rated = new Set(state.profile.map(p => p.id)), saved = new Set(state.saved.map(s => s.id));
+  const items = recentlyViewed(viewed, dayNumber(today()), { rated, saved })
+    .map(v => ({ ...v, ...(known.get(v.id) || {}) }));
+  const sec = rowEl({ key: 'recent', title: 'Recently viewed', kind: 'recent', items });
+  sec.id = 'row-recent';
+  sec.hidden = !items.length;
+  return sec;
+}
+function updateRecentRow() {
+  $('row-recent')?.replaceWith(recentRow());
 }
 
 function renderHero(s) {
@@ -452,13 +637,18 @@ function metaEl(s, live, hero = false, age = null) {
 let rowCount = 0;
 const syncers = new Set();
 
-function rowEl(r) {
+// A row of posters. On the home page (watch) its cards count toward what this browser
+// has seen, and the row toward rows passed over; a click on any card in it counts as
+// engaging with the row.
+function rowEl(r, { watch = false } = {}) {
   const sec = el('section', '', r.kind === 'soon' ? 'row soon' : 'row');
   const h = el('h2', r.title, 'row-title');
   h.id = `row-h-${++rowCount}`;
   sec.setAttribute('aria-labelledby', h.id);
   sec.dataset.key = r.key;
+  sec.dataset.kind = r.kind;
   const track = el('ul', '', r.kind === 'top10' ? 'track ranked' : 'track');
+  const row = watch && (r.kind === 'row' || r.kind === 'top10') ? r.key : '';
   r.items.forEach((c, n) => {
     const li = el('li');
     if (r.kind === 'top10') {
@@ -466,7 +656,9 @@ function rowEl(r) {
       num.setAttribute('aria-hidden', 'true');
       li.append(num);
     }
-    li.append(cardEl(c, { rank: r.kind === 'top10' ? n + 1 : 0, soon: r.kind === 'soon' }));
+    const card = cardEl(c, { rank: r.kind === 'top10' ? n + 1 : 0, soon: r.kind === 'soon', row });
+    if (watch) seenWatch.observe(card, c.id);
+    li.append(card);
     track.append(li);
   });
   const page = dir => track.scrollBy({ left: dir * track.clientWidth * .86, behavior: motion() ? 'smooth' : 'auto' });
@@ -484,22 +676,32 @@ function rowEl(r) {
   requestAnimationFrame(sync);
   const slider = el('div', '', 'slider');
   slider.append(prev, track, next);
-  sec.append(h, slider);
+  sec.append(h);
+  // "For fans of Breaking Bad and The Wire", read out as part of the row's name.
+  if (r.subtitle) {
+    const sub = el('p', r.subtitle, 'row-sub');
+    sub.id = `row-s-${rowCount}`;
+    sec.setAttribute('aria-describedby', sub.id);
+    sec.append(sub);
+  }
+  sec.append(slider);
+  if (row) rowWatch.observe(sec, row);
   return sec;
 }
 window.addEventListener('resize', () => { for (const sync of [...syncers]) sync(); });
 
 // A poster that opens the title page. On a mouse, hovering shows its match and quick
 // buttons for My List and a rating; those skip the tab order, since the title page
-// offers the same actions to everyone.
-function cardEl(c, { rank = 0, soon = false, note = '' } = {}) {
+// offers the same actions to everyone. A card may carry one call-out, such as "Same
+// creator as Breaking Bad".
+function cardEl(c, { rank = 0, soon = false, note = '', row = '' } = {}) {
   const card = el('div', '', 'card');
   card.dataset.id = c.id;
-  const hit = button('card-hit', '', () => openTitle(c.id));
+  const hit = button('card-hit', '', () => openTitle(c.id, { row }));
   hit.setAttribute('aria-label', [
     c.name, c.year, c.match ? `${c.match}% match` : '',
     rank ? `number ${rank} in the Top 10 today` : c.badge === 'top10' ? 'in the Top 10 today' : '',
-    c.badge === 'new' ? 'new' : '', soon && c.premiered ? `premieres ${premiere(c.premiered)}` : '', note,
+    c.badge === 'new' ? 'new' : '', soon && c.premiered ? `premieres ${premiere(c.premiered)}` : '', c.callout, note,
   ].filter(Boolean).join(', '));
   hit.append(artEl(c));
   if (c.badge === 'top10' && !rank) {
@@ -512,12 +714,19 @@ function cardEl(c, { rank = 0, soon = false, note = '' } = {}) {
     fresh.setAttribute('aria-hidden', 'true');
     hit.append(fresh);
   }
+  if (c.callout) {
+    const said = el('span', c.callout, 'callout');
+    said.setAttribute('aria-hidden', 'true');
+    hit.append(said);
+    card.classList.add('has-callout');
+  }
   card.append(hit);
+  if (row) card.addEventListener('click', () => { noteRow(memory, row, today(), true); keepMemory(); });
   const meta = el('div', '', 'card-meta');
   const quick = el('div', '', 'quick');
   const full = { ...c, ...(known.get(c.id) || {}) };
   quick.append(listButton(full, 'tiny'), ...rateButtons(full, [.7, 1], 'tiny'));
-  const open = button('round tiny push', '', () => openTitle(c.id), 'more');
+  const open = button('round tiny push', '', () => openTitle(c.id, { row }), 'more');
   open.setAttribute('aria-label', `More about ${c.name}`);
   quick.append(open);
   const words = el('div', '', 'card-words');
@@ -534,8 +743,8 @@ function cardEl(c, { rank = 0, soon = false, note = '' } = {}) {
 }
 
 function listRow() {
-  const items = state.saved.slice().reverse().map(s => ({ ...s, ...(known.get(s.id) || {}) }));
-  const sec = rowEl({ key: 'list', title: 'My List', kind: 'row', items });
+  const items = state.saved.slice().reverse().slice(0, 20).map(s => ({ ...s, ...(known.get(s.id) || {}) }));
+  const sec = rowEl({ key: 'list', title: 'My List', kind: 'list', items });
   sec.id = 'row-list';
   sec.hidden = !items.length;
   return sec;
@@ -575,10 +784,12 @@ function toggleList(c) {
     toast(`Added ${c.name} to My List.`);
   }
   save();
+  engaged(c.id);
   syncList(c.id);
   updateListRow();
   updateCounts();
   if (view === 'list') renderList();
+  settleHome(c.id);
 }
 
 function rateButtons(c, weights = RATES.map(r => r.weight), size = '') {
@@ -623,16 +834,19 @@ function rate(c, weight) {
   }
   state.onboarded = true;
   save();
+  engaged(c.id);
   paintRates(c.id);
   updateCounts();
   if (view === 'list') renderList();
-  refresh();
+  if (home) settleHome(c.id); else refresh();
 }
 
 /* ----------------------------------------------------------- title page */
 let T = null, titleId = null, titleToken = 0, seasonToken = 0;
 
-function openTitle(id, { play = false } = {}) {
+function openTitle(id, { play = false, row = '' } = {}) {
+  engaged(id, row);
+  noteOpened(info(id));
   const url = withShow(location.pathname, location.search, id);
   if ($('title').open) history.replaceState(history.state, '', url);
   else history.pushState({ modal: true }, '', url);
@@ -654,8 +868,10 @@ function hideTitle() {
   $('t-sheet').replaceChildren();
   document.documentElement.classList.remove('modal-open');
   document.title = TITLES[view] || 'Couchside';
+  if (view === 'home') updateRecentRow();
 }
 $('title').addEventListener('cancel', e => { e.preventDefault(); closeTitle(); });
+$('t-sheet').addEventListener('click', e => { if (titleId && e.target.closest('a[target="_blank"]')) engaged(titleId); });
 $('title').addEventListener('click', e => { if (e.target === $('title')) closeTitle(); });
 
 function showTitle(id, play = false) {
@@ -670,7 +886,7 @@ function showTitle(id, play = false) {
   dialog.scrollTop = 0;
   T.close.focus({ preventScroll: true });
   document.title = `${T.card.name || 'Show'} · Couchside`;
-  const loaded = post('/api/title', { ...taste(), id });
+  const loaded = freshFields().then(fresh => post('/api/title', { ...taste(), ...fresh, id }));
   loaded.then(data => {
     if (token !== titleToken) return;
     remember(data.show);
@@ -920,6 +1136,7 @@ function paintVideos() {
 // the title and buttons move beneath it so nothing covers the player.
 function playVideo(v) {
   if (!T) return;
+  engaged(T.id);
   T.hero.querySelector('.t-player')?.remove();
   const frame = document.createElement('iframe');
   frame.src = `https://www.youtube-nocookie.com/embed/${v.youtube}?autoplay=1&rel=0&playsinline=1`;
@@ -1109,7 +1326,7 @@ async function loadBrowse(genre) {
   const id = ++browseReq;
   $('browse-body').replaceChildren(skelRow(), skelRow(), skelRow());
   try {
-    const data = await post('/api/browse', { ...taste(), genre });
+    const data = await post('/api/browse', { ...taste(), ...await freshFields(), genre });
     if (id !== browseReq) return;
     for (const r of data.rows) r.items.forEach(remember);
     $('browse-body').replaceChildren(...(data.rows.length ? data.rows.map(rowEl)
@@ -1134,8 +1351,7 @@ function renderNew() {
     rows.push({ key: 'fresh', title: home.personal ? 'New this year, picked for you' : 'New this year', kind: 'row', items: home.fresh });
   }
   if (home.soon.length) rows.push({ key: 'soon', title: 'Coming soon', kind: 'soon', items: home.soon });
-  const popular = home.rows.find(r => r.key === 'popular');
-  if (popular) rows.push(popular);
+  if (home.popular?.length) rows.push({ key: 'popular', title: 'Popular right now', kind: 'row', items: home.popular });
   holder.replaceChildren(...rows.map(rowEl));
 }
 
@@ -1196,7 +1412,7 @@ let searchReq = 0, searchTimer = 0;
 
 function suggestions() {
   $('search-note').textContent = 'Search by title. Until then, here is what people are watching.';
-  const popular = home?.rows.find(r => r.key === 'popular')?.items || [];
+  const popular = home?.popular || [];
   fill($('results'), home ? [...home.top10, ...popular] : boot.starters);
   $('missing').hidden = true;
 }
@@ -1485,7 +1701,18 @@ for (const d of [$('account'), $('move'), $('about'), $('taste')]) {
   d.addEventListener('click', e => { if (e.target === d) d.close(); });
 }
 $('open-about').addEventListener('click', () => $('about').showModal());
-$('open-taste').addEventListener('click', () => { $('account').close(); paintTaste(); $('taste').showModal(); });
+$('open-taste').addEventListener('click', async () => {
+  $('account').close();
+  paintTaste();
+  $('taste').showModal();
+  // Rated since the page was made: ask for the list's taste alone, with no rows.
+  if (!home?.personal || home.tasteKey === homeKey) return;
+  try {
+    const data = await post('/api/home', await moreBody(0));
+    Object.assign(home, { taste: data.taste, interests: data.interests, tasteKey: homeKey });
+    if ($('taste').open) paintTaste();
+  } catch { /* the sheet keeps what it had */ }
+});
 
 // What the list leans toward and away from, and its interests, from the last home answer.
 function paintTaste() {

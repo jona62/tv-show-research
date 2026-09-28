@@ -248,7 +248,7 @@ class Rows:
 
     def add(self, key, title, items, kind='row', fresh=True):
         if self.fresh:
-            today = dither(items, self.fresh, f'browse-{key}', ROW, pinned=PINNED)
+            today = self.lib.daily(items, self.fresh, f'browse-{key}', ROW, PINNED)
             items = today + [i for i in items if i not in set(today)]
         if fresh:
             head = [i for i in items if i not in self.used][:GLANCE]
@@ -962,7 +962,7 @@ class Page:
         tired = self.fresh.tired
         cap = self.cap - (1 if different else 0)
         relevances = [row.relevance for row in placed if row.relevance]
-        quota = self.quotas(cap)
+        quota = self.quota = self.quotas(cap)
 
         def queue_head(k):
             for s in queues[k]:
@@ -1065,11 +1065,20 @@ class Page:
     def quotas(self, cap):
         """How many rows each interest may hold: its share of the rows planned for
         interests, at least one when it is heavy enough, and with three or more heavy
-        interests no more than INTEREST_CAP of them (Steck's calibration, by quota)."""
-        planned = max(len(self.significant), round(cap * INTEREST_ROWS))
-        ceiling = max(1, int(INTEREST_CAP * planned)) if len(self.significant) >= 3 else planned
-        return Counter({k: min(ceiling, max(1 if k in self.significant else 0, round(share * planned)))
-                        for k, share in enumerate(self.share)})
+        interests no more than INTEREST_CAP of them; rows a capped interest cannot take go
+        to the interests furthest below their share (Steck's calibration, by quota)."""
+        significant = self.significant
+        planned = max(len(significant), round(cap * INTEREST_ROWS))
+        ceiling = max(1, int(INTEREST_CAP * planned)) if len(significant) >= 3 else planned
+        exact = [share * planned for share in self.share]
+        quota = Counter({k: min(ceiling, max(1 if k in significant else 0, int(x))) for k, x in enumerate(exact)})
+        while sum(quota.values()) < planned:
+            open_ = [k for k in range(len(exact)) if quota[k] < ceiling
+                     and (k in significant or exact[k] - quota[k] >= 0.5)]
+            if not open_:
+                break
+            quota[max(open_, key=lambda k: (exact[k] - quota[k], -k))] += 1
+        return quota
 
     def repair(self, order, fixed):
         """Part two neighbours that serve the same interest or are the same sort of row,
@@ -1151,7 +1160,7 @@ class Page:
         if heads.intersection(pool):
             score = shelf.score
             pool.sort(key=lambda i: -score.get(i, 0.0) * (REAPPEAR if i in heads else 1.0))
-        order = dither(pool, self.fresh, f'row-{shelf.key}', ROW, pinned=PINNED)
+        order = self.lib.daily(pool, self.fresh, f'row-{shelf.key}', ROW, PINNED)
         order = spread(order, self.lib.groups, keep=PINNED)
         chosen = set(order)
         head = self.opening(shelf, order + [i for i in pool if i not in chosen], heads)
@@ -1542,6 +1551,12 @@ class Library:
         return [{**self.card(slot.index), 'why': slot.why}
                 for slot in self.starting.choose(seed, rnd, picked, lang, count)]
 
+    def daily(self, items, fresh, surface, length, pinned):
+        """The day's order for a row of catalog indices (fresh.dither), which, like the
+        browser's counts of what it showed, speaks TVmaze's show ids."""
+        shows, by_id = self.e.shows, self.e.by_id
+        return [by_id[i] for i in dither([shows[i]['id'] for i in items], fresh, surface, length, pinned=pinned)]
+
     # ------------------------------------------------------------ what shows share
 
     @lru_cache(maxsize=20000)
@@ -1885,7 +1900,7 @@ class Library:
         def add(key, title, source, fix=False):
             nonlocal fixed
             pool = take(source)
-            items = dither(pool, fresh, f'row-{key}', ROW, pinned=PINNED)
+            items = self.daily(pool, fresh, f'row-{key}', ROW, PINNED)
             if len(items) >= SHORTEST:
                 used.update(items)
                 rows.append((key, title, 'row', items))
@@ -1958,7 +1973,7 @@ class Library:
         near = e.rank(pool, [{'id': show_id, 'weight': 1}], negatives, affinities, settings, positives or None)
         ranked = sorted((j for j in pool if near[j] > 0), key=lambda j: (-near[j], e.shows[j]['id']))
         # The closest few stay put; the rest of the twelve are the day's.
-        more = dither(ranked, fresh, f'more-{show_id}', MORE, pinned=GLANCE)
+        more = self.daily(ranked, fresh, f'more-{show_id}', MORE, GLANCE)
         if taste:
             taste.score_others([i, *more])
         show = self.detail(i, taste)
