@@ -105,8 +105,13 @@
     <ul class="grid" id="list-grid"></ul>
     <h2 class="page-h2">Rated by you</h2>
     <div class="chips" id="rated-filter" role="group" aria-label="Show ratings"></div>
-    <p class="note" id="rated-note"></p>
+    <div class="rated-find" id="rated-find-box" hidden>
+      <input id="rated-find" type="search" placeholder="Find a show you rated" autocomplete="off" maxlength="100"
+             aria-label="Find a show you rated" enterkeyhint="search">
+    </div>
+    <p class="note" id="rated-note" role="status" aria-live="polite"></p>
     <ul class="grid" id="rated-grid"></ul>
+    <div class="more-rated"><button class="btn ghost" id="rated-more" type="button" hidden></button></div>
   </section>
 
   <section id="search" class="view page" aria-labelledby="search-h" hidden>
@@ -188,17 +193,21 @@
   <div class="move-acts">
     <button id="copy-link" class="btn ghost" type="button">Copy link</button>
     <button id="copy-code" class="btn ghost" type="button">Copy code only</button>
+    <button id="save-file" class="btn ghost" type="button">Save as a file</button>
     <span id="copy-said" class="said" role="status" aria-live="polite"></span>
   </div>
   <figure id="qr-wrap" class="qr">
     <svg id="qr" role="img" aria-label="QR code for this list"></svg>
     <figcaption id="qr-note"></figcaption>
   </figure>
+  <p id="qr-none" class="note" hidden>This list is too long for a QR code. Send yourself the link and open it on the other device, or save it as a file and open that there.</p>
   <p class="note">The list rides in the part of the address after the #, which browsers never send anywhere. A code from Next Watch works here too, and one from here works there.</p>
   <h3 class="move-h">Bring a list in</h3>
   <label class="field" for="move-paste">Paste a link or code
     <textarea id="move-paste" rows="3" spellcheck="false" autocomplete="off"></textarea>
   </label>
+  <p class="note">Or <button id="open-file" class="link" type="button">open a saved file</button>.</p>
+  <input id="move-file" type="file" accept=".txt,text/plain" hidden>
   <p id="move-status" class="note" role="status" aria-live="polite"></p>
   <div class="move-acts">
     <button id="do-merge" class="btn ghost" type="button">Add to my list</button>
