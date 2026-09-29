@@ -207,7 +207,9 @@ main{min-height:70vh;padding-bottom:calc(var(--dock-space) + 24px);outline:none}
   color:var(--ink-2)}
 .row-sub{margin:0 var(--gutter);font-size:13px;line-height:1.35;color:var(--muted)}
 .slider{position:relative}
-.track{display:flex;gap:8px;margin:0;padding:10px var(--gutter) 16px;list-style:none;overflow-x:auto;
+/* A row scrolls sideways only. The Top 10's tall numbers stood a few pixels proud of it, and a
+   swipe that set off a little diagonal scrolled the row up and down by them. */
+.track{display:flex;gap:8px;margin:0;padding:10px var(--gutter) 16px;list-style:none;overflow-x:auto;overflow-y:hidden;
   overscroll-behavior-x:contain;scroll-snap-type:x mandatory;scroll-padding:0 var(--gutter);scrollbar-width:none}
 .track::-webkit-scrollbar{display:none}
 .track>li{flex:none;scroll-snap-align:start;display:flex;align-items:flex-end}
