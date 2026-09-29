@@ -3,6 +3,7 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit, parse_qs
+import gc
 import hashlib
 import html
 import json
@@ -125,6 +126,10 @@ LOST = (PUBLIC / '404.html').read_bytes() if (PUBLIC / '404.html').exists() else
 KINO = Live(base=KINOCHECK, ttl=3 * 86400, size=3000, calls=20, period=60)
 STORE = Live(base=ITUNES, ttl=7 * 86400, size=3000, calls=15, period=60)
 ICONS = Icons()
+# The model's objects live as long as the server, so the garbage collector leaves them
+# alone from here: a full collection walking them cost a long list's request up to 150 ms.
+gc.collect()
+gc.freeze()
 
 
 def trailers(show_id):

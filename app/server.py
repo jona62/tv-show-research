@@ -3,6 +3,7 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit, parse_qs
+import gc
 import json
 import os
 import threading
@@ -50,6 +51,10 @@ STARTERS = starters.Starters(ENGINE)
 # The built page leaves this model's count, date and first-visit data to be filled here.
 TEMPLATE = PUBLIC / 'index.html'
 PAGE = fill(TEMPLATE.read_text(), ENGINE).encode() if TEMPLATE.exists() else b''
+# The model's objects live as long as the server, so the garbage collector leaves them
+# alone from here: a full collection walking them cost a long list's request up to 150 ms.
+gc.collect()
+gc.freeze()
 
 
 def read_ids(payload):

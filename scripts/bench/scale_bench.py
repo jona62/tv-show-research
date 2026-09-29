@@ -13,7 +13,9 @@ For each size and each of a few viewers, it times:
 each cold, with the engine's per-show caches emptied first, as for a list the server
 has not seen lately, and warm, straight after. Memory is the peak Python allocation
 during a cold request, from tracemalloc, in a separate pass since tracing slows
-everything down. Bytes are the JSON request as a browser sends it and the JSON answer.
+everything down. Bytes are the JSON request as a browser sends it, with the list
+packed as ids and rating codes where the engine reads that (engine.CODES) and as a
+list of objects before, and the JSON answer.
 
     .venv/bin/python scripts/bench/scale_bench.py
     .venv/bin/python scripts/bench/scale_bench.py --sizes 60,300 --viewers 3
@@ -24,6 +26,7 @@ such as an earlier revision's, against the same model. A request running past
 --timeout seconds is stopped and reported as such.
 """
 import argparse
+import gc
 import json
 import signal
 import statistics
@@ -60,17 +63,21 @@ def timed(fn, limit):
 
 
 def cold(engine):
-    """Empty the engine's per-show caches, as for a list the server has not seen lately."""
-    for name in ('components', 'blended', 'neighbours', 'closeness'):
+    """Empty the engine's per-show caches (closeness arrays, and closest shows from the
+    neighbour index), as for a list the server has not seen lately."""
+    for name in ('components', 'blended', '_row'):
         cached = getattr(type(engine), name, None)
         if hasattr(cached, 'cache_clear'):
             cached.cache_clear()
-    forget = getattr(engine, 'forget', None)
-    if forget:
-        forget()
 
 
-def size_of(value):
+def size_of(value, codes=None):
+    """A request's bytes as the browser sends it: its list packed when the engine reads
+    packed lists (codes, engine.CODES)."""
+    if codes and isinstance(value, dict) and isinstance(value.get('profile'), list):
+        code = {w: c for c, w in codes.items()}
+        value = {**value, 'profile': {'ids': [p['id'] for p in value['profile']],
+                                      'weights': ''.join(code[p['weight']] for p in value['profile'])}}
     return len(json.dumps(value, ensure_ascii=False, separators=(',', ':')).encode())
 
 
@@ -93,11 +100,16 @@ def main():
     sys.path.insert(0, str(Path(args.code).resolve()))
     sys.path.insert(0, str(ROOT / 'scripts' / 'bench'))
     import library
+    import engine as module
     from engine import Engine, DEFAULT_SETTINGS
     from large_lists import viewers, Relations
+    codes = getattr(module, 'CODES', None)
     t = time.perf_counter()
     engine = Engine(args.model)
     lib = library.Library(engine, ROOT / 'couchside' / 'art.bin.gz')
+    # As the servers do once loaded: the collector leaves the model's objects alone.
+    gc.collect()
+    gc.freeze()
     print(f'engine and library loaded in {time.perf_counter() - t:.1f}s from {args.code}', file=sys.stderr)
     relations = Relations(engine)
     kinds = [k for k in args.kinds.split(',') if k]
@@ -106,8 +118,7 @@ def main():
         found = {k: {'cold': [], 'warm': [], 'bytes_in': [], 'bytes_out': [], 'memory': []} for k in kinds}
         people = viewers(engine, 'personas.json', size=size, count=args.viewers, relations=relations)
         for n, v in enumerate(people):
-            saved = [s['id'] for s in engine.cards([p['id'] for p in v.profile])][:0]
-            body = {'profile': v.profile, 'settings': dict(DEFAULT_SETTINGS), 'list': saved, 'lang': ['en-GB']}
+            body = {'profile': v.profile, 'settings': dict(DEFAULT_SETTINGS), 'list': [], 'lang': ['en-GB']}
             steps = {}
             steps['home'] = lambda: lib.home(body)
 
@@ -141,7 +152,7 @@ def main():
                     continue
                 warm, _answer = timed(run, args.timeout)
                 found[kind]['warm'].append(warm)
-                found[kind]['bytes_in'].append(size_of(request))
+                found[kind]['bytes_in'].append(size_of(request, codes))
                 found[kind]['bytes_out'].append(size_of(answer))
                 if n < args.memory:
                     cold(engine)

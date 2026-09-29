@@ -10,7 +10,7 @@ instead (Wide), which scales to thousands of ratings. The research-only outputs
 """
 from array import array
 from functools import lru_cache
-from operator import itemgetter
+from operator import add, itemgetter, mul
 from pathlib import Path
 import gzip
 import json
@@ -478,20 +478,44 @@ class Engine:
 
     @lru_cache(maxsize=4096)
     def _row(self, i, a, b, c, d):
-        index, near, text, bonus = self.neighbours.row(i)
         if (a, b, c, d) == STANDARD:
-            close = near
-            broad = [x - a * t - d * f for x, t, f in zip(near, text, bonus)]
-        else:
-            shows, theme_norm, genre_norm = self.shows, self.theme_norm, self.genre_norm
-            tb, gb, tn, gn = shows[i]['theme_bits'], shows[i]['genre_bits'], theme_norm[i], genre_norm[i]
-            broad = [b * tn * theme_norm[j] * (tb & shows[j]['theme_bits']).bit_count()
-                     + c * gn * genre_norm[j] * (gb & shows[j]['genre_bits']).bit_count() for j in index]
-            close = [a * t + y + d * f for t, y, f in zip(text, broad, bonus)]
+            # Under the weights the index was built with, what a show adds is a fixed mix of
+            # its three stored parts (the closeness, its plot text and its facet part), so
+            # it is read through three tables, a long list's thousands of rows at C speed.
+            found = self.neighbours
+            lo = i * found.width
+            hi = lo + found.width
+            index = found.index[lo:hi]
+            near, text, bonus = found.near[lo:hi], found.text[lo:hi], found.bonus[lo:hi]
+            e_near, e_text, e_bonus = self.evidence_tables()
+            evidence = list(map(mul, map(add, map(add, map(e_near.__getitem__, near), map(e_text.__getitem__, text)),
+                                         map(e_bonus.__getitem__, bonus)), map(self.damp.__getitem__, index)))
+            return index, list(map(neighbours.NEAR.__getitem__, near)), evidence
+        # Other weights (Next Watch's other focuses) take themes and genres from the bits.
+        index, _near, text, bonus = self.neighbours.row(i)
+        shows, theme_norm, genre_norm = self.shows, self.theme_norm, self.genre_norm
+        tb, gb, tn, gn = shows[i]['theme_bits'], shows[i]['genre_bits'], theme_norm[i], genre_norm[i]
+        broad = [b * tn * theme_norm[j] * (tb & shows[j]['theme_bits']).bit_count()
+                 + c * gn * genre_norm[j] * (gb & shows[j]['genre_bits']).bit_count() for j in index]
+        close = [a * t + y + d * f for t, y, f in zip(text, broad, bonus)]
         z = a + WIDE_BROAD * (b + c)
         damp = self.damp
         evidence = [((a * t + WIDE_BROAD * y) / z + d * f) * damp[j] for j, t, y, f in zip(index, text, broad, bonus)]
         return index, close, evidence
+
+    def evidence_tables(self):
+        """What each packed byte of closeness, plot text and facet part adds as evidence under
+        the index's own weights: evidence counts themes and genres at WIDE_BROAD, and since
+        closeness is plot text, themes and genres and the facet part added up, evidence is
+        (b/z) x closeness + a(1 - b)/z x text + d(1 - b/z) x facet part, b being WIDE_BROAD
+        and z the weights left once themes and genres are cut to it."""
+        key = WIDE_BROAD
+        if getattr(self, '_tables', (None,))[0] != key:
+            a, b, c, d = STANDARD
+            z = a + key * (b + c)
+            self._tables = (key, [key / z * v for v in neighbours.NEAR], [a * (1 - key) / z * v for v in neighbours.TEXT],
+                            [d * (1 - key / z) * v for v in neighbours.BONUS])
+        return self._tables[1:]
 
     def pairs(self, i, others, settings):
         """Show i's closeness to each of others under the settings, a pair at a time: what
@@ -1014,15 +1038,23 @@ class Wide:
                     value = ((there if there is not None else back) + (back if back is not None else there)) / 2
                 sim[x][y] = sim[y][x] = value
         clusters = average_linkage(sim, INTEREST_JOIN)
-        groups = self.join(liked, anchors, index, clusters)
+        self.ready(index, clusters)
+        groups = [[anchors[x] for x in members] for members in clusters]
+        for p in liked:
+            i = e.by_id[p['id']]
+            if i not in self.nearness['home']:
+                groups[self.nearest(i)].append(p)
         # An interest needs WIDE_SUPPORT of the liked shows behind it, and WIDE_FEWEST at
         # least: a handful of shows has no taste of its own worth scoring by, so its shows
-        # join the interests left.
+        # join the interests left. A show that joined an interest kept would join it again.
         least = max(WIDE_FEWEST, round(WIDE_SUPPORT * len(liked)))
-        kept = [members for members, group in zip(clusters, groups) if len(group) >= least]
+        kept = [k for k, group in enumerate(groups) if len(group) >= least]
         if kept and len(kept) < len(clusters):
-            clusters = kept
-            groups = self.join(liked, anchors, index, clusters)
+            left = [p for k, group in enumerate(groups) if k not in kept for p in group]
+            clusters, groups = [clusters[k] for k in kept], [groups[k] for k in kept]
+            self.ready(index, clusters)
+            for p in left:
+                groups[self.nearest(e.by_id[p['id']])].append(p)
         weight = lambda g: sum(q['weight'] for q in g)
         groups = [sorted(g, key=lambda q: order[q['id']]) for g in groups]
         ranked = sorted(range(len(clusters)), key=lambda k: (-weight(groups[k]), order[groups[k][0]['id']]))
@@ -1030,15 +1062,14 @@ class Wide:
         self.nearness['order'] = [ranked.index(k) for k in range(len(clusters))]
         return [groups[k] for k in ranked]
 
-    def join(self, liked, anchors, index, clusters):
-        """The liked shows in groups: each cluster's anchors, and every other liked show in
-        the cluster it sits closest to (nearest), which this readies."""
+    def ready(self, index, clusters):
+        """What nearest() weighs a show against: each cluster's anchors, their closest
+        shows and their themes and genres."""
         e = self.e
         home = {}
         for k, members in enumerate(clusters):
             for x in members:
                 home[index[x]] = k
-        groups = [[anchors[x] for x in members] for members in clusters]
         size = [len(members) for members in clusters]
         count = len(clusters)
         # Each interest's anchors as theme and genre bits over the roots of their counts,
@@ -1059,12 +1090,8 @@ class Wide:
         for i in home:
             for j, value in zip(*self.row(i)[:2]):
                 back.setdefault(j, []).append((i, value))
-        self.nearness = {'home': home, 'size': size, 'bits': bits, 'back': back, 'order': list(range(count))}
-        for p in liked:
-            i = e.by_id[p['id']]
-            if i not in home:
-                groups[self.nearest(i)].append(p)
-        return groups
+        self.nearness = {'home': home, 'size': size, 'bits': bits, 'back': back, 'order': list(range(count)),
+                         'broad': {}}
 
     def nearest(self, i):
         """The interest show i sits closest to on average over its anchors: their closeness
@@ -1073,14 +1100,21 @@ class Wide:
         home, size, bits = found['home'], found['size'], found['bits']
         count = len(size)
         s = e.shows[i]
-        score = [0.0] * count
-        for family, mask, norm in (('t', s['theme_bits'], e.theme_norm[i]), ('g', s['genre_bits'], e.genre_norm[i])):
-            while mask:
-                low = mask & -mask
-                vector = bits.get((family, low.bit_length() - 1))
-                if vector:
-                    score = [total + norm * v for total, v in zip(score, vector)]
-                mask ^= low
+        # The theme and genre part is the same for every show with the same bits, and shows
+        # share far fewer bits than there are shows.
+        key = (s['theme_bits'], s['genre_bits'])
+        base = found['broad'].get(key)
+        if base is None:
+            base = [0.0] * count
+            for family, mask, norm in (('t', key[0], e.theme_norm[i]), ('g', key[1], e.genre_norm[i])):
+                while mask:
+                    low = mask & -mask
+                    vector = bits.get((family, low.bit_length() - 1))
+                    if vector:
+                        base = [total + norm * v for total, v in zip(base, vector)]
+                    mask ^= low
+            found['broad'][key] = base
+        score = list(base)
         near = {}
         for j, value in zip(*self.row(i)[:2]):
             if j in home:
