@@ -14,6 +14,8 @@ data/model-backup/
 # The Wikidata cache scripts/wikidata.py writes; build_facets.py reads it.
 data/wikidata.json.gz
 data/cointerest.json.gz
+# The film cache scripts/films.py writes; build_films.py reads it.
+data/films.json.gz
 output/site-qa/
 output/qa/
 *.log
