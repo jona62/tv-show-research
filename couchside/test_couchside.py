@@ -1067,18 +1067,43 @@ check('the next rows come over HTTP, with no hero', status == 200 and json.loads
 check('a malformed shown list is a 400 that says why',
       fetch('/api/home', {'profile': [], 'shown': [{'key': 'no spaces'}]}) [:3:2] == (400, b'{"error":"Each shown row needs a key of lower-case letters, digits and hyphens."}'))
 check('a malformed day is a 400', fetch('/api/home', {'profile': [], 'day': 'Monday', 'seed': '0123456789abcdef'})[0] == 400)
-check('a body over 64KB is refused', fetch('/api/home', b'{"profile": [], "x": "' + b'y' * 66000 + b'"}')[0] == 413)
-# The most a browser at the foot of a page can send: every row with the longest key, and the
-# longest lists of what it has seen, engaged with and passed over.
+check('a body over the limit is refused',
+      fetch('/api/home', b'{"profile": [], "x": "' + b'y' * server.MOST_BODY + b'"}')[0] == 413)
+# The most a browser at the foot of a page can send: the longest list, packed as ids and
+# rating codes, every row with the longest key, and the longest lists of what it has seen,
+# engaged with and passed over.
+from engine import MAX_LIST                                      # noqa: E402
 longest_ids = sorted((s['id'] for s in engine.shows), reverse=True)
-largest = {'profile': [{'id': i, 'weight': .35} for i in longest_ids[:60]], 'settings': DEFAULT_SETTINGS,
-           'list': longest_ids[60:260], 'day': '2026-10-05', 'seed': '0123456789abcdef', 'lang': ['en-GB'] * 8,
-           'count': NEXT_PAGE, 'seen': {str(i): 49.99 for i in longest_ids[:300]}, 'engaged': longest_ids[:300],
-           'resting': longest_ids[:60], 'tired': [f'{n:02d}' + 'x' * 58 for n in range(40)],
+largest = {'profile': {'ids': longest_ids[:MAX_LIST], 'weights': '2' * MAX_LIST}, 'settings': DEFAULT_SETTINGS,
+           'list': longest_ids[MAX_LIST:MAX_LIST + 200], 'day': '2026-10-05', 'seed': '0123456789abcdef',
+           'lang': ['en-GB'] * 8, 'count': NEXT_PAGE, 'seen': {str(i): 49.99 for i in longest_ids[:300]},
+           'engaged': longest_ids[:300], 'resting': longest_ids[:60], 'tired': [f'{n:02d}' + 'x' * 58 for n in range(40)],
            'shown': [{'key': f'{n:03d}' + 'x' * 57, 'ids': longest_ids[:GLANCE], 'tier': TIERS} for n in range(LONGEST)]}
 status, _headers, body = fetch('/api/home', largest)
 check('the largest request a page can send fits under the limit', len(json.dumps(largest)) < server.MOST_BODY
       and status == 200 and json.loads(body)['more'] is False, (len(json.dumps(largest)), status, body[:80]))
+# A long list's own page, packed the same way, from the best-known shows it has rated. This
+# model has no neighbour index, so the page is cut from the list's most recent ratings
+# (engine.Engine.focus); couchside/test_long_lists.py checks long lists on the full model.
+best_known = sorted((i for i, s in enumerate(engine.shows) if s['recommendable']), key=lambda i: -engine.popularity[i])
+rated_ids = [engine.shows[i]['id'] for i in best_known[:MAX_LIST]]
+long_list = {'ids': rated_ids, 'weights': ''.join('4332104'[n % 7] for n in range(MAX_LIST))}
+status, _headers, body = fetch('/api/home', {'profile': long_list, 'settings': DEFAULT_SETTINGS, 'list': []})
+home_long = json.loads(body)
+check(f'a list of {MAX_LIST:,} ratings gets its own page, none of it rated', status == 200 and home_long['personal']
+      and len(home_long['rows']) == FIRST_PAGE and home_long['hero']
+      and not set(rated_ids) & {c['id'] for r in home_long['rows'] if r['kind'] == 'row' for c in r['items']}
+      and home_long['hero']['id'] not in set(rated_ids), (status, body[:120]))
+check('and names the shows of each of its interests', home_long['interests']
+      and all(len(it['names']) == len(it['shows']) for it in home_long['interests']))
+status, _headers, body = fetch('/api/title', {'profile': long_list, 'settings': DEFAULT_SETTINGS, 'id': 169})
+check('its title pages have more like this', status == 200 and len(json.loads(body)['more']) == MORE
+      and not set(rated_ids) & {c['id'] for c in json.loads(body)['more']})
+moved = list(dict.fromkeys(rated_ids + longest_ids))[:server.MOST_IDS]
+status, _headers, body = fetch('/api/shows', {'ids': moved})
+check('a whole list brought in from another device is looked up in one go',
+      status == 200 and [c['id'] for c in json.loads(body)['shows']] == moved, status)
+check('but not more than a list and My List can hold', fetch('/api/shows', {'ids': moved + [1]})[0] == 400)
 check('a bad title id is a 400', fetch('/api/title', {'profile': [], 'id': -1})[0] == 400)
 check('a body that is not an object is a 400', fetch('/api/home', [1, 2])[0] == 400)
 check('the wrong content type is refused', fetch('/api/home', b'{}', 'text/plain')[0] == 415)

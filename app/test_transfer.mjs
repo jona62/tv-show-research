@@ -1,4 +1,4 @@
-import { encode, decode, LIMITS } from './transfer.js';
+import { encode, decode, LIMITS, packList, codeFrom } from './transfer.js';
 globalThis.btoa = s => Buffer.from(s, 'binary').toString('base64');
 globalThis.atob = s => Buffer.from(s, 'base64').toString('binary');
 let fails = 0;
@@ -28,8 +28,26 @@ const full = {
   settings: { ...state.settings, language: 'all', status: 'all' },
 };
 const big = encode(full);
-check('a full list still fits a URL', big.length < 1200, `${big.length} chars`);
-check('a full list round-trips', decode(big).saved.length === LIMITS.saved);
+check('lists may hold 3,000 ratings and 200 saved shows', LIMITS.rated === 3000 && LIMITS.saved === 200);
+check('a full list stays a URL a browser opens', big.length < 20000, `${big.length} chars`);
+const back2 = decode(big);
+check('a full list round-trips, ratings in order', back2.saved.length === LIMITS.saved
+  && JSON.stringify(back2.profile) === JSON.stringify(full.profile));
+let over = false;
+try { decode(encode({ ...full, profile: [...full.profile, { id: 7, weight: 1 }] })); } catch { over = true; }
+check('the codec never writes more than a list holds', !over && decode(encode({ ...full, profile: [...full.profile, { id: 7, weight: 1 }] })).profile.length === LIMITS.rated);
+const longest = { ...full, profile: full.profile.slice(0, 400), saved: [] };
+check('a list of 400 ratings still fits a QR code (2,331 bytes)', `https://couchside.example/#t=${encode(longest)}`.length <= 2331);
+
+// Requests carry a list as its ids and one character a rating.
+const packed = packList(state.profile);
+check('a request packs ids and ratings in order', JSON.stringify(packed) === JSON.stringify({
+  ids: [13417, 169, 82, 80, 5], weights: '43201' }));
+check('and packs about a quarter of the bytes', JSON.stringify(packList(full.profile)).length * 3
+  < JSON.stringify(full.profile.map(({ id, weight }) => ({ id, weight }))).length);
+check('a pasted link or code is read whatever surrounds it',
+  codeFrom(`see https://x.example/#t=${code}`) === code && codeFrom(`  ${code}\n`) === code
+  && codeFrom(`${code.slice(0, 10)}\n${code.slice(10, 20)} ${code.slice(20)}`) === code);
 
 const broken = [['empty', ''], ['junk', 'not-a-code'], ['truncated', code.slice(0, 8)],
                 ['wrong version', encode(state).replace(/^./, 'B')]];

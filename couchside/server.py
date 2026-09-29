@@ -10,9 +10,9 @@ import os
 import re
 import threading
 
-from engine import Engine
+from engine import Engine, MAX_LIST
 from fallback import Remote, answer
-from library import Library, DESCRIPTION
+from library import Library, DESCRIPTION, MAX_SAVED
 from live import (Live, LiveError, Icons, KINOCHECK, ITUNES, trim_videos, trim_seasons,
                   match_rating, itunes_search)
 import follow
@@ -28,10 +28,14 @@ LIVE_SLOTS = threading.BoundedSemaphore(12)
 # The app keeps its page in the path, so these are the page too and a refresh stays put.
 PAGES = ('/', '/index.html', '/new', '/list', '/search', '/browse', '/welcome')
 POSTS = ('/api/home', '/api/title', '/api/shows', '/api/browse')
-# A request for more of the home page carries the rows it shows (up to library.LONGEST,
-# about 130 bytes each at most) and what the browser has shown lately (up to 300 titles),
-# so bodies may run past 50KB.
-MOST_BODY = 65536
+# Every request carries the whole list: 3,000 ratings packed as ids and rating codes
+# (engine.CODES) are about 21 KB at most. A request for more of the home page carries
+# the rows it shows too (up to library.LONGEST, about 130 bytes each at most) and what
+# the browser has shown lately (up to 300 titles), so bodies may run past 70KB.
+MOST_BODY = 98304
+# A list brought in from another device is looked up in one go: every rating and every
+# saved show.
+MOST_IDS = MAX_LIST + MAX_SAVED
 LIVE_ROUTES = ('/api/extra', '/api/episodes', '/api/trailer', '/api/rating')
 # Posters come from TVmaze, trailer thumbnails from YouTube's image server, backdrops
 # and service logos from TMDB's, and a trailer plays in YouTube's no-cookie player only
@@ -209,8 +213,8 @@ def read_ids(payload):
     if not isinstance(payload, dict):
         raise ValueError('Send a list of show ids.')
     ids = payload.get('ids', [])
-    if not isinstance(ids, list) or len(ids) > 300:
-        raise ValueError('Ask for up to 300 shows at a time.')
+    if not isinstance(ids, list) or len(ids) > MOST_IDS:
+        raise ValueError(f'Ask for up to {MOST_IDS:,} shows at a time.')
     if any(type(i) is not int for i in ids):
         raise ValueError('Show ids must be whole numbers.')
     return ids
@@ -383,7 +387,7 @@ class Handler(SimpleHTTPRequestHandler):
         except ValueError:
             length = 0
         if not 0 < length <= MOST_BODY:
-            self.send_json({'error': 'Send a JSON body under 64KB.'}, 413)
+            self.send_json({'error': f'Send a JSON body under {MOST_BODY // 1024}KB.'}, 413)
             return
         if self.headers.get_content_type() != 'application/json':
             self.send_json({'error': 'Send application/json.'}, 415)

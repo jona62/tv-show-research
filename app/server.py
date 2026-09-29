@@ -7,7 +7,7 @@ import json
 import os
 import threading
 
-from engine import Engine
+from engine import Engine, MAX_LIST
 from fallback import Remote, answer
 from page import fill
 import follow
@@ -21,6 +21,13 @@ SLOTS = threading.BoundedSemaphore(3)
 TVMAZE = Remote(calls=4)
 # The app keeps its tab in the path, so these are the page too and a refresh keeps the tab.
 PAGES = ('/', '/index.html', '/saved', '/taste', '/shows')
+# A request carries the whole list: 3,000 ratings packed as ids and rating codes are about
+# 21 KB, the shows chosen to match as many again at most, and what the browser has shown
+# lately a few KB more.
+MOST_BODY = 65536
+# A list brought in from another device is looked up in one go: every rating and every
+# saved show.
+MOST_IDS = MAX_LIST + 200
 
 
 def model_dir():
@@ -50,8 +57,8 @@ def read_ids(payload):
     if not isinstance(payload, dict):
         raise ValueError('Send a list of show ids.')
     ids = payload.get('ids', [])
-    if not isinstance(ids, list) or len(ids) > 300:
-        raise ValueError('Ask for up to 300 shows at a time.')
+    if not isinstance(ids, list) or len(ids) > MOST_IDS:
+        raise ValueError(f'Ask for up to {MOST_IDS:,} shows at a time.')
     if any(type(i) is not int for i in ids):
         raise ValueError('Show ids must be whole numbers.')
     return ids
@@ -140,8 +147,8 @@ class Handler(SimpleHTTPRequestHandler):
             length = int(self.headers.get('Content-Length', '0'))
         except ValueError:
             length = 0
-        if not 0 < length <= 16384:
-            self.send_json({'error': 'Send a JSON list under 16KB.'}, 413)
+        if not 0 < length <= MOST_BODY:
+            self.send_json({'error': f'Send a JSON list under {MOST_BODY // 1024}KB.'}, 413)
             return
         if self.headers.get_content_type() != 'application/json':
             self.send_json({'error': 'Send application/json.'}, 415)

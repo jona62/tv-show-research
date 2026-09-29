@@ -258,6 +258,46 @@ for label, extra, said in [
 ]:
     status, _headers, answer = recommend({'profile': LIST, 'settings': {}, **TODAY, **extra})
     check(f'the endpoint refuses {label} with the reason', status == 400 and said in answer.get('error', ''), answer)
+
+
+def post(route, body):
+    request = Request(base + route, data=body if isinstance(body, bytes) else json.dumps(body).encode(), method='POST',
+                      headers={'Content-Type': 'application/json'})
+    try:
+        with urlopen(request, timeout=120) as response:
+            return response.status, json.loads(response.read())
+    except HTTPError as exc:
+        return exc.code, json.loads(exc.read())
+
+
+# A long list travels as its ids and one character a rating (engine.CODES), a quarter of
+# the bytes of a list of objects, and every rating in it counts.
+from engine import CODES, MAX_LIST                               # noqa: E402
+packed = {'ids': [p['id'] for p in LIST], 'weights': ''.join(next(c for c, w in CODES.items() if w == p['weight'])
+                                                             for p in LIST)}
+check('a list packed as ids and rating codes answers as the list itself does',
+      recommend({'profile': packed, 'settings': {}})[2] == plain)
+longest = [s['id'] for s in engine.shows if s['recommendable']][:MAX_LIST]
+body = json.dumps({'profile': {'ids': longest, 'weights': ''.join('4332104'[n % 7] for n in range(MAX_LIST))},
+                   'settings': {}, 'similar_to': [], **TODAY}).encode()
+status, answer = post('/api/recommend', body)
+check(f'a packed list of {MAX_LIST:,} ratings fits a request, {len(body) / 1000:.1f} KB, and is answered',
+      len(body) < server.MOST_BODY and status == 200 and len(answer['picks']) == 24
+      and not set(longest) & {p['id'] for p in answer['picks']}, (len(body), status, answer.get('error')))
+status, answer = post('/api/recommend', {'profile': {'ids': longest + [longest[0]], 'weights': '3' * (MAX_LIST + 1)},
+                                         'settings': {}})
+check('a list past the limit is refused with the reason', status == 400 and '3,000' in answer['error'], answer)
+status, answer = post('/api/recommend', {'profile': {'ids': [169, 82], 'weights': '4'}, 'settings': {}})
+check('ids without a rating each are refused', status == 400 and 'rating for each' in answer['error'], answer)
+status, answer = post('/api/recommend', {'profile': {'ids': [169, 82], 'weights': '49'}, 'settings': {}})
+check('a rating code that is not one is refused', status == 400 and 'valid rating' in answer['error'], answer)
+status, answer = post('/api/recommend', b'{"profile": [], "x": "' + b'y' * server.MOST_BODY + b'"}')
+check('a body past the limit is refused', status == 413 and 'under 64KB' in answer['error'], answer)
+moved = [s['id'] for s in engine.shows[:server.MOST_IDS]]
+status, answer = post('/api/shows', {'ids': moved})
+check('a whole list brought in from another device is looked up in one go',
+      status == 200 and [s['id'] for s in answer['shows']] == moved, status)
+check('but not more than a list can hold', post('/api/shows', {'ids': moved + [1]})[0] == 400)
 httpd.shutdown()
 
 # 4. Whatever model is loaded fills the page, and nothing in it can end the boot block.

@@ -28,6 +28,10 @@ from titles import Titles
 RATINGS = (-1, 0, .35, .7, 1)
 # People who watch a lot of television have seen three or four thousand shows.
 MAX_LIST = 3000
+# A list may also travel as {"ids": [...], "weights": "43..."}: its show ids, and one
+# character a rating in the same order, about a quarter of the bytes of a list of
+# objects (19 KB for 3,000 shows against 75 KB). transfer.js packs it (packList).
+CODES = {'4': 1, '3': .7, '2': .35, '1': 0, '0': -1}
 # A list rating at most this many shows, the old limit, is ranked exactly as it always
 # was: from how close every show sits to each rated one. Past it that is out of reach
 # (about 20 ms and 360 KB a rated show), so a longer list is ranked from each rated
@@ -115,6 +119,19 @@ WIDE_LIKED = 100
 # Up to this many shows scored at once (a title, My List) are met from their own closest
 # shows too, when none of the list's counts them among its closest.
 WIDE_AROUND = 400
+
+def unpack(packed):
+    """A list sent as ids and rating codes (CODES), as the list of {id, weight} it stands
+    for; the ids and weights are checked as any list's are (Engine.read)."""
+    ids, codes = packed.get('ids'), packed.get('weights')
+    if not isinstance(ids, list) or not isinstance(codes, str) or len(ids) != len(codes):
+        raise ValueError('Send your list as its show ids and a rating for each.')
+    if len(ids) > MAX_LIST:
+        raise ValueError(f'Your list can hold up to {MAX_LIST:,} shows.')
+    if any(code not in CODES for code in codes):
+        raise ValueError('Choose a valid rating for each show.')
+    return [{'id': show_id, 'weight': CODES[code]} for show_id, code in zip(ids, codes)]
+
 
 def weights_of(settings):
     """Story, themes and genres shared out, and the facet bonus, as Engine.blended takes them."""
@@ -254,6 +271,8 @@ class Engine:
         if not isinstance(body, dict):
             raise ValueError('Send a watched list and settings.')
         profile = body.get('profile', [])
+        if isinstance(profile, dict):
+            profile = unpack(profile)
         if not isinstance(profile, list) or len(profile) > MAX_LIST:
             raise ValueError(f'Your list can hold up to {MAX_LIST:,} shows.')
         seen, parsed = set(), []

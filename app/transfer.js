@@ -4,10 +4,23 @@
 // server, so a shared link keeps the same promise the app makes everywhere
 // else: your list is yours and never reaches us. Only catalog ids and ratings
 // go in; titles are looked up again on arrival, which keeps a typical link
-// around 140 characters instead of a few thousand.
+// around 140 characters instead of a few thousand. A code holds about four
+// bytes a rating, so a QR code (about 2,300 bytes) carries a list of a few
+// hundred; a longer one moves as the same link or code copied, or as a file.
 
 const VERSION = 1;
-export const LIMITS = { rated: 60, saved: 200 };
+export const LIMITS = { rated: 3000, saved: 200 };
+
+// How a request carries a list: its ids, and one character a rating in the same
+// order, about a quarter of the bytes of a list of objects (engine.py, CODES).
+const CODES = new Map([[1, '4'], [.7, '3'], [.35, '2'], [0, '1'], [-1, '0']]);
+export function packList(profile) {
+  return { ids: profile.map(p => p.id), weights: profile.map(p => CODES.get(p.weight) ?? '?').join('') };
+}
+
+// A code as pasted or read from a file: after any #t= of a link, with any spaces and
+// line breaks a mail program folded into it taken out.
+export const codeFrom = text => (String(text).split('#t=').pop() || '').replace(/\s+/g, '');
 
 const FOCUS = ['balanced', 'story', 'themes', 'genres'];
 const KNOWN = [0, 60, 85, 95];
