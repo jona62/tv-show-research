@@ -26,7 +26,7 @@ rebuilt every night. Nothing plays. It is for finding your next show.
 - **Posters** wear *Top 10* and *New* badges. On a mouse, hovering one lifts it
   and shows its match with quick buttons for My List, *I like this*, *Love this*
   and more info. On a touch screen, a long press lifts it into a larger preview
-  with the same buttons, and a tap still opens it.
+  with just *More info* and My List, and a tap still opens it.
 - **Browse** opens every genre and format as a poster tile, and each one as rows
   ranked for you: top picks, new, acclaimed, popular and deeper cuts.
 - **New & Popular** has the Top 10, new shows this year ranked for you, and

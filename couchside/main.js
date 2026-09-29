@@ -824,10 +824,9 @@ function peekOf(card, close) {
   const panel = el('div', '', 'peek-panel');
   panel.append(el('h2', c.name, 'peek-name'), metaEl(c, null));
   if (c.genres?.length) panel.append(el('p', c.genres.join(', '), 'peek-genres'));
-  const listed = listButton(c, 'round');
-  listed.className = 'round';
+  // Two actions fit a phone's peek: the title page, one tap on, rates it.
   const acts = el('div', '', 'peek-acts');
-  acts.append(button('btn primary', 'More info', open, 'info'), listed, ...rateButtons(c, [.7, 1]));
+  acts.append(button('btn primary', 'More info', open, 'info'), listButton(c, 'btn'));
   panel.append(acts);
   const box = el('div', '', 'peek-box');
   box.append(art, panel);
