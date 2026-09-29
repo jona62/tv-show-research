@@ -1,5 +1,5 @@
-"""Check the model refresher, its TMDB step, its Wikidata step and its clickstream step,
-with the network and the builds faked.
+"""Check the model refresher, its TMDB step, its Wikidata and film steps and its
+clickstream step, with the network and the builds faked.
 
 Run from the repository root:  .venv/bin/python scripts/test_refresher.py
 
@@ -7,8 +7,8 @@ Nothing here reaches TVmaze, TMDB, Wikidata or Wikimedia's dumps. The build step
 stand-ins that write small but well-formed model files, and TMDB, the Wikidata query
 service and the clickstream dumps are pretend servers. Validation, the facet and
 co-interest builds and carrying TMDB data forward really run, as child processes, the
-way the service runs them, and so do the Wikidata and clickstream fetches where a test
-asks for them.
+way the service runs them, and so do the Wikidata, film and clickstream fetches and the
+film build where a test asks for them.
 
 TV_FULL_TEST=1 adds an end-to-end check: the real build steps, driven by the refresher,
 against the TVmaze pages in data/raw (or TV_FULL_RAW) into a temporary MODEL_ROOT, and a
@@ -53,7 +53,7 @@ NOW = datetime.now(timezone.utc).replace(microsecond=0)
 KEY_V3 = '0123456789abcdef0123456789abcdef'
 KEY_V4 = 'eyJhbGciOiJIUzI1NiJ9.a-read-access-token.signature'
 BUILD_KEYS = ['version', 'built_at', 'snapshot_date', 'shows', 'pipeline', 'seeded_from', 'tmdb', 'facets',
-              'cointerest']
+              'cointerest', 'films']
 # The clickstream months the pretend listing names, and a month's counts between three shows.
 PUBLISHED = ['2026-06', '2026-07', '2026-08']
 COUNTS = {'1-2': 120, '1-3': 30, '2-3': 60}
@@ -172,22 +172,44 @@ def small_cache(ids, fetched=NOW):
             'belongs': {}, 'shows': shows}
 
 
+def small_films(count=3, fetched=NOW):
+    """A film cache as films.py writes one: count crime films, the first two a series's."""
+    films_found = {f'Q{800000 + n}': {'kind': 'film', 'links': 40 - n, 'year': 1990 + n, 'genre': ['Q900002'],
+                                      'names': [['label', 'en', f'Film {n}']], **({'part_of': ['Q800100']} if n < 3 else {})}
+                   for n in range(1, count + 1)}
+    films_found['Q800100'] = {'kind': 'series', 'links': 9, 'names': [['label', 'en', 'Film Series']]}
+    return {'version': 1, 'fetched_at': refresher.iso(fetched), 'source': 'https://www.wikidata.org',
+            'license': 'CC0-1.0', 'labels': {'Q900002': 'crime film'}, 'parents': {}, 'films': films_found}
+
+
+def write_films(folder, count=3, fetched=NOW):
+    """A films.json.gz as build_films.py writes one."""
+    found = [{'qid': f'Q{800000 + n}', 'title': f'Film {n}', 'titles': [], 'aliases': [], 'kind': 'film',
+              'links': 40 - n, 'animated': False, 'genre': {'crime': 1.0}, 'subject': {}, 'topics': [], 'year': 1990 + n}
+             for n in range(1, count + 1)]
+    gz(Path(folder) / 'films.json.gz', json.dumps({'version': 1, 'date': NOW.strftime('%Y-%m-%d'),
+                                                    'wikidata_fetched_at': refresher.iso(fetched), 'films': found}).encode())
+
+
 class FakeRunner:
     """Stands in for the build subprocesses. Validation, the facet and co-interest builds
-    and the TMDB carry really run; so do the Wikidata and clickstream fetches when
-    real_wikidata and real_clickstream are set, and otherwise small caches stand in for
-    them, the clickstream one holding the months in self.published."""
+    and the TMDB carry really run; so do the Wikidata, film and clickstream fetches and the
+    film build when real_wikidata, real_films and real_clickstream are set, and otherwise
+    small caches and a small film index stand in for them, the clickstream one holding the
+    months in self.published."""
 
-    def __init__(self, shows=100, fail=None, hold=None, real_wikidata=False, real_clickstream=False):
+    def __init__(self, shows=100, fail=None, hold=None, real_wikidata=False, real_clickstream=False, real_films=False):
         self.shows, self.fail, self.hold = shows, fail, hold
         self.calls = []
         self.real = refresher.Processes()
         self.real_steps = (('validate', 'tmdb carry', 'build_facets', 'build_cointerest')
                            + (('wikidata',) if real_wikidata else ())
+                           + (('films', 'build_films') if real_films else ())
                            + (('clickstream check', 'clickstream') if real_clickstream else ()))
         self.popularity_shows = None
         self.tmdb_code, self.tmdb_error = 0, None
         self.cache_shows = None
+        self.film_count = 3
         self.published = list(PUBLISHED)
 
     def names(self):
@@ -221,6 +243,15 @@ class FakeRunner:
             Path(argv[argv.index('--out') + 1]).write_bytes(wikidata.encode(cache))
             return result(0, ['RESULT ' + json.dumps({'fetched_at': cache['fetched_at'], 'shows': len(cache['shows']),
                                                       'mapped': cache['mapped']})])
+        elif name == 'films':
+            cache = small_films(self.film_count)
+            Path(argv[argv.index('--out') + 1]).write_bytes(wikidata.encode(cache))
+            return result(0, ['RESULT ' + json.dumps({'fetched_at': cache['fetched_at'], 'films': len(cache['films']),
+                                                      'series': 1})])
+        elif name == 'build_films':
+            # As many films as the cache it is given holds, less its series.
+            held = json.loads(gunzip(env['TV_FILMS']))['films']
+            write_films(env['TV_MODEL_OUT'], len(held) - 1)
         elif name == 'clickstream check':
             return result(0, ['RESULT ' + json.dumps({'published': self.published[-3:]})])
         elif name == 'clickstream':
@@ -432,8 +463,8 @@ check('a full run succeeds', done['outcome'] == 'success', done.get('error'))
 check('current is a relative link to the new version', live(r) == f"versions/{done['version']}")
 check('the swap leaves no temporary link behind', not os.path.lexists(r.root / 'current.tmp'))
 check('the steps run in order', runner.names() == ['validate', 'download', 'build_model', 'build_popularity',
-                                                    'build_art', 'wikidata', 'build_facets', 'clickstream',
-                                                    'build_cointerest', 'validate'], runner.names())
+                                                    'build_art', 'wikidata', 'build_facets', 'films', 'build_films',
+                                                    'clickstream', 'build_cointerest', 'validate'], runner.names())
 env = runner.env_for('build_model')
 check('build steps write into the temporary version', env['TV_MODEL_OUT'].endswith(f"versions/{done['version']}.tmp")
       and env['TV_ART_OUT'] == env['TV_MODEL_OUT'] + '/art.bin.gz')
@@ -447,28 +478,41 @@ check('build steps run single-threaded', all(call['env'].get(v) == '1' for call 
 check('the download goes to raw.new and is swapped into raw',
       runner.calls[1]['argv'][-2:] == ['--out', str(r.root / 'raw.new')] and (r.raw / 'manifest.json').exists()
       and not os.path.lexists(r.root / 'raw.new') and not os.path.lexists(r.root / 'raw.old'))
-check('a version holds the four model files, the three facet files, the two co-interest files and build.json',
-      sorted(p.name for p in (r.versions / done['version']).iterdir())
-      == sorted(['build.json', *refresher.MODEL_FILES, *refresher.FACET_FILES, *refresher.COINTEREST_FILES]))
+check('a version holds the four model files, the three facet files, the two co-interest files, the film index '
+      'and build.json', sorted(p.name for p in (r.versions / done['version']).iterdir())
+      == sorted(['build.json', *refresher.MODEL_FILES, *refresher.FACET_FILES, *refresher.COINTEREST_FILES,
+                 *refresher.FILM_FILES]))
 build = r.current()['build']
 check('build.json describes the build', list(build) == BUILD_KEYS and build['version'] == done['version']
       and build['shows'] == 100 and build['seeded_from'] is None and build['pipeline'] == r.pipeline
       and build['tmdb'] == {'fetched_at': None, 'shows': 0}
       and build['facets'] == {'tokens': 3, 'nonzeros': 100, 'linked': 100, 'aliases': 100,
                               'wikidata_fetched_at': refresher.iso(NOW)}
-      and build['cointerest'] == {'months': PUBLISHED, 'shows': 3, 'links': 6}, build)
+      and build['cointerest'] == {'months': PUBLISHED, 'shows': 3, 'links': 6}
+      and build['films'] == {'films': 3, 'series': 0, 'wikidata_fetched_at': refresher.iso(NOW)}, build)
 coi_env = runner.env_for('build_cointerest')
 check('the co-interest is built into the temporary version from the clickstream cache',
       coi_env['TV_MODEL_OUT'] == env['TV_MODEL_OUT']
       and coi_env['TV_COINTEREST'] == str(r.root / 'clickstream' / 'cache.json.gz'))
 check('the clickstream is fetched into its cache in place, three months of it',
-      runner.calls[7]['argv'][-4:] == ['--cache', str(r.root / 'clickstream' / 'cache.json.gz'), '--months', '3'])
+      runner.calls[9]['argv'][-4:] == ['--cache', str(r.root / 'clickstream' / 'cache.json.gz'), '--months', '3'])
 check('and meta.json describes the cache', json.loads((r.root / 'clickstream' / 'meta.json').read_text()) == {
     'fetched_at': refresher.iso(NOW), 'months': PUBLISHED, 'titles': 100, 'script': r.clickstream_script,
     'checked_at': refresher.iso(NOW), 'published': PUBLISHED})
 check('no other build step is told where the clickstream cache is',
       all('TV_COINTEREST' not in runner.env_for(name) for name in ('build_model', 'build_popularity', 'build_art',
-                                                                     'build_facets')))
+                                                                     'build_facets', 'build_films')))
+film_env = runner.env_for('build_films')
+check('the film index is built into the temporary version from the film cache, once the facets are there',
+      film_env['TV_MODEL_OUT'] == env['TV_MODEL_OUT'] and film_env['TV_FILMS'] == str(r.root / 'films' / 'cache.json.gz')
+      and runner.names().index('build_films') > runner.names().index('build_facets'))
+check('the film fetch writes beside its cache, which then replaces the old one and is described in meta.json',
+      runner.calls[7]['argv'][-2:] == ['--out', str(r.root / 'films' / 'cache.new.json.gz')]
+      and (r.root / 'films' / 'cache.json.gz').is_file() and not (r.root / 'films' / 'cache.new.json.gz').exists()
+      and json.loads((r.root / 'films' / 'meta.json').read_text()) == {
+          'fetched_at': refresher.iso(NOW), 'films': 4, 'series': 1, 'script': r.films_script})
+check('no other build step is told where the film cache is', all('TV_FILMS' not in runner.env_for(name)
+      for name in ('build_model', 'build_popularity', 'build_art', 'build_facets', 'build_cointerest')))
 facet_env = runner.env_for('build_facets')
 check('the facets are built into the temporary version from the Wikidata cache',
       facet_env['TV_MODEL_OUT'] == env['TV_MODEL_OUT'] and facet_env['TV_RAW_DIR'] == str(r.raw)
@@ -760,13 +804,13 @@ after = r.current()
 check('the TMDB-only run makes a new live version', r.state['runs'][0]['kind'] == 'tmdb'
       and r.state['runs'][0]['outcome'] == 'success' and after['version'] != before['version'], r.state['runs'][0])
 check('it runs only the TMDB step and validation', runner.names()[-2:] == ['tmdb', 'validate'])
-check('the model, facet and co-interest files are the live version\'s, shared not rebuilt',
+check('the model, facet, co-interest and film files are the live version\'s, shared not rebuilt',
       all((after['path'] / n).is_file() and os.stat(after['path'] / n).st_ino == os.stat(before['path'] / n).st_ino
-          for n in refresher.MODEL_FILES + refresher.FACET_FILES + refresher.COINTEREST_FILES))
+          for n in refresher.MODEL_FILES + refresher.FACET_FILES + refresher.COINTEREST_FILES + refresher.FILM_FILES))
 check('build.json carries the model\'s facts forward', all(after['build'][k] == before['build'][k]
-      for k in ('snapshot_date', 'shows', 'pipeline', 'seeded_from', 'facets', 'cointerest'))
+      for k in ('snapshot_date', 'shows', 'pipeline', 'seeded_from', 'facets', 'cointerest', 'films'))
       and list(after['build']) == BUILD_KEYS and after['build']['facets']['linked'] == 100
-      and after['build']['cointerest']['links'] == 6)
+      and after['build']['cointerest']['links'] == 6 and after['build']['films']['films'] == 3)
 
 runner.tmdb_code, runner.tmdb_error = 3, tmdb.REJECTED
 done = run(r)
@@ -1199,6 +1243,20 @@ class FakeWikidata:
         elif tag == 'names':
             rows = [{'item': uri(q), 'name': lit(text, lang)} for q in items
                     for lang, text in known(q).get('labels', []) + known(q).get('aliases', [])]
+        elif tag == 'films':
+            # films.py's queries: films and series of some classes, well enough known.
+            classes = re.findall(r'wd:(Q\d+)', re.search(r'VALUES \?class \{([^}]*)\}', query)[1])
+            least = int(re.search(r'FILTER\(\?links >= (\d+)\)', query)[1])
+            rows = [{'item': uri(q), 'class': uri(c), 'links': lit(str(d['links']))} for q, d in self.items.items()
+                    for c in d.get('P31', []) if c in classes and d.get('links', 0) >= least]
+        elif tag == 'dates':
+            rows = [{'item': uri(q), 'date': lit(v)} for q in items for v in known(q).get('P577', [])]
+        elif tag == 'titles':
+            rows = [{'item': uri(q), 'title': lit(text, lang)} for q in items for lang, text in known(q).get('P1476', [])]
+        elif tag == 'film-names':
+            rows = [{'item': uri(q), 'name': lit(text, lang), 'alias': lit(kind)} for q in items
+                    for kind, field in (('label', 'labels'), ('alias', 'aliases'))
+                    for lang, text in known(q).get(field, []) if lang in ('en', 'mul')]
         elif 'schema:about' in query:
             # clickstream.py's one query: the English article of every item with a TVmaze id.
             rows = [{'tvmaze': lit(v), 'title': lit(d['enwiki'])} for d in self.items.values() if d.get('enwiki')
@@ -1226,6 +1284,12 @@ ITEMS = {
     'Q700': {'labels': [('en', 'Maker'), ('mul', 'Maker Mul')]},
     'Q800': {'P179': ['Q801'], 'labels': [('en', 'A Book')]},
     'Q801': {'labels': [('en', 'A Book Series')]},
+    # Two crime films well enough known for films.py, and one not.
+    'Q950': {'P31': ['Q11424'], 'links': 60, 'P136': ['Q952'], 'P577': ['1972-03-15T00:00:00Z'],
+             'labels': [('en', 'The Crime Film')], 'aliases': [('en', 'Crime Film')]},
+    'Q951': {'P31': ['Q11424'], 'links': 30, 'P136': ['Q952'], 'labels': [('en', 'Crime Film II')]},
+    'Q953': {'P31': ['Q11424'], 'links': 3, 'P136': ['Q952'], 'labels': [('en', 'Obscure Film')]},
+    'Q952': {'labels': [('en', 'crime film')]},
 }
 
 
@@ -1459,8 +1523,8 @@ check('eight days makes it due', r.wikidata_due() == 'the cache is 8 days old')
 fake.fail = True
 old_bytes = cache_file.read_bytes()
 done = run(r)
-check('a failed fetch never fails the run', done['outcome'] == 'success' and runner.names()[-4:] == [
-    'wikidata', 'build_facets', 'build_cointerest', 'validate'], done)
+check('a failed fetch never fails the run', done['outcome'] == 'success' and runner.names()[-5:] == [
+    'wikidata', 'build_facets', 'build_films', 'build_cointerest', 'validate'], done)
 check('it leaves a warning naming the cache kept', any('Wikidata step failed, keeping the cache fetched' in w
                                                        for w in done['warnings']), done['warnings'])
 check('the old cache stays and the facets are built from it', cache_file.read_bytes() == old_bytes
@@ -1483,7 +1547,7 @@ meta_file.write_text(json.dumps({**saved, 'fetched_at': refresher.iso(NOW)}))
 done = run(r)
 check('a broken cache is set aside and the facets built from TVmaze alone', done['outcome'] == 'success'
       and any('would not build from the Wikidata cache' in w for w in done['warnings'])
-      and runner.names()[-4:] == ['build_facets', 'build_facets', 'build_cointerest', 'validate']
+      and runner.names()[-5:] == ['build_facets', 'build_facets', 'build_films', 'build_cointerest', 'validate']
       and version_facets(r)['linked'] == 0, done['warnings'])
 
 # No cache and no Wikidata: TVmaze facets, and a warning.
@@ -1522,9 +1586,168 @@ r.tidy()
 r.release_file_lock()
 check('an interrupted fetch\'s leftovers are cleared, and the cache kept',
       sorted(p.name for p in (r.root / 'wikidata').iterdir()) == ['cache.json.gz'])
+
+# 13. Films: the film cache, and each version's film index -------------------------------------------------------------
+
+films_ok = write_model(TMP / 'films-valid', 100)
+write_films(films_ok, 4)
+check('a version\'s film index is validated and summed up', refresher.validate_version(films_ok)['films'] == {
+    'films': 4, 'series': 0, 'wikidata_fetched_at': refresher.iso(NOW)})
+check('a version without a film index passes, with none',
+      refresher.validate_version(write_model(TMP / 'films-none', 100))['films'] is None)
+committed = refresher.check_films(ROOT / 'model')
+check('the committed film index, which a seed carries, passes too', committed is not None
+      and committed['films'] > 5000 and committed['series'] > 100, committed)
+index = json.loads(gunzip(films_ok / 'films.json.gz'))
+bad = write_model(TMP / 'films-bad', 100)
+(bad / 'films.json.gz').write_bytes(b'not gzip')
+rejects('a film index that does not decompress is refused', lambda: refresher.validate_version(bad), refresher.Invalid,
+        'films.json.gz does not decompress')
+for label, value in (('of another version', {**index, 'version': 2}), ('with no films', {**index, 'films': []}),
+                     ('that is a list', index['films'])):
+    gz(bad / 'films.json.gz', json.dumps(value).encode())
+    rejects(f'a film index {label} is refused', lambda: refresher.validate_version(bad), refresher.Invalid,
+            'holds no version 1 film list')
+for label, change in (('with no title', {'title': ' '}), ('with an IMDb id for a Q-id', {'qid': 'tt0068646'}),
+                      ('with a genre weighed above 1', {'genre': {'crime': 1.5}}),
+                      ('with a genre weighed 0', {'genre': {'crime': 0}}),
+                      ('with a subject that is no Q-id', {'subject': {'crime': 1.0}}),
+                      ('with names that are not text', {'aliases': [3]})):
+    gz(bad / 'films.json.gz', json.dumps({**index, 'films': [{**index['films'][0], **change}]}).encode())
+    rejects(f'a film {label} is refused', lambda: refresher.validate_version(bad), refresher.Invalid,
+            'holds a malformed film')
+
+# A run: the cache is fetched when due and the index built from it each time.
+runner = FakeRunner()
+r = make('films-run', runner, seed=write_model(TMP / 'seed-films-run', 100))
+r.boot()
+done = run(r)
+film_cache, film_meta = r.root / 'films' / 'cache.json.gz', r.root / 'films' / 'meta.json'
+check('a run fetches the film cache when there is none and builds the index from it', done['outcome'] == 'success'
+      and runner.names().count('films') == 1 and not done['warnings']
+      and r.current()['build']['films'] == {'films': 3, 'series': 0, 'wikidata_fetched_at': refresher.iso(NOW)}, done)
+check('the run records what the fetch found', r.state['films']['films'] == 4 and r.state['films']['series'] == 1)
+status = r.status()
+check('status carries the film cache', status['films']['cache'] == {'fetched_at': refresher.iso(NOW), 'films': 4,
+                                                                    'series': 1} and status['films']['last']['films'] == 4)
+page = refresher.render_page(status)
+check('the page shows the film cache and the live index', '<h2>Films</h2><p>4 films and series cached' in page
+      and '3 films and series, 0 of them series; from Wikidata fetched' in page)
+calls, before = len(runner.calls), film_cache.read_bytes()
+done = run(r)
+check('a fresh film cache is not fetched again, but each build maps it again', done['outcome'] == 'success'
+      and 'films' not in runner.names()[calls:] and 'build_films' in runner.names()[calls:]
+      and film_cache.read_bytes() == before)
+check('and the log says why', 'films: the cache fetched' in (r.logs / f"{done['id']}.log").read_text())
+check('the film cache is due on the Wikidata cache\'s terms', r.films_due() is None)
+saved = json.loads(film_meta.read_text())
+film_meta.write_text(json.dumps({**saved, 'script': '000000000000'}))
+check('another films.py makes it due', r.films_due() == 'films.py changed since the cache was fetched')
+film_meta.write_text(json.dumps({**saved, 'fetched_at': None}))
+check('a cache with no fetch date is due', r.films_due() == 'the cache carries no fetch date')
+film_meta.write_text(json.dumps({**saved, 'fetched_at': refresher.iso(NOW - timedelta(days=8))}))
+check('eight days makes it due', r.films_due() == 'the cache is 8 days old')
+
+# A failed fetch keeps the cache there is, and the run goes on.
+runner.fail = 'films'
+calls = len(runner.calls)
+done = run(r)
+check('a failed film fetch never fails the run', done['outcome'] == 'success'
+      and runner.names()[calls:].count('films') == 1 and 'build_films' in runner.names()[calls:], done)
+check('it leaves a warning naming the cache kept', any('Film step failed, keeping the cache fetched' in w
+                                                       for w in done['warnings']), done['warnings'])
+check('the old cache stays and the index is built from it', film_cache.read_bytes() == before
+      and runner.env_for('build_films')['TV_FILMS'] == str(film_cache) and r.current()['build']['films']['films'] == 3)
+check('the failure is recorded and shown', 'films fell over' in r.state['films']['error']
+      and r.status()['films']['cache']['films'] == 4 and 'failed: films failed with exit code 1: films fell over'
+      in refresher.render_page(r.status()))
+runner.fail = None
+
+# A fetch that finds far fewer films than the cache holds is not trusted.
+film_meta.write_text(json.dumps({**saved, 'films': 1000, 'fetched_at': refresher.iso(NOW - timedelta(days=8))}))
+done = run(r)
+check('a much smaller film fetch is refused and the cache kept', done['outcome'] == 'success'
+      and any('found 4 films where the cache has 1,000' in w for w in done['warnings'])
+      and film_cache.read_bytes() == before and not (r.root / 'films' / 'cache.new.json.gz').exists(), done['warnings'])
+
+# An index that will not build: the live version's is carried forward.
+film_meta.write_text(json.dumps(saved))
+old_index = gunzip(r.current()['path'] / 'films.json.gz')
+runner.fail = 'build_films'
+done = run(r)
+check('a film index that will not build never fails the run', done['outcome'] == 'success'
+      and any('The film index would not build: build_films failed' in w for w in done['warnings']), done)
+check('the live version\'s index is carried forward', gunzip(r.current()['path'] / 'films.json.gz') == old_index
+      and r.current()['build']['films']['films'] == 3
+      and "carried the live version's film index forward" in (r.logs / f"{done['id']}.log").read_text())
+runner.fail = None
+
+# No cache and no live index: no index, and a warning.
+runner = FakeRunner(fail='films')
+r = make('films-never', runner, seed=write_model(TMP / 'seed-films-never', 100))
+r.boot()
+done = run(r)
+check('with no film cache and no fetch the run still succeeds, with no index', done['outcome'] == 'success'
+      and any('Film step failed, and there is no film cache yet' in w for w in done['warnings'])
+      and 'build_films' not in runner.names() and not (r.current()['path'] / 'films.json.gz').exists()
+      and r.current()['build']['films'] is None and not (r.root / 'films' / 'cache.json.gz').exists(), done)
+check('the page says a film cache is still to come',
+      '<h2>Films</h2><p>No cache yet; the next build fetches one</p>' in refresher.render_page(r.status()))
+
+# A seed's index goes live, and is carried forward while there is no cache to build from.
+seed = write_model(TMP / 'seed-films', 100)
+write_films(seed, 2)
+runner = FakeRunner(fail='films')
+r = make('seed-films', runner, seed=seed)
+r.boot()
+check('a seed with a film index carries it into the first version', r.current() is not None
+      and r.current()['build']['films'] == {'films': 2, 'series': 0, 'wikidata_fetched_at': refresher.iso(NOW)})
+done = run(r)
+check('a version with no film cache to build from carries the live index forward', done['outcome'] == 'success'
+      and r.current()['build']['films']['films'] == 2
+      and filecmp.cmp(seed / 'films.json.gz', r.current()['path'] / 'films.json.gz', shallow=False), done)
+
+runner = FakeRunner()
+r = make('films-always', runner, seed=write_model(TMP / 'seed-films-always', 100), WIKIDATA_MAX_AGE_DAYS='0')
+r.boot()
+run(r)
+calls = len(runner.calls)
+run(r)
+check('WIKIDATA_MAX_AGE_DAYS=0 fetches the films every run too', runner.names()[calls:].count('films') == 1
+      and r.films_due() == 'WIKIDATA_MAX_AGE_DAYS is 0')
+
+r = make('films-tidy')
+(r.root / 'films' / 'cache.new.json.gz').write_bytes(b'half')
+(r.root / 'films' / '.cache.new.json.gz.123.456.tmp').write_bytes(b'half')
+(r.root / 'films' / 'cache.json.gz').write_bytes(b'kept')
+r.take_file_lock()
+r.tidy()
+r.release_file_lock()
+check('an interrupted film fetch\'s leftovers are cleared, and the cache kept',
+      sorted(p.name for p in (r.root / 'films').iterdir()) == ['cache.json.gz'])
+
+# The real fetch and build, as child processes, against the pretend service.
+runner = FakeRunner(real_wikidata=True, real_films=True)
+r = make('films-real', runner, seed=write_model(TMP / 'seed-films-real', 100), WIKIDATA_SPARQL_URL=fake.url,
+         WIKIDATA_BACKOFF_SECONDS='0.01')
+r.boot()
+asked = len(fake.queries)
+done = run(r)
+cache = json.loads(gunzip(r.root / 'films' / 'cache.json.gz'))
+built = json.loads(gunzip(r.current()['path'] / 'films.json.gz'))
+check('films.py fetches the films well enough known', done['outcome'] == 'success' and not done['warnings']
+      and sorted(cache['films']) == ['Q950', 'Q951'] and cache['films']['Q950']['year'] == 1972
+      and cache['labels'] == {'Q952': 'crime film'}, done)
+check('build_films.py maps them to the version\'s facets, best known first',
+      [(f['title'], f['aliases'], f['genre']) for f in built['films']]
+      == [('The Crime Film', ['Crime Film'], {'crime': 1.0}), ('Crime Film II', [], {'crime': 1.0})]
+      and built['date'] == version_facets(r)['date'] and r.current()['build']['films']['films'] == 2, built)
+film_asks = [q for q in fake.queries[asked:] if q['query'].split('\n', 1)[0] in ('#films', '#film-names')]
+check('its requests carry the project\'s User-Agent and no email address', film_asks
+      and all(q['agent'] == wikidata.AGENT and '@' not in q['agent'] for q in fake.queries[asked:]))
 fake.close()
 
-# 13. The clickstream and the co-interest -----------------------------------------------------------------------------
+# 14. The clickstream and the co-interest -----------------------------------------------------------------------------
 
 
 class FakeClickstream:
@@ -1906,7 +2129,7 @@ r.boot()
 check('a seed with only the matrix leaves it behind', r.current() is not None
       and not (r.current()['path'] / 'cointerest.bin.gz').exists() and r.current()['build']['cointerest'] is None)
 
-# 14. download.py --out --------------------------------------------------------------------------------------------
+# 15. download.py --out --------------------------------------------------------------------------------------------
 
 pages = {0: [{'id': 1}, {'id': 2}], 1: [{'id': 250}]}
 
@@ -1949,7 +2172,7 @@ check('the --out manifest lists the pages', manifest['pages'] == 2 and manifest[
 check('download --out leaves the default paths alone', not sentinel.exists())
 check('--refresh and --out together are refused', combined == 2)
 
-# 15. End to end with the real build steps (opt in) -------------------------------------------------------------------
+# 16. End to end with the real build steps (opt in) -------------------------------------------------------------------
 
 
 def full_test(raw_dir, manifest):
@@ -1991,6 +2214,8 @@ def full_test(raw_dir, manifest):
           and cur['build']['facets']['linked'] >= 4 and cur['build']['facets']['tokens'] > 1000, cur and cur['build'])
     check('and co-interest from the clickstream cache', cur is not None
           and cur['build']['cointerest'] == {'months': ['2026-08'], 'shows': 3, 'links': 4}, cur and cur['build'])
+    check('and a film index from the film cache', cur is not None and (cur['build']['films'] or {}).get('films') == 2,
+          cur and cur['build'])
     service.close()
     dumps.close()
     print('\n  step timings, driven by the refresher:')

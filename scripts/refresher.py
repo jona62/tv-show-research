@@ -13,7 +13,8 @@ MODEL_ROOT (/home/developer/tv-model) holds everything:
     current -> versions/<stamp>   what the apps read, swapped with one rename
     versions/<stamp>/             catalog.json.gz vectors.bin.gz popularity.bin.gz
                                   art.bin.gz, the facets (facets.bin.gz,
-                                  facets.json.gz, search.json.gz), the co-interest
+                                  facets.json.gz, search.json.gz), films.json.gz
+                                  when there are films, the co-interest
                                   (cointerest.bin.gz, cointerest.json.gz) when there
                                   are clickstream counts, tmdb.json.gz when there is
                                   TMDB data, and build.json, written last to mark it
@@ -21,6 +22,9 @@ MODEL_ROOT (/home/developer/tv-model) holds everything:
     raw/                          the latest TVmaze pages and manifest.json
     wikidata/                     cache.json.gz, the Wikidata facts the facets are
                                   built from (see wikidata.py), and meta.json
+    films/                        cache.json.gz, well-known films from Wikidata, which
+                                  each version's films.json.gz is built from (see
+                                  films.py and build_films.py), and meta.json
     clickstream/                  cache.json.gz, Wikipedia's clickstream counts
                                   between shows, which the co-interest is built from
                                   (see clickstream.py), and meta.json
@@ -30,7 +34,11 @@ MODEL_ROOT (/home/developer/tv-model) holds everything:
 
 The Wikidata cache is fetched again when it is WIKIDATA_MAX_AGE_DAYS (7) old or was
 fetched by another wikidata.py. A failed fetch is only a warning: the facets are
-built from the cache there is, or from TVmaze alone when there is none.
+built from the cache there is, or from TVmaze alone when there is none. The film cache
+is fetched on the same terms, by films.py, and each version's films.json.gz is built
+from it once the facets are (build_films.py). A failed fetch keeps the cache there is,
+and a version whose film index will not build, or that has no cache to build it from,
+carries the live version's forward; none of it ever fails a run.
 
 The clickstream comes out monthly. At most once a UTC day, a run with nothing else to
 fetch reads which months are published, and the cache fetches whichever of the latest
@@ -43,8 +51,9 @@ co-interest is built from the cache there is, and a version has none without one
 Settings, all optional: PORT (8083), MODEL_ROOT, SEED_MODEL_DIR (/home/developer/model),
 REFRESH_AT_UTC (04:30), AUTO_DELAY_SECONDS (120), TMDB_API_KEY, TMDB_REGION (US),
 TMDB_MIN_POPULARITY (60), TMDB_DAILY_LIMIT (6000), WIKIDATA_MAX_AGE_DAYS (7, and 0
-fetches every run), WIKIDATA_SPARQL_URL and WIKIDATA_BACKOFF_SECONDS, which wikidata.py
-is given, CLICKSTREAM_BASE, which clickstream.py is given with WIKIDATA_SPARQL_URL, and
+fetches every run, the film cache too), WIKIDATA_SPARQL_URL and WIKIDATA_BACKOFF_SECONDS,
+which wikidata.py and films.py are given, CLICKSTREAM_BASE, which clickstream.py is
+given with WIKIDATA_SPARQL_URL, and
 RAW_SOURCE_DIR, which copies TVmaze pages from a local folder instead of downloading
 them, for local runs.
 """
@@ -86,11 +95,13 @@ MODEL_FILES = ('catalog.json.gz', 'vectors.bin.gz', 'popularity.bin.gz', 'art.bi
 FACET_FILES = ('facets.bin.gz', 'facets.json.gz', 'search.json.gz')
 # Which shows the same readers look up, from Wikipedia's clickstream; both or neither.
 COINTEREST_FILES = ('cointerest.bin.gz', 'cointerest.json.gz')
+# Well-known films in the shows' genre and subject keys, for Couchside's search.
+FILM_FILES = ('films.json.gz',)
 # The sources whose change means the model must be built again. tmdb.py and this file
 # only shape display data and the service, so a change to them rebuilds nothing.
 PIPELINE = ('download.py', 'build_model.py', 'build_popularity.py', 'build_art.py', 'build_facets.py',
-            'wikidata.py', 'clickstream.py', 'build_cointerest.py', 'study/theme_rules.json', 'study/audit.json',
-            'requirements-refresher.txt')
+            'wikidata.py', 'clickstream.py', 'build_cointerest.py', 'films.py', 'build_films.py',
+            'study/theme_rules.json', 'study/audit.json', 'requirements-refresher.txt')
 KEEP_VERSIONS = 3
 KEEP_LOGS = 14
 KEEP_RUNS = 60
@@ -111,8 +122,8 @@ SECRETS = ('TMDB_API_KEY',)
 # the workspace's one vCPU, bound by the download. It keeps each month as soon as it is
 # counted, so even a first fetch that runs out of time keeps the months it finished.
 TIMEOUTS = {'download': 3 * 3600, 'build_model': 2 * 3600, 'build_popularity': 1800, 'build_art': 1800,
-            'wikidata': 3600, 'build_facets': 1800, 'clickstream check': 300, 'clickstream': 2 * 3600,
-            'build_cointerest': 1800, 'tmdb': 3 * 3600, 'tmdb carry': 1800, 'validate': 1800}
+            'wikidata': 3600, 'build_facets': 1800, 'films': 3600, 'build_films': 600, 'clickstream check': 300,
+            'clickstream': 2 * 3600, 'build_cointerest': 1800, 'tmdb': 3 * 3600, 'tmdb carry': 1800, 'validate': 1800}
 AUTOMATIC = ('daily', 'catch-up', 'retry', 'tmdb')
 CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; "
        "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
@@ -390,6 +401,39 @@ def check_cointerest(folder, shows):
     return {'months': months, 'shows': meta.get('shows'), 'links': len(indices)}
 
 
+QID = re.compile(r'Q[1-9]\d{0,11}')
+
+
+def check_films(folder):
+    """What a version's film index holds, or None when it has none. Raises Invalid when it
+    is there but a search could not use it: every film needs a Q-id, a title, names as
+    lists of text, and genres and subjects as keys weighed above 0 and at most 1. Keys
+    are not checked against the version's facets: an index carried forward from the
+    last version may name one the new facets lack, and the search passes over it."""
+    path = folder / 'films.json.gz'
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(gzip.decompress(path.read_bytes()))
+    except (OSError, EOFError, ValueError, zlib.error) as exc:
+        raise Invalid(f'films.json.gz does not decompress: {exc}') from None
+    films = data.get('films') if isinstance(data, dict) else None
+    if not isinstance(data, dict) or data.get('version') != 1 or not isinstance(films, list) or not films:
+        raise Invalid('films.json.gz holds no version 1 film list.')
+    weighed = lambda value: (isinstance(value, dict) and all(
+        isinstance(k, str) and k and type(v) in (int, float) and 0 < v <= 1 for k, v in value.items()))
+    for film in films:
+        if not (isinstance(film, dict) and isinstance(film.get('qid'), str) and QID.fullmatch(film['qid'])
+                and isinstance(film.get('title'), str) and film['title'].strip()
+                and all(isinstance(film.get(k, []), list) and all(isinstance(n, str) for n in film.get(k, []))
+                        for k in ('titles', 'aliases'))
+                and weighed(film.get('genre')) and weighed(film.get('subject'))
+                and all(QID.fullmatch(k) for k in film['subject'])):
+            raise Invalid('films.json.gz holds a malformed film.')
+    return {'films': len(films), 'series': sum(1 for f in films if f.get('kind') == 'series'),
+            'wikidata_fetched_at': data.get('wikidata_fetched_at')}
+
+
 def validate_version(folder, previous_shows=None, manifest=None):
     """Everything a version must pass before `current` points at it. Returns a summary,
     or raises Invalid with the reason."""
@@ -447,7 +491,7 @@ def validate_version(folder, previous_shows=None, manifest=None):
         tmdb = {'fetched_at': data.get('fetched_at') if entries else None, 'shows': len(entries)}
     return {'shows': shows, 'snapshot_date': date, 'catalog_version': catalog.get('version'),
             'text_features': cols, 'nonzeros': nnz, 'tmdb': tmdb, 'facets': check_facets(folder, ids, date),
-            'cointerest': check_cointerest(folder, shows)}
+            'cointerest': check_cointerest(folder, shows), 'films': check_films(folder)}
 
 
 # Running the steps --------------------------------------------------------------------
@@ -665,20 +709,23 @@ class Refresher:
         self.versions = self.root / 'versions'
         self.raw = self.root / 'raw'
         self.wikidata = self.root / 'wikidata'
+        self.films = self.root / 'films'
         self.clickstream = self.root / 'clickstream'
         self.logs = self.root / 'logs'
         self.runner = runner or Processes()
         self.clock = clock
         self.pipeline = pipeline_hash(config.scripts)
-        # A cache fetched by another wikidata.py may lack what this one fetches, and months
-        # counted by another clickstream.py may not match what this one counts.
+        # A cache fetched by another wikidata.py or films.py may lack what this one fetches,
+        # and months counted by another clickstream.py may not match what this one counts.
         self.wikidata_script = pipeline_hash(config.scripts, ('wikidata.py',))
+        self.films_script = pipeline_hash(config.scripts, ('films.py',))
         self.clickstream_script = pipeline_hash(config.scripts, ('clickstream.py',))
         self.lock = threading.Lock()       # one run at a time in this process
         self.guard = threading.RLock()     # the state and the run in progress
         self.stopping = threading.Event()
         self.wake = threading.Event()
-        self.state = {'runs': [], 'last_success': None, 'tmdb': None, 'wikidata': None, 'clickstream': None}
+        self.state = {'runs': [], 'last_success': None, 'tmdb': None, 'wikidata': None, 'films': None,
+                      'clickstream': None}
         self.running = None
         self.thread = None
         self.scheduler = None
@@ -698,7 +745,7 @@ class Refresher:
                 self.say('state.json did not parse; starting a fresh history.')
             state = {}
         return {'runs': state.get('runs', []), 'last_success': state.get('last_success'), 'tmdb': state.get('tmdb'),
-                'wikidata': state.get('wikidata'), 'clickstream': state.get('clickstream')}
+                'wikidata': state.get('wikidata'), 'films': state.get('films'), 'clickstream': state.get('clickstream')}
 
     def save_state(self):
         with self.guard:
@@ -762,11 +809,12 @@ class Refresher:
             else:
                 os.rename(old, self.raw)
         remove(self.root / 'current.tmp')
-        # A fetch stopped part way leaves its unfinished cache, and perhaps wikidata.py's own
-        # temporary file beside it.
-        if self.wikidata.is_dir():
-            for leftover in [self.wikidata / 'cache.new.json.gz', *self.wikidata.glob('.*.tmp')]:
-                remove(leftover)
+        # A fetch stopped part way leaves its unfinished cache, and perhaps wikidata.py's or
+        # films.py's own temporary file beside it.
+        for folder in (self.wikidata, self.films):
+            if folder.is_dir():
+                for leftover in [folder / 'cache.new.json.gz', *folder.glob('.*.tmp')]:
+                    remove(leftover)
         # Likewise a clickstream count made beside the cache, and clickstream.py's temporary
         # files. A cache it wrote in place is whole, and kept.
         if self.clickstream.is_dir():
@@ -833,7 +881,8 @@ class Refresher:
 
     def start(self, schedule=True):
         os.umask(0o022)
-        for folder in (self.root, self.versions, self.logs, self.root / 'tmdb', self.wikidata, self.clickstream):
+        for folder in (self.root, self.versions, self.logs, self.root / 'tmdb', self.wikidata, self.films,
+                       self.clickstream):
             folder.mkdir(parents=True, exist_ok=True)
         self.state = self.load_state()
         for run in self.state['runs']:
@@ -970,9 +1019,10 @@ class Refresher:
         env.update(TV_RAW_DIR=str(self.raw), TV_MANIFEST=str(self.raw / 'manifest.json'),
                    TV_STUDY_DIR=str(self.config.scripts / 'study'), TV_MODEL_OUT=str(folder),
                    TV_ART_OUT=str(folder / 'art.bin.gz'), TV_AUDIT_DIR=str(audit))
-        # Only the facets and co-interest steps are told where their caches are, by
-        # facets_step and cointerest_step.
+        # Only the facets, film and co-interest steps are told where their caches are, by
+        # facets_step, films_step and cointerest_step.
         env.pop('TV_WIKIDATA', None)
+        env.pop('TV_FILMS', None)
         env.pop('TV_COINTEREST', None)
         return env
 
@@ -1102,6 +1152,84 @@ class Refresher:
             ctx.warn(f'The facets would not build from the Wikidata cache, so they were built without it: {exc}')
             env.pop('TV_WIKIDATA')
             ctx.run_step('build_facets', self.script('build_facets.py'), env)
+
+    def films_meta(self):
+        """What meta.json says about the film cache: its fetch date, its film count and the
+        films.py that fetched it. {} when there is no cache."""
+        meta = read_json(self.films / 'meta.json', {})
+        return meta if isinstance(meta, dict) and (self.films / 'cache.json.gz').is_file() else {}
+
+    def films_due(self):
+        """Why the film cache should be fetched again, or None: on the Wikidata cache's terms."""
+        if not (self.films / 'cache.json.gz').is_file():
+            return 'there is no film cache'
+        if not self.config.wikidata_max_age:
+            return 'WIKIDATA_MAX_AGE_DAYS is 0'
+        meta = self.films_meta()
+        if meta.get('script') != self.films_script:
+            return 'films.py changed since the cache was fetched'
+        fetched = parse_time(meta.get('fetched_at'))
+        if fetched is None:
+            return 'the cache carries no fetch date'
+        if self.clock() - fetched >= self.config.wikidata_max_age:
+            return f'the cache is {(self.clock() - fetched).days} days old'
+        return None
+
+    def films_fetch(self, ctx):
+        """The film cache, fetched again when it is due. The fetch goes to cache.new.json.gz
+        and replaces the cache only once it is whole and about as large as the last one. A
+        failed fetch is a warning, never a failed run: the cache there is stays in use.
+        Returns the cache's path, or None."""
+        cache, new = self.films / 'cache.json.gz', self.films / 'cache.new.json.gz'
+        reason = self.films_due()
+        if reason is None:
+            ctx.log(f"films: the cache fetched {self.films_meta().get('fetched_at')} is fresh; not fetching it again")
+            return cache
+        ctx.log(f'films: fetching, as {reason}')
+        self.films.mkdir(parents=True, exist_ok=True)
+        remove(new)
+        try:
+            done = ctx.run_step('films', self.script('films.py') + ['--out', new], self.child_env(wikidata=True))
+            line = next((l for l in reversed(done['tail']) if l.startswith('RESULT ')), None)
+            result = json.loads(line[len('RESULT '):]) if line else None
+            if not isinstance(result, dict) or not new.is_file() or not isinstance(result.get('films'), int):
+                raise StepFailed('films.py wrote no cache.')
+            before = self.films_meta().get('films')
+            if isinstance(before, int) and result['films'] < before * WIKIDATA_MIN_SHARE:
+                raise StepFailed(f"the fetch found {result['films']:,} films where the cache has {before:,}")
+            os.replace(new, cache)
+            write_json(self.films / 'meta.json', {'fetched_at': result.get('fetched_at'), 'films': result['films'],
+                                                  'series': result.get('series'), 'script': self.films_script})
+            ctx.log(f"films: cached {result['films']:,} films and series, fetched {result.get('fetched_at')}")
+        except StepFailed as exc:
+            if cache.is_file():
+                ctx.warn(f"Film step failed, keeping the cache fetched {self.films_meta().get('fetched_at')}: {exc}")
+            else:
+                ctx.warn(f'Film step failed, and there is no film cache yet: {exc}')
+            result = {'error': str(exc)}
+        finally:
+            remove(new)
+        with self.guard:
+            self.state['films'] = {'at': iso(self.clock()), **result}
+        return cache if cache.is_file() else None
+
+    def films_step(self, ctx, env, folder, previous):
+        """A version's film index, built from the film cache once the facets are there to
+        map it to (build_films.py). With no cache, or a build that fails, the live
+        version's index is carried forward, so a failure keeps the last good file; none of
+        it ever fails the run."""
+        cache = self.films_fetch(ctx)
+        target = folder / 'films.json.gz'
+        if cache is not None:
+            try:
+                ctx.run_step('build_films', self.script('build_films.py'), dict(env, TV_FILMS=str(cache)))
+            except StepFailed as exc:
+                remove(target)
+                ctx.warn(f'The film index would not build: {exc}')
+        old = previous['path'] / 'films.json.gz' if previous else None
+        if not target.is_file() and old is not None and old.is_file():
+            link_or_copy(old, target)
+            ctx.log("films: carried the live version's film index forward")
 
     def clickstream_meta(self):
         """What meta.json says about the clickstream cache: the months it holds, when they
@@ -1256,13 +1384,14 @@ class Refresher:
                     f"{report.get('recommendable_shows', 0):,} recommendable")
         remove(audit)
         self.facets_step(ctx, env, self.wikidata_step(ctx))
+        self.films_step(ctx, env, folder, previous)
         self.cointerest_step(ctx, env, self.clickstream_step(ctx))
         self.tmdb_step(ctx, folder, previous, required=False)
         checked = ctx.validate(folder, previous and previous['build'].get('shows'), self.raw / 'manifest.json')
         self.finish(ctx, folder, {
             'version': ctx.stamp, 'built_at': iso(self.clock()), 'snapshot_date': checked['snapshot_date'],
             'shows': checked['shows'], 'pipeline': self.pipeline, 'seeded_from': None, 'tmdb': checked['tmdb'],
-            'facets': checked['facets'], 'cointerest': checked['cointerest']})
+            'facets': checked['facets'], 'cointerest': checked['cointerest'], 'films': checked['films']})
 
     def tmdb_run(self, ctx):
         """Only the TMDB step, on a copy of the live version."""
@@ -1275,7 +1404,7 @@ class Refresher:
             raise StepFailed('There are no TVmaze pages yet; run a full refresh first.')
         folder = ctx.new_version()
         with ctx.step('copy'):
-            for name in MODEL_FILES + FACET_FILES + COINTEREST_FILES:
+            for name in MODEL_FILES + FACET_FILES + COINTEREST_FILES + FILM_FILES:
                 if name in MODEL_FILES or (live['path'] / name).is_file():
                     link_or_copy(live['path'] / name, folder / name)
         self.tmdb_step(ctx, folder, live, required=True)
@@ -1284,19 +1413,20 @@ class Refresher:
         self.finish(ctx, folder, {
             'version': ctx.stamp, 'built_at': iso(self.clock()), 'snapshot_date': old.get('snapshot_date'),
             'shows': checked['shows'], 'pipeline': old.get('pipeline'), 'seeded_from': old.get('seeded_from'),
-            'tmdb': checked['tmdb'], 'facets': checked['facets'], 'cointerest': checked['cointerest']})
+            'tmdb': checked['tmdb'], 'facets': checked['facets'], 'cointerest': checked['cointerest'],
+            'films': checked['films']})
 
     def seed_run(self, ctx):
         """The first version, copied from the model the apps were deployed with. Art comes
         from the raw pages when the seed has none. The facets come along when the seed has
-        all three files, and the co-interest when it has both; the first full build makes
-        them otherwise."""
+        all three files, the co-interest when it has both and the film index when it has
+        one; the first full build makes them otherwise."""
         seed = Path(self.config.seed)
         missing = [name for name in MODEL_FILES[:3] if not (seed / name).is_file()]
         if missing:
             raise StepFailed(f"Nothing to seed from: {seed} lacks {', '.join(missing)}.")
         folder = ctx.new_version()
-        extras = tuple(name for group in (FACET_FILES, COINTEREST_FILES)
+        extras = tuple(name for group in (FACET_FILES, COINTEREST_FILES, FILM_FILES)
                        if all((seed / name).is_file() for name in group) for name in group)
         with ctx.step('copy seed'):
             for name in MODEL_FILES + extras + ('tmdb.json.gz',):
@@ -1310,7 +1440,7 @@ class Refresher:
         self.finish(ctx, folder, {
             'version': ctx.stamp, 'built_at': iso(self.clock()), 'snapshot_date': checked['snapshot_date'],
             'shows': checked['shows'], 'pipeline': self.pipeline, 'seeded_from': str(seed), 'tmdb': checked['tmdb'],
-            'facets': checked['facets'], 'cointerest': checked['cointerest']})
+            'facets': checked['facets'], 'cointerest': checked['cointerest'], 'films': checked['films']})
 
     # Scheduling ----------------------------------------------------------------------
 
@@ -1394,10 +1524,12 @@ class Refresher:
             last_success = self.state.get('last_success')
             tmdb_last = self.state.get('tmdb')
             wikidata_last = self.state.get('wikidata')
+            films_last = self.state.get('films')
             clickstream_last = self.state.get('clickstream')
         live = self.current()
         due, reason = self.next_run()
         meta = self.wikidata_meta()
+        films = self.films_meta()
         clicks = self.clickstream_meta()
         return {
             'status': 'running' if running else 'idle',
@@ -1417,6 +1549,9 @@ class Refresher:
                          'cache': {'fetched_at': meta.get('fetched_at'), 'shows': meta.get('shows'),
                                    'mapped': meta.get('mapped')} if meta else None,
                          'last': wikidata_last},
+            'films': {'cache': {'fetched_at': films.get('fetched_at'), 'films': films.get('films'),
+                                'series': films.get('series')} if films else None,
+                      'last': films_last},
             'clickstream': {'months': CLICKSTREAM_MONTHS,
                             'cache': {k: clicks.get(k) for k in ('months', 'fetched_at', 'titles', 'checked_at',
                                                                  'published')} if clicks else None,
@@ -1464,6 +1599,14 @@ def facts_line(facets):
             f"{facets.get('aliases') or 0:,} with other names; from {source}")
 
 
+def films_line(films):
+    """The live build's film index in a line, or None when it has none."""
+    if not films:
+        return None
+    return (f"{films.get('films') or 0:,} films and series, {films.get('series') or 0:,} of them series; "
+            f"from Wikidata fetched {when(films.get('wikidata_fetched_at'))}")
+
+
 def cointerest_line(cointerest):
     """The live build's co-interest in a line, or None when it has none."""
     if not cointerest:
@@ -1501,7 +1644,8 @@ def render_page(status):
         ('pipeline', build.get('pipeline')), ('seeded from', build.get('seeded_from')),
         ('TMDB data', f"{build['tmdb']['shows']:,} shows, fetched {when(build['tmdb']['fetched_at'])}"
          if (build.get('tmdb') or {}).get('shows') else None),
-        ('facets', facts_line(build.get('facets'))), ('co-interest', cointerest_line(build.get('cointerest'))))
+        ('facets', facts_line(build.get('facets'))), ('co-interest', cointerest_line(build.get('cointerest'))),
+        ('films', films_line(build.get('films'))))
     ) if live else ''
     wikidata = status['wikidata']
     cache, tried = wikidata.get('cache') or {}, wikidata.get('last') or {}
@@ -1509,6 +1653,12 @@ def render_page(status):
                      else 'No cache yet; the next build fetches one')
     wikidata_note = f"Fetched again when {wikidata['max_age_days']:g} days old" + (
         f"; the last try, {when(tried.get('at'))}, failed: {tried['error']}" if tried.get('error') else '')
+    films = status['films']
+    film_cache, film_try = films.get('cache') or {}, films.get('last') or {}
+    films_card = (f"{film_cache['films']:,} films and series cached, fetched {when(film_cache.get('fetched_at'))}"
+                  if film_cache.get('films') else 'No cache yet; the next build fetches one')
+    films_note = 'Fetched again with the Wikidata cache; each build maps it to its facets' + (
+        f"; the last try, {when(film_try.get('at'))}, failed: {film_try['error']}" if film_try.get('error') else '')
     clickstream = status['clickstream']
     clicks, clicked = clickstream.get('cache') or {}, clickstream.get('last') or {}
     held = clicks.get('months') or []
@@ -1556,6 +1706,7 @@ def render_page(status):
 <div class="card"><h2>Next run</h2><p>{e(when(status['next_run']['at']))}</p><p class="dim">{e(why)}</p></div>
 <div class="card"><h2>TMDB</h2><p>{tmdb_line}</p><p class="dim">{tmdb_note}</p></div>
 <div class="card"><h2>Wikidata</h2><p>{e(wikidata_line)}</p><p class="dim">{e(wikidata_note)}</p></div>
+<div class="card"><h2>Films</h2><p>{e(films_card)}</p><p class="dim">{e(films_note)}</p></div>
 <div class="card"><h2>Clickstream</h2><p>{e(clickstream_line)}</p><p class="dim">{e(clickstream_note)}</p></div>
 <div class="card"><h2>Pipeline</h2><p><code>{e(status['pipeline'])}</code></p><p class="dim">{e(kept)}</p></div>
 </section>
