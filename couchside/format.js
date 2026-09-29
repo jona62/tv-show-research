@@ -47,6 +47,24 @@ export function parseRoute(pathname, search) {
   };
 }
 
+// A genre's name on its chip: "Crime TV shows" as "Crime", "Adventures" as it is.
+export const shortGenre = label => label.replace(/\s+(TV\s+)?shows$/i, '') || label;
+
+// Every genre and format to browse, A to Z by the name its chip wears.
+export const genreChoices = genres => genres.map(g => ({ ...g, short: shortGenre(g.label) }))
+  .sort((a, b) => a.short.localeCompare(b.short, 'en', { sensitivity: 'base' }));
+
+// Type-ahead in a list: the next label after `from` that starts with `letter`, going
+// round to the start, or -1 when none does.
+export function nextByLetter(labels, from, letter) {
+  const start = letter.toLowerCase();
+  for (let step = 1; step <= labels.length; step++) {
+    const n = (from + step) % labels.length;
+    if (labels[n].trim().toLowerCase().startsWith(start)) return n;
+  }
+  return -1;
+}
+
 // "https://www.netflix.com/title/1" as "netflix.com".
 export function hostOf(url) {
   try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; }
@@ -114,6 +132,49 @@ export function searchNote(query, found, missing) {
   if (found) return `Shows matching “${query}”`;
   if (missing) return `Nothing in the catalogue matches “${query}” yet.`;
   return `Nothing matches “${query}”. Check the spelling.`;
+}
+
+// Recent searches: the last RECENT_SEARCHES committed, by pressing Enter or opening one
+// of the results, newest first.
+export const RECENT_SEARCHES = 10;
+
+// A search as kept: trimmed, each run of spaces made one, and no longer than a box takes.
+export const searchText = q => (typeof q === 'string' ? q.trim().replace(/\s+/g, ' ').slice(0, 100) : '');
+
+// One letter, such as V, is too little to be worth offering again.
+const worthKeeping = q => [...q].length >= 2;
+
+// Recent searches from storage: two letters or more, newest first, each once whatever its
+// case, and RECENT_SEARCHES at most.
+export function recentStore(raw) {
+  const kept = [], seen = new Set();
+  for (const item of Array.isArray(raw) ? raw : []) {
+    const q = searchText(item);
+    if (!worthKeeping(q) || seen.has(q.toLowerCase())) continue;
+    seen.add(q.toLowerCase());
+    kept.push(q);
+    if (kept.length === RECENT_SEARCHES) break;
+  }
+  return kept;
+}
+
+// The list with a committed search at its head, in the case it was last typed. An empty
+// or one-letter search leaves the list as it was.
+export const noteSearch = (list, q) => (worthKeeping(searchText(q)) ? recentStore([q, ...list]) : list);
+
+// The list without one search, whatever its case.
+export const withoutSearch = (list, q) => list.filter(s => s.toLowerCase() !== searchText(q).toLowerCase());
+
+// The recent searches to offer under a box: every one while it is empty, and once
+// something is typed, those that begin with it or have a word that does, other than the
+// very search typed.
+export function recentMatches(list, typed) {
+  const t = searchText(typed).toLowerCase();
+  if (!t) return list;
+  return list.filter(s => {
+    const l = s.toLowerCase();
+    return l !== t && (l.startsWith(t) || l.includes(` ${t}`));
+  });
 }
 
 // A YouTube search for the trailer, for shows no trailer service knows.
