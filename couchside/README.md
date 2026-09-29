@@ -25,7 +25,8 @@ rebuilt every night. Nothing plays. It is for finding your next show.
   *Not for me*, *I like this* or *Love this*, or add it to My List.
 - **Posters** wear *Top 10* and *New* badges. On a mouse, hovering one lifts it
   and shows its match with quick buttons for My List, *I like this*, *Love this*
-  and more info.
+  and more info. On a touch screen, a long press lifts it into a larger preview
+  with the same buttons, and a tap still opens it.
 - **Browse** opens every genre and format as a poster tile, and each one as rows
   ranked for you: top picks, new, acclaimed, popular and deeper cuts.
 - **New & Popular** has the Top 10, new shows this year ranked for you, and
@@ -53,6 +54,13 @@ List, Browse, New & Popular and Search on a long press. Title pages have *Share*
 and a shared link opens straight to that title: the server writes each link's
 preview, so it shows the show's own poster, name and summary in Messages, Slack
 or WhatsApp, and the home page previews as the wordmark over a wall of posters.
+
+On a phone it moves like one (`gestures.js`). Title pages and sheets slide up
+with a grab handle, follow a finger pulled down from their top, go once let go
+far enough down or flicked, and slide away however they close; buttons and
+posters press in under a finger; rows ease in as they come into view; views
+crossfade, and a new hero fades in over the old. Installed, with no browser back button, a swipe in from
+the left edge goes back. With reduced motion, nothing animates.
 
 A small service worker takes the network first for everything, so a deploy is
 never hidden behind an old copy, and serves a page asking for the connection
@@ -307,6 +315,7 @@ from whichever model it loaded.
 ```sh
 .venv/bin/python couchside/test_couchside.py
 node couchside/test_format.mjs
+node couchside/test_gestures.mjs
 ```
 
 The first runs everything over a temporary model laid out the way the refresher
@@ -336,7 +345,9 @@ pick and follow a browser's language; and the follower's decisions. It also fail
 module copied here ever differs from Next Watch's. The
 second covers the page's small helpers, where to watch and what search says among
 them, and what the home page keeps for a visit, asks for more with, merges after an
-action and shows as recently viewed.
+action and shows as recently viewed. The third holds the gestures to their numbers:
+how far down and how fast a sheet must go to close, how it gives when pulled the other
+way, a finger's speed, a long press, and a swipe back from the edge.
 
 `scripts/bench/home_bench.py` compares the home page with an earlier one over the
 71 bench personas: one of each persona's loves is held out, and it counts how
