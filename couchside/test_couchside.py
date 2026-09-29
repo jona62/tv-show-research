@@ -756,8 +756,8 @@ full_engine = Engine(ROOT / 'model')
 full = Library(full_engine, ROOT / 'couchside' / 'art.bin.gz')
 
 
-def more_of(show_id, profile=()):
-    return full.title({'profile': list(profile), 'settings': {}, 'id': show_id})['more']
+def more_of(show_id, profile=(), part='more'):
+    return full.title({'profile': list(profile), 'settings': {}, 'id': show_id})[part]
 
 
 def ids_of(cards):
@@ -775,13 +775,40 @@ check('Breaking Bad brings Better Call Saul first, as its own world and in the 9
       [(c['name'], c.get('similar')) for c in bad])
 check('a show that is only a little like the title reads well below its spin-offs',
       thrones[-1]['similar'] <= 85 and bad[-1]['similar'] <= 85, (thrones[-1], bad[-1]))
-check('a card says why when it can: the same creator',
-      any(c['id'] == 86175 and c['why'] == 'Same creator' for c in bad), [(c['name'], c.get('why')) for c in bad])
+check('a card says why when it can, the cast included', any(c.get('why') == 'With Jim Beaver' for c in bad),
+      [(c['name'], c.get('why')) for c in bad])
 office = more_of(526)
 check('a sitcom brings half-hour comedies', office and all(
     'Comedy' in c['genres'] and c['runtime'] and c['runtime'] <= 40 for c in office), [c['name'] for c in office])
-check('a story brings stories', all(c['type'] in ('Scripted', 'Animation') for c in thrones + bad + office))
+check('live action brings live action', all(c['type'] == 'Scripted' for c in thrones + bad + office),
+      [(c['name'], c['type']) for c in thrones + bad + office if c['type'] != 'Scripted'])
 check('a factual show brings factual shows', all(c['type'] not in ('Scripted', 'Animation') for c in more_of(2950)))
+check('a show\'s own world comes in any form: the animated Tales from \'85 for Stranger Things',
+      any(c['id'] == 85214 and c.get('why') == 'Same world' for c in more_of(2993)),
+      [(c['name'], c['type'], c.get('why')) for c in more_of(2993)])
+
+# Fans also like: what the title's readers also look up, which More like this no longer
+# ranks by. Game of Thrones' readers look up The Sopranos and Mad Men, which are not alike.
+thrones_fans, bad_fans = more_of(82, part='fans'), more_of(169, part='fans')
+sopranos, mad_men = 527, 385
+check('shows that are not alike leave More like this for Fans also like',
+      {sopranos, mad_men} <= set(ids_of(thrones_fans)) and not {sopranos, mad_men} & set(ids_of(thrones)),
+      ([c['name'] for c in thrones], [c['name'] for c in thrones_fans]))
+links = [full_engine.shows[j]['id'] for j, _s in sorted(full_engine.cointerest(full_engine.by_id[82]),
+                                                         key=lambda link: (-link[1], full_engine.shows[link[0]]['id']))]
+check('Fans also like runs strongest first, twelve at most, and repeats nothing from More like this',
+      0 < len(thrones_fans) <= MORE and ids_of(thrones_fans) == [x for x in links if x in ids_of(thrones_fans)]
+      and not set(ids_of(thrones_fans)) & set(ids_of(thrones)) and not set(ids_of(bad_fans)) & set(ids_of(bad)))
+check('Fans also like carries no percent and no match', all('similar' not in c and 'match' not in c
+                                                              for c in thrones_fans + bad_fans))
+check('its cards say why where they can, the same creator and the cast included',
+      any(c['id'] == 86175 and c.get('why') == 'Same creator' for c in bad_fans)
+      and any(c.get('why') == 'With Bryan Cranston' for c in bad_fans), [(c['name'], c.get('why')) for c in bad_fans])
+check('no card says its fans overlap, since Fans also like says so',
+      all(c.get('why') != 'Shared fans' for c in thrones + bad + office + thrones_fans + bad_fans))
+winning = full_engine.by_id[59390]
+check('Fans also like is left out with fewer than four shows',
+      1 <= len(full_engine.cointerest(winning)) <= 3 and more_of(59390, part='fans') == [])
 trek = more_of(491)
 worlds = [c for c in trek if c.get('why') == 'Same world']
 check('a show\'s own world leads, six at most', 1 <= len(worlds) <= 6 and trek[:len(worlds)] == worlds
@@ -795,17 +822,18 @@ check('whoever looks, the same shows at the same percents, the viewer\'s taste o
       all(set(ids_of(cards)) == set(percent_of) and falling(cards)
           and all(c['similar'] == percent_of[c['id']] for c in cards) for cards in viewers),
       [[(c['name'], c['similar']) for c in cards] for cards in viewers])
-wheel, rings, dragon_id = 35083, 33352, 44778
-disliked = ids_of(more_of(82, [{'id': rings, 'weight': -1}]))
+wire, deadwood, saul = 179, 565, 618
+disliked = ids_of(more_of(169, [{'id': wire, 'weight': -1}]))
 check('a show more like one marked Not for me than like the title is left out, and one more like the title stays',
-      rings not in disliked and wheel in ids_of(settled) and wheel not in disliked and dragon_id in disliked, disliked)
-close = full_engine.blend(full_engine.by_id[82], DEFAULT_SETTINGS)
+      wire not in disliked and deadwood in ids_of(bad) and deadwood not in disliked and saul in disliked, disliked)
+close = full.likeness(full_engine.by_id[82], DEFAULT_SETTINGS)
 check('every show there has something in common with the title',
       all(close[full_engine.by_id[c['id']]] >= UNRELATED for c in thrones))
+prom = 17035
 check('a title with few shows much like it gets a short list rather than a padded one',
-      0 < len(more_of(67633)) < MORE, len(more_of(67633)))
+      0 < len(more_of(prom)) < MORE, len(more_of(prom)))
 check('every list runs from the most similar down, never under 60%',
-      all(falling(cards) for cards in (bad, office, trek, more_of(67633), more_of(2950), more_of(56464))))
+      all(falling(cards) for cards in (bad, office, trek, more_of(prom), more_of(2950), more_of(56464))))
 del full, full_engine
 soon_id = cold['soon'][0]['id']
 check('an upcoming show opens too', lib.title({'profile': PROFILE, 'settings': {}, 'id': soon_id})['show']['id'] == soon_id)

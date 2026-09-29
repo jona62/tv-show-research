@@ -21,12 +21,12 @@ rebuilt every night. Nothing plays. It is for finding your next show.
   seasons, why it surfaced (the liked show it sits closest to and what they
   share), where to watch it, the summary, cast, genres, themes and network, every
   season's episodes with stills, its trailers, up to twelve more like it, each
-  saying how similar it is and why, and links to TVmaze, IMDb and the official
-  site. Long sections start short: where
-  to watch keeps to one line of services, each season to its first three
-  episodes and the trailers to the first two, and a button opens the rest and
-  closes it again. *Trailer* plays it right there. Rate it *Not for me*, *I like
-  this* or *Love this*, or add it to My List.
+  saying how similar it is and why, up to twelve its fans also like, and links to
+  TVmaze, IMDb and the official site. Long sections start short: where to watch
+  keeps to one line of services, each season to its first three episodes and the
+  trailers to the first two (a row of three on a wide screen), and a button opens
+  the rest and closes it again. *Trailer* plays it right there. Rate it *Not for
+  me*, *I like this* or *Love this*, or add it to My List.
 - **Posters** wear *Top 10* and *New* badges. On a mouse, hovering one lifts it
   and shows its match with quick buttons for My List, *I like this*, *Love this*
   and more info. On a touch screen, a long press lifts it into a larger preview
@@ -213,46 +213,62 @@ it fits your list's leanings, not that you will enjoy the show.
 ## More like this
 
 A title page's *More like this* is about the title, not about you
-(`Library.more_like`). It scores shows as the engine scores more like any one show
-outside a list: closeness to the title (plot words, themes, genres, a franchise or
-maker they share, and what the title's Wikipedia readers go on to read) times how
-well each fits the title's own leanings (its language, format, network, era and
-genres). The title's own world comes first, six shows at most: the spin-offs,
-prequels and remakes it shares a Wikidata franchise with that its readers look up
-too, or that share a maker or a cast member with it, since Wikidata also links a
-drama to the next one in its time slot and those share nothing else. Stories stay
-with stories and factual shows with factual ones. A show less than 30% as like the
+(`Library.more_like`), and about how alike the shows are. It scores shows as the
+engine scores more like any one show outside a list: likeness to the title (plot
+words, themes, genres, a franchise or maker they share) times how well each fits
+the title's own leanings (its language, format, network, era and genres). What the
+title's Wikipedia readers go on to read, which the engine's closeness counts in
+full, keeps a tenth of its weight here: enough to put *How I Met Your Mother* ahead
+of *This Is Us* for *Friends*, never enough to carry in a show that is not alike,
+however many of the same readers look it up. Those go under *Fans also like*. Taken
+out altogether, the lists lost that ordering and took in more near misses.
+
+The title's own world comes first, six shows at most and in any form: the
+spin-offs, prequels and remakes it shares a Wikidata franchise with that its
+readers look up too, or that share a maker or a cast member with it, since
+Wikidata also links a drama to the next one in its time slot and those share
+nothing else. Otherwise live action stays with live action, animation with
+animation and factual shows with factual ones, so *Game of Thrones* no longer
+brings *Avatar* or *Batman: The Animated Series*. A show less than 30% as like the
 title as its third closest, or with next to nothing in common with it (a closeness
-under 0.1), is left out, so a list may be short rather than padded. A bar on
-closeness alone would empty the lists of Korean dramas, documentaries and
-slice-of-life anime, whose short summaries keep even close neighbours near 0.2.
+under 0.1), is left out, so a list may be short rather than padded.
 
 Each card reads how similar it is, *97% similar* in the green a match wears, beside
-why it is there where it can say: *Same world*, *Same creator*, *Shared fans* (the
-title's readers look it up), *Vince Gilligan worked on it* or *With Bryan
-Cranston*. It is never a match, which measures a show against your list, not
-against one title. The percent places the card's score on one scale for the whole
-catalogue, set by the scores of every card More like this shows for 773 titles
-drawn as often as they are well known: 60% is the score only 1 card in 100 falls
-below (0.42), 99% the score only 1 in 100 reaches (30), and between them it goes by
-the score's logarithm, about six points each time the score doubles, since a score
-is closeness times fit and spreads by factors. Dividing by a list's best card would
-make the second card of a weak list read 99%; on one scale a spin-off reads in the
-90s (Better Call Saul 99% for Breaking Bad, House of the Dragon 97% for Game of
-Thrones), a good match in the 80s, and a weak list in the 60s and 70s. A show that
-would read under 60% is left out.
+why it is there where it can say: *Same world*, *Same creator*, *Vince Gilligan
+worked on it* or *With Bryan Cranston*. It is never a match, which measures a show
+against your list, not against one title. The percent places the card's score on
+one scale for the whole catalogue, set by the scores of every card More like this
+shows for 773 titles drawn as often as they are well known: 60% is the score only 1
+card in 100 falls below (0.41), 99% the score only 1 in 100 reaches (27.6), and
+between them it goes by the score's logarithm, about six points each time the score
+doubles, since a score is likeness times fit and spreads by factors. Dividing by a
+list's best card would make the second card of a weak list read 99%; on one scale a
+spin-off reads in the 90s (Better Call Saul 99% for Breaking Bad, House of the
+Dragon 97% for Game of Thrones), a close match in the 80s, and the rest of a list in
+the 70s. A show that would read under 60% is left out.
 
 The shows are the twelve best scores and run in the order of their percents, the
 same for everyone and every day: your match only orders shows that read the same
 percent. A show more like one you marked *Not for me* than like the title, and very
-like it (the home page's 0.5), is left out, so disliking *The Rings of Power* takes
-*The Wheel of Time* off *Game of Thrones*' list but not *House of the Dragon*.
+like it (the home page's 0.5), is left out, so disliking *The Wire* takes *Deadwood*
+and *The Sopranos* off *Breaking Bad*'s list but not *Better Call Saul*.
 
-Over the 215 loves of the bench personas, each opened with nothing rated, the
-lists hold 25.4% of each persona's other liked shows (25.0% when half of each list
-was the day's draw from the top 36) in 2,492 cards rather than 2,580, 29 of the
-214 shows get fewer than twelve, and the mean closeness to the title is 0.85
-(0.82).
+## Fans also like
+
+Under it, *Fans also like* (`Library.fans_like`) holds what the title's Wikipedia
+readers also look up, the engine's co-interest, which already leaves out the
+title's own franchise: strongest first, twelve at most, none that More like this
+already shows, no award ceremonies, and nothing very close to a show you marked
+*Not for me*, as on the home page's rows of what fans look up. With fewer than four
+the section is left out. Its cards carry no percent, since readers looking both up
+says nothing of how alike two shows are, and its subtitle says so: *Shows that Game
+of Thrones fans also look up*. This is where *The Sopranos* and *Mad Men* now show
+for *Game of Thrones*, and *Weeds* and *Pluribus* for *Breaking Bad*.
+
+Over the 215 loves of the bench personas, each opened with nothing rated, More like
+this holds 23.1% of each persona's other liked shows (25.0% when half of each list
+was the day's draw from the top 36 and readers' links counted in full), and with
+Fans also like beside it the page holds 28.8%.
 
 ## What changes between visits
 

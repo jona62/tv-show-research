@@ -99,7 +99,10 @@ check('only a search that found nothing anywhere suggests the spelling', searchN
   && !searchNote('qzx', 1, 0).includes('spelling') && !searchNote('qzx', 0, 2).includes('spelling'));
 
 // A title page's long parts start short.
-check('a season starts with three episodes and the trailers with two', SNIPPETS.episodes === 3 && SNIPPETS.clips === 2);
+check('a season starts with three episodes and the trailers with two, or a wide row of three',
+  SNIPPETS.episodes === 3 && SNIPPETS.clips === 2 && SNIPPETS.clipsWide === 3);
+check('a wide screen shows three trailers of six, and all of four', snippet(6, SNIPPETS.clipsWide) === 3
+  && snippet(4, SNIPPETS.clipsWide) === 4);
 check('a long part shows its snippet', snippet(10, 3) === 3 && snippet(5, 2) === 2);
 check('a part one longer than its snippet, or shorter, shows whole', snippet(4, 3) === 4 && snippet(3, 2) === 3
   && snippet(2, 2) === 2 && snippet(0, 3) === 0);

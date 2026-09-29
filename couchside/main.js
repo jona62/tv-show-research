@@ -1006,7 +1006,7 @@ function showTitle(id, play = false) {
   loaded.then(data => {
     if (token !== titleToken) return;
     remember(data.show);
-    data.more.forEach(remember);
+    [...data.more, ...(data.fans || [])].forEach(remember);
     T.data = data;
     paintTitle();
     paintBackdrop();
@@ -1100,13 +1100,25 @@ function buildTitle(c) {
     moreList.append(li);
   }
   more.append(moreH, moreList);
+  // Fans also like: what this title's readers also look up, which may be nothing like it.
+  const fans = el('section', '', 't-section');
+  fans.hidden = true;
+  const fansH = el('h3', 'Fans also like');
+  fansH.id = 't-fans-h';
+  fans.setAttribute('aria-labelledby', fansH.id);
+  const fansSub = el('p', '', 't-sub');
+  fansSub.id = 't-fans-sub';
+  fans.setAttribute('aria-describedby', fansSub.id);
+  const fansList = el('ul', '', 'more');
+  fans.append(fansH, fansSub, fansList);
   const about = el('section', '', 't-section about');
-  $('t-sheet').replaceChildren(close, hero, body, episodes, videos, more, about);
+  $('t-sheet').replaceChildren(close, hero, body, episodes, videos, more, fans, about);
   // Where to watch, the season's episodes and the trailers start short (unfold); each part
   // remembers whether it was opened, so a repaint or another season keeps it so.
   const t = { id: c.id, card: c, hero, backdrop, name, out, acts, listed, main, side, episodes, clips: videos, moreList,
-              about, close, data: null, live: null, age: null, videos: null, error: '', eps: null, epsMore: null,
-              clipList: null, clipsMore: null, open: { watch: false, episodes: false, clips: false } };
+              fans, fansSub, fansList, about, close, data: null, live: null, age: null, videos: null, error: '',
+              eps: null, epsMore: null, clipList: null, clipsMore: null,
+              open: { watch: false, episodes: false, clips: false } };
   paintOut(t, c);
   return t;
 }
@@ -1269,6 +1281,7 @@ function setWatch(box, open) {
 window.addEventListener('resize', () => requestAnimationFrame(() => {
   const box = T?.main.querySelector('.watch');
   if (box && !busy(box.querySelector('.watch-list'))) fitWatch(box);
+  if (T?.clipList && !busy(T.clipList)) setClips(T.open.clips);
 }));
 
 // A long part of a title page opens with a button that closes it again (aria-expanded,
@@ -1395,9 +1408,10 @@ function paintVideos() {
   setClips(T.open.clips);
   T.clips.hidden = false;
 }
+// Two trailers side by side on a phone, and a whole row of three on a wide screen.
 function setClips(open) {
   const items = [...T.clipList.children];
-  const shown = snippet(items.length, SNIPPETS.clips);
+  const shown = snippet(items.length, wide() ? SNIPPETS.clipsWide : SNIPPETS.clips);
   items.forEach((li, n) => { li.hidden = !open && n >= shown; });
   T.clipsMore.parentElement.hidden = shown === items.length;
   paintReveal(T.clipsMore, revealLabel('clips', items.length, open), open);
@@ -1474,6 +1488,12 @@ function paintMore() {
   const items = T.data.more;
   T.moreList.replaceChildren(...(items.length ? items.map(moreCard)
     : [el('li', 'Nothing in the catalogue sits close enough to this one.', 'muted')]));
+  // The server sends none when fewer than four qualify, and the section stays hidden.
+  const fans = T.data.fans || [];
+  const name = T.data.show?.name || T.card.name;
+  T.fansSub.textContent = name ? `Shows that ${name} fans also look up` : 'Shows its fans also look up';
+  T.fansList.replaceChildren(...fans.map(moreCard));
+  T.fans.hidden = !fans.length;
 }
 // A show like this one: how similar it is to this title, in the green a match wears, and
 // why it is here (the same world, the same creator). Never a match: how close a show sits
