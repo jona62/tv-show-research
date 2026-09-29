@@ -4,7 +4,7 @@ import { tieText, leaning, leaningHeading } from './format.js';
 import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere, longDate, airs,
   whereToWatch, trailerSearch, searchNote } from './format.js';
 import { pageKey, resumable, keptText, shownRows, withoutCard, viewedStore, noteViewed, recentlyViewed } from './format.js';
-import { genreChoices, nextByLetter } from './format.js';
+import { genreChoices, nextByLetter, searchText, recentStore, noteSearch, withoutSearch, recentMatches } from './format.js';
 import { freshStore, today, dayNumber, noteSeen, noteEngaged, noteRow, noteHero, prune, freshness, watcher }
   from './fresh.js';
 import { daySeed, startersQuery, mergeStarters, browserLanguage, MAX_ROUND, MAX_PICKED } from './starters.js';
@@ -35,6 +35,7 @@ const TITLES = {
 // Thumb, heart, search and navigation shapes follow Feather icons (MIT, Cole Bemis).
 const ICONS = {
   search: '<circle cx="11" cy="11" r="7"/><path d="M20.5 20.5l-4.3-4.3"/>',
+  clock: '<circle cx="12" cy="12" r="9.5"/><path d="M12 6.5V12l3.5 2"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   check: '<path d="M20 6L9 17l-5-5"/>',
   close: '<path d="M18 6L6 18M6 6l12 12"/>',
@@ -1536,9 +1537,12 @@ function renderList() {
 }
 
 /* --------------------------------------------------------------- search */
-let searchReq = 0, searchTimer = 0;
+// searchShown is the search on screen or on its way, and resultsFor the one whose
+// results are showing ('' for the suggestions).
+let searchReq = 0, searchTimer = 0, searchShown = null, resultsFor = '';
 
 function suggestions() {
+  resultsFor = '';
   $('search-note').textContent = 'Search by title. Until then, here is what people are watching.';
   const popular = home?.popular || [];
   fill($('results'), home ? [...home.top10, ...popular] : boot.starters);
@@ -1546,10 +1550,14 @@ function suggestions() {
 }
 
 // The server forgives typos, spacing and other titles, and asks TVmaze about shows
-// too new for the catalogue, so a search here rarely comes back empty.
+// too new for the catalogue, so a search here rarely comes back empty. Coming back to
+// the search on screen, such as by closing a title opened from it, keeps its results.
 function search(q, typed = true) {
   const query = q.trim();
   for (const input of [$('q'), $('q-page')]) if (document.activeElement !== input && input.value !== q) input.value = q;
+  paintRecent();
+  if (query === searchShown) return;
+  searchShown = query;
   clearTimeout(searchTimer);
   const id = ++searchReq;
   if (!query) { suggestions(); return; }
@@ -1563,12 +1571,15 @@ function search(q, typed = true) {
       const { shows, missing = [], missing_first: first = false } = await call(`/api/search?q=${encodeURIComponent(query)}`);
       if (id !== searchReq || (quiet && !shows.length)) return;
       shows.forEach(remember);
+      resultsFor = query;
       $('search-note').textContent = searchNote(query, shows.length, missing.length);
       fill($('results'), shows.map(s => ({ ...s, ...(known.get(s.id) || {}), aka: s.aka })),
         c => (c.aka ? { note: `also known as ${c.aka}`, caption: `Also known as ${c.aka}` } : {}));
       showMissing(missing, first);
     } catch (e) {
-      if (id === searchReq && !quiet) $('search-note').textContent = e.message;
+      if (id !== searchReq) return;
+      searchShown = null;
+      if (!quiet) $('search-note').textContent = e.message;
     }
   }, typed ? 200 : 0);
 }
@@ -1591,31 +1602,146 @@ function showMissing(missing, first) {
   $('search').insertBefore(box, first ? $('results') : null);
 }
 
-function typed(input) {
-  const q = input.value;
+// What is typed shows at /search?q= at once. Typing while already searching replaces the
+// address, so Back leaves the search rather than stepping back through it letter by letter.
+function toSearch(q, typed = true) {
   const url = q ? `/search?q=${encodeURIComponent(q)}` : '/search';
   if (view !== 'search') { history.pushState(null, '', url); showView('search'); }
   else history.replaceState(history.state, '', url);
-  search(q);
+  search(q, typed);
 }
-for (const input of [$('q'), $('q-page')]) {
-  input.addEventListener('input', () => typed(input));
+
+// Recent searches (format.js keeps the list): a search counts once it is committed, by
+// Enter, by opening one of its results or by choosing it here again.
+const SEARCHES_KEY = 'couchside-searches';
+const readRecents = text => { try { return recentStore(JSON.parse(text)); } catch { return []; } };
+let recents = [];
+try { recents = readRecents(localStorage.getItem(SEARCHES_KEY)); } catch { /* storage is off */ }
+function keepRecents(list) {
+  if (list === recents) return;
+  recents = list;
+  try { localStorage.setItem(SEARCHES_KEY, JSON.stringify(recents)); } catch { /* private mode */ }
+  paintRecent();
+}
+const commitSearch = q => keepRecents(noteSearch(recents, q));
+window.addEventListener('storage', e => {
+  if (e.key !== SEARCHES_KEY) return;
+  recents = readRecents(e.newValue);
+  paintRecent();
+});
+
+// They show under the search page's box on phones while it has the focus or is empty,
+// and drop from the nav's box on wide screens while it has the focus. Once something is
+// typed, only those it begins, or begins a word of, stay.
+const holdsFocus = (...nodes) => nodes.some(n => n.contains(document.activeElement));
+function paintRecent() {
+  const phone = !wide(), page = $('q-page');
+  fillRecent($('recent-page'), page,
+    phone && view === 'search' && (holdsFocus(page, $('recent-page')) || !searchText(page.value)));
+  fillRecent($('recent-drop'), $('q'), !phone && $('find').classList.contains('open') && holdsFocus($('find')));
+}
+function fillRecent(box, input, show) {
+  const items = show ? recentMatches(recents, input.value) : [];
+  box.hidden = !items.length;
+  const drawn = items.join('\n');
+  if (box.dataset.drawn === drawn) return;
+  box.dataset.drawn = drawn;
+  if (!items.length) { box.replaceChildren(); return; }
+  const h = el('h2', 'Recent searches', 'recent-h');
+  h.id = `${box.id}-h`;
+  const clear = button('recent-clear', 'Clear', () => {
+    const inside = box.contains(document.activeElement);
+    keepRecents([]);
+    if (inside) input.focus();
+  });
+  clear.setAttribute('aria-label', 'Clear recent searches');
+  const head = el('div', '', 'recent-head');
+  head.append(h, clear);
+  const list = el('ul', '', 'recent-list');
+  list.setAttribute('aria-labelledby', h.id);
+  list.append(...items.map(q => {
+    const li = el('li');
+    const again = button('recent-q', '', () => searchAgain(q), 'clock');
+    again.append(el('span', q, 'recent-text'));
+    const x = button('icon-btn recent-x', '', () => forget(box, input, q), 'close');
+    x.setAttribute('aria-label', `Remove “${q}” from recent searches`);
+    li.append(again, x);
+    return li;
+  }));
+  box.replaceChildren(head, list);
+}
+function searchAgain(q) {
+  for (const input of [$('q'), $('q-page')]) input.value = q;
+  toSearch(q, false);
+  commitSearch(q);
+  document.activeElement?.blur();
+}
+// Taking one out from the keyboard leaves the focus on the next one's x, or in the box.
+function forget(box, input, q) {
+  const at = [...box.querySelectorAll('.recent-x')].indexOf(document.activeElement);
+  keepRecents(withoutSearch(recents, q));
+  if (at < 0) return;
+  const left = box.querySelectorAll('.recent-x');
+  (left[Math.min(at, left.length - 1)] || input).focus();
+}
+for (const [box, input] of [[$('recent-page'), $('q-page')], [$('recent-drop'), $('q')]]) {
+  // Pressing one keeps the focus, and a phone's keyboard, in the box.
+  box.addEventListener('mousedown', e => { if (e.target.closest('button')) e.preventDefault(); });
+  box.addEventListener('keydown', e => {
+    const items = [...box.querySelectorAll('.recent-q')];
+    const at = items.indexOf(e.target);
+    if (e.key === 'Escape') { e.preventDefault(); input.focus(); }
+    else if (at >= 0 && e.key === 'ArrowDown') { e.preventDefault(); items[Math.min(at + 1, items.length - 1)].focus(); }
+    else if (at >= 0 && e.key === 'ArrowUp') { e.preventDefault(); (items[at - 1] || input).focus(); }
+  });
   input.addEventListener('keydown', e => {
-    if (e.key === 'Enter') input.blur();
+    const first = box.hidden ? null : box.querySelector('.recent-q');
+    if (e.key === 'ArrowDown' && first) { e.preventDefault(); first.focus(); }
+  });
+}
+// The nav's box folds away once it is empty and the focus has gone elsewhere.
+function settleFind() {
+  if (!$('q').value && !$('find').contains(document.activeElement)) $('find').classList.remove('open');
+  paintRecent();
+}
+for (const area of [$('find'), $('search')]) {
+  area.addEventListener('focusin', paintRecent);
+  area.addEventListener('focusout', () => requestAnimationFrame(settleFind));
+}
+window.addEventListener('resize', paintRecent);
+
+for (const input of [$('q'), $('q-page')]) {
+  input.addEventListener('input', () => toSearch(input.value));
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { commitSearch(input.value); input.blur(); }
     if (e.key === 'Escape' && input === $('q')) { input.value = ''; input.blur(); $('find').classList.remove('open'); }
   });
 }
+// Opening one of a search's results commits it too.
+$('results').addEventListener('click', e => { if (e.target.closest('.card-hit, .push')) commitSearch(resultsFor); });
+$('missing').addEventListener('click', e => { if (e.target.closest('a')) commitSearch(resultsFor); });
+
+// Search from the nav or the dock: coming from another page starts afresh with recent
+// searches showing, while on the search page it keeps what is there and takes the focus.
+function openSearch() {
+  if (view !== 'search') go('/search');
+  else window.scrollTo(0, 0);
+  $('q-page').focus();
+}
 $('find-open').append(icon('search'));
 $('find-open').addEventListener('click', () => {
-  if (wide()) {
-    $('find').classList.add('open');
-    $('q').focus();
-  } else {
-    go('/search');
-    $('q-page').focus();
-  }
+  if (!wide()) { openSearch(); return; }
+  if (view !== 'search') $('q').value = '';
+  $('find').classList.add('open');
+  $('q').focus();
 });
-$('q').addEventListener('blur', () => { if (!$('q').value) $('find').classList.remove('open'); });
+for (const a of document.querySelectorAll('a[data-page="search"]')) {
+  a.addEventListener('click', e => {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    openSearch();
+  });
+}
 document.addEventListener('keydown', e => {
   if (e.key !== '/' || e.target.closest('input, textarea, select') || document.querySelector('dialog[open]')) return;
   e.preventDefault();

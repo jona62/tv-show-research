@@ -242,6 +242,31 @@ main{min-height:70vh;padding-bottom:calc(var(--dock) + 24px + env(safe-area-inse
 .search-box input:focus{border-color:#fff;outline:none;background:#333}
 /* Wide screens search from the nav, so the page's own box is only for phones. */
 @media(min-width:760px){.search-box{display:none}}
+/* Recent searches: under the search page's box on phones, dropping from the nav's box on wide screens. */
+.find{position:relative}
+.recent{margin:0 var(--gutter) 14px}
+.recent-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.recent-h{margin:0;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.recent-clear{min-height:44px;padding:0 4px;border:0;background:none;color:var(--ink-2);font-size:14px;font-weight:700;cursor:pointer}
+.recent-clear:hover{color:#fff}
+.recent-list{list-style:none;margin:0;padding:0}
+.recent-list li{display:flex;align-items:center;border-bottom:1px solid var(--line)}
+.recent-list li:last-child{border-bottom:0}
+.recent-q{flex:1;min-width:0;display:flex;align-items:center;gap:12px;min-height:44px;padding:0 4px;border:0;background:none;
+  color:var(--ink-2);font-size:16px;text-align:left;cursor:pointer}
+.recent-q:hover{color:#fff}
+.recent-q .i{color:var(--dim)}
+.recent-q .i svg{width:18px;height:18px}
+.recent-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.icon-btn.recent-x{flex:none;width:44px;height:44px;color:var(--dim)}
+.icon-btn.recent-x:hover{color:#fff}
+.recent-x .i svg{width:18px;height:18px}
+.recent.drop{position:absolute;top:calc(100% + 8px);right:-1px;z-index:31;width:min(360px,calc(100vw - 2 * var(--gutter)));
+  margin:0;padding:2px 0 6px;border:1px solid #333;border-radius:8px;background:#141414f7;box-shadow:0 18px 44px #000c}
+.drop .recent-head{padding:0 8px 0 16px}
+.drop .recent-list li{border:0}
+.drop .recent-q{padding:0 8px 0 16px;font-size:15px}
+.drop .recent-q:hover{background:#ffffff12}
 /* shows TVmaze has that the catalogue does not yet */
 .missing{margin-bottom:18px}
 .note + .missing .page-h2{margin-top:8px}
