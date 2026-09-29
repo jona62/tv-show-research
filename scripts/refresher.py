@@ -15,9 +15,10 @@ MODEL_ROOT (/home/developer/tv-model) holds everything:
                                   art.bin.gz, the facets (facets.bin.gz,
                                   facets.json.gz, search.json.gz), the co-interest
                                   (cointerest.bin.gz, cointerest.json.gz) when there
-                                  are clickstream counts, tmdb.json.gz when there is
-                                  TMDB data, and build.json, written last to mark it
-                                  complete
+                                  are clickstream counts, neighbours.bin.gz, each
+                                  show's closest shows, which the apps rank long lists
+                                  from, tmdb.json.gz when there is TMDB data, and
+                                  build.json, written last to mark it complete
     raw/                          the latest TVmaze pages and manifest.json
     wikidata/                     cache.json.gz, the Wikidata facts the facets are
                                   built from (see wikidata.py), and meta.json
@@ -74,9 +75,11 @@ import time
 import traceback
 import zlib
 
-# The apps' own reader of the model's extras, app/facets.py, copied beside this file
-# because the refresher deploys scripts/ alone; test_refresher.py fails if the two drift.
+# The apps' own readers of the model's extras, app/facets.py and app/neighbours.py, copied
+# beside this file because the refresher deploys scripts/ alone; test_refresher.py fails
+# if either copy drifts.
 import facets
+import neighbours
 
 HERE = Path(__file__).resolve().parent
 STAMP = re.compile(r'\d{8}T\d{6}Z')
@@ -86,11 +89,14 @@ MODEL_FILES = ('catalog.json.gz', 'vectors.bin.gz', 'popularity.bin.gz', 'art.bi
 FACET_FILES = ('facets.bin.gz', 'facets.json.gz', 'search.json.gz')
 # Which shows the same readers look up, from Wikipedia's clickstream; both or neither.
 COINTEREST_FILES = ('cointerest.bin.gz', 'cointerest.json.gz')
+# Each show's closest shows, from everything above (build_neighbours.py). A seed may lack
+# it; the apps then rank a long list from its most recent ratings.
+NEIGHBOUR_FILES = ('neighbours.bin.gz',)
 # The sources whose change means the model must be built again. tmdb.py and this file
 # only shape display data and the service, so a change to them rebuilds nothing.
 PIPELINE = ('download.py', 'build_model.py', 'build_popularity.py', 'build_art.py', 'build_facets.py',
-            'wikidata.py', 'clickstream.py', 'build_cointerest.py', 'study/theme_rules.json', 'study/audit.json',
-            'requirements-refresher.txt')
+            'wikidata.py', 'clickstream.py', 'build_cointerest.py', 'build_neighbours.py', 'study/theme_rules.json',
+            'study/audit.json', 'requirements-refresher.txt')
 KEEP_VERSIONS = 3
 KEEP_LOGS = 14
 KEEP_RUNS = 60
@@ -110,9 +116,11 @@ SECRETS = ('TMDB_API_KEY',)
 # A first clickstream fetch streams three months, about 1.5 GB: some 5 to 15 minutes on
 # the workspace's one vCPU, bound by the download. It keeps each month as soon as it is
 # counted, so even a first fetch that runs out of time keeps the months it finished.
+# The neighbour index takes about two minutes on a laptop, so perhaps fifteen here.
 TIMEOUTS = {'download': 3 * 3600, 'build_model': 2 * 3600, 'build_popularity': 1800, 'build_art': 1800,
             'wikidata': 3600, 'build_facets': 1800, 'clickstream check': 300, 'clickstream': 2 * 3600,
-            'build_cointerest': 1800, 'tmdb': 3 * 3600, 'tmdb carry': 1800, 'validate': 1800}
+            'build_cointerest': 1800, 'build_neighbours': 2 * 3600, 'tmdb': 3 * 3600, 'tmdb carry': 1800,
+            'validate': 1800}
 AUTOMATIC = ('daily', 'catch-up', 'retry', 'tmdb')
 CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; "
        "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
@@ -390,6 +398,18 @@ def check_cointerest(folder, shows):
     return {'months': months, 'shows': meta.get('shows'), 'links': len(indices)}
 
 
+def check_neighbours(folder, shows):
+    """What a version's neighbour index holds, or None when it has none. Raises Invalid when
+    the apps could not read it for this catalog with their own neighbours.load."""
+    if not (folder / 'neighbours.bin.gz').exists():
+        return None
+    try:
+        found = neighbours.load(folder, shows)
+    except ValueError as exc:
+        raise Invalid(str(exc)) from None
+    return {'width': found.width}
+
+
 def validate_version(folder, previous_shows=None, manifest=None):
     """Everything a version must pass before `current` points at it. Returns a summary,
     or raises Invalid with the reason."""
@@ -447,7 +467,7 @@ def validate_version(folder, previous_shows=None, manifest=None):
         tmdb = {'fetched_at': data.get('fetched_at') if entries else None, 'shows': len(entries)}
     return {'shows': shows, 'snapshot_date': date, 'catalog_version': catalog.get('version'),
             'text_features': cols, 'nonzeros': nnz, 'tmdb': tmdb, 'facets': check_facets(folder, ids, date),
-            'cointerest': check_cointerest(folder, shows)}
+            'cointerest': check_cointerest(folder, shows), 'neighbours': check_neighbours(folder, shows)}
 
 
 # Running the steps --------------------------------------------------------------------
@@ -1257,12 +1277,14 @@ class Refresher:
         remove(audit)
         self.facets_step(ctx, env, self.wikidata_step(ctx))
         self.cointerest_step(ctx, env, self.clickstream_step(ctx))
+        # Each show's closest shows, from the text, facets and co-interest just built.
+        ctx.run_step('build_neighbours', self.script('build_neighbours.py'), env)
         self.tmdb_step(ctx, folder, previous, required=False)
         checked = ctx.validate(folder, previous and previous['build'].get('shows'), self.raw / 'manifest.json')
         self.finish(ctx, folder, {
             'version': ctx.stamp, 'built_at': iso(self.clock()), 'snapshot_date': checked['snapshot_date'],
             'shows': checked['shows'], 'pipeline': self.pipeline, 'seeded_from': None, 'tmdb': checked['tmdb'],
-            'facets': checked['facets'], 'cointerest': checked['cointerest']})
+            'facets': checked['facets'], 'cointerest': checked['cointerest'], 'neighbours': checked['neighbours']})
 
     def tmdb_run(self, ctx):
         """Only the TMDB step, on a copy of the live version."""
@@ -1275,7 +1297,7 @@ class Refresher:
             raise StepFailed('There are no TVmaze pages yet; run a full refresh first.')
         folder = ctx.new_version()
         with ctx.step('copy'):
-            for name in MODEL_FILES + FACET_FILES + COINTEREST_FILES:
+            for name in MODEL_FILES + FACET_FILES + COINTEREST_FILES + NEIGHBOUR_FILES:
                 if name in MODEL_FILES or (live['path'] / name).is_file():
                     link_or_copy(live['path'] / name, folder / name)
         self.tmdb_step(ctx, folder, live, required=True)
@@ -1284,19 +1306,20 @@ class Refresher:
         self.finish(ctx, folder, {
             'version': ctx.stamp, 'built_at': iso(self.clock()), 'snapshot_date': old.get('snapshot_date'),
             'shows': checked['shows'], 'pipeline': old.get('pipeline'), 'seeded_from': old.get('seeded_from'),
-            'tmdb': checked['tmdb'], 'facets': checked['facets'], 'cointerest': checked['cointerest']})
+            'tmdb': checked['tmdb'], 'facets': checked['facets'], 'cointerest': checked['cointerest'],
+            'neighbours': checked['neighbours']})
 
     def seed_run(self, ctx):
         """The first version, copied from the model the apps were deployed with. Art comes
         from the raw pages when the seed has none. The facets come along when the seed has
-        all three files, and the co-interest when it has both; the first full build makes
-        them otherwise."""
+        all three files, the co-interest when it has both and the neighbour index when it
+        has one; the first full build makes them otherwise."""
         seed = Path(self.config.seed)
         missing = [name for name in MODEL_FILES[:3] if not (seed / name).is_file()]
         if missing:
             raise StepFailed(f"Nothing to seed from: {seed} lacks {', '.join(missing)}.")
         folder = ctx.new_version()
-        extras = tuple(name for group in (FACET_FILES, COINTEREST_FILES)
+        extras = tuple(name for group in (FACET_FILES, COINTEREST_FILES, NEIGHBOUR_FILES)
                        if all((seed / name).is_file() for name in group) for name in group)
         with ctx.step('copy seed'):
             for name in MODEL_FILES + extras + ('tmdb.json.gz',):
@@ -1310,7 +1333,7 @@ class Refresher:
         self.finish(ctx, folder, {
             'version': ctx.stamp, 'built_at': iso(self.clock()), 'snapshot_date': checked['snapshot_date'],
             'shows': checked['shows'], 'pipeline': self.pipeline, 'seeded_from': str(seed), 'tmdb': checked['tmdb'],
-            'facets': checked['facets'], 'cointerest': checked['cointerest']})
+            'facets': checked['facets'], 'cointerest': checked['cointerest'], 'neighbours': checked['neighbours']})
 
     # Scheduling ----------------------------------------------------------------------
 
@@ -1501,7 +1524,9 @@ def render_page(status):
         ('pipeline', build.get('pipeline')), ('seeded from', build.get('seeded_from')),
         ('TMDB data', f"{build['tmdb']['shows']:,} shows, fetched {when(build['tmdb']['fetched_at'])}"
          if (build.get('tmdb') or {}).get('shows') else None),
-        ('facets', facts_line(build.get('facets'))), ('co-interest', cointerest_line(build.get('cointerest'))))
+        ('facets', facts_line(build.get('facets'))), ('co-interest', cointerest_line(build.get('cointerest'))),
+        ('neighbours', f"the {build['neighbours']['width']} closest shows to each show, for ranking long lists"
+         if build.get('neighbours') else None))
     ) if live else ''
     wikidata = status['wikidata']
     cache, tried = wikidata.get('cache') or {}, wikidata.get('last') or {}

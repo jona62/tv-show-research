@@ -53,7 +53,7 @@ NOW = datetime.now(timezone.utc).replace(microsecond=0)
 KEY_V3 = '0123456789abcdef0123456789abcdef'
 KEY_V4 = 'eyJhbGciOiJIUzI1NiJ9.a-read-access-token.signature'
 BUILD_KEYS = ['version', 'built_at', 'snapshot_date', 'shows', 'pipeline', 'seeded_from', 'tmdb', 'facets',
-              'cointerest']
+              'cointerest', 'neighbours']
 # The clickstream months the pretend listing names, and a month's counts between three shows.
 PUBLISHED = ['2026-06', '2026-07', '2026-08']
 COUNTS = {'1-2': 120, '1-3': 30, '2-3': 60}
@@ -116,6 +116,18 @@ def write_popularity(folder, rows):
 
 def write_art(path, rows):
     gz(path, b'ART1' + struct.pack('<I', rows) + bytes(6 * rows))
+
+
+def write_neighbours(folder, rows, width=4):
+    """A neighbour index as build_neighbours.py writes one: each show's next few shows."""
+    index = [(i + k) % rows for i in range(rows) for k in range(1, width + 1)]
+    degree = [0] * rows
+    for j in index:
+        degree[j] += 1
+    count = rows * width
+    gz(Path(folder) / 'neighbours.bin.gz', struct.pack('<4sII', b'NBR1', rows, width)
+       + struct.pack(f'<{count}I', *index) + bytes([60]) * count + bytes([40]) * count + bytes(count)
+       + struct.pack(f'<{rows}H', *degree))
 
 
 def write_model(folder, count, art=True):
@@ -216,6 +228,8 @@ class FakeRunner:
             write_popularity(env['TV_MODEL_OUT'], self.popularity_shows or catalog_count(env['TV_MODEL_OUT']))
         elif name == 'build_art':
             write_art(Path(env['TV_ART_OUT']), catalog_count(env['TV_MODEL_OUT']))
+        elif name == 'build_neighbours':
+            write_neighbours(env['TV_MODEL_OUT'], catalog_count(env['TV_MODEL_OUT']))
         elif name == 'wikidata':
             cache = small_cache(range(1, (self.cache_shows or self.shows) + 1))
             Path(argv[argv.index('--out') + 1]).write_bytes(wikidata.encode(cache))
@@ -298,6 +312,10 @@ for name in ('theme_rules.json', 'audit.json'):
         check(f'scripts/study/{name} is present', copy.exists())
 check('scripts/facets.py is app/facets.py, the reader the apps load the model with',
       (SCRIPTS / 'facets.py').read_bytes() == (ROOT / 'app' / 'facets.py').read_bytes())
+check('scripts/neighbours.py is app/neighbours.py, the reader the apps load the neighbour index with',
+      (SCRIPTS / 'neighbours.py').read_bytes() == (ROOT / 'app' / 'neighbours.py').read_bytes())
+check('the neighbour index is part of the pipeline', 'build_neighbours.py' in refresher.PIPELINE
+      and 'build_neighbours' in refresher.TIMEOUTS)
 check('the clickstream scripts are part of the pipeline, with time limits',
       {'clickstream.py', 'build_cointerest.py'} <= set(refresher.PIPELINE)
       and {'clickstream check', 'clickstream', 'build_cointerest'} <= set(refresher.TIMEOUTS))
@@ -433,7 +451,7 @@ check('current is a relative link to the new version', live(r) == f"versions/{do
 check('the swap leaves no temporary link behind', not os.path.lexists(r.root / 'current.tmp'))
 check('the steps run in order', runner.names() == ['validate', 'download', 'build_model', 'build_popularity',
                                                     'build_art', 'wikidata', 'build_facets', 'clickstream',
-                                                    'build_cointerest', 'validate'], runner.names())
+                                                    'build_cointerest', 'build_neighbours', 'validate'], runner.names())
 env = runner.env_for('build_model')
 check('build steps write into the temporary version', env['TV_MODEL_OUT'].endswith(f"versions/{done['version']}.tmp")
       and env['TV_ART_OUT'] == env['TV_MODEL_OUT'] + '/art.bin.gz')
@@ -447,16 +465,21 @@ check('build steps run single-threaded', all(call['env'].get(v) == '1' for call 
 check('the download goes to raw.new and is swapped into raw',
       runner.calls[1]['argv'][-2:] == ['--out', str(r.root / 'raw.new')] and (r.raw / 'manifest.json').exists()
       and not os.path.lexists(r.root / 'raw.new') and not os.path.lexists(r.root / 'raw.old'))
-check('a version holds the four model files, the three facet files, the two co-interest files and build.json',
+check('a version holds the four model files, the three facet files, the two co-interest files, '
+      'the neighbour index and build.json',
       sorted(p.name for p in (r.versions / done['version']).iterdir())
-      == sorted(['build.json', *refresher.MODEL_FILES, *refresher.FACET_FILES, *refresher.COINTEREST_FILES]))
+      == sorted(['build.json', *refresher.MODEL_FILES, *refresher.FACET_FILES, *refresher.COINTEREST_FILES,
+                 *refresher.NEIGHBOUR_FILES]))
 build = r.current()['build']
 check('build.json describes the build', list(build) == BUILD_KEYS and build['version'] == done['version']
       and build['shows'] == 100 and build['seeded_from'] is None and build['pipeline'] == r.pipeline
       and build['tmdb'] == {'fetched_at': None, 'shows': 0}
       and build['facets'] == {'tokens': 3, 'nonzeros': 100, 'linked': 100, 'aliases': 100,
                               'wikidata_fetched_at': refresher.iso(NOW)}
-      and build['cointerest'] == {'months': PUBLISHED, 'shows': 3, 'links': 6}, build)
+      and build['cointerest'] == {'months': PUBLISHED, 'shows': 3, 'links': 6}
+      and build['neighbours'] == {'width': 4}, build)
+check('the neighbour index is built into the temporary version, after the co-interest',
+      runner.env_for('build_neighbours')['TV_MODEL_OUT'] == env['TV_MODEL_OUT'])
 coi_env = runner.env_for('build_cointerest')
 check('the co-interest is built into the temporary version from the clickstream cache',
       coi_env['TV_MODEL_OUT'] == env['TV_MODEL_OUT']
@@ -630,6 +653,16 @@ rejects('TMDB data for shows outside the catalog is refused', lambda: refresher.
         refresher.Invalid, 'not in this catalog')
 write_tmdb(stray, {'1': tmdb_record(1)})
 check('TMDB data is counted', refresher.validate_version(stray)['tmdb'] == {'fetched_at': tmdb.iso(NOW), 'shows': 1})
+check('a version without a neighbour index passes, with none', refresher.validate_version(good)['neighbours'] is None)
+near = write_model(TMP / 'neighbours', 100)
+write_neighbours(near, 100, width=6)
+check('a neighbour index is read as the apps read it', refresher.validate_version(near)['neighbours'] == {'width': 6})
+write_neighbours(near, 90)
+rejects('a neighbour index for another catalog is refused', lambda: refresher.validate_version(near), refresher.Invalid,
+        '90 rows')
+gz(near / 'neighbours.bin.gz', struct.pack('<4sII', b'NBR1', 100, 4) + bytes(100))
+rejects('a truncated neighbour index is refused', lambda: refresher.validate_version(near), refresher.Invalid,
+        'rows x width')
 
 # 7. One run at a time, and the child processes ------------------------------------------------------------
 
@@ -760,11 +793,12 @@ after = r.current()
 check('the TMDB-only run makes a new live version', r.state['runs'][0]['kind'] == 'tmdb'
       and r.state['runs'][0]['outcome'] == 'success' and after['version'] != before['version'], r.state['runs'][0])
 check('it runs only the TMDB step and validation', runner.names()[-2:] == ['tmdb', 'validate'])
-check('the model, facet and co-interest files are the live version\'s, shared not rebuilt',
+check('the model, facet, co-interest and neighbour files are the live version\'s, shared not rebuilt',
       all((after['path'] / n).is_file() and os.stat(after['path'] / n).st_ino == os.stat(before['path'] / n).st_ino
-          for n in refresher.MODEL_FILES + refresher.FACET_FILES + refresher.COINTEREST_FILES))
+          for n in refresher.MODEL_FILES + refresher.FACET_FILES + refresher.COINTEREST_FILES
+          + refresher.NEIGHBOUR_FILES))
 check('build.json carries the model\'s facts forward', all(after['build'][k] == before['build'][k]
-      for k in ('snapshot_date', 'shows', 'pipeline', 'seeded_from', 'facets', 'cointerest'))
+      for k in ('snapshot_date', 'shows', 'pipeline', 'seeded_from', 'facets', 'cointerest', 'neighbours'))
       and list(after['build']) == BUILD_KEYS and after['build']['facets']['linked'] == 100
       and after['build']['cointerest']['links'] == 6)
 
@@ -1459,8 +1493,8 @@ check('eight days makes it due', r.wikidata_due() == 'the cache is 8 days old')
 fake.fail = True
 old_bytes = cache_file.read_bytes()
 done = run(r)
-check('a failed fetch never fails the run', done['outcome'] == 'success' and runner.names()[-4:] == [
-    'wikidata', 'build_facets', 'build_cointerest', 'validate'], done)
+check('a failed fetch never fails the run', done['outcome'] == 'success' and runner.names()[-5:] == [
+    'wikidata', 'build_facets', 'build_cointerest', 'build_neighbours', 'validate'], done)
 check('it leaves a warning naming the cache kept', any('Wikidata step failed, keeping the cache fetched' in w
                                                        for w in done['warnings']), done['warnings'])
 check('the old cache stays and the facets are built from it', cache_file.read_bytes() == old_bytes
@@ -1483,7 +1517,7 @@ meta_file.write_text(json.dumps({**saved, 'fetched_at': refresher.iso(NOW)}))
 done = run(r)
 check('a broken cache is set aside and the facets built from TVmaze alone', done['outcome'] == 'success'
       and any('would not build from the Wikidata cache' in w for w in done['warnings'])
-      and runner.names()[-4:] == ['build_facets', 'build_facets', 'build_cointerest', 'validate']
+      and runner.names()[-5:] == ['build_facets', 'build_facets', 'build_cointerest', 'build_neighbours', 'validate']
       and version_facets(r)['linked'] == 0, done['warnings'])
 
 # No cache and no Wikidata: TVmaze facets, and a warning.
@@ -1766,7 +1800,7 @@ calls = len(runner.calls)
 done = run(r)
 check('a cache that will not build is set aside, and the version has no co-interest', done['outcome'] == 'success'
       and any('would not build from the clickstream cache' in w for w in done['warnings'])
-      and runner.names()[calls:][-3:] == ['build_cointerest', 'build_cointerest', 'validate']
+      and runner.names()[calls:][-4:] == ['build_cointerest', 'build_cointerest', 'build_neighbours', 'validate']
       and r.current()['build']['cointerest'] is None and links(r) is None, done['warnings'])
 check('its meta.json goes, so the next run looks the cache over', not meta_file.exists())
 done = run(r)
