@@ -41,6 +41,8 @@ FAMILIES = {
 CATEGORICAL = ('language', 'format', 'country', 'network', 'decade', 'length', 'fame', 'acclaim')
 SETS = ('genre', 'theme', 'subgenre')
 COMMON = 0.3      # an attribute this share of shows carries is too common to explain a pick
+# A long list's leaning: this many liked shows, this share of the list and this lift at least.
+WIDE_LEAN = (20, 0.1, 2.0)
 # How well known and how well rated a list's shows are shape its picks, but they describe the
 # list more than the taste, so a summary leaves them out; nor is a length or a decade avoided.
 UNSAID = ('fame', 'acclaim')
@@ -318,7 +320,10 @@ class Taste:
             for v, support in shows.items():
                 share = mass[v] / total
                 lift = share / base[v]
-                if support >= 2 and share >= 0.25 and lift >= 1.5 and base[v] < COMMON:
+                # A list of thousands spreads over many kinds, so a leaning there may be a
+                # smaller share with more shows behind it (WIDE_LEAN).
+                wide = support >= WIDE_LEAN[0] and share >= WIDE_LEAN[1] and lift >= WIDE_LEAN[2]
+                if support >= 2 and (share >= 0.25 and lift >= 1.5 or wide) and base[v] < COMMON:
                     leans.append((share * math.log(lift), {
                         'family': family, 'label': name(v), 'share': round(share * 100),
                         'base': round(base[v] * 100, 1), 'shows': support},
