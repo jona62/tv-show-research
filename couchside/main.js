@@ -6,6 +6,7 @@ import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere
 import { pageKey, resumable, keptText, shownRows, withoutCard, viewedStore, noteViewed, recentlyViewed } from './format.js';
 import { genreChoices, nextByLetter, searchText, recentStore, noteSearch, withoutSearch, recentMatches } from './format.js';
 import { keeper, sessionAnswers } from './format.js';
+import { SNIPPETS, snippet, revealLabel, fitsOnLine } from './format.js';
 import { freshStore, today, dayNumber, noteSeen, noteEngaged, noteRow, noteHero, prune, freshness, watcher }
   from './fresh.js';
 import { daySeed, startersQuery, mergeStarters, browserLanguage, MAX_ROUND, MAX_PICKED } from './starters.js';
@@ -1101,8 +1102,11 @@ function buildTitle(c) {
   more.append(moreH, moreList);
   const about = el('section', '', 't-section about');
   $('t-sheet').replaceChildren(close, hero, body, episodes, videos, more, about);
+  // Where to watch, the season's episodes and the trailers start short (unfold); each part
+  // remembers whether it was opened, so a repaint or another season keeps it so.
   const t = { id: c.id, card: c, hero, backdrop, name, out, acts, listed, main, side, episodes, clips: videos, moreList,
-              about, close, data: null, live: null, age: null, videos: null, error: '', eps: null };
+              about, close, data: null, live: null, age: null, videos: null, error: '', eps: null, epsMore: null,
+              clipList: null, clipsMore: null, open: { watch: false, episodes: false, clips: false } };
   paintOut(t, c);
   return t;
 }
@@ -1149,6 +1153,7 @@ function paintTitle() {
   else if (T.error) main.push(el('p', T.error, 't-summary muted'));
   else main.push(skelLines(4));
   T.main.replaceChildren(...main);
+  if (watch) fitWatch(watch);
 
   const cast = live?.cast?.map(p => p.name) || [];
   T.side.replaceChildren(...[
@@ -1191,13 +1196,15 @@ function paintTitle() {
 
 // Where to watch: TMDB's services with their own logos, linking to TMDB's page for the
 // show and credited to JustWatch; without them, where TVmaze says it streams or airs and
-// Apple TV when iTunes sells it, each with the service's own small icon.
+// Apple TV when iTunes sells it, each with the service's own small icon. They keep to
+// one line that fades out where it runs over, and a caret at its end opens the rest.
 function watchEl(s, live, age, tm) {
   const { links, credit } = whereToWatch(s.name, tm, live?.site, live?.channels, age?.apple);
   if (!links.length) return null;
   const box = el('div', '', 'watch');
   box.append(el('span', 'Where to watch', 'k'));
   const list = el('div', '', 'watch-list');
+  list.id = 't-watch';
   for (const w of links) {
     const a = el('a', '', 'watch-link');
     a.href = w.href;
@@ -1216,9 +1223,126 @@ function watchEl(s, live, age, tm) {
     if (w.note) a.append(el('small', w.note));
     list.append(a);
   }
-  box.append(list);
+  const more = el('button', '', 'round watch-more');
+  more.type = 'button';
+  more.setAttribute('aria-controls', list.id);
+  more.setAttribute('aria-label', `All ${links.length} places to watch ${s.name}`);
+  more.append(icon('more'));
+  more.addEventListener('click', () => {
+    if (busy(list)) return;
+    T.open.watch = !T.open.watch;
+    unfold(list, open => setWatch(box, open), T.open.watch);
+  });
+  const line = el('div', '', 'watch-line');
+  line.append(list, more);
+  box.append(line);
   if (credit) box.append(el('span', 'Streaming data from JustWatch', 'watch-credit'));
   return box;
+}
+
+// Which services one line shows whole, measured on the page: when they run over, the caret
+// shows and the line fades out at its end, and the pills past the fade leave the tab order
+// until the line is opened.
+const FADE = 40;
+function fitWatch(box) {
+  const list = box.querySelector('.watch-list'), more = box.querySelector('.watch-more');
+  box.classList.remove('open', 'clipped');
+  more.hidden = true;
+  let shown = list.children.length;
+  if (list.scrollWidth > list.clientWidth + 1) {
+    box.classList.add('clipped');
+    more.hidden = false;
+    shown = fitsOnLine([...list.children].map(a => a.offsetLeft + a.offsetWidth), list.clientWidth, FADE);
+  }
+  box.dataset.shown = String(shown);
+  setWatch(box, T.open.watch);
+}
+function setWatch(box, open) {
+  const clipped = box.classList.contains('clipped');
+  const shown = Number(box.dataset.shown);
+  box.classList.toggle('open', clipped && open);
+  const more = box.querySelector('.watch-more');
+  more.setAttribute('aria-expanded', String(clipped && open));
+  more.title = open ? 'Show fewer' : 'Show all';
+  [...box.querySelector('.watch-list').children].forEach((a, n) => { a.inert = clipped && !open && n >= shown; });
+}
+window.addEventListener('resize', () => requestAnimationFrame(() => {
+  const box = T?.main.querySelector('.watch');
+  if (box && !busy(box.querySelector('.watch-list'))) fitWatch(box);
+}));
+
+// A long part of a title page opens with a button that closes it again (aria-expanded,
+// with a caret that turns). Opening runs the part's height up from what it was, so what
+// is below slides down; closing runs it back, and when the button sits below the part
+// the page moves with it, so the button stays under the finger. Quick, and at once under
+// reduced motion.
+const REVEAL = 220;
+const easeOut = k => 1 - (1 - k) ** 3;
+const busy = box => box.classList.contains('sizing');
+function unfold(box, set, open, anchor = null) {
+  // A hidden page runs no animations, so one begun there would hold the part half open.
+  const still = !motion() || document.hidden;
+  const page = $('title');
+  const from = box.offsetHeight;
+  // While a part runs, the page is not moved to keep what is below it in place.
+  const done = () => {
+    box.classList.remove('sizing');
+    page.classList.remove('unfolding');
+  };
+  if (open) {
+    set(true);
+    const to = box.offsetHeight;
+    if (still || to <= from || !box.animate) return;
+    box.classList.add('sizing');
+    page.classList.add('unfolding');
+    const run = box.animate({ height: [`${from}px`, `${to}px`] }, { duration: REVEAL, easing: 'cubic-bezier(.22,1,.36,1)' });
+    run.onfinish = run.oncancel = done;
+    return;
+  }
+  const y = anchor ? anchor.getBoundingClientRect().top : 0;
+  set(false);
+  const to = box.offsetHeight;
+  if (still || to >= from) {
+    if (anchor) page.scrollTop += anchor.getBoundingClientRect().top - y;
+    return;
+  }
+  // Closed for a moment to measure, then open again while it runs back down.
+  set(true);
+  const top = page.scrollTop, began = performance.now();
+  box.classList.add('sizing');
+  page.classList.add('unfolding');
+  const step = now => {
+    // A title page closed meanwhile has nothing left to close.
+    if (!T || !box.isConnected) {
+      done();
+      return;
+    }
+    const k = Math.min(1, (now - began) / REVEAL);
+    const height = from - (from - to) * easeOut(k);
+    box.style.height = `${height}px`;
+    if (anchor) page.scrollTop = top - (from - height);
+    if (k < 1) {
+      requestAnimationFrame(step);
+      return;
+    }
+    set(false);
+    box.style.height = '';
+    done();
+  };
+  requestAnimationFrame(step);
+}
+function revealButton(part, onClick) {
+  const b = el('button', '', 'reveal');
+  b.type = 'button';
+  b.setAttribute('aria-controls', part.id);
+  b.addEventListener('click', onClick);
+  const bar = el('div', '', 'reveal-bar');
+  bar.append(b);
+  return b;
+}
+function paintReveal(b, text, open) {
+  b.setAttribute('aria-expanded', String(open));
+  b.replaceChildren(document.createTextNode(text), icon('more'));
 }
 
 // With a trailer, Trailer leads and My List steps back; without one, a search on YouTube.
@@ -1241,9 +1365,11 @@ function paintTrailerButton() {
   }
 }
 
+// The first two trailers, and a button for the rest, so More like this is not far below.
 function paintVideos() {
   if (!T.videos.length) return;
   const list = el('ul', '', 'clips');
+  list.id = 't-clips';
   for (const v of T.videos) {
     const li = el('li');
     const b = button('clip', '', () => playVideo(v));
@@ -1259,8 +1385,22 @@ function paintVideos() {
     li.append(b);
     list.append(li);
   }
-  T.clips.replaceChildren(el('h3', 'Trailers & more'), list);
+  T.clipList = list;
+  T.clipsMore = revealButton(list, () => {
+    if (busy(list)) return;
+    T.open.clips = !T.open.clips;
+    unfold(list, setClips, T.open.clips, T.clipsMore);
+  });
+  T.clips.replaceChildren(el('h3', 'Trailers & more'), list, T.clipsMore.parentElement);
+  setClips(T.open.clips);
   T.clips.hidden = false;
+}
+function setClips(open) {
+  const items = [...T.clipList.children];
+  const shown = snippet(items.length, SNIPPETS.clips);
+  items.forEach((li, n) => { li.hidden = !open && n >= shown; });
+  T.clipsMore.parentElement.hidden = shown === items.length;
+  paintReveal(T.clipsMore, revealLabel('clips', items.length, open), open);
 }
 
 // YouTube's no-cookie player, loaded only now. It takes the top of the title page, and
@@ -1373,9 +1513,25 @@ function paintEpisodes() {
     head.append(pick);
   } else head.append(el('span', `Season ${list[0].number}`, 'muted'));
   T.eps = el('ol', '', 'eps');
-  T.episodes.replaceChildren(head, T.eps);
+  T.eps.id = 't-eps';
+  T.epsMore = revealButton(T.eps, () => {
+    if (busy(T.eps)) return;
+    T.open.episodes = !T.open.episodes;
+    unfold(T.eps, setEpisodes, T.open.episodes, T.epsMore);
+  });
+  T.episodes.replaceChildren(head, T.eps, T.epsMore.parentElement);
   T.episodes.hidden = false;
   loadSeason(list[0].number);
+}
+
+// A season shows its first few episodes until they are all asked for, and every season
+// after that shows whole until they are closed again.
+function setEpisodes(open) {
+  const items = [...T.eps.children];
+  const shown = snippet(items.length, SNIPPETS.episodes);
+  items.forEach((li, n) => { li.hidden = !open && n >= shown; });
+  T.epsMore.parentElement.hidden = shown === items.length;
+  paintReveal(T.epsMore, revealLabel('episodes', items.length, open), open);
 }
 
 async function loadSeason(number) {
@@ -1386,14 +1542,17 @@ async function loadSeason(number) {
     return li;
   };
   t.eps.replaceChildren(skeleton(), skeleton(), skeleton());
+  setEpisodes(t.open.episodes);
   try {
     const { episodes } = await patient(`/api/episodes?id=${t.id}&season=${number}`);
     if (token !== seasonToken || T !== t) return;
     t.eps.replaceChildren(...(episodes.length ? episodes.map(episodeEl)
       : [el('li', 'No episodes are listed for this season yet.', 'muted')]));
   } catch (e) {
-    if (token === seasonToken && T === t) t.eps.replaceChildren(el('li', e.message, 'muted'));
+    if (token !== seasonToken || T !== t) return;
+    t.eps.replaceChildren(el('li', e.message, 'muted'));
   }
+  setEpisodes(t.open.episodes);
 }
 
 function episodeEl(ep) {

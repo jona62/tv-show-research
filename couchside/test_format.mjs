@@ -1,6 +1,7 @@
 import { tieText, leaning, leaningHeading } from './format.js';
 import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere, longDate, airs,
   hostOf, sameService, watchLinks, whereToWatch, trailerSearch, searchNote } from './format.js';
+import { SNIPPETS, snippet, revealLabel, fitsOnLine } from './format.js';
 let fails = 0;
 const check = (name, ok, extra = '') => { console.log(`${ok ? 'pass' : 'FAIL'}  ${name}${ok ? '' : '  ' + extra}`); if (!ok) fails++; };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -96,6 +97,22 @@ check('search says what it found', searchNote('lost', 3, 0) === 'Shows matching 
 check('shows only TVmaze has are not in the catalogue yet', searchNote('new show', 0, 1) === 'Nothing in the catalogue matches “new show” yet.');
 check('only a search that found nothing anywhere suggests the spelling', searchNote('qzx', 0, 0) === 'Nothing matches “qzx”. Check the spelling.'
   && !searchNote('qzx', 1, 0).includes('spelling') && !searchNote('qzx', 0, 2).includes('spelling'));
+
+// A title page's long parts start short.
+check('a season starts with three episodes and the trailers with two', SNIPPETS.episodes === 3 && SNIPPETS.clips === 2);
+check('a long part shows its snippet', snippet(10, 3) === 3 && snippet(5, 2) === 2);
+check('a part one longer than its snippet, or shorter, shows whole', snippet(4, 3) === 4 && snippet(3, 2) === 3
+  && snippet(2, 2) === 2 && snippet(0, 3) === 0);
+check('the episodes button says how many it opens, and closes them again',
+  revealLabel('episodes', 10, false) === 'Show all 10 episodes' && revealLabel('episodes', 10, true) === 'Show fewer episodes');
+check('the trailers button says how many there are', revealLabel('clips', 6, false) === 'Show all (6)'
+  && revealLabel('clips', 6, true) === 'Show fewer');
+check('no button text carries a dash', ['episodes', 'clips'].every(part => [true, false].every(open =>
+  !/[\u2013\u2014]/.test(revealLabel(part, 7, open)))));
+check('services that fit the line all show', fitsOnLine([90, 200, 300], 300, 40) === 3 && fitsOnLine([], 300, 40) === 0);
+check('past the line, those ending before its fade show', fitsOnLine([90, 200, 280, 400], 300, 40) === 2
+  && fitsOnLine([90, 200, 260, 400], 300, 40) === 3);
+check('a first pill wider than the line still shows', fitsOnLine([420, 500], 300, 40) === 1);
 
 // Recent searches: the last ten committed, newest first, once whatever the case, never one letter.
 const { RECENT_SEARCHES, searchText, recentStore, noteSearch, withoutSearch, recentMatches } = await import('./format.js');

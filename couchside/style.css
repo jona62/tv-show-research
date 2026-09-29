@@ -441,6 +441,7 @@ dialog.modal::backdrop{background:#000000b8}
 }
 .rates{display:flex;gap:8px}
 .t-body{display:grid;grid-template-columns:minmax(0,1.9fr) minmax(0,1fr);gap:10px 28px;padding:6px 5% 26px}
+.t-main{min-width:0}
 .t-main>*+*{margin-top:12px}
 .t-why{margin:0;font-weight:700;color:var(--brand)}
 .t-why span{font-weight:400;color:var(--ink-2)}
@@ -453,12 +454,33 @@ dialog.modal::backdrop{background:#000000b8}
 .leanings-note{margin:14px 0 0;font-size:13px;color:var(--muted)}
 .t-airs{margin:0;font-weight:700;color:var(--ink)}
 .t-summary{margin:0;font-size:15.5px;line-height:1.55;color:var(--ink-2)}
-/* Where to watch: one pill per service, with the service's own small icon. */
-.watch{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+/* Where to watch: one pill per service, with the service's own small icon, on one line
+   that fades out where it runs over; the caret at its end opens every line (main.js). */
+.watch{display:flex;flex-direction:column;align-items:stretch;gap:8px}
 .watch>.k{font-size:14px;color:var(--dim)}
-.watch-list{display:flex;flex-wrap:wrap;gap:8px}
-.watch-link{display:inline-flex;align-items:center;gap:7px;padding:5px 12px 5px 8px;border:1px solid #3d3d3d;border-radius:16px;
+.watch-line{display:flex;align-items:flex-start;gap:8px}
+.watch-list{position:relative;flex:1 1 auto;min-width:0;display:flex;flex-wrap:nowrap;gap:8px;overflow:hidden}
+.watch.open .watch-list{flex-wrap:wrap}
+.watch.clipped:not(.open) .watch-list{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 40px),#0000);
+  mask-image:linear-gradient(90deg,#000 calc(100% - 40px),#0000)}
+.watch-link{flex:none;display:inline-flex;align-items:center;gap:7px;padding:5px 12px 5px 8px;border:1px solid #3d3d3d;border-radius:16px;
   background:#262626;color:var(--ink);font-size:13.5px;font-weight:700;text-decoration:none;transition:border-color .15s}
+/* The caret is the height of a pill, and takes a finger 44px across. */
+.watch-more{position:relative;width:32px;height:32px;border-width:1px;border-color:#ffffff59}
+.watch-more::before{content:'';position:absolute;inset:-6px}
+.watch-more .i svg{width:18px;height:18px}
+.watch-more .i,.reveal .i{transition:transform .2s ease}
+.watch.open .watch-more .i,.reveal[aria-expanded=true] .i{transform:rotate(180deg)}
+/* The button under a part that starts short: a pill across a hairline. */
+.reveal-bar{position:relative;display:flex;justify-content:center;margin-top:14px}
+.reveal-bar::before{content:'';position:absolute;left:0;right:0;top:50%;border-top:1px solid #ffffff21}
+.reveal{position:relative;display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 16px 0 20px;
+  border:1px solid #ffffff4d;border-radius:22px;background:var(--bg-2);color:var(--ink);font-size:14.5px;font-weight:700;
+  cursor:pointer;transition:border-color .15s,background .15s}
+.reveal:hover{border-color:#fff;background:#232323}
+.reveal .i svg{width:18px;height:18px}
+.sizing{overflow:hidden}
+dialog.unfolding{overflow-anchor:none}
 .watch-link:hover{border-color:#fff}
 .watch-link small{font-size:12px;font-weight:400;color:var(--muted)}
 .watch-icon{flex:none;width:16px;height:16px;border-radius:3px;object-fit:contain}
@@ -502,6 +524,8 @@ dialog.modal::backdrop{background:#000000b8}
   .ep{grid-template-columns:118px minmax(0,1fr);gap:12px;padding:14px 4px}
   .ep-num{display:none}
   .ep:first-child{background:none}
+  /* Beside a still in a narrow column a summary runs long, so a phone keeps it to four lines. */
+  .ep p{display:-webkit-box;-webkit-line-clamp:4;line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
 }
 .more{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:14px;margin:0;padding:0;list-style:none}
 .more-card{display:flex;flex-direction:column;border-radius:var(--r);background:var(--bg-4);overflow:hidden}
@@ -531,6 +555,10 @@ dialog.modal::backdrop{background:#000000b8}
   .t-backdrop{display:none}
   .t-hero.has-backdrop .t-poster{display:block}
   .more{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  /* Two trailers side by side, so the first two take one short row. */
+  .clips{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 10px}
+  .clip-thumb .i svg{width:32px;height:32px}
+  .clip b{font-size:13px}
   /* The close button stays put while the page scrolls, one tap away wherever the thumb has got
      to, on a chip of glass that stands out from whatever passes under it. */
   .t-close{position:fixed;background:#2e2e2ebf;-webkit-backdrop-filter:blur(14px) saturate(1.6);backdrop-filter:blur(14px) saturate(1.6);
@@ -637,6 +665,7 @@ body.loose{display:grid;place-items:center;min-height:100vh;min-height:100dvh;
   select,input:not([type=checkbox],[type=radio]){min-height:44px}
   .btn,.page-end .btn,.invite .btn,.move-acts .btn,.chip,.link,.watch-link{min-height:44px}
   .round,.round.small{width:44px;height:44px}
+  .watch-more::before{inset:0}
   .links-row a{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px}
   .links a{display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px}
 }
@@ -673,9 +702,9 @@ body.loose{display:grid;place-items:center;min-height:100vh;min-height:100dvh;
   .card-hit,.tile,.more-open,.clip,.pick,.btn,.icon-btn,.chip,.menu-item,.peek-art{-webkit-tap-highlight-color:transparent}
   .card-hit,.tile,.more-open,.clip,.pick,.btn,.icon-btn,.chip{transition:transform .2s ease}
   .round{-webkit-tap-highlight-color:transparent;transition:border-color .15s,background .15s,transform .2s ease}
-  .watch-link{-webkit-tap-highlight-color:transparent;transition:border-color .15s,transform .2s ease}
+  .watch-link,.reveal{-webkit-tap-highlight-color:transparent;transition:border-color .15s,transform .2s ease}
   .card-hit:active,.tile:active,.more-open:active,.clip:active,.pick:active{transform:scale(.96);transition:transform .12s ease .05s}
-  .btn:active,.icon-btn:active,.chip:active,.watch-link:active{transform:scale(.95);transition:transform .1s ease .04s}
+  .btn:active,.icon-btn:active,.chip:active,.watch-link:active,.reveal:active{transform:scale(.95);transition:transform .1s ease .04s}
   .round:active{transform:scale(.9);transition:border-color .15s,background .15s,transform .1s ease .04s}
   .menu-item:active{background:#ffffff14}
 }

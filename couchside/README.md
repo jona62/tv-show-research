@@ -397,10 +397,10 @@ every file the service worker keeps; first-visit starters over HTTP, as posters 
 pick and follow a browser's language; and the follower's decisions. It also fails if
 `engine.py`, `titles.py`, `fallback.py`, `follow.py`, `starters.py` or any other
 module copied here ever differs from Next Watch's. The
-second covers the page's small helpers, where to watch and what search says among
-them, what the home page keeps for a visit, asks for more with, merges after an
-action and shows as recently viewed, and what the page keeps of the server's
-answers; and it runs the service worker against a stand-in for the browser's
+second covers the page's small helpers, where to watch, how much of a title page's
+long parts shows before its button and what search says among them, what the home
+page keeps for a visit, asks for more with, merges after an action and shows as
+recently viewed, and what the page keeps of the server's answers; and it runs the service worker against a stand-in for the browser's
 caches and network: a build kept whole or not at all, pages, files, the offline
 page, images and which of them go first. The third holds the gestures to their numbers:
 how far down and how fast a sheet must go to close, how it gives when pulled the other
