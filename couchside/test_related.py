@@ -190,6 +190,11 @@ check('千と千尋の神隠し, Spirited Away, an anime film, brings anime', ro
       and sum(1 for j in row['shows'][:8] if engine.shows[j]['type'] == 'Animation') >= 6, row and named(row['shows']))
 _cards, row = search('train to busan')
 check('train to busan brings zombies', row['kind'] == 'film' and {'Z Nation', 'All of Us Are Dead'} <= set(named(row['shows'])))
+_cards, row = search('inception')
+check('a film\'s name in a show\'s words counts for a show like the film or of its form: no talk show on the air '
+      '"since its inception" for Inception, and The Offer, about making The Godfather, for The Godfather',
+      row['kind'] == 'film' and not any(engine.shows[j]['type'] == 'Talk Show' for j in row['shows'])
+      and 'The Offer' in named(search('the godfather')[1]['shows'][:8]), named(row['shows']))
 check('a film typed in full goes before a show only begun or outgrown: alien is not Alien: Earth, spirited away is not Spirited',
       search('alien')[1]['title'] == 'Shows like Alien' and search('spirited away')[1]['title'] == 'Shows like Spirited Away')
 check('but a show typed in full goes before a film of its name, and a topic before either',

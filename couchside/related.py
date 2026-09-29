@@ -701,8 +701,13 @@ class Related:
         # What a film is about, found in a show's own words, counts only for a show already
         # like the film in some way: sharing a genre or subject with the row's profile, or
         # one of TVmaze's genres with the film. Primal speaks of dinosaurs and is action;
-        # Jessie has a pet one and is a family comedy.
-        said = {j: v for j, v in said.items() if offered[j] and (j in near or e.shows[j]['genre_bits'] & shared)}
+        # Jessie has a pet one and is a family comedy. The film's name there counts for
+        # those and for a show of the film's own form: The Offer, a drama about making The
+        # Godfather, but not a talk show on the air "since its inception".
+        alike = lambda j: offered[j] and (j in near or e.shows[j]['genre_bits'] & shared)
+        said = {j: v for j, v in said.items() if alike(j)}
+        if named:
+            found = {j: v for j, v in found.items() if alike(j) or offered[j] and e.shows[j]['type'] == named[1]}
         # A film's format is a looser guide than a show's: Jurassic Park's dinosaurs are
         # as much in Camp Cretaceous, a cartoon, as in any live-action show.
         floor = FILM_FIT if named else FIT
