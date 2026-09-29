@@ -3115,12 +3115,16 @@ class Library:
         leaves out its own franchise), strongest first and MORE at most, as indices. Shows
         More like this already holds (shown), award ceremonies, and anything very close to
         a show the viewer marked Not for me stay out, as they stay off the home page's rows
-        of what fans look up. Fewer than FANS_SHORTEST and there are none."""
+        of what fans look up. A story keeps to stories, so a drama's fans row doesn't lead
+        with its aftershow or a reality show with a similar name, and a factual show keeps
+        to factual ones. Fewer than FANS_SHORTEST and there are none."""
         e = self.e
+        story = e.shows[i]['type'] in SCREEN_FORMS
         allowed = set(candidates)
         disliked = [taste.affinities[p['id']] if taste else e.blend(e.by_id[p['id']], settings) for p in negatives]
         links = sorted(((j, strength) for j, strength in e.cointerest(i)
                         if j in allowed and j != i and j not in shown and e.shows[j]['type'] != 'Award Show'
+                        and (e.shows[j]['type'] in SCREEN_FORMS) == story
                         and not any(close[j] >= NOT_FOR_ME for close in disliked)),
                        key=lambda link: (-link[1], e.shows[link[0]]['id']))
         return [j for j, _strength in links[:MORE]] if len(links) >= FANS_SHORTEST else []
