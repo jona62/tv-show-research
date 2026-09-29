@@ -72,6 +72,12 @@ TVmaze or IMDb id, beside TVmaze's networks for every show, plus each show's nam
 in other languages for search. The Wikidata cache is fetched again once it is a
 week old; when Wikidata is down, the last cache serves, so it never fails a build.
 
+Wikidata's best-known films and film series, some 9,700, are mapped to the same
+genres and subjects (`scripts/films.py`, `scripts/build_films.py`), so a Couchside
+search for *Mad Max* or *The Godfather* finds shows like it. The film cache is
+fetched with the Wikidata one and the film index built with each model; when either
+fails, the last good index serves, and `model/films.json.gz` is a built copy.
+
 Which shows the same readers look up comes from Wikipedia's monthly clickstream,
 also CC0: once a day the refresher checks for a newly published month and streams
 it without storing it (about 500 MB, three months on the first build), keeping
@@ -94,6 +100,7 @@ MODEL_ROOT=/tmp/tv-model SEED_MODEL_DIR=model RAW_SOURCE_DIR=data/raw \
 .venv/bin/python scripts/test_refresher.py
 .venv/bin/python scripts/test_facets.py
 .venv/bin/python scripts/test_neighbours.py
+.venv/bin/python scripts/test_films.py
 ```
 
 ## Deploy

@@ -25,6 +25,7 @@
 <meta property="og:image" content="/og.jpg">
 <meta name="twitter:card" content="summary_large_image">
 <!--/share-->
+<link rel="preconnect" href="https://static.tvmaze.com" crossorigin>
 <link rel="stylesheet" href="/style.css">
 <script type="module" src="/main.js"></script>
 </head>
@@ -127,6 +128,10 @@
       <ul class="missing-list" id="missing-list"></ul>
       <p class="note">New shows arrive with the nightly refresh.</p>
     </div>
+    <section class="related" id="related" aria-labelledby="related-h" hidden>
+      <h2 class="page-h2" id="related-h"></h2>
+      <ul class="grid" id="related-grid"></ul>
+    </section>
   </section>
 </main>
 
