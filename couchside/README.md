@@ -38,7 +38,10 @@ rebuilt every night. Nothing plays. It is for finding your next show.
   *Also known as* that title), with a year to pick between a show and its remake,
   or pasted with more words than TVmaze's name for it. A show too new for the
   catalogue is named with a link to its TVmaze page, since the nightly refresh
-  brings it in.
+  brings it in. Under the matches comes a row of shows like the search: *More like
+  Game of Thrones* for a search that names a show, *Shows like zombies* for a topic,
+  and *Shows like mad max* for a film the catalogue does not have, found by what it
+  means.
 
 The page and any open title live in the URL (`/new`, `/list`, `/search?q=`,
 `?show=169`), so refresh, Back and shared links behave. Your ratings and My List
@@ -254,6 +257,49 @@ the answer's cards carry posters, a card found through another title has that
 title as a caption, and shows TVmaze has that the catalogue does not yet are
 listed under the results, or above them when TVmaze ranks one of them first.
 
+### Shows like a search
+
+Beside its matches, each answer carries one row of eighteen shows like the search
+(`related.py`), as Netflix's search does, or none:
+
+- **More like** the show a search names: the title page's own *More like this*
+  (closeness in plot, themes, genres, franchise and makers, and what the show's
+  Wikipedia readers look up next), less the shows the search matched, so *game of
+  thrones* matches House of the Dragon and leads its row with *A Knight of the Seven
+  Kingdoms*. A search names a show when it is one of its titles typed in full, with a
+  slip or two in words of four letters or more, or holding the whole title and more;
+  when TVmaze put the show first; or when it starts the title of a household name,
+  as *game o* does while it is typed. The show must be well known (75 of TVmaze's
+  100), so *the matrix* is not taken for Matrix, a 1993 series about a hitman. The
+  row is named by the title typed: *More like Money Heist*, not La Casa de Papel.
+  Only the 3,000 closest shows are weighed by taste, so for 96% of the best-known
+  shows its first twelve are the title page's, in half the time.
+- **Shows like** a topic, one of Wikidata's genres or subjects in either number
+  (*zombies*, *space opera*, *true crime*, *westerns*), even where a less-known show
+  has the name (Zombies, a Disney musical). A household name (97 or more) keeps its
+  own name though a genre has it too (*Supernatural*), and so does any well-known show
+  named after a place (*Atlanta*).
+- **Shows like** anything else, by meaning, when the catalogue has evidence of what
+  it means. Evidence is a Wikidata genre or subject the search names, the search among
+  a show's keywords (the terms its summary is most about), as a phrase in its summary
+  (unless more than 1.5% of summaries have it), or in its title. The shows with
+  evidence anchor a profile: the Wikidata genres and subjects at least 15% of them
+  carry, three times as often as shows in general, weighed by how directly the anchors
+  carry each and by its rarity squared, places and years left out. *Mad max* is in
+  Daybreak's summary, Daybreak is post-apocalyptic, and so its row is post-apocalyptic
+  shows, led by Daybreak and Fallout. A show's place is its evidence plus its closeness
+  to the profile, led by the part of it the show carries best, times its popularity to
+  the fourth power and how well its format fits the anchors'. Summaries and keywords
+  are searched as byte strings of plain lowercase words for the 47,000 shows at least
+  40 well known: down to The Animatrix, whose summary tells what *the matrix* means.
+  A search still being typed, or of fewer than four letters, waits, and a row needs
+  four shows.
+
+Answers are kept, since a row changes only with the model. The text, about 19 MB, is
+built in the background once the server starts. The page shows the row under the
+matches as a grid, and, while a search only grows letter by letter, an answer without a
+row leaves the one on screen, so it does not blink out between words.
+
 ## Where the pictures, trailers and live details come from
 
 TVmaze keeps every poster at a URL built from its image id, so
@@ -329,6 +375,7 @@ from whichever model it loaded.
 .venv/bin/python couchside/test_couchside.py
 node couchside/test_format.mjs
 node couchside/test_gestures.mjs
+.venv/bin/python couchside/test_related.py
 ```
 
 The first runs everything over a temporary model laid out the way the refresher
@@ -364,7 +411,13 @@ answers; and it runs the service worker against a stand-in for the browser's
 caches and network: a build kept whole or not at all, pages, files, the offline
 page, images and which of them go first. The third holds the gestures to their numbers:
 how far down and how fast a sheet must go to close, how it gives when pulled the other
-way, a finger's speed, a long press, and a swipe back from the edge.
+way, a finger's speed, a long press, and a swipe back from the edge. The fourth reads
+the repository's model, facets and all, and holds a search's row of shows like it to
+its rules: which searches name a show, which are topics and which go by meaning; no
+show the search matched in its row; More like as the title page ranks it; zombies for
+zombies, post-apocalyptic shows for *mad max* and cyberpunk for *the matrix*; nothing
+for a search with nothing behind it; searches still being typed; answers kept; and a
+model without facets.
 
 `scripts/bench/home_bench.py` compares the home page with an earlier one over the
 71 bench personas: one of each persona's loves is held out, and it counts how
