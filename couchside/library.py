@@ -3027,7 +3027,8 @@ class Library:
         if taste:
             affinities.update(taste.affinities)
         pool = [j for j in candidates if j != i]
-        near = e.rank(pool, [{'id': show_id, 'weight': 1}], negatives, affinities, settings, positives or None)
+        near = e.rank(pool, [{'id': show_id, 'weight': 1}], negatives, affinities, settings, positives or None,
+                      base=taste.ranking if taste else None)
         ranked = sorted((j for j in pool if near[j] > 0), key=lambda j: (-near[j], e.shows[j]['id']))
         # The closest few stay put; the rest of the twelve are the day's.
         more = self.daily(ranked, fresh, f'more-{show_id}', MORE, GLANCE)
