@@ -250,6 +250,13 @@ old way holds a 358 KB closeness array for each liked or disliked show, about 90
 run. A list of 60 or fewer is ranked exactly as before, so its first request still
 works out 60 closeness arrays (about 20 ms each, cached afterwards: 261 ms warm).
 
+A title page, with More like this and Fans also like, takes 73 ms at 300 ratings, 104
+at 1,000 and 172 at 3,000 (204 at p95), since a long list's dislikes are weighed from
+the neighbour index there too; weighed in full, one at a time, they took 3 to 16 s. At
+60 it takes 1,122 ms cold, unchanged. A search carries only the words typed, never the
+list, so it takes the same at any length: 35 ms at the median of fifteen searches and
+177 ms at the slowest (Breaking Bad's More like row), a few ms when asked again.
+
 ```sh
 .venv/bin/python scripts/bench/large_bench.py --compare scripts/bench/large-baseline.json
 .venv/bin/python scripts/bench/large_bench.py --files holdout.json --sizes 3000 --set WIDE_HUB=0
