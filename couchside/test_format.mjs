@@ -96,6 +96,8 @@ check('search says what it found', searchNote('lost', 3, 0) === 'Shows matching 
 check('shows only TVmaze has are not in the catalogue yet', searchNote('new show', 0, 1) === 'Nothing in the catalogue matches “new show” yet.');
 check('only a search that found nothing anywhere suggests the spelling', searchNote('qzx', 0, 0) === 'Nothing matches “qzx”. Check the spelling.'
   && !searchNote('qzx', 1, 0).includes('spelling') && !searchNote('qzx', 0, 2).includes('spelling'));
+check('a search with no title matches but shows like it says so, and blames no spelling',
+  searchNote('the matrix', 0, 0, 18) === 'No titles match “the matrix”.' && searchNote('mad max', 1, 0, 18) === 'Shows matching “mad max”');
 
 // Recent searches: the last ten committed, newest first, once whatever the case, never one letter.
 const { RECENT_SEARCHES, searchText, recentStore, noteSearch, withoutSearch, recentMatches } = await import('./format.js');
@@ -118,6 +120,13 @@ check('an empty box offers every recent search', same(recentMatches(['Lost', 'Da
 check('typing offers those it begins, or begins a word of, but not the very search typed',
   same(recentMatches(['Lost', 'Dark', 'The Last of Us', 'Blast'], 'la'), ['The Last of Us'])
   && same(recentMatches(['Lost', 'Lost Girl', 'Dark'], 'LOST'), ['Lost Girl']) && same(recentMatches(['Dark'], 'q'), []));
+
+// Shows like a search: a row stays through answers without one only while the search grows.
+const { keepsRow } = await import('./format.js');
+check('a row stays while its search grows letter by letter, whatever the case',
+  keepsRow('breaki', 'breakin') && keepsRow('mad m', 'Mad Ma') && keepsRow('game of', 'game of  t'));
+check('a row goes for a search cut back, the same search, another, or none shown',
+  !keepsRow('zombies', 'zombi') && !keepsRow('zombies', 'zombies') && !keepsRow('mad max', 'dark') && !keepsRow('', 'dark'));
 
 // Browse: each genre's chip wears its short name, A to Z, and a letter jumps along the list.
 const { shortGenre, genreChoices, nextByLetter } = await import('./format.js');

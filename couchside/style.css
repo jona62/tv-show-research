@@ -340,6 +340,14 @@ main{min-height:70vh;padding-bottom:calc(var(--dock-space) + 24px);outline:none}
 .missing-list li:last-child{border-bottom:0}
 .missing-list b{font-size:16px;overflow-wrap:anywhere}
 .missing-list a{margin-left:auto;color:var(--brand);font-size:14px;white-space:nowrap}
+/* Shows like the search, under its title matches, or close under the note when none match. */
+#results:empty ~ .related .page-h2{margin-top:8px}
+/* A phone's search holds three posters a line, a row's size, so the shows like it come
+   into view with the matches rather than a screen below them. */
+@media(max-width:599px){
+  #search .grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  #search .grid-caption{font-size:12px}
+}
 
 /* welcome -------------------------------------------------------------- */
 .welcome-head{padding:0 var(--gutter);margin-bottom:18px;max-width:720px}

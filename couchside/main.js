@@ -4,7 +4,7 @@ import { tieText, leaning, leaningHeading } from './format.js';
 import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere, longDate, airs,
   whereToWatch, trailerSearch, searchNote } from './format.js';
 import { pageKey, resumable, keptText, shownRows, withoutCard, viewedStore, noteViewed, recentlyViewed } from './format.js';
-import { genreChoices, nextByLetter, searchText, recentStore, noteSearch, withoutSearch, recentMatches } from './format.js';
+import { genreChoices, nextByLetter, searchText, recentStore, noteSearch, withoutSearch, recentMatches, keepsRow } from './format.js';
 import { keeper, sessionAnswers } from './format.js';
 import { freshStore, today, dayNumber, noteSeen, noteEngaged, noteRow, noteHero, prune, freshness, watcher }
   from './fresh.js';
@@ -1663,11 +1663,14 @@ function suggestions() {
   const popular = home?.popular || [];
   fill($('results'), home ? [...home.top10, ...popular] : boot.starters);
   $('missing').hidden = true;
+  showRelated(null);
 }
 
 // The server forgives typos, spacing and other titles, and asks TVmaze about shows
-// too new for the catalogue, so a search here rarely comes back empty. Coming back to
-// the search on screen, such as by closing a title opened from it, keeps its results.
+// too new for the catalogue, so a search here rarely comes back empty. Beside the titles
+// it matches comes a row of shows like it (related.py). What is on screen stays until
+// the next answer replaces it, posters and all, so typing never blanks the page. Coming
+// back to the search on screen, such as by closing a title opened from it, keeps its results.
 function search(q, typed = true) {
   const query = q.trim();
   for (const input of [$('q'), $('q-page')]) if (document.activeElement !== input && input.value !== q) input.value = q;
@@ -1684,14 +1687,16 @@ function search(q, typed = true) {
   else $('search-note').textContent = 'Searching…';
   searchTimer = setTimeout(async () => {
     try {
-      const { shows, missing = [], missing_first: first = false } = await call(`/api/search?q=${encodeURIComponent(query)}`);
+      const { shows, missing = [], missing_first: first = false, related = null } =
+        await call(`/api/search?q=${encodeURIComponent(query)}`);
       if (id !== searchReq || (quiet && !shows.length)) return;
       shows.forEach(remember);
       resultsFor = query;
-      $('search-note').textContent = searchNote(query, shows.length, missing.length);
+      $('search-note').textContent = searchNote(query, shows.length, missing.length, related?.shows?.length || 0);
       fill($('results'), shows.map(s => ({ ...s, ...(known.get(s.id) || {}), aka: s.aka })),
         c => (c.aka ? { note: `also known as ${c.aka}`, caption: `Also known as ${c.aka}` } : {}));
       showMissing(missing, first);
+      showRelated(related, query);
     } catch (e) {
       if (id !== searchReq) return;
       searchShown = null;
@@ -1715,7 +1720,22 @@ function showMissing(missing, first) {
     li.append(el('b', m.name), el('span', m.year ? String(m.year) : 'New', 'muted'), link);
     return li;
   }));
-  $('search').insertBefore(box, first ? $('results') : null);
+  $('search').insertBefore(box, first ? $('results') : $('related'));
+}
+
+// Shows like the search, under its title matches: More like the show it names, or Shows
+// like a topic or anything else it means ("zombies", "mad max"). None, and the row goes,
+// but not while the search only grows from the one it was found for (keepsRow).
+let relatedFor = '';
+function showRelated(related, query = '') {
+  const shows = related?.shows || [];
+  if (!shows.length && keepsRow(relatedFor, query)) return;
+  relatedFor = shows.length ? query : '';
+  $('related').hidden = !shows.length;
+  if (!shows.length) return;
+  shows.forEach(remember);
+  $('related-h').textContent = related.title;
+  fill($('related-grid'), shows.map(s => ({ ...s, ...(known.get(s.id) || {}) })));
 }
 
 // What is typed shows at /search?q= at once. Typing while already searching replaces the
@@ -1833,8 +1853,10 @@ for (const input of [$('q'), $('q-page')]) {
     if (e.key === 'Escape' && input === $('q')) { input.value = ''; input.blur(); $('find').classList.remove('open'); }
   });
 }
-// Opening one of a search's results commits it too.
-$('results').addEventListener('click', e => { if (e.target.closest('.card-hit, .push')) commitSearch(resultsFor); });
+// Opening one of a search's results, or of the shows like it, commits it too.
+for (const grid of [$('results'), $('related-grid')]) {
+  grid.addEventListener('click', e => { if (e.target.closest('.card-hit, .push')) commitSearch(resultsFor); });
+}
 $('missing').addEventListener('click', e => { if (e.target.closest('a')) commitSearch(resultsFor); });
 
 // Search from the nav or the dock: coming from another page starts afresh with recent
