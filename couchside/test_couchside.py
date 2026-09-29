@@ -1036,6 +1036,14 @@ check('the engine sources are not served', fetch('/engine.py')[0] == 404 and fet
 status, _headers, body = fetch('/api/search?q=breaking%20bad')
 found = json.loads(body)['shows']
 check('search returns cards with posters', status == 200 and found[0]['id'] == 169 and found[0]['poster'])
+# Beside its matches, a search carries a row of shows like it (related.py, whose own checks
+# are in test_related.py): here, a search that names a show gets More like it.
+related = json.loads(body)['related']
+check('a search that names a show carries More like it, as cards like the matches', related['title'] == 'More like Breaking Bad'
+      and related['kind'] == 'show' and len(related['shows']) == 18 and set(related['shows'][0]) == set(found[0])
+      and sum(1 for c in related['shows'] if c['poster']) >= 16, related)
+check('and none of the shows it matched', not {c['id'] for c in related['shows']} & {c['id'] for c in found})
+check('the row is the same each time, so the answer keeps its tag', fetch('/api/search?q=breaking%20bad')[2] == body)
 status, _headers, body = fetch('/api/search?q=money%20heist')
 found = json.loads(body)
 check('search finds a show by another of its titles, as a card that says which',
@@ -1050,11 +1058,12 @@ status, _headers, body = fetch('/api/search?q=kimetsu%20no%20yaiba')
 found = json.loads(body)
 check("a search the catalogue cannot place asks TVmaze, whose match leads as a card",
       status == 200 and len(tvmaze_asked) == 1 and found['shows'][0]['id'] == 41469 and found['shows'][0]['poster'])
+check('and the show TVmaze put first is the one the search names', found['related']['title'] == 'More like Demon Slayer')
 check('a show too new for the catalogue comes back as missing, with its TVmaze page', found['missing'] == [
     {'id': 900000001, 'name': 'Kimetsu Academy', 'year': 2026, 'url': NEW_SHOW['url']}])
 status, _headers, body = fetch('/api/search?q=xyzzyq')
 check('TVmaze failing is an empty answer, not an error', status == 200
-      and json.loads(body) == {'shows': [], 'missing': [], 'missing_first': False})
+      and json.loads(body) == {'shows': [], 'missing': [], 'missing_first': False, 'related': None})
 status, _headers, body = fetch('/api/home', {'profile': PROFILE, 'settings': DEFAULT_SETTINGS})
 check('home answers over HTTP', status == 200 and json.loads(body)['personal'] is True)
 answer = json.loads(body)

@@ -10,11 +10,12 @@ import os
 import re
 import threading
 
-from engine import Engine
+from engine import Engine, DEFAULT_SETTINGS
 from fallback import Remote, answer
 from library import Library, DESCRIPTION
 from live import (Live, LiveError, Icons, KINOCHECK, ITUNES, trim_videos, trim_seasons,
                   match_rating, itunes_search)
+from related import Related
 import follow
 import starters
 import tmdb
@@ -106,6 +107,8 @@ SOURCE = model_dir()
 MODEL = Path(os.path.realpath(SOURCE))
 ENGINE = Engine(MODEL)
 LIBRARY = Library(ENGINE, art_file(MODEL))
+# A search's row of shows like it offers what a title page's More like this does.
+RELATED = Related(ENGINE, LIBRARY.pool_stats(DEFAULT_SETTINGS)['pool'])
 TMDB = tmdb.load(MODEL / 'tmdb.json.gz', ENGINE.by_id)
 # TVmaze allows about 20 calls every 10 seconds from this host, shared with Next Watch:
 # 12 for title pages here, 4 for this app's search and 4 for Next Watch's.
@@ -151,6 +154,16 @@ def age(show_id):
         raise
     found = match_rating(seasons, show['name'], show['year'], LIBRARY.ended[i] or None)
     return {'rating': rating or found['rating'], 'apple': found['apple']}
+
+
+def search(q):
+    """A search's answer: its title matches, best first, the shows TVmaze knows that the
+    catalogue does not yet (fallback.py), and a row of shows like it (related.py), or
+    None for the row: {'title': 'More like Game of Thrones', 'kind', 'shows': cards}."""
+    found = answer(ENGINE, q, TVMAZE, LIBRARY.card)
+    row = RELATED.of(q, found['shows'])
+    found['related'] = {**row, 'shows': [LIBRARY.card(j) for j in row['shows']]} if row else None
+    return found
 
 
 def origin(headers):
@@ -292,7 +305,7 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json({'error': 'Search terms must be 100 characters or fewer.'}, 400)
                 return
             try:
-                found = answer(ENGINE, q, TVMAZE, LIBRARY.card)
+                found = search(q)
                 self.cache_control = SEARCH_CACHE
                 self.send_json(found, validate=True)
             except (BrokenPipeError, ConnectionResetError, TimeoutError):
@@ -432,5 +445,7 @@ class Handler(SimpleHTTPRequestHandler):
 
 if __name__ == '__main__':
     follow.start(os.environ.get('MODEL_DIR') or SOURCE, MODEL)
+    # What searching by meaning reads is built behind the first requests, not before them.
+    threading.Thread(target=RELATED.warm, daemon=True).start()
     port = int(os.environ.get('PORT', '8082'))
     ThreadingHTTPServer(('0.0.0.0', port), partial(Handler, directory=str(PUBLIC))).serve_forever()
