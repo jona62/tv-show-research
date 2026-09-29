@@ -44,8 +44,8 @@ rebuilt every night. Nothing plays. It is for finding your next show.
   catalogue is named with a link to its TVmaze page, since the nightly refresh
   brings it in. Under the matches comes a row of shows like the search: *More like
   Game of Thrones* for a search that names a show, *Shows like zombies* for a topic,
-  and *Shows like mad max* for a film the catalogue does not have, found by what it
-  means.
+  and *Shows like Mad Max* for a film or film series, by the film's own genres and
+  subjects.
 
 The page and any open title live in the URL (`/new`, `/list`, `/search?q=`,
 `?show=169`), so refresh, Back and shared links behave. Your ratings and My List
@@ -337,46 +337,77 @@ listed under the results, or above them when TVmaze ranks one of them first.
 
 ### Shows like a search
 
-Beside its matches, each answer carries one row of eighteen shows like the search
+Beside its matches, each answer carries one row of shows like the search
 (`related.py`), as Netflix's search does, or none:
 
 - **More like** the show a search names: the title page's own *More like this*
-  (closeness in plot, themes, genres, franchise and makers, and what the show's
-  Wikipedia readers look up next), less the shows the search matched, so *game of
-  thrones* matches House of the Dragon and leads its row with *A Knight of the Seven
-  Kingdoms*. A search names a show when it is one of its titles typed in full, with a
-  slip or two in words of four letters or more, or holding the whole title and more;
-  when TVmaze put the show first; or when it starts the title of a household name,
-  as *game o* does while it is typed. The show must be well known (75 of TVmaze's
-  100), so *the matrix* is not taken for Matrix, a 1993 series about a hitman. The
-  row is named by the title typed: *More like Money Heist*, not La Casa de Papel.
-  Only the 3,000 closest shows are weighed by taste, so for 96% of the best-known
-  shows its first twelve are the title page's, in half the time.
+  (`Library.more_like`, as a visitor with no list sees it), weighed over every show
+  but those the search matched, so *game of thrones* matches House of the Dragon and
+  leads its row with *A Knight of the Seven Kingdoms*, and the row changes whenever
+  the title page's ranking does. A search names a show when it is one of its titles
+  typed in full, with a slip or two in words of four letters or more, or holding the
+  whole title and more; when TVmaze put the show first; or when it starts the title of
+  a household name, as *game o* does while it is typed. The show must be well known
+  (75 of TVmaze's 100), so *the matrix* is not taken for Matrix, a 1993 series about a
+  hitman. The row is named by the title typed: *More like Money Heist*, not La Casa de
+  Papel.
 - **Shows like** a topic, one of Wikidata's genres or subjects in either number
   (*zombies*, *space opera*, *true crime*, *westerns*), even where a less-known show
   has the name (Zombies, a Disney musical). A household name (97 or more) keeps its
   own name though a genre has it too (*Supernatural*), and so does any well-known show
   named after a place (*Atlanta*).
+- **Shows like** a film or film series the search names, one of the 9,700 or so the
+  model carries (see [Films](#films)), by its English title, an original title
+  (*기생충*, *千と千尋の神隠し*) or, trusted less, an alias, with a year to pick between
+  remakes (*the thing 1982*). The film's Wikidata genres and main subjects, on the
+  shows' own terms and weighed by their rarity squared, lead the row's profile, and
+  what the search's own evidence leans toward joins them at half weight: *mad max*
+  brings Daybreak, Fallout and Twisted Metal, *jurassic park* shows about dinosaurs,
+  *the godfather* The Sopranos, Tulsa King and MobLand, and *the matrix* Altered Carbon
+  and Cyberpunk: Edgerunners. Its main subjects and rarest genres are looked for in
+  the shows' summaries and keywords too, and count for a show already like the film in
+  some way; its name there counts for those and for a show of the film's own form, so
+  The Offer, about making The Godfather, but no talk show on the air "since its
+  inception". A film's format guides less than a show's: in its row, a show of another
+  form keeps at least 70% of its place. A show's title typed in full still names the show
+  (*fargo* is More like Fargo) and a topic comes first (*zombies*), but a film typed in
+  full goes before a show whose title it only begins or holds: *alien* is the film,
+  not Alien: Earth.
 - **Shows like** anything else, by meaning, when the catalogue has evidence of what
   it means. Evidence is a Wikidata genre or subject the search names, the search among
   a show's keywords (the terms its summary is most about), as a phrase in its summary
   (unless more than 1.5% of summaries have it), or in its title. The shows with
   evidence anchor a profile: the Wikidata genres and subjects at least 15% of them
   carry, three times as often as shows in general, weighed by how directly the anchors
-  carry each and by its rarity squared, places and years left out. *Mad max* is in
-  Daybreak's summary, Daybreak is post-apocalyptic, and so its row is post-apocalyptic
-  shows, led by Daybreak and Fallout. A show's place is its evidence plus its closeness
-  to the profile, led by the part of it the show carries best, times its popularity to
-  the fourth power and how well its format fits the anchors'. Summaries and keywords
-  are searched as byte strings of plain lowercase words for the 47,000 shows at least
-  40 well known: down to The Animatrix, whose summary tells what *the matrix* means.
-  A search still being typed, or of fewer than four letters, waits, and a row needs
-  four shows.
+  carry each and by its rarity squared, places and years left out. A show's place is
+  its evidence plus its closeness to the profile, led by the part of it the show
+  carries best, times its popularity to the fourth power and how well its format fits
+  the anchors'. Summaries and keywords are searched as byte strings of plain lowercase
+  words for the 47,000 shows at least 40 well known: down to The Animatrix, whose
+  summary tells what *the matrix* means. A search still being typed, or of fewer than
+  four letters, waits, and a row needs four shows.
 
-Answers are kept, since a row changes only with the model. The text, about 19 MB, is
-built in the background once the server starts. The page shows the row under the
-matches as a grid, and, while a search only grows letter by letter, an answer without a
-row leaves the one on screen, so it does not blink out between words.
+More like holds the title page's twelve and a row of Shows like eighteen. Answers are
+kept, since a row changes only with the model. The text, about 19 MB, and the film
+index are built in the background once the server starts; a search for a film takes
+40 ms or so the first time. The page shows the row under the matches as a grid, and,
+while a search only grows letter by letter, an answer without a row leaves the one on
+screen, so it does not blink out between words.
+
+### Films
+
+`scripts/films.py` fetches from Wikidata every film with 20 or more sitelinks
+(Wikipedia articles and the like) and every film series, trilogy and franchise with 5
+or more, some 9,800 in 31 queries: their English titles and aliases, original titles,
+years, genres and main subjects. `scripts/build_films.py` keys their genres as
+`build_facets.py` keys the shows' (*post-apocalyptic film* is *post apocalyptic*,
+with superclasses at half weight), keeps only the genres and subjects shows carry,
+lets a series take on what a third or more of its films share, and writes
+`films.json.gz` beside the model: 9,747 films and series, 0.4 MB, with the date of
+the facets it was mapped to. The refresher fetches the films again with the Wikidata
+cache and builds the file with each model; when a fetch or a build fails, the last
+good file carries on. `model/` holds a built copy, and a model without one, or with
+one that will not read, searches as before.
 
 ## Where the pictures, trailers and live details come from
 
@@ -501,12 +532,14 @@ caches and network: a build kept whole or not at all, pages, files, the offline
 page, images and which of them go first. The third holds the gestures to their numbers:
 how far down and how fast a sheet must go to close, how it gives when pulled the other
 way, a finger's speed, a long press, a swipe back from the edge, and which rows ease in.
-The fourth reads the repository's model, facets and all, and holds a search's row of
-shows like it to its rules: which searches name a show, which are topics and which go
-by meaning; no show the search matched in its row; More like as the title page ranks
-it; zombies for zombies, post-apocalyptic shows for *mad max* and cyberpunk for *the
-matrix*; nothing for a search with nothing behind it; searches still being typed;
-answers kept; and a model without facets.
+The fourth reads the repository's model, facets and film index and all, and holds a
+search's row of shows like it to its rules: which searches name a show, which are
+topics, which name a film and which go by meaning; no show the search matched in its
+row; More like as the title page's own, in its order; zombies for zombies; *mad max*,
+*jurassic park*, *the godfather* and *the matrix* as films, and *기생충* and
+*千と千尋の神隠し* by their own titles; a film's name counting only where it should;
+nothing for a search with nothing behind it; searches still being typed; answers
+kept; a film index that will not read; and a model without facets.
 
 `scripts/bench/home_bench.py` compares the home page with an earlier one over the
 71 bench personas: one of each persona's loves is held out, and it counts how
