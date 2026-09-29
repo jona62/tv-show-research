@@ -183,6 +183,9 @@ select{padding:8px 10px;border:1px solid var(--line);border-radius:7px;backgroun
 
 /* your shows ---------------------------------------------------------- */
 .list{display:grid;gap:10px;margin-top:14px}
+/* a long list: found by name, and shown a page at a time */
+.list-find{position:relative;max-width:420px;margin-top:12px}
+.list-more{display:block;margin:14px auto 0}
 .item{border:1px solid var(--line);border-radius:var(--r);background:var(--raised);padding:11px 12px}
 .item-top{display:flex;gap:10px;align-items:baseline}
 .item-name{flex:1;font-size:15px;font-weight:600;overflow-wrap:anywhere}

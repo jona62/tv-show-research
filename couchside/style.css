@@ -303,6 +303,12 @@ main{min-height:70vh;padding-bottom:calc(var(--dock-space) + 24px);outline:none}
 .chip:hover{border-color:#fff}
 .chip[aria-pressed=true]{background:#fff;border-color:#fff;color:#141414;font-weight:700}
 .empty{grid-column:1/-1;color:var(--muted);font-size:14.5px;padding:10px 0}
+/* A long list of ratings: found by name, and shown a page at a time. */
+.rated-find{margin:0 var(--gutter) 12px;max-width:420px}
+.rated-find input{width:100%;padding:10px 12px;border:1px solid #444;border-radius:6px;background:#2a2a2a;
+  color:var(--ink);font-size:16px;-webkit-appearance:none;appearance:none}
+.rated-find input:focus{border-color:#fff;outline:none;background:#333}
+.more-rated{display:flex;justify-content:center;margin:18px var(--gutter) 0}
 
 /* search --------------------------------------------------------------- */
 .search-box{position:relative;margin:0 var(--gutter) 12px}

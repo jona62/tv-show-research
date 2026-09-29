@@ -17,8 +17,10 @@ export const SERIES = [
 ];
 
 // Weighted share of your liked shows carrying each signal, beside what the pick
-// records and, when chosen, what one show from your list records.
-export function fitRows(liked, pick, other, kind, themes, genres) {
+// records and, when chosen, what one show from your list records. The answer's own
+// shares (fit), worked out over every liked show, come first: a long list sends back
+// only some of its liked shows.
+export function fitRows(liked, pick, other, kind, themes, genres, fit = null) {
   const families = kind === 'both' ? ['themes', 'genres'] : [kind];
   const rows = [];
   for (const group of families) {
@@ -28,7 +30,7 @@ export function fitRows(liked, pick, other, kind, themes, genres) {
       const hit = known.reduce((n, s) => n + (s[group].includes(name) ? s.weight : 0), 0);
       rows.push({
         name, group,
-        you: total ? Math.round(hit / total * 100) : 0,
+        you: fit?.[group] ? fit[group][name] || 0 : total ? Math.round(hit / total * 100) : 0,
         them: pick && pick[group].includes(name) ? 100 : 0,
         vs: other ? (other[group].includes(name) ? 100 : 0) : null,
       });

@@ -147,7 +147,13 @@
     </div>
     <p id="shows-meta" class="hint"></p>
     <p id="similar-meta" class="scope" hidden><span id="similar-said" role="status" aria-live="polite"></span><span id="similar-acts"></span></p>
+    <div id="list-find" class="find list-find" hidden>
+      <input id="list-q" type="search" placeholder="Find a show you rated" autocomplete="off" maxlength="100"
+             aria-label="Find a show you rated" enterkeyhint="search">
+    </div>
+    <p id="list-note" class="hint" role="status" aria-live="polite"></p>
     <div id="list" class="list"></div>
+    <button id="list-more" class="ghost list-more" type="button" hidden></button>
   </section>
 
 </main>
@@ -155,8 +161,8 @@
 <footer>
   <p><button id="open-about" class="link" type="button">How this works</button></p>
   <p>Data from <a href="https://www.tvmaze.com/">TVmaze</a> · <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> · <span class="nb">snapshot __DATASET_DATE__</span></p>
-  <a class="club" href="https://512kb.club/" aria-label="512KB Club, green team: this page loads 134.6 KB of uncompressed resources">
-    <span>512KB CLUB</span><span>134.6 KB</span>
+  <a class="club" href="https://512kb.club/" aria-label="512KB Club, green team: this page loads 139.2 KB of uncompressed resources">
+    <span>512KB CLUB</span><span>139.2 KB</span>
   </a>
 </footer>
 
@@ -232,18 +238,22 @@
   <div class="move-acts">
     <button id="copy-link" class="ghost" type="button">Copy link</button>
     <button id="copy-code" class="ghost" type="button">Copy code only</button>
+    <button id="save-file" class="ghost" type="button">Save as a file</button>
     <span id="copy-said" class="said" role="status" aria-live="polite"></span>
   </div>
   <figure id="qr-wrap" class="qr">
     <svg id="qr" role="img" aria-label="QR code for this list"></svg>
     <figcaption id="qr-note"></figcaption>
   </figure>
+  <p id="qr-none" class="hint" hidden>This list is too long for a QR code. Send yourself the link and open it on the other device, or save it as a file and open that there.</p>
   <p class="hint">The list rides in the part of the address after the #, which browsers never send anywhere. Nothing about you reaches a server, here or there.</p>
 
   <h3 class="move-h">Bring a list in</h3>
   <label class="field" for="move-paste">Paste a link or code from your other device
     <textarea id="move-paste" rows="3" spellcheck="false" autocomplete="off"></textarea>
   </label>
+  <p class="hint">Or <button id="open-file" class="link" type="button">open a saved file</button>.</p>
+  <input id="move-file" type="file" accept=".txt,text/plain" hidden>
   <p id="move-status" class="hint" role="status" aria-live="polite"></p>
   <div class="move-acts">
     <button id="do-merge" class="ghost" type="button">Add to my list</button>

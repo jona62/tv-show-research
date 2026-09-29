@@ -1,5 +1,5 @@
 import { fitRows, chooseSpokes, drawFit, short } from './fit.js';
-import { encode, decode, LIMITS } from './transfer.js';
+import { encode, decode, LIMITS, packList, codeFrom } from './transfer.js';
 import { matrix, svgPath } from './qr.js';
 import { prune, few } from './similar.js';
 import { today, freshStore, noteSeen, noteEngaged, prune as forget, freshness, watcher, seedFor } from './fresh.js';
@@ -52,8 +52,9 @@ try {
   if (saved && Array.isArray(saved.profile)) {
     state = {
       version: VERSION,
-      profile: saved.profile.filter(p => Number.isInteger(p.id) && RATINGS.some(([w]) => w === p.weight)).slice(0, 60),
-      saved: (Array.isArray(saved.saved) ? saved.saved : []).filter(s => Number.isInteger(s.id)).slice(0, 200),
+      profile: saved.profile.filter(p => Number.isInteger(p.id) && RATINGS.some(([w]) => w === p.weight))
+        .slice(0, LIMITS.rated),
+      saved: (Array.isArray(saved.saved) ? saved.saved : []).filter(s => Number.isInteger(s.id)).slice(0, LIMITS.saved),
       settings: { ...DEFAULTS, ...(saved.settings || {}) },
       similar_to: Array.isArray(saved.similar_to) ? saved.similar_to.filter(Number.isInteger) : [],
     };
@@ -208,7 +209,10 @@ function has(id) { return state.profile.some(p => p.id === id); }
 function add(showRow, weight = .7, how = 'merge') {
   if (has(showRow.id)) return;
   state.saved = state.saved.filter(s => s.id !== showRow.id);
-  if (state.profile.length >= 60) { note('Your list is full at 60 shows. Remove one first.'); return; }
+  if (state.profile.length >= LIMITS.rated) {
+    note(`Your list is full at ${LIMITS.rated.toLocaleString()} shows. Remove one first.`);
+    return;
+  }
   state.profile.push({ id: showRow.id, name: showRow.name, year: showRow.year, channel: showRow.channel, weight });
   engage(showRow.id);
   save(); renderList(); renderPicks(); run(0, how);
@@ -256,7 +260,7 @@ function renderSimilar() {
   const liked = likedShows();
   const names = state.similar_to.map(id => state.profile.find(p => p.id === id)?.name).filter(Boolean);
   const on = names.length > 0;
-  const all = liked.length === 2 ? 'both shows you liked' : `all ${liked.length} shows you liked`;
+  const all = liked.length === 2 ? 'both shows you liked' : `all ${liked.length.toLocaleString()} shows you liked`;
   for (const id of ['scope', 'similar-meta']) {
     $(id).hidden = liked.length < 2;
     $(id).classList.toggle('on', on);
@@ -480,7 +484,8 @@ function run(delay = 160, how = 'full') {
     reqAbort = new AbortController();
     const { signal } = reqAbort;
     try {
-      const ask = { profile: state.profile.map(({ id, weight }) => ({ id, weight })), settings: state.settings,
+      // The list goes packed as ids and a character a rating (transfer.js), a quarter of the bytes.
+      const ask = { profile: packList(state.profile), settings: state.settings,
                     similar_to: state.similar_to, ...await freshFields() };
       if (id !== reqId) return;
       const res = await fetch('/api/recommend', {
@@ -529,7 +534,7 @@ function render() {
 }
 function renderCount() {
   const n = state.profile.length;
-  $('tab-count').textContent = n || '';
+  $('tab-count').textContent = n ? n.toLocaleString() : '';
   $('tab-count').hidden = !n;
   $('saved-count').textContent = state.saved.length || '';
   $('saved-count').hidden = !state.saved.length;
@@ -742,9 +747,11 @@ function openWhy(pick) {
   const interest = data.interests?.length > 1 && pick.interest != null ? data.interests[pick.interest] : null;
   if (interest) {
     const names = interest.shows.map(id => data.liked.find(s => s.id === id)?.name).filter(Boolean);
-    const who = `${listed(names.slice(0, 3))}${names.length > 3 ? ` and ${names.length - 3} more` : ''}`;
+    // A long list's interest names a dozen of its shows and says how many it holds.
+    const size = Math.max(interest.size || 0, names.length);
+    const who = `${listed(names.slice(0, 3))}${size > 3 ? ` and ${(size - Math.min(3, names.length)).toLocaleString()} more` : ''}`;
     block.append(el('p', `Your list holds more than one interest, and this pick is for the one ${who} `
-      + `${names.length > 1 ? 'share' : 'stands for'}: ${interestName(interest, names)}.`));
+      + `${size > 1 ? 'share' : 'stands for'}: ${interestName(interest, names)}.`));
   }
   body.append(block);
   if (pick.place === 'different') {
@@ -918,7 +925,8 @@ function renderLeanings() {
   for (const it of found) {
     const names = it.shows.map(id => data.liked.find(s => s.id === id)?.name).filter(Boolean);
     const item = el('li');
-    item.append(el('b', interestName(it, names)), el('span', names.join(', ')));
+    const more = (it.size || 0) > names.length ? ` and ${(it.size - names.length).toLocaleString()} more` : '';
+    item.append(el('b', interestName(it, names)), el('span', names.join(', ') + more));
     interests.append(item);
   }
   $('interests-box').hidden = found.length < 2;
@@ -964,7 +972,7 @@ function renderFit() {
     : choice === 'closest' ? data.liked[pick.links.indexOf(Math.max(...pick.links))]
       : data.liked.find(s => s.id === Number(choice));
 
-  const rows = fitRows(data.liked, pick, other, $('fit-kind').value, boot.themes, boot.genres);
+  const rows = fitRows(data.liked, pick, other, $('fit-kind').value, boot.themes, boot.genres, data.fit);
   const spokes = chooseSpokes(rows, Number($('fit-count').value));
   drawFit($('fit'), $('fit-frame'), $('fit-key'), spokes,
     { you: 'your taste', them: pick.name, vs: other ? other.name : '' });
@@ -1031,15 +1039,30 @@ new ResizeObserver(() => {
 }).observe($('fit-frame'));
 
 /* ---------------------------------------------------------- your shows */
+// The newest first, LIST_PAGE at a time, so a list of thousands draws as fast as one of
+// dozens; a long one can also be searched by name.
+const LIST_PAGE = 60;
+let listShown = LIST_PAGE, listFind = '', listTimer = 0;
+const folded = text => (text || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim();
+
 function renderList() {
   const holder = $('list');
   holder.replaceChildren();
   const liked = likedShows().length;
   $('shows-meta').textContent = state.profile.length
-    ? `${state.profile.length} rated · ${liked} counted as liked. Ratings shape every pick; nothing you rate is recommended back.`
+    ? `${state.profile.length.toLocaleString()} rated · ${liked.toLocaleString()} counted as liked. Ratings shape every pick; nothing you rate is recommended back.`
     : 'Nothing here yet. Search at the top to add what you have watched.';
   $('clear-all').hidden = !state.profile.length;
-  for (const p of state.profile) {
+  $('list-find').hidden = state.profile.length <= LIST_PAGE;
+  const needle = folded(listFind);
+  const found = state.profile.filter(p => !needle || folded(p.name).includes(needle)).reverse();
+  const page = found.slice(0, listShown);
+  $('list-note').textContent = !state.profile.length ? ''
+    : !found.length ? `No show you rated matches “${listFind}”.`
+      : found.length > page.length ? `The newest ${page.length.toLocaleString()} of ${found.length.toLocaleString()}.` : '';
+  $('list-more').hidden = found.length <= page.length;
+  $('list-more').textContent = `Show ${Math.min(LIST_PAGE, found.length - page.length).toLocaleString()} more`;
+  for (const p of page) {
     const item = el('div', '', 'item');
     item.dataset.id = p.id;
     const top = el('div', '', 'item-top');
@@ -1076,6 +1099,18 @@ $('clear-all').addEventListener('click', () => {
   state.profile = [];
   keepSimilar(); save(); renderList(); renderPicks(); run(0);
 });
+$('list-more').addEventListener('click', () => {
+  listShown += LIST_PAGE;
+  renderList();
+});
+$('list-q').addEventListener('input', () => {
+  clearTimeout(listTimer);
+  listTimer = setTimeout(() => {
+    listFind = $('list-q').value.trim();
+    listShown = LIST_PAGE;
+    renderList();
+  }, 150);
+});
 
 /* ------------------------------------------------------- moving devices */
 function moveLink() { return `${location.origin}/#t=${encode(state)}`; }
@@ -1087,6 +1122,9 @@ function drawCode(link) {
   svg.replaceChildren();
   const grid = link ? matrix(link) : null;
   $('qr-wrap').hidden = !grid;
+  // A QR code holds about 2,300 bytes, a list of a few hundred ratings; past that the
+  // link, the code or a file carries it.
+  $('qr-none').hidden = Boolean(grid) || !link;
   if (!grid) return;
   const { path, size } = svgPath(grid);
   svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
@@ -1109,9 +1147,10 @@ function openMove() {
   drawCode(code);
   $('move-link').value = code;
   $('move-count').textContent = code
-    ? `${state.profile.length} rated and ${state.saved.length} saved, packed into ${code.length} characters.`
+    ? `${state.profile.length.toLocaleString()} rated and ${state.saved.length} saved, packed into ${
+      code.length.toLocaleString()} characters.`
     : 'Nothing to move yet. Rate or save a show first.';
-  for (const id of ['copy-link', 'copy-code']) $(id).disabled = !code;
+  for (const id of ['copy-link', 'copy-code', 'save-file']) $(id).disabled = !code;
   $('copy-said').textContent = '';
   $('move-status').textContent = '';
   $('move-paste').value = '';
@@ -1132,8 +1171,37 @@ async function copy(text, said) {
 $('copy-link').addEventListener('click', () => copy(moveLink(), 'Link copied.'));
 $('copy-code').addEventListener('click', () => copy(encode(state), 'Code copied.'));
 
-// A pasted link or a bare code both carry the same payload.
-const codeFrom = text => (text.trim().split('#t=').pop() || '').trim();
+// A list too long for a QR code also moves as a file holding its link: AirDrop it, mail
+// it or keep it in a cloud folder, and open it here on the other device.
+$('save-file').addEventListener('click', () => {
+  const file = URL.createObjectURL(new Blob([`${moveLink()}\n`], { type: 'text/plain' }));
+  const link = el('a');
+  link.href = file;
+  link.download = `next-watch-list-${today()}.txt`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(file), 10_000);
+  $('copy-said').textContent = 'Saved. On the other device, open it here with Open a saved file.';
+});
+$('open-file').addEventListener('click', () => $('move-file').click());
+$('move-file').addEventListener('change', async () => {
+  const file = $('move-file').files[0];
+  $('move-file').value = '';
+  if (!file) return;
+  if (file.size > 200_000) { $('move-status').textContent = 'That file is too big to be a list.'; return; }
+  const raw = codeFrom(await file.text());
+  $('move-paste').value = raw;
+  try {
+    const found = decode(raw);
+    $('move-status').textContent = `This file holds ${found.profile.length.toLocaleString()} rated and ${
+      found.saved.length} saved. Add them to your list, or replace your list with them.`;
+  } catch (e) {
+    $('move-status').textContent = e.message || 'That file does not hold a list.';
+  }
+});
+
+// A pasted link or a bare code both carry the same payload (codeFrom, in transfer.js).
 
 async function bringIn(replace) {
   const raw = codeFrom($('move-paste').value);
@@ -1175,7 +1243,7 @@ async function apply(incoming, replace) {
   }
   keepSimilar(); save(); renderList(); renderSaved(); renderPicks(); syncTune(); run(0);
   const dropped = ids.length - known.size;
-  note(`Brought in ${rated.length} rated and ${kept.length} saved`
+  note(`Brought in ${rated.length.toLocaleString()} rated and ${kept.length} saved`
     + `${dropped ? `, and skipped ${dropped} no longer in the catalog` : ''}.`);
 }
 
@@ -1204,10 +1272,10 @@ async function readLink() {
     return;
   }
   $('move-paste').value = raw;
-  $('move-status').textContent = `This link holds ${incoming.profile.length} rated and `
+  $('move-status').textContent = `This link holds ${incoming.profile.length.toLocaleString()} rated and `
     + `${incoming.saved.length} saved. You already have a list here, so choose what to do with it.`;
   $('move-link').value = moveLink();
-  $('move-count').textContent = `${state.profile.length} rated and ${state.saved.length} saved on this device.`;
+  $('move-count').textContent = `${state.profile.length.toLocaleString()} rated and ${state.saved.length} saved on this device.`;
   $('move').showModal();
 }
 

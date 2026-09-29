@@ -1,4 +1,4 @@
-import { encode, decode, LIMITS } from './transfer.js';
+import { encode, decode, LIMITS, packList, codeFrom } from './transfer.js';
 import { matrix, svgPath } from './qr.js';
 import { tieText, leaning, leaningHeading } from './format.js';
 import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere, longDate, airs,
@@ -31,7 +31,8 @@ const REACH = [85, 60, 0];
 // Version 2 widened the default reach to fairly known shows of any year, once the ranking
 // learned which eras and how well known a list likes.
 const VERSION = 2;
-const MAX_RATED = 60;
+// Up to 3,000 ratings, as many as someone who watches a great deal has seen.
+const MAX_RATED = LIMITS.rated;
 const WEIGHTS = [1, .7, .35, 0, -1];
 const RATES = [
   { weight: -1, label: 'Not for me', icon: 'down', said: 'Got it. You will see less like this.' },
@@ -322,10 +323,12 @@ const wait = ms => new Promise(done => setTimeout(done, ms));
 // Live lookups can find the server busy for a moment; one quiet retry covers that.
 const patient = path => call(path).catch(e => (e.status === 503 ? wait(1500).then(() => call(path)) : Promise.reject(e)));
 // A title's page and a genre's rows follow your list, your settings and what is asked,
-// not what this browser has seen since, so they are kept by those alone.
+// not what this browser has seen since, so they are kept by those alone. The list goes
+// packed as ids and a character a rating (transfer.js), a quarter of the bytes.
 function post(path, body, signal) {
+  const sent = Array.isArray(body.profile) ? { ...body, profile: packList(body.profile) } : body;
   const send = () => request(path, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal,
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sent), signal,
   });
   if (!KEEP[path]) return send();
   const { profile, settings, id, genre } = body;
@@ -942,7 +945,7 @@ function rate(c, weight) {
     toast(RATES.find(r => r.weight === weight).said);
   } else {
     if (state.profile.length >= MAX_RATED) {
-      toast(`You have rated ${MAX_RATED} shows, the most Couchside reads. Remove a rating in My List first.`);
+      toast(`You have rated ${MAX_RATED.toLocaleString()} shows, the most Couchside reads. Remove a rating in My List first.`);
       return;
     }
     state.profile.push({ ...tidy(c), weight });
@@ -1609,6 +1612,10 @@ function renderNew() {
 
 /* -------------------------------------------------------------- my list */
 let ratedFilter = 'all';
+// Ratings show RATED_PAGE at a time, so a list of thousands draws as fast as one of dozens.
+const RATED_PAGE = 60;
+let ratedShown = RATED_PAGE, ratedFind = '', findTimer = 0;
+const folded = text => (text || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim();
 const GROUPS = {
   all: ['All', () => true], loved: ['Loved', p => p.weight === 1],
   liked: ['Liked', p => p.weight > 0 && p.weight < 1], down: ['Not for me', p => p.weight < 0],
@@ -1639,16 +1646,30 @@ function renderList() {
 
   const filters = $('rated-filter');
   filters.replaceChildren(...Object.entries(GROUPS).map(([key, [label, test]]) => {
-    const b = button('chip', `${label} ${state.profile.filter(test).length}`, () => { ratedFilter = key; renderList(); });
+    const b = button('chip', `${label} ${state.profile.filter(test).length.toLocaleString()}`, () => {
+      ratedFilter = key;
+      ratedShown = RATED_PAGE;
+      renderList();
+    });
     b.setAttribute('aria-pressed', String(ratedFilter === key));
     return b;
   }));
   filters.hidden = !state.profile.length;
-  const list = state.profile.filter(GROUPS[ratedFilter][1]).slice().reverse();
+  // A long list is found by name and shown a page at a time, newest first.
+  $('rated-find-box').hidden = state.profile.length <= RATED_PAGE;
+  const needle = folded(ratedFind);
+  const list = state.profile.filter(p => GROUPS[ratedFilter][1](p) && (!needle || folded(p.name).includes(needle)))
+    .reverse();
+  const page = list.slice(0, ratedShown);
   $('rated-note').textContent = !state.profile.length ? 'Nothing rated yet. Open a show and tap a thumb or the heart.'
-    : list.length ? 'Open any show to change or take back its rating.' : 'Nothing here yet.';
+    : !list.length ? (needle ? `No show you rated matches “${ratedFind}”.` : 'Nothing here yet.')
+      : `Open any show to change or take back its rating.${list.length > page.length
+        ? ` The newest ${page.length.toLocaleString()} of ${list.length.toLocaleString()} are here.` : ''}`;
+  const more = $('rated-more');
+  more.hidden = list.length <= page.length;
+  more.textContent = `Show ${Math.min(RATED_PAGE, list.length - page.length).toLocaleString()} more`;
   const grid = $('rated-grid');
-  fill(grid, list.map(p => ({ ...p, ...(known.get(p.id) || {}), match: null })),
+  fill(grid, page.map(p => ({ ...p, ...(known.get(p.id) || {}), match: null })),
     c => ({ note: NOTES[String(rated(c.id))] || 'you liked it' }));
   for (const card of grid.querySelectorAll('.card')) {
     const weight = rated(Number(card.dataset.id));
@@ -1658,6 +1679,18 @@ function renderList() {
     card.append(badge);
   }
 }
+$('rated-more').addEventListener('click', () => {
+  ratedShown += RATED_PAGE;
+  renderList();
+});
+$('rated-find').addEventListener('input', () => {
+  clearTimeout(findTimer);
+  findTimer = setTimeout(() => {
+    ratedFind = $('rated-find').value.trim();
+    ratedShown = RATED_PAGE;
+    renderList();
+  }, 150);
+});
 
 /* --------------------------------------------------------------- search */
 // searchShown is the search on screen or on its way, and resultsFor the one whose
@@ -2041,7 +2074,7 @@ $('skip').addEventListener('click', () => {
 
 /* ---------------------------------------------------------- the profile */
 function updateCounts() {
-  $('account-counts').textContent = `${state.profile.length} rated · ${state.saved.length} in My List`;
+  $('account-counts').textContent = `${state.profile.length.toLocaleString()} rated · ${state.saved.length} in My List`;
 }
 let resetArmed = false;
 function armReset(on) {
@@ -2117,9 +2150,11 @@ function paintTaste() {
   section('What you steer clear of',
     taste.avoids.map(f => [leaningHeading(f), f.why === 'disliked' ? `You marked ${f.shows} not for you` : 'None on your list']));
   if (interests.length > 1) {
+    // A long list's interests name a dozen of their shows each and say how many they hold.
+    const others = it => (it.size > it.names.length ? ` and ${(it.size - it.names.length).toLocaleString()} more` : '');
     section('Your interests', interests.map(it => [
       it.leans.length ? it.leans.map(l => leaningHeading({ family: '', label: l.split(' / ')[0] })).join(' · ') : `Like ${it.names[0]}`,
-      it.names.join(', ')]));
+      it.names.join(', ') + others(it)]));
     body.append(el('p', 'Your rows are shared out across these, and each Because you loved row follows one of them.', 'leanings-note'));
   }
 }
@@ -2134,6 +2169,9 @@ function drawCode(link) {
   svg.replaceChildren();
   const grid = link ? matrix(link) : null;
   $('qr-wrap').hidden = !grid;
+  // A QR code holds about 2,300 bytes, a list of a few hundred ratings; past that the
+  // link, the code or a file carries it.
+  $('qr-none').hidden = Boolean(grid) || !link;
   if (!grid) return;
   const { path, size } = svgPath(grid);
   svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
@@ -2155,9 +2193,10 @@ function openMove() {
   drawCode(code);
   $('move-link').value = code;
   $('move-count').textContent = code
-    ? `${state.profile.length} rated and ${state.saved.length} in My List, packed into ${code.length} characters.`
+    ? `${state.profile.length.toLocaleString()} rated and ${state.saved.length} in My List, packed into ${
+      code.length.toLocaleString()} characters.`
     : 'Nothing to move yet. Rate a show or add one to My List first.';
-  for (const id of ['copy-link', 'copy-code']) $(id).disabled = !code;
+  for (const id of ['copy-link', 'copy-code', 'save-file']) $(id).disabled = !code;
   $('copy-said').textContent = '';
   $('move-status').textContent = '';
   $('move-paste').value = '';
@@ -2178,7 +2217,35 @@ async function copy(text, said) {
 $('copy-link').addEventListener('click', () => copy(moveLink(), 'Link copied.'));
 $('copy-code').addEventListener('click', () => copy(encode(state), 'Code copied.'));
 
-const codeFrom = text => (text.trim().split('#t=').pop() || '').trim();
+// A list too long for a QR code also moves as a file holding its link: AirDrop it, mail
+// it or keep it in a cloud folder, and open it here on the other device.
+$('save-file').addEventListener('click', () => {
+  const file = URL.createObjectURL(new Blob([`${moveLink()}\n`], { type: 'text/plain' }));
+  const link = el('a');
+  link.href = file;
+  link.download = `couchside-list-${today()}.txt`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(file), 10_000);
+  $('copy-said').textContent = 'Saved. On the other device, open it here with Open a saved file.';
+});
+$('open-file').addEventListener('click', () => $('move-file').click());
+$('move-file').addEventListener('change', async () => {
+  const file = $('move-file').files[0];
+  $('move-file').value = '';
+  if (!file) return;
+  if (file.size > 200_000) { $('move-status').textContent = 'That file is too big to be a list.'; return; }
+  const raw = codeFrom(await file.text());
+  $('move-paste').value = raw;
+  try {
+    const found = decode(raw);
+    $('move-status').textContent = `This file holds ${found.profile.length.toLocaleString()} rated and ${
+      found.saved.length} saved. Add them to your list, or replace your list with them.`;
+  } catch (e) {
+    $('move-status').textContent = e.message || 'That file does not hold a list.';
+  }
+});
 
 async function bringIn(replace) {
   const raw = codeFrom($('move-paste').value);
@@ -2222,7 +2289,7 @@ async function apply(incoming, replace) {
   loadHome();
   updateListRow();
   const dropped = ids.length - found.size;
-  toast(`Brought in ${ratings.length} rated and ${kept.length} saved`
+  toast(`Brought in ${ratings.length.toLocaleString()} rated and ${kept.length} saved`
     + `${dropped ? `, and skipped ${dropped} no longer in the catalogue` : ''}.`);
 }
 
@@ -2251,7 +2318,7 @@ async function readLink() {
   }
   openMove();
   $('move-paste').value = raw;
-  $('move-status').textContent = `This link holds ${incoming.profile.length} rated and ${incoming.saved.length} saved. `
+  $('move-status').textContent = `This link holds ${incoming.profile.length.toLocaleString()} rated and ${incoming.saved.length} saved. `
     + 'You already have a list here, so choose what to do with it.';
 }
 
