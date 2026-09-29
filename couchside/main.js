@@ -1940,9 +1940,18 @@ window.addEventListener('online', () => {
   if (!home) loadHome();
   if (view === 'browse') { browseKey = null; renderBrowse(); }
 });
-// Offline, the service worker serves a page asking for the connection back.
+// The service worker (sw.js) starts the app from the build it keeps, online or not, and
+// keeps the posters. A new build it finds waits until this page has loaded all its own
+// files, then takes over, so the next load is the new build whole.
 if ('serviceWorker' in navigator && window.isSecureContext) {
-  const register = () => navigator.serviceWorker.register('/sw.js').catch(() => {});
+  const takeOver = worker => worker?.postMessage('take-over');
+  const register = () => navigator.serviceWorker.register('/sw.js').then(reg => {
+    takeOver(reg.waiting);
+    reg.addEventListener('updatefound', () => {
+      const worker = reg.installing;
+      worker?.addEventListener('statechange', () => { if (worker.state === 'installed') takeOver(worker); });
+    });
+  }).catch(() => {});
   if (document.readyState === 'complete') register(); else window.addEventListener('load', register);
 }
 

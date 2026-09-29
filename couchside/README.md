@@ -54,10 +54,22 @@ and a shared link opens straight to that title: the server writes each link's
 preview, so it shows the show's own poster, name and summary in Messages, Slack
 or WhatsApp, and the home page previews as the wordmark over a wall of posters.
 
-A small service worker takes the network first for everything, so a deploy is
-never hidden behind an old copy, and serves a page asking for the connection
-back when there is none. A path that leads nowhere gets the app's own *Lost your
-way?* page.
+A small service worker starts the app from the build it keeps: the page and its
+files, kept together under the build's stamp and each checked against the hash
+`build.py` wrote into the worker, so a page from one deploy never runs with files
+from another. The app opens without waiting for the network, and without one it
+still opens on the home page and My List it last showed. The page kept is fetched
+again behind each start and kept when it is still the same build, so a refreshed
+catalogue shows on the next load; a deploy brings a new worker, which takes over
+once the page that found it has loaded, so the next load is the new build.
+Posters, backdrops and thumbnails are fetched once, with CORS, and kept apart from
+any build: up to 1,000 small images and 40 large ones, the least recently shown
+going first. The page keeps what the server has told it, too: a title, a genre's
+rows and a search for ten minutes, and a show's live details for half an hour and
+across a reload. Pages and searches carry ETags, so a browser that holds one gets a
+bodiless 304, and searches are kept five minutes. Without a connection, a path that
+is not the app's gets a page asking for the connection back, and a path that leads
+nowhere gets the app's own *Lost your way?* page.
 
 `brand/` holds the icon as SVG, drawn twice: an outline sofa for 16 to 48 pixels
 and a fuller one for home screens. `brand/make.py` renders the favicon, Apple and
@@ -239,7 +251,8 @@ listed under the results, or above them when TVmaze ranks one of them first.
 TVmaze keeps every poster at a URL built from its image id, so
 `scripts/build_art.py` stores one integer per show, plus the year it ended, in
 `art.bin.gz` (269 KB). Posters load straight from TVmaze's image server, which
-TVmaze allows; the page sends no referrer. The server reads `art.bin.gz` from
+TVmaze allows, asked for with CORS so the service worker can keep them; the page
+sends no referrer. The server reads `art.bin.gz` from
 the model directory when the model carries one, as each refreshed model does, and
 otherwise the copy here, which matches the repository's `model/`.
 
@@ -330,13 +343,17 @@ TMDB first and every fallback, over HTTP; the live sources against fakes
 through a fake TVmaze, with a show too new for the catalogue; the HTTP server end
 to end: pages and their previews, the loaded model's date and count on the page,
 TMDB's credit only with TMDB data, the policy, the 404 page, the manifest, icon
-sizes and file types; first-visit starters over HTTP, as posters that adapt to a
+sizes and file types, ETags and 304s, the build each page names and the hash of
+every file the service worker keeps; first-visit starters over HTTP, as posters that adapt to a
 pick and follow a browser's language; and the follower's decisions. It also fails if
 `engine.py`, `titles.py`, `fallback.py`, `follow.py`, `starters.py` or any other
 module copied here ever differs from Next Watch's. The
 second covers the page's small helpers, where to watch and what search says among
-them, and what the home page keeps for a visit, asks for more with, merges after an
-action and shows as recently viewed.
+them, what the home page keeps for a visit, asks for more with, merges after an
+action and shows as recently viewed, and what the page keeps of the server's
+answers; and it runs the service worker against a stand-in for the browser's
+caches and network: a build kept whole or not at all, pages, files, the offline
+page, images and which of them go first.
 
 `scripts/bench/home_bench.py` compares the home page with an earlier one over the
 71 bench personas: one of each persona's loves is held out, and it counts how
