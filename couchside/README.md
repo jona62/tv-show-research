@@ -128,9 +128,17 @@ the page come from the closest shows too, a show is kept off only when the
 disliked shows it sits near outweigh the liked ones (a list of thousands has so
 many dislikes that the plain rule would clear whole genres), and rows of their own
 are cut for the list's 60 most telling liked shows, loves first and then the
-newest. A title page's *More like this* takes the page's interests rather than
-working them out again. The first home request for 3,000 ratings takes about a
-quarter of a second here and about 30 MB (`scripts/bench/scale_bench.py`).
+newest. The first home request for 3,000 ratings takes about a quarter of a
+second here and about 30 MB (`scripts/bench/scale_bench.py`). A title page's *More
+like this* and *Fans also like* leave out what is very like a show marked *Not for
+me* by the same rule for every list, but for a long one they read how close from
+the neighbour index (`Disliked` in `library.py`): a disliked show counts when it is
+among the show's closest or the show among its, where a short list works out every
+disliked show's closeness to every show. That keeps a title page for 3,000 ratings
+near 0.15 s here, where hundreds of dislikes worked out in full took 3 to 16 s. On
+long lists' title pages the two ways agree on 86% of the shows; where they part, a
+dislike as broad as *South Park* no longer takes *Peep Show* and *Parks and
+Recreation* off *Still Game*'s page.
 
 **Candidate rows.** For each interest in your list (the engine's groups of liked
 shows, weighed by rating, love 1, like 0.6, OK 0.2, with recent ratings counting

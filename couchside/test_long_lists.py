@@ -19,7 +19,7 @@ sys.path.insert(0, str(ROOT / 'scripts' / 'bench'))
 import library                                                   # noqa: E402
 from engine import DEFAULT_SETTINGS, DENSE_MAX, WIDE_NAMED, Engine   # noqa: E402
 from large_lists import Relations, viewers                       # noqa: E402
-from library import FIRST_PAGE, GLANCE, MORE, Page               # noqa: E402
+from library import FIRST_PAGE, GLANCE, MORE, NOT_FOR_ME, Page   # noqa: E402
 
 engine = Engine(ROOT / 'model')
 lib = library.Library(engine, ROOT / 'couchside' / 'art.bin.gz')
@@ -43,6 +43,15 @@ def shown(rows):
 
 def cards(rows):
     return {c['id'] for r in rows if r['kind'] == 'row' for c in r['items']}
+
+
+def holds_together(title, rated):
+    """A title page's More like this: some shows and at most MORE, each some percent similar,
+    most similar first; Fans also like apart from them; nothing on the list in either."""
+    more, fans = [c['id'] for c in title['more']], [c['id'] for c in title['fans']]
+    similar = [c['similar'] for c in title['more']]
+    return (0 < len(more) <= MORE and all(60 <= s <= 99 for s in similar) and similar == sorted(similar, reverse=True)
+            and len(fans) <= MORE and not set(more) & set(fans) and not rated & (set(more) | set(fans)))
 
 
 relations = Relations(engine)
@@ -83,14 +92,16 @@ for size in (300, 1000, 3000):
         rows += more['rows']
     check(f'{size}: {len(rows)} rows on, still nothing rated and no row twice',
           not rated & cards(rows) and len({r['key'] for r in rows}) == len(rows))
+    started = time.perf_counter()
     title = lib.title({**body, 'id': v.held[0]})
-    check(f'{size}: a title page has more like this, none of it rated',
-          len(title['more']) == MORE and not rated & {c['id'] for c in title['more']}
-          and title['show']['because'] and title['show']['match'])
+    spent = time.perf_counter() - started
+    check(f'{size}: a title page comes in {spent:.2f}s', spent < 1.0)
+    check(f'{size}: it has more like this and fans also like, none of it rated',
+          holds_together(title, rated) and title['show']['because'] and title['show']['match'])
     own = next(p['id'] for p in reversed(liked) if p['weight'] == 1)
     title = lib.title({**body, 'id': own})
-    check(f'{size}: so does the page of a show it loves', len(title['more']) == MORE
-          and not rated & {c['id'] for c in title['more']} and title['show']['because'] is None)
+    check(f'{size}: so does the page of a show it loves', holds_together(title, rated)
+          and title['show']['because'] is None)
     browse = lib.browse({**body, 'genre': 'Drama'})
     check(f'{size}: a genre ranks for it', browse['personal'] and browse['rows']
           and not rated & {c['id'] for r in browse['rows'] for c in r['items']})
@@ -105,11 +116,37 @@ check('a long list of dislikes alone gets a first visit\'s page', home['personal
 english = [i for i in known[300:] if engine.shows[i]['language'] == 'English']
 language = {s['id']: s['language'] for s in engine.shows}
 for i in (english[0], english[200], english[800]):
-    more = lib.title({'profile': dislikes, 'settings': dict(DEFAULT_SETTINGS), 'id': engine.shows[i]['id']})['more']
-    kin = sum(language[c['id']] == 'English' for c in more)
-    check(f'and its title page for {engine.shows[i]["name"]} has more like this of its kind', len(more) == MORE
-          and kin >= MORE * 2 // 3 and not {p['id'] for p in dislikes} & {c['id'] for c in more},
-          f'{kin} of {len(more)} in English')
+    started = time.perf_counter()
+    title = lib.title({'profile': dislikes, 'settings': dict(DEFAULT_SETTINGS), 'id': engine.shows[i]['id']})
+    spent = time.perf_counter() - started
+    kin = sum(language[c['id']] == 'English' for c in title['more'])
+    check(f'and its title page for {engine.shows[i]["name"]} has more like this of its kind in {spent:.2f}s',
+          holds_together(title, {p['id'] for p in dislikes}) and kin >= len(title['more']) * 2 / 3 and spent < 1.0,
+          f'{kin} of {len(title["more"])} in English')
+
+# A long list's dislikes are weighed from the neighbour index: a show at least as like a
+# disliked show as like the title, and very like it, stays off the title's More like this.
+settings = dict(DEFAULT_SETTINGS)
+title_show = english[0]
+disliked_ids = {p['id'] for p in dislikes}
+body = {'profile': dislikes, 'settings': settings, 'id': engine.shows[title_show]['id']}
+before = [engine.by_id[c['id']] for c in lib.title(body)['more']]
+likeness = lib.likeness(title_show, settings)
+world, _fans = lib.kin(title_show)      # the title's own world counts as close as can be
+# A twin among a shown show's closest, more like it than the title is, by likeness (what
+# readers of both look up counting little), worked out exactly for the twin.
+pair = next(((a, k) for a in before if a not in world for k, value in zip(*engine.row(a, settings)[:2])
+             if k != title_show and k not in before and engine.shows[k]['id'] not in disliked_ids
+             and value >= max(NOT_FOR_ME, likeness[a] + 0.05)
+             and lib.likeness(k, settings)[a] >= max(NOT_FOR_ME, likeness[a] + 0.05)), None)
+if pair:
+    shown_before, twin = pair
+    body = {**body, 'profile': dislikes + [{'id': engine.shows[twin]['id'], 'weight': -1}]}
+    after = [engine.by_id[c['id']] for c in lib.title(body)['more']]
+    check(f'a show very like a disliked one ({engine.shows[shown_before]["name"]}, like '
+          f'{engine.shows[twin]["name"]}) leaves More like this', shown_before not in after and after)
+else:
+    check('a More like this show has a close twin to dislike', False)
 
 # The old limit and one past it: a list of DENSE_MAX ratings is ranked as it always was.
 v = viewers(engine, 'personas.json', size=300, count=1, relations=relations)[0]

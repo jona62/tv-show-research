@@ -360,6 +360,45 @@ class Taste:
                 'ties': self.e.ties(i, self.e.by_id[source['id']])}
 
 
+class Disliked:
+    """A long list's dislikes as a title page weighs them: how close a show sits to the
+    disliked show nearest it, read from the neighbour index (engine.row), since working out
+    a closeness to every show for each of hundreds of disliked shows takes seconds. A show
+    is looked at from both sides, the disliked shows' closest shows and its own, so a
+    disliked show at least as close to it as the title is found either way. With fans,
+    what readers of both also look up is taken off to that extent, as Library.likeness
+    takes it off."""
+
+    def __init__(self, engine, negatives, settings, fans=0.0):
+        self.e, self.settings, self.fans = engine, settings, fans
+        self.shows = {engine.by_id[p['id']] for p in negatives}
+        self.nearest, self.seen = {}, set()
+        for k in self.shows:
+            for j, value in self.closest(k):
+                if value > self.nearest.get(j, 0.0):
+                    self.nearest[j] = value
+
+    def closest(self, k):
+        """Show k's closest shows and how close, less what readers of both look up."""
+        index, close, _evidence = self.e.row(k, self.settings)
+        if not self.fans:
+            return zip(index, close)
+        read = dict(self.e.cointerest(k))
+        return ((j, max(0.0, v - self.fans * read[j]) if j in read else v) for j, v in zip(index, close))
+
+    def near(self, j):
+        """How close show j sits to the disliked show nearest it, as far as the closest shows
+        of either tell."""
+        if j not in self.seen:
+            self.seen.add(j)
+            best = self.nearest.get(j, 0.0)
+            for k, value in self.closest(j):
+                if k in self.shows and value > best:
+                    best = value
+            self.nearest[j] = best
+        return self.nearest[j]
+
+
 class Shelf:
     """A candidate row: its cards in order before today's freshness, and what the page
     builder weighs it by. kind_of says what sort of row it is (a seed, a micro-genre,
@@ -3056,8 +3095,11 @@ class Library:
         i = self.e.by_id[show_id]
         taste = Taste(self, positives, negatives, settings, candidates) if positives else None
         world, _fans = self.kin(i)
-        more = self.more_like(i, settings, negatives, candidates, taste, world)
-        fans = self.fans_like(i, settings, negatives, candidates, taste, {j for j, _similar in more})
+        # A long list is ranked from each show's closest shows (engine.Wide), and its
+        # dislikes are weighed from them here too (Disliked).
+        wide = self.e.wide(len(positives) + len(negatives))
+        more = self.more_like(i, settings, negatives, candidates, taste, world, wide)
+        fans = self.fans_like(i, settings, negatives, candidates, taste, {j for j, _similar in more}, wide)
         if taste:
             taste.score_others([i])
         show = self.detail(i, taste)
@@ -3100,7 +3142,7 @@ class Library:
             near[j] = max(0.0, near[j] - (1 - FANS) * lift * strength)
         return near
 
-    def more_like(self, i, settings, negatives, candidates, taste=None, world=frozenset()):
+    def more_like(self, i, settings, negatives, candidates, taste=None, world=frozenset(), wide=False):
         """More like this: the shows most like show i itself, as [(index, percent similar)].
         Each is scored as the engine scores more like any one show outside a list, by how
         alike it is (likeness: plot, themes, genres, a shared franchise or maker, and a
@@ -3117,14 +3159,17 @@ class Library:
         day, the shows are the twelve best scores, and the list runs in their order: the
         viewer's own match only orders shows that read the same percent. A show more like
         one the viewer marked Not for me than like show i, and very like it (NOT_FOR_ME,
-        the home page's bar), is left out."""
+        the home page's bar), is left out. For a long list (wide), how like a disliked show
+        it is comes from the neighbour index (Disliked), and only for the shows the list
+        can reach once ranked."""
         e = self.e
         near = self.likeness(i, settings)
         lift = CO_WEIGHT * settings['facets'] / DEFAULT_SETTINGS['facets']
         for j in world:
             near[j] += lift
         form = form_of(e.shows[i])
-        disliked = [self.likeness(e.by_id[p['id']], settings) for p in negatives]
+        unlike = Disliked(e, negatives, settings, (1 - FANS) * lift) if wide and negatives else None
+        disliked = [] if unlike else [self.likeness(e.by_id[p['id']], settings) for p in negatives]
         leanings = e.taste([{'id': e.shows[i]['id'], 'weight': 1}])
         score = {}
         for j in candidates:
@@ -3134,6 +3179,15 @@ class Library:
                 continue
             score[j] = near[j] * leanings.factor(j)
         ranked = sorted(score, key=lambda j: (-score[j], e.shows[j]['id']))
+        if unlike:
+            # Every show the bar and the twelve below can reach, the disliked ones left out.
+            kept, reach = [], len(world) + MORE + 3
+            for j in ranked:
+                if unlike.near(j) < max(NOT_FOR_ME, near[j]):
+                    kept.append(j)
+                    if len(kept) == reach:
+                        break
+            ranked = kept
         others = [j for j in ranked[:len(world) + 3] if j not in world]
         bar = FLOOR * score[others[min(2, len(others) - 1)]] if others else 0.0
         out, siblings = [], 0
@@ -3152,22 +3206,26 @@ class Library:
         out.sort(key=lambda j: (-similar[j], -mine(j), -score[j], e.shows[j]['id']))
         return [(j, similar[j]) for j in out]
 
-    def fans_like(self, i, settings, negatives, candidates, taste=None, shown=frozenset()):
+    def fans_like(self, i, settings, negatives, candidates, taste=None, shown=frozenset(), wide=False):
         """Fans also like: the shows show i's readers also look up (engine.cointerest, which
         leaves out its own franchise), strongest first and MORE at most, as indices. Shows
         More like this already holds (shown), award ceremonies, and anything very close to
         a show the viewer marked Not for me stay out, as they stay off the home page's rows
         of what fans look up. A story keeps to stories, so a drama's fans row doesn't lead
         with its aftershow or a reality show with a similar name, and a factual show keeps
-        to factual ones. Fewer than FANS_SHORTEST and there are none."""
+        to factual ones. Fewer than FANS_SHORTEST and there are none. For a long list
+        (wide), closeness to a disliked show comes from the neighbour index (Disliked)."""
         e = self.e
         story = e.shows[i]['type'] in SCREEN_FORMS
         allowed = set(candidates)
-        disliked = [taste.affinities[p['id']] if taste else e.blend(e.by_id[p['id']], settings) for p in negatives]
+        unlike = Disliked(e, negatives, settings) if wide and negatives else None
+        disliked = [] if unlike else [taste.affinities[p['id']] if taste else e.blend(e.by_id[p['id']], settings)
+                                      for p in negatives]
         links = sorted(((j, strength) for j, strength in e.cointerest(i)
                         if j in allowed and j != i and j not in shown and e.shows[j]['type'] != 'Award Show'
                         and (e.shows[j]['type'] in SCREEN_FORMS) == story
-                        and not any(close[j] >= NOT_FOR_ME for close in disliked)),
+                        and not any(close[j] >= NOT_FOR_ME for close in disliked)
+                        and not (unlike and unlike.near(j) >= NOT_FOR_ME)),
                        key=lambda link: (-link[1], e.shows[link[0]]['id']))
         return [j for j, _strength in links[:MORE]] if len(links) >= FANS_SHORTEST else []
 
