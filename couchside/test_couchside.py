@@ -183,6 +183,15 @@ check('official trailers lead, trailers before teasers, newest first',
       [v['youtube'] for v in things['videos']] == ['TRAILER0005', 'TRAILER0001', 'TEASER00001', 'FANMADE0001'])
 check('trailers take the shape the page plays', things['videos'][1] == {
     'youtube': 'TRAILER0001', 'title': 'Season 1 Trailer', 'kind': 'Trailer', 'published': '2016-07-07'})
+seasonal = tmdb.videos([{'key': 'SEASON5TEAS', 'name': 'Official Teaser', 'type': 'Teaser', 'official': True,
+                         'published': '2013-06-01', 'season': 5},
+                        {'key': 'SEASON1TRLR', 'name': 'Official Trailer', 'type': 'Trailer', 'official': True,
+                         'published': '2008-01-10', 'season': 1},
+                        {'key': 'ODDSEASON01', 'name': 'Odd', 'type': 'Trailer', 'official': False, 'season': '2'}])
+check('a trailer TMDB keeps on a season says which season, and nothing else does', seasonal == [
+    {'youtube': 'SEASON1TRLR', 'title': 'Official Trailer', 'kind': 'Trailer', 'published': '2008-01-10', 'season': 1},
+    {'youtube': 'SEASON5TEAS', 'title': 'Official Teaser', 'kind': 'Teaser', 'published': '2013-06-01', 'season': 5},
+    {'youtube': 'ODDSEASON01', 'title': 'Odd', 'kind': 'Trailer', 'published': ''}], seasonal)
 check('the rating, watch page and backdrop come through', things['rating'] == 'TV-14'
       and things['link'] == 'https://www.themoviedb.org/tv/66732/watch?locale=US'
       and things['backdrop'] == IMAGE_URL + 'w1280/stranger.jpg')

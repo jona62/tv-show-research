@@ -307,6 +307,14 @@ streaming first and renting or buying after, marked as such, each with its TMDB
 logo and linking to TMDB's watch page for the show, as TMDB requires for
 JustWatch's data, with *Streaming data from JustWatch* beside them.
 
+Trailers are the show's own YouTube trailers and teasers. TMDB keeps many shows'
+trailers on their seasons instead (Breaking Bad has none of its own, but a
+trailer on its first season and a teaser on its last), so for a show with none
+`scripts/tmdb.py` asks for its first and latest seasons' videos too, and each of
+those says which season it is for. Those requests count toward the night's
+`TMDB_DAILY_LIMIT` like a show's own, so a night with many of them fetches fewer
+shows, and the rest wait for the next.
+
 Whatever TMDB lacks falls back to the live sources below, item by item: the
 rating to iTunes, trailers to KinoCheck, the backdrop to TVmaze, and where to
 watch to TVmaze's channel and Apple TV. `/api/rating` and `/api/trailer` answer

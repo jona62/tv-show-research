@@ -1247,13 +1247,15 @@ function paintVideos() {
   for (const v of T.videos) {
     const li = el('li');
     const b = button('clip', '', () => playVideo(v));
-    b.setAttribute('aria-label', `Play ${v.title || v.kind}`);
+    b.setAttribute('aria-label', `Play ${v.title || v.kind}${v.season ? `, season ${v.season}` : ''}`);
     const thumb = el('span', '', 'clip-thumb');
     const img = picture(null);
     img.loading = 'lazy';
     img.src = `https://i.ytimg.com/vi/${v.youtube}/mqdefault.jpg`;
     thumb.append(img, icon('play'));
-    b.append(thumb, el('b', v.title || v.kind), el('small', [v.kind, v.published ? longDate(v.published) : ''].filter(Boolean).join(' · ')));
+    // A trailer TMDB keeps on a season says which, since its name seldom does.
+    const said = [v.kind, v.season ? `Season ${v.season}` : '', v.published ? longDate(v.published) : ''];
+    b.append(thumb, el('b', v.title || v.kind), el('small', said.filter(Boolean).join(' · ')));
     li.append(b);
     list.append(li);
   }
