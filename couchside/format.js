@@ -287,3 +287,41 @@ export function recentlyViewed(viewed, now, { rated = new Set(), saved = new Set
   }
   return out;
 }
+
+// Answers the page has already been given, kept by what was asked: asking again within
+// its time limit gets the same answer without a request, and two asking at once share
+// one. A failure is not kept, so the next ask tries again, and past `most` the oldest go.
+export function keeper({ most = 150, now = Date.now } = {}) {
+  const kept = new Map();
+  return (key, ms, ask) => {
+    const held = kept.get(key);
+    if (held && (held.pending || now() - held.at < ms)) return held.answer;
+    const entry = { at: now(), pending: true };
+    entry.answer = Promise.resolve().then(ask).then(value => {
+      Object.assign(entry, { at: now(), pending: false });
+      return value;
+    }, error => {
+      if (kept.get(key) === entry) kept.delete(key);
+      throw error;
+    });
+    kept.delete(key);
+    kept.set(key, entry);
+    for (const old of kept.keys()) {
+      if (kept.size <= most) break;
+      kept.delete(old);
+    }
+    return entry.answer;
+  };
+}
+
+// Answers kept across a reload of the tab, from sessionStorage, read defensively: each is
+// { at, value } under the api request it answered, and only those younger than `ms`
+// stay, the `most` newest.
+export function sessionAnswers(raw, now, ms, most = 40) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  return Object.fromEntries(Object.entries(raw)
+    .filter(([key, a]) => key.startsWith('/api/') && a && Number.isFinite(a.at) && a.at <= now && now - a.at < ms
+      && a.value && typeof a.value === 'object')
+    .sort((a, b) => b[1].at - a[1].at).slice(0, most)
+    .map(([key, a]) => [key, { at: a.at, value: a.value }]));
+}

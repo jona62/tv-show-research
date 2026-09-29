@@ -31,6 +31,9 @@ SHARED = ('transfer.js', 'qr.js', 'fresh.js', 'starters.js')
 MODULES = ('engine.py', 'taste.py', 'titles.py', 'fallback.py', 'follow.py', 'facets.py', 'fresh.py', 'starters.py')
 BRAND = ('favicon.ico', 'favicon.svg', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png',
          'icon-maskable-512.png', 'og.jpg', 'tmdb.svg')
+# What the service worker keeps with the page, whatever the app's files come to be, and
+# what the page and the offline page show besides.
+KEPT = (*OWN, *SHARED, 'offline.html', 'favicon.svg', 'icon-192.png', 'tmdb.svg')
 def manifest(description):
     return {
     'id': '/', 'name': 'Couchside', 'short_name': 'Couchside', 'description': description,
@@ -101,9 +104,13 @@ def main():
     page = (HERE / 'index.template.html').read_text().replace('__DESCRIPTION__', DESCRIPTION)
     (PUBLIC / 'index.html').write_text(page)
 
-    # The service worker's cache is named after this build, so a deploy retires the old one.
-    stamp = hashlib.sha256(b''.join((PUBLIC / name).read_bytes() for name in ('index.html', *OWN, *SHARED)))
-    (PUBLIC / 'sw.js').write_text((HERE / 'sw.js').read_text().replace('__BUILD__', stamp.hexdigest()[:12]))
+    # The service worker's cache is named after this build, so a deploy retires the old one,
+    # and it checks each file it keeps against the hash written here, so it never keeps
+    # one from another build.
+    stamp = hashlib.sha256(b''.join((PUBLIC / name).read_bytes() for name in ('index.html', *KEPT)))
+    hashes = {f'/{name}': hashlib.sha256((PUBLIC / name).read_bytes()).hexdigest()[:16] for name in KEPT}
+    worker = (HERE / 'sw.js').read_text().replace('__BUILD__', stamp.hexdigest()[:12])
+    (PUBLIC / 'sw.js').write_text(worker.replace('__FILES__', json.dumps(hashes)))
 
     sizes = {name: (PUBLIC / name).stat().st_size for name in ('index.html', *OWN, *SHARED, 'favicon.svg')}
     for name, size in sizes.items():

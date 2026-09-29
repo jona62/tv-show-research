@@ -988,6 +988,46 @@ imported = sorted(set(re.findall(r"from '\./([\w.-]+\.js)'", (ROOT / 'couchside'
 check('every module the page imports is built and served as JavaScript', 'gestures.js' in imported
       and all(status == 200 and headers.get('Content-Type') == 'text/javascript'
               for status, headers, _body in map(fetch, (f'/{name}' for name in imported))), imported)
+
+# The service worker keeps the page and files of one build, each checked against the hash
+# build.py wrote into it, and fetches the images it keeps under a policy of its own.
+from build import OWN, SHARED  # noqa: E402
+status, headers, worker = fetch('/sw.js')
+stamp = re.search(rb"^const VERSION = '([0-9a-f]{12})';", worker, re.M)
+kept = json.loads(re.search(rb'^const FILES = (\{.*\});$', worker, re.M)[1])
+check('every page says it is the build the service worker keeps', stamp and server.BUILD == stamp[1].decode()
+      and all(fetch(path)[1].get('X-Build') == server.BUILD for path in ('/', '/browse', '/?show=169')))
+check('the service worker keeps every app and shared file, each with the hash of what is served',
+      {f'/{name}' for name in (*OWN, *SHARED)} <= set(kept) and all(
+          hashlib.sha256(fetch(path)[2]).hexdigest()[:16] == digest for path, digest in kept.items()))
+check('it keeps what the offline page needs', {'/offline.html', '/style.css', '/favicon.svg'} <= set(kept))
+pages = json.loads(re.search(rb'^const PAGES = (\[.*\]);$', worker, re.M)[1].replace(b"'", b'"'))
+check('it serves the app\'s own pages and no others', sorted(pages) == sorted(server.PAGES))
+check('it may fetch the images it keeps', headers.get('Content-Security-Policy') == server.WORKER_CSP
+      and all(host in server.WORKER_CSP for host in ('https://static.tvmaze.com', 'https://i.ytimg.com', 'https://image.tmdb.org')))
+check("the page's own policy still connects only to this site",
+      "connect-src 'self';" in fetch('/')[1].get('Content-Security-Policy', ''))
+
+# A page or a search the browser already holds comes back as a bodiless 304.
+status, headers, _body = fetch('/')
+tag = headers.get('ETag')
+status, again, body = fetch('/', headers={'If-None-Match': tag})
+check('a page the browser holds is a bodiless 304 that names its tag and build', tag and status == 304 and body == b''
+      and again.get('ETag') == tag and again.get('X-Build') == server.BUILD)
+check('a page is still checked every time', headers.get('Cache-Control') == 'no-cache')
+check('a weak tag, or one of several, counts too', fetch('/', headers={'If-None-Match': f'"other", W/{tag}'})[0] == 304)
+check('another tag, or another page, is sent whole', fetch('/', headers={'If-None-Match': '"other"'})[0] == 200
+      and fetch('/?show=169', headers={'If-None-Match': tag})[0] == 200)
+status, _headers, body = fetch('/', method='HEAD', headers={'If-None-Match': tag})
+check('a HEAD honours the tag too', status == 304 and body == b'')
+status, headers, body = fetch('/api/search?q=stranger%20things')
+check('browsers keep a search five minutes, with a tag', status == 200 and json.loads(body)['shows']
+      and headers.get('Cache-Control') == 'public, max-age=300' and headers.get('ETag'))
+status, again, body = fetch('/api/search?q=stranger%20things', headers={'If-None-Match': headers['ETag']})
+check('a search asked again with its tag is a bodiless 304', status == 304 and body == b''
+      and again.get('Cache-Control') == 'public, max-age=300')
+check('another search has another tag', fetch('/api/search?q=the%20office')[1].get('ETag') not in (None, headers['ETag']))
+check('a refused search is not kept', fetch('/api/search?q=' + 'x' * 101)[1].get('Cache-Control') == 'no-store')
 check('robots stay out of the api', b'Disallow: /api/' in fetch('/robots.txt')[2])
 check('powerful features are switched off', 'camera=()' in fetch('/')[1].get('Permissions-Policy', ''))
 check('the engine sources are not served', fetch('/engine.py')[0] == 404 and fetch('/art.bin.gz')[0] == 404)

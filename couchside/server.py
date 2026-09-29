@@ -3,6 +3,7 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit, parse_qs
+import hashlib
 import html
 import json
 import os
@@ -39,6 +40,13 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; "
        "img-src 'self' data: https://static.tvmaze.com https://i.ytimg.com https://image.tmdb.org; "
        "frame-src https://www.youtube-nocookie.com; connect-src 'self'; "
        "object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+# A worker's own fetches answer to the policy its script came with, and the service
+# worker fetches the images it keeps.
+WORKER_CSP = ("default-src 'self'; "
+              "connect-src 'self' https://static.tvmaze.com https://i.ytimg.com https://image.tmdb.org")
+# A search answers from the catalogue, and from TVmaze's search, which fallback.py keeps
+# for an hour, so browsers keep an answer five minutes and then ask with its ETag.
+SEARCH_CACHE = 'public, max-age=300'
 SHARE = re.compile(r'<!--share.*?<!--/share-->', re.S)
 HOST = re.compile(r'[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?(?::\d{1,5})?', re.I)
 HOLES = re.compile(r'__(BOOTSTRAP|CATALOG_COUNT|DATASET_DATE)__')
@@ -59,6 +67,26 @@ def art_file(model):
     """A model the refresher built carries posters to match its catalog; the frozen one
     has none, and uses the copy kept here."""
     return model / 'art.bin.gz' if (model / 'art.bin.gz').is_file() else HERE / 'art.bin.gz'
+
+
+def build_of(public):
+    """The build the served files are, as build.py stamped it into the service worker."""
+    try:
+        found = re.search(r"^const VERSION = '([0-9a-f]+)';", (public / 'sw.js').read_text(), re.M)
+    except OSError:
+        return ''
+    return found[1] if found else ''
+
+
+def etag(body):
+    """A strong validator: the same bytes, the same tag."""
+    return '"' + hashlib.sha256(body).hexdigest()[:20] + '"'
+
+
+def held(header, tag):
+    """Whether If-None-Match names this tag, compared weakly as RFC 9110 has it for GET."""
+    names = {name.strip().removeprefix('W/') for name in (header or '').split(',')}
+    return '*' in names or tag in names
 
 
 def fill(template, engine, library, credit):
@@ -85,6 +113,9 @@ LIVE = Live(calls=12)
 TVMAZE = Remote(calls=4)
 TEMPLATE = PUBLIC / 'index.html'
 PAGE = fill(TEMPLATE.read_text(), ENGINE, LIBRARY, bool(TMDB)) if TEMPLATE.exists() else ''
+# Every page says which build it is, read with the page at startup, so the service worker
+# keeps a page only beside files of the same build.
+BUILD = build_of(PUBLIC)
 LOST = (PUBLIC / '404.html').read_bytes() if (PUBLIC / '404.html').exists() else b''
 # KinoCheck allows 1,000 calls a day and iTunes about 20 a minute, so both cache for days.
 KINO = Live(base=KINOCHECK, ttl=3 * 86400, size=3000, calls=20, period=60)
@@ -196,7 +227,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header('X-Content-Type-Options', 'nosniff')
         # Posters come from TVmaze's image server; it needs no referrer to serve them.
         self.send_header('Referrer-Policy', 'no-referrer')
-        self.send_header('Content-Security-Policy', CSP)
+        self.send_header('Content-Security-Policy', WORKER_CSP if urlsplit(self.path).path == '/sw.js' else CSP)
         self.send_header('Cache-Control', self.cache_control
                          or ('no-store' if self.path.startswith('/api/') else 'no-cache'))
         self.send_header('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()')
@@ -215,14 +246,26 @@ class Handler(SimpleHTTPRequestHandler):
         if self.command != 'HEAD':
             self.wfile.write(LOST)
 
-    def send_page(self, query, head=False):
-        body = render_page(self.headers, query)
-        self.send_response(200)
-        self.send_header('Content-Type', 'text/html; charset=utf-8')
-        self.send_header('Content-Length', str(len(body)))
+    def send_body(self, body, kind, status=200, validate=False, head=False, extra=()):
+        """The body, or a bodiless 304 when validate is set and the browser already holds
+        these very bytes (If-None-Match)."""
+        tag = etag(body) if validate and status == 200 else None
+        fresh = tag and held(self.headers.get('If-None-Match'), tag)
+        self.send_response(304 if fresh else status)
+        if not fresh:
+            self.send_header('Content-Type', kind)
+            self.send_header('Content-Length', str(len(body)))
+        if tag:
+            self.send_header('ETag', tag)
+        for key, value in extra:
+            self.send_header(key, value)
         self.end_headers()
-        if not head:
+        if not fresh and not head:
             self.wfile.write(body)
+
+    def send_page(self, query, head=False):
+        self.send_body(render_page(self.headers, query), 'text/html; charset=utf-8', validate=True, head=head,
+                       extra=(('X-Build', BUILD),) if BUILD else ())
 
     def do_HEAD(self):
         self.cache_control = None
@@ -232,13 +275,9 @@ class Handler(SimpleHTTPRequestHandler):
         else:
             super().do_HEAD()
 
-    def send_json(self, value, status=200):
+    def send_json(self, value, status=200, validate=False):
         body = json.dumps(value, ensure_ascii=False, separators=(',', ':'), allow_nan=False).encode()
-        self.send_response(status)
-        self.send_header('Content-Type', 'application/json; charset=utf-8')
-        self.send_header('Content-Length', str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        self.send_body(body, 'application/json; charset=utf-8', status, validate)
 
     def do_GET(self):
         self.cache_control = None
@@ -253,7 +292,9 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json({'error': 'Search terms must be 100 characters or fewer.'}, 400)
                 return
             try:
-                self.send_json(answer(ENGINE, q, TVMAZE, LIBRARY.card))
+                found = answer(ENGINE, q, TVMAZE, LIBRARY.card)
+                self.cache_control = SEARCH_CACHE
+                self.send_json(found, validate=True)
             except (BrokenPipeError, ConnectionResetError, TimeoutError):
                 pass    # the page moved on to a longer search while TVmaze answered
             return

@@ -181,5 +181,155 @@ check('recently viewed is the last fortnight, newest first', same(recentlyViewed
   && VIEWED_DAYS === 14);
 check('rated and listed titles leave it', same(recentlyViewed(viewed, day, { rated: new Set([2]), saved: new Set([3]) }), []));
 
+// Answers kept by what was asked: within their time, shared while in flight, never a failure.
+const { keeper, sessionAnswers } = await import('./format.js');
+let clock = 1_000;
+const asked = keeper({ most: 3, now: () => clock });
+let requests = 0;
+const answer = value => () => { requests++; return Promise.resolve({ value }); };
+const [one, two] = await Promise.all([asked('a', 100, answer(1)), asked('a', 100, answer(2))]);
+check('two asking at once share one request', requests === 1 && one === two && one.value === 1);
+clock += 99;
+check('asking again within its time gets the same answer without a request',
+  (await asked('a', 100, answer(3))) === one && requests === 1);
+clock += 1;
+check('past its time it is asked again', (await asked('a', 100, answer(4))).value === 4 && requests === 2);
+check('another question is asked on its own', (await asked('b', 100, answer(5))).value === 5 && requests === 3);
+let failed = '';
+await asked('c', 100, () => { requests++; return Promise.reject(new Error('down')); }).catch(e => { failed = e.message; });
+check('a failure reaches the caller and is not kept', failed === 'down'
+  && (await asked('c', 100, answer(6))).value === 6 && requests === 5);
+await asked('d', 100, answer(7));
+check('past the most it keeps, the oldest go first', (await asked('a', 100, answer(8))).value === 8 && requests === 7
+  && (await asked('d', 100, answer(9))).value === 7 && requests === 7);
+let thrown = '';
+await asked('e', 100, () => { throw new Error('at once'); }).catch(e => { thrown = e.message; });
+check('an ask that throws at once fails like any other', thrown === 'at once');
+const at = 50_000;
+check('answers kept for a reload are read defensively, the newest that are young enough',
+  same(sessionAnswers({ '/api/extra?id=1': { at: at - 10, value: { details: 1 } }, '/api/rating?id=2': { at: at - 99_999, value: {} },
+    '/api/trailer?id=3': { at: at - 5, value: { videos: [] } }, 'elsewhere': { at, value: {} }, '/api/x': { at, value: 'text' },
+    '/api/y': null, '/api/z': { at: at + 5, value: {} } }, at, 60_000, 1), { '/api/trailer?id=3': { at: at - 5, value: { videos: [] } } })
+  && same(sessionAnswers(null, at, 1), {}) && same(sessionAnswers([1], at, 1), {}) && same(sessionAnswers('x', at, 1), {}));
+
+// The service worker (sw.js), run against a stand-in for the browser's caches and network.
+const { readFileSync } = await import('node:fs');
+const { createHash } = await import('node:crypto');
+const SITE = 'https://couch.test';
+const hash16 = text => createHash('sha256').update(text).digest('hex').slice(0, 16);
+function stubWorker({ files, network, build = 'b1', mostSmall = 1000 }) {
+  const on = {}, stores = new Map(), fetched = [];
+  let tick = 0, skipped = false;
+  const key = r => new URL(typeof r === 'string' ? r : r.url, SITE).href;
+  const store = name => stores.get(name) || stores.set(name, new Map()).get(name);
+  const cache = m => ({
+    match: async r => m.get(key(r))?.clone(),
+    put: async (r, response) => { m.delete(key(r)); m.set(key(r), response); },
+    keys: async () => [...m.keys()].map(url => ({ url })),
+    delete: async r => m.delete(key(r)),
+  });
+  const caches = {
+    open: async name => cache(store(name)),
+    keys: async () => [...stores.keys()],
+    delete: async name => stores.delete(name),
+    match: async (r, { cacheName } = {}) => {
+      for (const [name, m] of stores) if ((!cacheName || name === cacheName) && m.has(key(r))) return m.get(key(r)).clone();
+    },
+  };
+  const fetch = async (r, init = {}) => {
+    const url = key(r);
+    fetched.push(`${(typeof r === 'string' ? init.mode : r.mode) || 'cors'} ${url.replace(SITE, '')}`);
+    return network(url);
+  };
+  const self = { addEventListener: (type, fn) => { on[type] = fn; }, location: new URL(SITE), skipWaiting: () => { skipped = true; },
+    clients: { claim: async () => {} } };
+  const source = readFileSync(new URL('./sw.js', import.meta.url), 'utf8').replace('__BUILD__', build)
+    .replace('__FILES__', JSON.stringify(files)).replace('MOST_SMALL = 1000', `MOST_SMALL = ${mostSmall}`);
+  new Function('self', 'caches', 'fetch', 'crypto', 'Request', 'Response', 'Date', 'setTimeout', source)(
+    self, caches, fetch, globalThis.crypto, Request, Response, { now: () => ++tick }, done => Promise.resolve().then(done));
+  const waiting = [];
+  const extendable = extra => ({ ...extra, waitUntil: p => waiting.push(p) });
+  const settle = async () => { while (waiting.length) await waiting.shift().catch(() => {}); };
+  return {
+    stores, fetched, skipped: () => skipped,
+    install: async () => { const e = extendable(); on.install(e); try { await Promise.all(waiting.splice(0)); return true; } catch { return false; } },
+    activate: async () => { on.activate(extendable()); await settle(); },
+    message: data => on.message({ data }),
+    ask: async (path, { mode = 'no-cors', destination = '' } = {}) => {
+      let answer;
+      on.fetch(extendable({ request: { method: 'GET', url: new URL(path, SITE).href, mode, destination }, respondWith: p => { answer = p; } }));
+      const response = await answer;
+      await settle();
+      return response;
+    },
+  };
+}
+const shellFiles = { '/main.js': 'main build one', '/style.css': 'style build one', '/offline.html': 'offline page' };
+const files = Object.fromEntries(Object.entries(shellFiles).map(([path, body]) => [path, hash16(body)]));
+const siteOf = (pages, { down = false } = {}) => async url => {
+  if (down) throw new TypeError('offline');
+  const hit = pages[url.replace(SITE, '')] ?? pages[url];
+  if (!hit) return new Response('none', { status: 404 });
+  return new Response(hit.body ?? hit, { status: 200, headers: hit.headers ?? {} });
+};
+const page = (body, build = 'b1', etag = '"p1"') => ({ body, headers: { 'X-Build': build, ETag: etag } });
+let net = siteOf({ ...shellFiles, '/': page('the page') });
+let sw = stubWorker({ files, network: url => net(url) });
+check('the service worker keeps the page and every file of its build, checked first', await sw.install()
+  && same([...sw.stores.get('couchside-b1').keys()].map(u => u.replace(SITE, '')).sort(), ['/', '/main.js', '/offline.html', '/style.css']));
+net = siteOf({ ...shellFiles, '/main.js': 'main build two', '/': page('the page') });
+let mixed = stubWorker({ files, network: url => net(url) });
+check('a file from another build fails the install, and nothing is kept', !(await mixed.install()) && !mixed.stores.size);
+net = siteOf({ ...shellFiles, '/': page('the next page', 'b2') });
+mixed = stubWorker({ files, network: url => net(url) });
+check('so does a page from another build', !(await mixed.install()) && !mixed.stores.size);
+net = siteOf({ ...shellFiles, '/': page('the page') });
+sw.fetched.length = 0;
+let got = await sw.ask('/browse?genre=Crime', { mode: 'navigate' });
+check('any of the app\'s pages starts from the page kept, and the network is asked for it again behind',
+  (await got.text()) === 'the page' && same(sw.fetched, ['cors /']));
+net = siteOf({ ...shellFiles, '/': page('the page, a new catalogue', 'b1', '"p2"') });
+await sw.ask('/', { mode: 'navigate' });
+check('a changed page of the same build is kept for the next load', (await (await sw.ask('/list', { mode: 'navigate' })).text()) === 'the page, a new catalogue');
+net = siteOf({ ...shellFiles, '/': page('a page from the next deploy', 'b2', '"p3"') });
+await sw.ask('/', { mode: 'navigate' });
+check('but never a page from another build', (await (await sw.ask('/', { mode: 'navigate' })).text()) === 'the page, a new catalogue');
+sw.fetched.length = 0;
+check('the build\'s files come from what it kept', (await (await sw.ask('/main.js', { mode: 'cors' })).text()) === 'main build one'
+  && !sw.fetched.length);
+net = siteOf({}, { down: true });
+check('without a connection, a page that is not the app\'s is the offline page',
+  (await (await sw.ask('/nope', { mode: 'navigate' })).text()) === 'offline page');
+const poster = n => `https://static.tvmaze.com/uploads/images/medium_portrait/0/${n}.jpg`;
+const images = Object.fromEntries([1, 2, 3, 4, 5].map(n => [poster(n), `poster ${n}`]));
+net = siteOf({ ...images, [poster(9)]: undefined });
+sw = stubWorker({ files, network: url => net(url), mostSmall: 3 });
+sw.fetched.length = 0;
+const img = { mode: 'no-cors', destination: 'image' };
+got = await sw.ask(poster(1), img);
+check('an image is fetched with CORS the first time, and kept', (await got.text()) === 'poster 1' && same(sw.fetched, [`cors ${poster(1)}`])
+  && sw.stores.get('couchside-images').has(poster(1)));
+sw.fetched.length = 0;
+check('and comes from what was kept after that', (await (await sw.ask(poster(1), img)).text()) === 'poster 1' && !sw.fetched.length);
+await sw.ask(poster(9), img);
+check('a missing image is not kept', !sw.stores.get('couchside-images').has(poster(9)));
+for (const n of [2, 3]) await sw.ask(poster(n), img);
+await sw.ask(poster(1), img);
+for (const n of [4, 5]) await sw.ask(poster(n), img);
+check('past the most it keeps, the least recently shown go', same([...sw.stores.get('couchside-images').keys()].sort(),
+  [poster(1), poster(4), poster(5)]));
+net = siteOf({}, { down: true });
+sw.fetched.length = 0;
+let failure = '';
+await sw.ask(poster(7), img).catch(e => { failure = e.message; });
+check('an image that cannot be fetched with CORS is asked for as the page asked, and never kept', failure === 'offline'
+  && same(sw.fetched, [`cors ${poster(7)}`, `no-cors ${poster(7)}`]) && !sw.stores.get('couchside-images').has(poster(7)));
+sw.stores.set('couchside-0ld', new Map()).set('couchside-b1', new Map()).set('elsewhere', new Map());
+await sw.activate();
+check('taking over clears older builds, and keeps its own, the images and what is not its own',
+  same([...sw.stores.keys()].sort(), ['couchside-b1', 'couchside-images', 'elsewhere']));
+sw.message('take-over');
+check('the page that found a new build lets it take over', sw.skipped());
+
 console.log(fails ? `\n${fails} failed` : '\nall format checks passed');
 process.exit(fails ? 1 : 0);
