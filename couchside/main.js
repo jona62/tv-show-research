@@ -619,7 +619,7 @@ function appendRows(rows) {
     }
   }
   if (!$('row-recent') && !home.more) holder.insertBefore(recentRow(), sentinel);
-  // On phones each new row eases in as it comes into view (gestures.js).
+  // On phones a row that lands on screen eases in; the rest are simply there (gestures.js).
   reveal(holder.querySelectorAll('section.row'));
 }
 
