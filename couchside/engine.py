@@ -954,7 +954,9 @@ class Wide:
         e = self.e = engine
         self.negatives, self.affinities, self.settings = negatives, affinities, settings
         self.weights = weights_of(settings)
-        liked = liked or scoring
+        # No liked list given means the shows to match are the list; an empty one means the
+        # list likes nothing (a title page for a list of dislikes alone).
+        liked = scoring if liked is None else liked
         self.scoring = scoring
         if base is not None:
             self.rows, self.strength, self.against = base.rows, dict(base.strength), base.against
@@ -968,7 +970,7 @@ class Wide:
             # that sit closest to it: a long list's hundreds of dislikes of one kind would
             # otherwise teach every interest to shun that kind.
             disliked = [[] for _ in self.interests]
-            for p in negatives:
+            for p in negatives if self.interests else ():
                 i = e.by_id[p['id']]
                 if WIDE_OWN_DISLIKES:
                     disliked[self.nearest(i)].append(i)

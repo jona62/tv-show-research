@@ -95,6 +95,22 @@ for size in (300, 1000, 3000):
     check(f'{size}: a genre ranks for it', browse['personal'] and browse['rows']
           and not rated & {c['id'] for r in browse['rows'] for c in r['items']})
 
+# A long list of nothing but dislikes: the home page is a first visit's, and a title page
+# still has more like this of the title's own kind (for an English title, mostly English,
+# as a first visit's is), none of it disliked.
+known = sorted((i for i, s in enumerate(engine.shows) if s['recommendable']), key=lambda i: -engine.popularity[i])
+dislikes = [{'id': engine.shows[i]['id'], 'weight': -1} for i in known[:200]]
+home = lib.home({'profile': dislikes, 'settings': dict(DEFAULT_SETTINGS)})
+check('a long list of dislikes alone gets a first visit\'s page', home['personal'] is False and home['rows'])
+english = [i for i in known[300:] if engine.shows[i]['language'] == 'English']
+language = {s['id']: s['language'] for s in engine.shows}
+for i in (english[0], english[200], english[800]):
+    more = lib.title({'profile': dislikes, 'settings': dict(DEFAULT_SETTINGS), 'id': engine.shows[i]['id']})['more']
+    kin = sum(language[c['id']] == 'English' for c in more)
+    check(f'and its title page for {engine.shows[i]["name"]} has more like this of its kind', len(more) == MORE
+          and kin >= MORE * 2 // 3 and not {p['id'] for p in dislikes} & {c['id'] for c in more},
+          f'{kin} of {len(more)} in English')
+
 # The old limit and one past it: a list of DENSE_MAX ratings is ranked as it always was.
 v = viewers(engine, 'personas.json', size=300, count=1, relations=relations)[0]
 for count, wide in ((DENSE_MAX, False), (DENSE_MAX + 1, True)):
