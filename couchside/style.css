@@ -305,6 +305,31 @@ main{min-height:70vh;padding-bottom:calc(var(--dock-space) + 24px);outline:none}
 .search-box input:focus{border-color:#fff;outline:none;background:#333}
 /* Wide screens search from the nav, so the page's own box is only for phones. */
 @media(min-width:760px){.search-box{display:none}}
+/* Recent searches: under the search page's box on phones, dropping from the nav's box on wide screens. */
+.find{position:relative}
+.recent{margin:0 var(--gutter) 14px}
+.recent-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.recent-h{margin:0;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.recent-clear{min-height:44px;padding:0 4px;border:0;background:none;color:var(--ink-2);font-size:14px;font-weight:700;cursor:pointer}
+.recent-clear:hover{color:#fff}
+.recent-list{list-style:none;margin:0;padding:0}
+.recent-list li{display:flex;align-items:center;border-bottom:1px solid var(--line)}
+.recent-list li:last-child{border-bottom:0}
+.recent-q{flex:1;min-width:0;display:flex;align-items:center;gap:12px;min-height:44px;padding:0 4px;border:0;background:none;
+  color:var(--ink-2);font-size:16px;text-align:left;cursor:pointer}
+.recent-q:hover{color:#fff}
+.recent-q .i{color:var(--dim)}
+.recent-q .i svg{width:18px;height:18px}
+.recent-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.icon-btn.recent-x{flex:none;width:44px;height:44px;color:var(--dim)}
+.icon-btn.recent-x:hover{color:#fff}
+.recent-x .i svg{width:18px;height:18px}
+.recent.drop{position:absolute;top:calc(100% + 8px);right:-1px;z-index:31;width:min(360px,calc(100vw - 2 * var(--gutter)));
+  margin:0;padding:2px 0 6px;border:1px solid #333;border-radius:8px;background:#141414f7;box-shadow:0 18px 44px #000c}
+.drop .recent-head{padding:0 8px 0 16px}
+.drop .recent-list li{border:0}
+.drop .recent-q{padding:0 8px 0 16px;font-size:15px}
+.drop .recent-q:hover{background:#ffffff12}
 /* shows TVmaze has that the catalogue does not yet */
 .missing{margin-bottom:18px}
 .note + .missing .page-h2{margin-top:8px}
@@ -335,9 +360,28 @@ main{min-height:70vh;padding-bottom:calc(var(--dock-space) + 24px);outline:none}
 .welcome-bar span{margin-right:auto;color:var(--ink-2);font-size:14px}
 
 /* browse --------------------------------------------------------------- */
-.browse-head{display:flex;flex-wrap:wrap;align-items:center;gap:10px 20px;margin:0 var(--gutter) 18px}
-.browse-head .page-h{margin:0}
-.genre-pick select{padding:7px 34px 7px 12px;border:1px solid #fff;border-radius:2px;background:#000;color:#fff;font-weight:700;font-size:14px}
+.browse-head{margin:0 0 16px}
+.browse-head .page-h{margin-bottom:10px}
+/* The genres as pills in one row that scrolls sideways, starting on the heading's edge. */
+.genre-bar{position:relative}
+.genre-scroll{position:relative;display:flex;align-items:center;gap:8px;padding:4px var(--gutter) 6px;overflow-x:auto;
+  overscroll-behavior-x:contain;scroll-snap-type:x mandatory;scroll-padding:0 var(--gutter);scrollbar-width:none}
+.genre-scroll::-webkit-scrollbar{display:none}
+.genre-row{display:flex;gap:8px}
+.genre-chip{flex:none;display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 16px;border:1px solid #ffffff40;
+  border-radius:20px;background:#ffffff0d;color:var(--ink-2);font-size:15px;font-weight:600;white-space:nowrap;cursor:pointer;
+  scroll-snap-align:start;transition:background-color .15s,border-color .15s,color .15s}
+.genre-chip:hover{border-color:#fff;color:#fff}
+.genre-chip[aria-selected=true],.genre-all.on{border-color:#fff;background:#fff;color:#141414}
+.genre-all{padding-right:12px}
+.genre-all .i svg{width:18px;height:18px}
+.genre-sep{flex:none;width:1px;height:24px;background:#ffffff33}
+.genre-bar .nudge{top:0;bottom:0;width:64px;border-radius:0}
+.genre-bar .nudge.prev{justify-items:start;padding-left:8px;background:linear-gradient(90deg,var(--bg) 45%,#14141400)}
+.genre-bar .nudge.next{justify-items:end;padding-right:8px;background:linear-gradient(270deg,var(--bg) 45%,#14141400)}
+.genre-bar .nudge .i svg{width:26px;height:26px}
+@media(hover:hover) and (pointer:fine){.genre-bar:hover .nudge{opacity:1}}
+@media(max-width:759px),(pointer:coarse){.genre-chip{min-height:44px;border-radius:22px;font-size:16px}}
 .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--card),1fr));gap:14px 8px;margin:0;padding:0 var(--gutter);list-style:none}
 .tile{position:relative;display:block;border-radius:var(--r);overflow:hidden;color:#fff;text-decoration:none}
 .tile .art::after{content:'';position:absolute;inset:0;background:linear-gradient(#0000 30%,#000000e0)}
@@ -515,6 +559,22 @@ dialog.menu::backdrop{background:#0006}
   dialog.menu{margin:auto 0 0;width:100%;max-width:100%;border-radius:14px 14px 0 0;border-width:1px 0 0;
     max-height:calc(100vh - var(--safe-t) - 12px);max-height:calc(100dvh - var(--safe-t) - 12px);
     padding:0 var(--safe-r) var(--safe-b) var(--safe-l)}
+}
+/* All genres: a sheet from the bottom on phones, a panel under its button on wide screens. */
+dialog.genre-menu{overflow:hidden}
+.genre-menu .menu-sheet{display:flex;flex-direction:column;max-height:min(80vh,640px);padding:0}
+.genre-menu .menu-head{padding:12px 12px 12px 20px}
+.genre-list{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:8px}
+.genre-opt{display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:6px;
+  background:none;color:var(--ink-2);font-size:16px;text-align:left;cursor:pointer;break-inside:avoid}
+.genre-opt:hover{background:#ffffff12;color:#fff}
+.genre-opt .i{visibility:hidden;margin-left:auto;color:var(--brand)}
+.genre-opt[aria-selected=true]{color:#fff;font-weight:700}
+.genre-opt[aria-selected=true] .i{visibility:visible}
+@media(min-width:760px){
+  dialog.genre-menu{inset:var(--y,120px) auto auto var(--x,4vw);margin:0;width:min(760px,calc(100vw - var(--x,4vw) - var(--gutter)))}
+  .genre-menu .menu-sheet{max-height:max(240px,calc(100vh - var(--y,120px) - 24px))}
+  .genre-list{columns:3 220px;column-gap:6px}
 }
 dialog.small .sheet{max-width:560px;margin-inline:auto}
 .sheet.pad{padding:calc(26px + var(--edge-t)) max(22px,var(--edge-r)) calc(26px + var(--edge-b)) max(22px,var(--edge-l))}

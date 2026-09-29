@@ -96,6 +96,42 @@ check('search says what it found', searchNote('lost', 3, 0) === 'Shows matching 
 check('shows only TVmaze has are not in the catalogue yet', searchNote('new show', 0, 1) === 'Nothing in the catalogue matches “new show” yet.');
 check('only a search that found nothing anywhere suggests the spelling', searchNote('qzx', 0, 0) === 'Nothing matches “qzx”. Check the spelling.'
   && !searchNote('qzx', 1, 0).includes('spelling') && !searchNote('qzx', 0, 2).includes('spelling'));
+
+// Recent searches: the last ten committed, newest first, once whatever the case, never one letter.
+const { RECENT_SEARCHES, searchText, recentStore, noteSearch, withoutSearch, recentMatches } = await import('./format.js');
+let searches = noteSearch([], 'breaking bad');
+searches = noteSearch(searches, '  The   Office ');
+searches = noteSearch(searches, 'Breaking Bad');
+check('a committed search goes first, once whatever its case, as it was last typed', same(searches, ['Breaking Bad', 'The Office']));
+check('an empty or one-letter search is not kept', noteSearch(searches, '') === searches && noteSearch(searches, '  v ') === searches
+  && same(noteSearch([], 'V'), []) && same(noteSearch([], 'Vx'), ['Vx']) && same(noteSearch([], '海'), []));
+let many = [];
+for (let n = 1; n <= 12; n++) many = noteSearch(many, `show ${n}`);
+check('ten are kept, the newest first', RECENT_SEARCHES === 10 && many.length === 10 && many[0] === 'show 12' && many[9] === 'show 3');
+check('searches are kept tidy and no longer than a box takes', searchText('  dark \n matter ') === 'dark matter'
+  && searchText('x'.repeat(140)).length === 100 && searchText(null) === '');
+check('recent searches are read defensively', same(recentStore(['lost', 'LOST', 7, null, 'x', '  ', ' dark  matter ', { q: 'a' }]),
+  ['lost', 'dark matter']) && same(recentStore('lost'), []) && same(recentStore(null), [])
+  && recentStore(Array.from({ length: 30 }, (_, n) => `q${n}`)).length === 10);
+check('one can be taken out whatever its case', same(withoutSearch(['Lost', 'Dark'], ' lost '), ['Dark']));
+check('an empty box offers every recent search', same(recentMatches(['Lost', 'Dark', 'The Last of Us'], ' '), ['Lost', 'Dark', 'The Last of Us']));
+check('typing offers those it begins, or begins a word of, but not the very search typed',
+  same(recentMatches(['Lost', 'Dark', 'The Last of Us', 'Blast'], 'la'), ['The Last of Us'])
+  && same(recentMatches(['Lost', 'Lost Girl', 'Dark'], 'LOST'), ['Lost Girl']) && same(recentMatches(['Dark'], 'q'), []));
+
+// Browse: each genre's chip wears its short name, A to Z, and a letter jumps along the list.
+const { shortGenre, genreChoices, nextByLetter } = await import('./format.js');
+check('a chip drops the shows from a genre\'s name', shortGenre('Crime TV shows') === 'Crime' && shortGenre('Sci-fi shows') === 'Sci-fi'
+  && shortGenre('Adventures') === 'Adventures' && shortGenre('Reality and competition') === 'Reality and competition');
+const choices = genreChoices([{ key: 'Crime', label: 'Crime TV shows', poster: 'p' }, { key: 'Children', label: 'For the kids' },
+  { key: 'animation', label: 'Animated series' }, { key: 'Action', label: 'Action shows' }]);
+check('genres go A to Z by the name on their chip, keeping what they carry',
+  same(choices.map(g => g.short), ['Action', 'Animated series', 'Crime', 'For the kids'])
+  && choices[2].key === 'Crime' && choices[2].label === 'Crime TV shows' && choices[2].poster === 'p');
+const letters = ['Action', 'Anime', 'Crime', 'Anthology'];
+check('a letter jumps to the next name it begins, going round', nextByLetter(letters, 0, 'a') === 1
+  && nextByLetter(letters, 1, 'A') === 3 && nextByLetter(letters, 3, 'a') === 0 && nextByLetter(letters, 0, 'c') === 2);
+check('and nowhere when no name begins with it', nextByLetter(letters, 0, 'z') === -1);
 // The home page: what a page depends on, when a kept page is shown again, what asking for
 // more carries, merging an action, and Recently viewed.
 const { pageKey, resumable, keptText, shownRows, withoutCard, viewedStore, noteViewed, recentlyViewed, RESUME_MINUTES, VIEWED_DAYS }
