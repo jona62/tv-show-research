@@ -348,19 +348,6 @@ function easeIn(row, delay) {
     { duration: 260, delay: delay + 60 + stagger(i, 35, 175), easing: OUT, fill: 'backwards' }));
 }
 
-// Paints a new view: through a view transition where there is one, else with a quick
-// fade of `shown`, the view coming in. `quiet` paints it still, as on the first load;
-// `sync` paints it at once, for a view whose field takes focus as it opens.
-export function swapView(paint, shown, { quiet = false, sync = false } = {}) {
-  if (quiet || !moving()) { paint(); return; }
-  if (!sync && document.startViewTransition && !document.querySelector('dialog[open]')) {
-    document.startViewTransition(paint).ready.catch(() => {});
-    return;
-  }
-  paint();
-  shown.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' });
-}
-
 // Puts `nodes` in `box` in place of what it holds, crossfading from the old to the new;
 // into an empty box they fade in.
 export function crossfade(box, ...nodes) {

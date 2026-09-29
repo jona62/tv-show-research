@@ -9,9 +9,18 @@ import { keeper, sessionAnswers } from './format.js';
 import { freshStore, today, dayNumber, noteSeen, noteEngaged, noteRow, noteHero, prune, freshness, watcher }
   from './fresh.js';
 import { daySeed, startersQuery, mergeStarters, browserLanguage, MAX_ROUND, MAX_PICKED } from './starters.js';
-import { sheets, closing, reveal, swapView, crossfade, peeks, edgeBack } from './gestures.js';
+import { sheets, closing, reveal, crossfade, peeks, edgeBack } from './gestures.js';
 
 const boot = JSON.parse(document.getElementById('boot').textContent);
+// iOS zooms into a field it judges small and stays zoomed. maximum-scale=1 in the page's
+// viewport stops that, while iOS still lets fingers pinch; elsewhere the limit would stop
+// the pinch as well, so it comes off.
+const IOS = /iP(hone|ad|od)/.test(navigator.userAgent)
+  || (!/Android/.test(navigator.userAgent) && navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+if (!IOS) {
+  const viewport = document.querySelector('meta[name="viewport"]');
+  if (viewport) viewport.content = viewport.content.replace(/,\s*maximum-scale=1/, '');
+}
 const $ = id => document.getElementById(id);
 const KEY = 'couchside-v1';
 const DEFAULTS = {
@@ -340,6 +349,7 @@ function ratingOf(id, tm, watching = false) {
 
 /* -------------------------------------------------------------- routing */
 let view = null;
+let dockY = 0;       // where the page was when the dock last tucked or came back
 const where = () => parseRoute(location.pathname, location.search);
 
 function go(path) {
@@ -359,11 +369,10 @@ function route() {
 }
 
 function showView(name) {
-  const first = view === null;
   view = name;
-  // On phones a view crossfades in (gestures.js). The search box takes focus as its view
-  // opens, so that view comes in at once rather than a frame later.
-  swapView(() => paintView(name), $(name), { quiet: first, sync: name === 'search' });
+  // A tab changes at once, as a phone's own tab bars do: a crossfade here made the whole
+  // page, dock and all, shimmer through two copies of itself.
+  paintView(name);
 }
 
 function paintView(name) {
@@ -375,6 +384,14 @@ function paintView(name) {
   }
   if (!$('title').open) document.title = TITLES[name];
   window.scrollTo(0, 0);
+  // A new view starts at the top with the dock whole, not easing out of its tuck.
+  const dock = $('dock');
+  if (dock.classList.contains('tucked')) {
+    dock.classList.add('still');
+    dock.classList.remove('tucked');
+    requestAnimationFrame(() => requestAnimationFrame(() => dock.classList.remove('still')));
+  }
+  dockY = 0;
   syncNav();
   $('find').classList.toggle('open', name === 'search' && wide() && !!where().q);
   if (name === 'welcome') renderWelcome();
@@ -1053,7 +1070,10 @@ function buildTitle(c) {
   const share = button('round', '', shareTitle, 'share');
   share.setAttribute('aria-label', 'Share');
   share.title = 'Share';
-  acts.append(listed, rateGroup(c), share, out);
+  // The round buttons keep to a line of their own on a phone, under Trailer and My List.
+  const icons = el('div', '', 't-icons');
+  icons.append(rateGroup(c), share, out);
+  acts.append(listed, icons);
   const head = el('div', '', 't-head');
   head.append(name, acts);
   hero.append(backdrop, poster, el('div', '', 't-fade'), head);
@@ -1207,7 +1227,7 @@ function paintTrailerButton() {
     a.title = 'Find a trailer on YouTube';
     a.setAttribute('aria-label', `Find a trailer for ${s.name} on YouTube, opens in a new tab`);
     a.append(icon('play'));
-    T.acts.insertBefore(a, T.out);
+    T.out.before(a);
   }
 }
 
@@ -2245,7 +2265,7 @@ if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 for (const a of document.querySelectorAll('.dock [data-icon]')) a.prepend(icon(a.dataset.icon));
 // The dock tucks itself smaller while the page scrolls down and comes back on the way up,
 // as iOS 26 tab bars do. The empty touchstart lets iOS show a pressed tab.
-let dockY = window.scrollY;
+dockY = window.scrollY;
 window.addEventListener('scroll', () => {
   const y = window.scrollY;
   if (Math.abs(y - dockY) < 10) return;

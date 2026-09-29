@@ -58,8 +58,8 @@ or WhatsApp, and the home page previews as the wordmark over a wall of posters.
 On a phone it moves like one (`gestures.js`). Title pages and sheets slide up
 with a grab handle, follow a finger pulled down from their top, go once let go
 far enough down or flicked, and slide away however they close; buttons and
-posters press in under a finger; rows ease in as they come into view; views
-crossfade, and a new hero fades in over the old. Installed, with no browser back button, a swipe in from
+posters press in under a finger; rows ease in as they come into view; a new
+hero fades in over the old; and tabs change at once, as a phone's own do. Installed, with no browser back button, a swipe in from
 the left edge goes back. With reduced motion, nothing animates.
 
 A small service worker starts the app from the build it keeps: the page and its

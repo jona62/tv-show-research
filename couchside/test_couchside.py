@@ -946,8 +946,10 @@ check('the page links its icons and manifest', all(tag in page_root for tag in (
     b'rel="manifest" href="/manifest.webmanifest"', b'rel="apple-touch-icon" href="/apple-touch-icon.png"',
     b'href="/favicon.ico"', b'name="apple-mobile-web-app-capable" content="yes"')))
 check('no build placeholder survives', not re.search(rb'__[A-Z_]+__', page_root))
-check('pinch zoom stays on and the page runs under the notch', b'viewport-fit=cover' in page_root
-      and b'maximum-scale' not in page_root and b'user-scalable' not in page_root)
+check('iOS never zooms into a field, and the page runs under the notch',
+      b'initial-scale=1, maximum-scale=1, viewport-fit=cover' in page_root and b'user-scalable' not in page_root)
+check('everywhere but iOS the scale limit comes off, so pinch zoom stays on',
+      b"if (!IOS) {" in fetch('/main.js')[2] and b"replace(/,\\s*maximum-scale=1/, '')" in fetch('/main.js')[2])
 check('no field is under 16px on a touch screen, so iOS never zooms in',
       b'@media(any-pointer:coarse){\n  input,select,textarea{font-size:16px!important}\n}' in fetch('/style.css')[2])
 check('the home preview uses the share image at this address',
