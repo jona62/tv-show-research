@@ -2343,6 +2343,61 @@ check('the --out manifest lists the pages', manifest['pages'] == 2 and manifest[
 check('download --out leaves the default paths alone', not sentinel.exists())
 check('--refresh and --out together are refused', combined == 2)
 
+
+def download_into(out, served, newest, flaky=()):
+    """download.py --out OUT against a pretend TVmaze whose updates name shows up to id
+    newest and whose index serves the pages in served, 404 for the rest; each page in
+    flaky times out once first. Returns (exit status, what it printed)."""
+    timed_out = set()
+
+    def fake(url, timeout=None):
+        if url.endswith('/updates/shows'):
+            return io.BytesIO(json.dumps({'1': 1, str(newest): 2}).encode())
+        n = int(url.rsplit('=', 1)[1])
+        if n in flaky and n not in timed_out:
+            timed_out.add(n)
+            raise TimeoutError('The read operation timed out')
+        if n not in served:
+            raise HTTPError(url, 404, 'Not Found', None, None)
+        return io.BytesIO(json.dumps(served[n]).encode())
+    saved = sys.argv, urllib.request.urlopen, time.sleep
+    said = io.StringIO()
+    sys.argv, urllib.request.urlopen, time.sleep = ['download.py', '--out', str(out)], fake, lambda _s: None
+    try:
+        with redirect_stdout(said):
+            runpy.run_path(str(SCRIPTS / 'download.py'), run_name='__main__')
+        status = 0
+    except SystemExit as exc:
+        status = exc.code
+    finally:
+        sys.argv, urllib.request.urlopen, time.sleep = saved
+    return status, said.getvalue()
+
+
+# TVmaze's updates name a show added after its cached index: page 2 answers 404 for now.
+out = TMP / 'download-ahead'
+status, said = download_into(out, {0: [{'id': 1}], 1: [{'id': 250}]}, newest=510)
+manifest = json.loads((out / 'manifest.json').read_text()) if (out / 'manifest.json').exists() else {}
+check('a last page the index does not serve yet ends the download there', status == 0
+      and manifest.get('pages') == 2 and manifest.get('records') == 2
+      and sorted(manifest.get('files') or {}) == ['page-000.json', 'page-001.json'], (status, manifest))
+check('and says how many newer shows wait for a later download',
+      'ends at page 1 for now; 1 newer show in its updates list' in said, said)
+try:
+    indexed = refresher.check_index(out)['pages']
+except refresher.StepFailed as exc:
+    indexed = str(exc)
+check('which the refresher takes as a complete index', indexed == 2, indexed)
+status, said = download_into(TMP / 'download-gap', {0: [{'id': 1}], 2: [{'id': 510}]}, newest=510)
+check('a page missing before the last one still fails the download', status not in (0, None)
+      and 'page 1 of its show index but has later pages' in str(status), status)
+status, said = download_into(TMP / 'download-empty', {}, newest=510)
+check('as does an index with no page at all', status not in (0, None) and 'every page' in str(status), status)
+out = TMP / 'download-flaky'
+status, said = download_into(out, {0: [{'id': 1}], 1: [{'id': 250}]}, newest=250, flaky={1})
+check('a page that times out is asked for again', status == 0
+      and json.loads((out / 'manifest.json').read_text())['records'] == 2, (status, said))
+
 # 16. End to end with the real build steps (opt in) -------------------------------------------------------------------
 
 

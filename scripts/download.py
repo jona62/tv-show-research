@@ -4,10 +4,16 @@ Pages go to data/raw and the manifest to data/manifest.json unless TV_RAW_DIR an
 TV_MANIFEST name other places. --out DIR downloads a complete set into DIR instead,
 manifest at DIR/manifest.json, and leaves data/ alone. Every file is written whole
 or not at all, so an interrupted run never leaves half a page behind.
+
+How many pages to ask for comes from the newest show in TVmaze's updates list. The
+show index itself is cached for up to a day, so a page opened by a show added since
+can answer 404 for a while; a 404 is where the index ends, so the download ends
+there too, and those new shows come with another night's download.
 """
 import concurrent.futures
 import datetime
 import hashlib
+import http.client
 import json
 import os
 import pathlib
@@ -24,7 +30,9 @@ MANIFEST = pathlib.Path(os.environ.get('TV_MANIFEST') or ROOT / 'data/manifest.j
 lock = threading.Lock()
 last = 0.0
 
-def get(url):
+def get(url, missing_ok=False):
+    """The body at url, tried again through rate limits, server errors, timeouts and
+    dropped connections. With missing_ok, None when the answer is 404."""
     global last
     for attempt in range(6):
         with lock:
@@ -34,10 +42,16 @@ def get(url):
             with urllib.request.urlopen(url, timeout=45) as response:
                 return response.read()
         except urllib.error.HTTPError as e:
+            if e.code == 404 and missing_ok:
+                return None
             if e.code not in (429, 500, 502, 503, 504):
                 raise
-            time.sleep(2 ** (attempt + 1))
-    raise RuntimeError(url)
+            error = e
+        except (OSError, http.client.HTTPException) as e:
+            # One of some 380 requests timing out should not cost the night's build.
+            error = e
+        time.sleep(2 ** (attempt + 1))
+    raise RuntimeError(f'{url}: {error}')
 
 def write_atomic(path, body):
     """Write to a temporary name beside the file, then rename it into place."""
@@ -50,9 +64,12 @@ def write_atomic(path, body):
         raise
 
 def page(n):
+    """(n, how many shows the page holds), or (n, None) when the index has no such page."""
     path = RAW / f'page-{n:03d}.json'
     if not path.exists():
-        body = get(f'https://api.tvmaze.com/shows?page={n}')
+        body = get(f'https://api.tvmaze.com/shows?page={n}', missing_ok=True)
+        if body is None:
+            return n, None
         assert isinstance(json.loads(body), list)
         write_atomic(path, body)
     return n, len(json.loads(path.read_text()))
@@ -84,12 +101,27 @@ if __name__ == '__main__':
         write_atomic(RAW / 'updates.json', get('https://api.tvmaze.com/updates/shows'))
     updates = json.loads((RAW / 'updates.json').read_text())
     pages = max(map(int, updates)) // 250 + 1
-    total = 0
+    total, missing = 0, []
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         for count, (n, size) in enumerate(pool.map(page, range(pages)), 1):
-            total += size
+            if size is None:
+                missing.append(n)
+            else:
+                total += size
             if count % 25 == 0 or count == pages:
                 print(f'{count}/{pages} pages; {total:,} records', flush=True)
+    if missing:
+        end = missing[0]
+        if missing != list(range(end, pages)):
+            raise SystemExit(f'TVmaze answered 404 for page {end} of its show index but has later pages; '
+                             'try again later.')
+        if end == 0:
+            raise SystemExit('TVmaze answered 404 for every page of its show index.')
+        newer = sum(1 for show in updates if int(show) >= end * 250)
+        newer = '1 newer show' if newer == 1 else f'{newer:,} newer shows'
+        print(f"TVmaze's show index ends at page {end - 1} for now; {newer} in its updates list, added since "
+              'the index was cached, will come with a later download.', flush=True)
+        pages = end
     manifest = {'source': 'https://www.tvmaze.com/api', 'license': 'CC BY-SA 4.0',
                 'retrieved_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 'pages': pages, 'records': total,
