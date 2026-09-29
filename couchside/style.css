@@ -639,13 +639,13 @@ body.loose{display:grid;place-items:center;min-height:100vh;min-height:100dvh;
 /* gestures.js moves sheets, rows, views, the hero and a peek on phones and touch screens,
    with animations it starts itself; these are the pieces it styles. Nothing here moves
    under reduced motion, and a mouse keeps the hover above. */
-/* The grab handle atop every sheet: just inside its top edge, and below the status bar
-   on a sheet that reaches the top of the screen. */
+/* The grab handle atop every sheet: just inside its top edge, below the sheet's --edge-t
+   inset, and on a sheet that reaches the top of the screen without one, below the status bar. */
 .grab{display:none}
 @media(pointer:coarse){
-  .grab{position:absolute;top:calc(var(--grab-top,0px) + 7px);left:50%;z-index:7;display:block;width:38px;height:5px;
-    margin-left:-19px;border-radius:3px;background:#ffffffb8;box-shadow:0 1px 4px #0009;pointer-events:none}
-  dialog.at-top>.grab{top:calc(var(--grab-top,0px) + env(safe-area-inset-top,0px) + 7px)}
+  .grab{position:absolute;top:calc(var(--grab-top,0px) + var(--edge-t,0px) + 7px);left:50%;z-index:7;display:block;
+    width:38px;height:5px;margin-left:-19px;border-radius:3px;background:#ffffffb8;box-shadow:0 1px 4px #0009;pointer-events:none}
+  dialog.at-top>.grab{top:calc(var(--grab-top,0px) + var(--edge-t,var(--safe-t,0px)) + 7px)}
 }
 /* Rows wait unseen until they come into view, then ease in. */
 .pre{opacity:0}
@@ -671,14 +671,16 @@ body.loose{display:grid;place-items:center;min-height:100vh;min-height:100dvh;
   .menu-item:active{background:#ffffff14}
 }
 /* The peek a long press lifts a poster into: the poster, and beneath it a panel with the
-   hover's quick buttons. */
-dialog.peek{width:min(88vw,330px);max-width:none;max-height:none;margin:auto;padding:0;border:0;background:none;
-  color:inherit;overflow:visible;overscroll-behavior:contain}
+   hover's quick buttons, centred between the status bar and the dock's space. */
+dialog.peek{inset:var(--safe-t,0px) 0 var(--dock-space,0px);width:min(88vw,330px);max-width:none;max-height:none;
+  margin:auto;padding:0;border:0;background:none;color:inherit;overflow:visible;overscroll-behavior:contain}
 dialog.peek::backdrop{background:#000000c7}
 .peek-box{display:flex;flex-direction:column;align-items:center;gap:14px}
 .peek-art{display:block;width:min(50vw,210px);padding:0;border:0;border-radius:var(--r);background:none;cursor:pointer;
   box-shadow:0 20px 50px #000d}
-@supports(height:1dvh){.peek-art{width:min(50vw,210px,calc((100dvh - 300px) / 1.5))}}
+@supports(height:1dvh){
+  .peek-art{width:min(50vw,210px,calc((100dvh - var(--safe-t,0px) - var(--dock-space,0px) - 200px) / 1.5))}
+}
 .peek-panel{align-self:stretch;padding:14px 16px 16px;border-radius:12px;background:var(--bg-3);box-shadow:0 20px 50px #000b}
 .peek-name{margin:0 0 6px;font:800 19px/1.2 -apple-system,BlinkMacSystemFont,sans-serif;overflow-wrap:anywhere}
 .peek-panel .meta{font-size:14px}
