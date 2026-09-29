@@ -37,11 +37,16 @@ with the model. Standard library only.
 from array import array
 from bisect import bisect_right
 from collections import OrderedDict
+from pathlib import Path
+import gzip
 import heapq
+import json
 import math
 import re
+import sys
 import threading
 import unicodedata
+import zlib
 
 from engine import DEFAULT_SETTINGS
 from titles import YEAR, forms, normalize
@@ -67,7 +72,22 @@ FURTHER = 0.25      # past the part of the profile a show carries best, each oth
 COMMON = 0.015      # a phrase in more than this share of summaries says too little alone
 FAME = 4            # a show's place is scaled by its popularity, out of 100, to this power
 FIT = 0.35          # a format none of the anchors has keeps this share of its place
+FILM_FIT = 0.7      # and a format other than a film's, this
+# TVmaze's genres too broad to say two things are alike, and Wikidata's names for others.
+BROAD = frozenset({'Drama', 'Comedy'})
+TVMAZE_ALIASES = {'historical': 'History', "children's": 'Children', 'musical': 'Music', 'sport': 'Sports',
+                  'spy': 'Espionage'}
 PROFILE = 1.0       # closeness to the profile, at best, against the evidence below
+FILM = 2.0          # a film a search names weighs at least this toward the format, and as much as all the rest
+BLEND = 0.5         # what the evidence leans toward, against the film's own genres and subjects
+TEXTS = 5           # a film's subjects and rarer genres looked for in the shows' own words
+TEXT_GENRES = 2     # the rarest genres among them,
+TEXT_SHOWS = 150    # of those on at most this many shows: post apocalyptic is, science fiction is not
+# What a show whose words hold one is worth, against a phrase typed: a film's subject
+# (dinosaur, organized crime) is what it is about; a genre, times the film's weight for
+# it, is how it is told.
+FILM_TOPIC, FILM_GENRE = 0.5, 0.25
+TOPIC_MOST = 120    # a film's word in more summaries than this is too common to look for
 MOST = 1.6          # evidence past this adds nothing more
 CACHED = 1024       # answers kept
 # What each kind of evidence is worth, and a keyword counts less when the search is
@@ -167,12 +187,96 @@ def slips(a, b, most):
     return row[-1] <= most
 
 
+class Films:
+    """Well-known films and film series from the model's films.json.gz
+    (scripts/build_films.py), found by any of their names, each as the facet columns
+    its genres and subjects fall in, with how much each counts."""
+
+    def __init__(self, path, facets, genres=()):
+        """genres are TVmaze's, in the order the shows' genre bits follow."""
+        with gzip.open(path, 'rt', encoding='utf-8') as f:
+            data = json.load(f)
+        if not isinstance(data, dict) or data.get('version') != 1 or not isinstance(data.get('films'), list):
+            raise ValueError(f'{path} is not a version 1 film index.')
+        column = {}
+        for c in range(facets.cols):
+            family = facets.families[facets.token_family[c]]
+            if family in ('genre', 'subject'):
+                column[(family, facets.keys[c])] = c
+        # A film's genres as TVmaze's, bar the broadest, which say too little to share.
+        bit = {name.casefold().replace('-', ' '): 1 << n for n, name in enumerate(genres) if name not in BROAD}
+        bit.update({alias: bit[name] for alias, name in TVMAZE_ALIASES.items() if name in bit})
+        self.titles, self.kinds, self.links, self.years, self.animated = [], [], array('I'), array('H'), bytearray()
+        self.topics, self.genre_bits = [], array('Q')
+        self.starts, self.columns, self.weights = array('I', [0]), array('I'), array('f')
+        self.names = {}
+        for film in data['films']:
+            row = [(column[(family, key)], weight) for family in ('genre', 'subject')
+                   for key, weight in (film.get(family) or {}).items() if (family, key) in column]
+            if not row:
+                continue
+            k = len(self.titles)
+            self.titles.append(film['title'])
+            self.kinds.append(film.get('kind'))
+            self.links.append(max(0, int(film.get('links') or 0)))
+            self.years.append(int(film.get('year') or 0))
+            self.animated.append(1 if film.get('animated') else 0)
+            self.topics.append([t for t in film.get('topics', ()) if isinstance(t, str)])
+            mask = 0
+            for key in film.get('genre') or {}:
+                mask |= bit.get(key, 0)
+            self.genre_bits.append(mask)
+            for c, weight in sorted(row):
+                self.columns.append(c)
+                self.weights.append(weight)
+            self.starts.append(len(self.columns))
+            # Titles, the film's own and its original ones, before aliases, which Wikidata
+            # has fewer eyes on.
+            for rank, names in enumerate(([film['title'], *film.get('titles', ())], film.get('aliases', ()))):
+                for name in names:
+                    words = normalize([name])[0].split()
+                    keys = {' '.join(words)}
+                    if len(words) > 1 and words[0].encode() in ARTICLES:
+                        keys.add(' '.join(words[1:]))
+                    for key in keys:
+                        if key:
+                            self.names.setdefault(key, []).append((rank, k, name))
+        del data
+
+    def __len__(self):
+        return len(self.titles)
+
+    def row(self, k):
+        """(column, weight) for film k's genres and subjects."""
+        return list(zip(self.columns[self.starts[k]:self.starts[k + 1]], self.weights[self.starts[k]:self.starts[k + 1]]))
+
+    def named(self, words):
+        """(film, the name it was named by) for a search that is a film's name typed in
+        full, with or without a leading article or a year at the end, or None. A title
+        goes before an alias; then the film of the year typed; then a series before a film
+        of the same name, since it holds them all; then the better known."""
+        year = int(words[-1]) if len(words) > 1 and YEAR.fullmatch(words[-1]) else None
+        found = []
+        for said in ([words, words[:-1]] if year else [words]):
+            for key in (' '.join(said), ' '.join(said[1:]) if len(said) > 1 and said[0].encode() in ARTICLES else None):
+                found += self.names.get(key, []) if key else []
+            if found:
+                break
+        if not found:
+            return None
+        _rank, k, name = min(found, key=lambda f: (f[0], year is not None and self.years[f[1]] != year,
+                                                   self.kinds[f[1]] != 'series', -self.links[f[1]], f[1]))
+        return k, name
+
+
 class Related:
     """The related row for any search, over one engine. pool is the shows a row may
-    offer: those a title page's More like this offers before any settings."""
+    offer: those a title page's More like this offers before any settings. films is the
+    path of the model's films.json.gz, read when the rest of the index is built."""
 
-    def __init__(self, engine, pool, settings=None):
+    def __init__(self, engine, pool, films=None, settings=None):
         e = self.e = engine
+        self.film_path = Path(films) if films else None
         self.settings = dict(settings or DEFAULT_SETTINGS)
         self.pool = list(pool)
         self.offered = bytearray(e.n)
@@ -202,6 +306,8 @@ class Related:
                         self.proper.add(c)
         self.index = None
         self.building = threading.Lock()
+        self.film_index = False
+        self.reading = threading.Lock()
         self.answers = OrderedDict()
         self.lock = threading.Lock()
 
@@ -209,12 +315,14 @@ class Related:
 
     def warm(self):
         """Builds what searching by meaning reads now rather than on first use."""
+        self.films()
         self.ready()
 
     def ready(self):
-        """(lines' shows, summaries, keywords, scales), built on first use. Summaries and
-        keywords are those of shows at least REACH well known, one line a show, each as
-        (text, where each line starts); scales are presence() for each family."""
+        """(lines' shows, summaries, keywords, scales, films), built on first use.
+        Summaries and keywords are those of shows at least REACH well known, one line a
+        show, each as (text, where each line starts); scales are presence() for each
+        family; films are the model's Films, or None when it has none it can use."""
         if self.index is None:
             with self.building:
                 if self.index is None:
@@ -227,6 +335,22 @@ class Related:
 
     def texts(self):
         return self.ready()[:3]
+
+    def films(self):
+        """The model's films, read on first use, or None: without the file, without facets
+        to map them to, or with a file that will not read, which is said once and is
+        never a failure. Apart from the rest, since a search naming a show asks too."""
+        if self.film_index is False:
+            with self.reading:
+                if self.film_index is False:
+                    self.film_index = None
+                    if self.film_path and self.e.facets and self.film_path.is_file():
+                        try:
+                            films = Films(self.film_path, self.e.facets, self.e.genres)
+                            self.film_index = films if len(films) else None
+                        except (OSError, EOFError, ValueError, KeyError, TypeError, zlib.error) as exc:
+                            print(f'Ignoring {self.film_path}: {exc}', file=sys.stderr, flush=True)
+        return self.film_index
 
     def presence(self):
         """{family: for each show, what turns a value into how directly it carries a
@@ -320,21 +444,29 @@ class Related:
         matched = {e.by_id[c['id']] for c in cards if c['id'] in e.by_id}
         named = self.named(words, cards, mine)
         topics = self.topics(words)
+        films = self.films()
+        film = films.named(words) if films else None
         common = [c for c in topics if c not in self.proper]
         household = named and named[2] == 'exact' and e.popularity[named[0]] >= HOUSEHOLD
+        title = ' '.join(q.split())
         if topics and not (named and (household or not common)):
             kind = 'topic'
-        elif named:
+        elif named and not (film and named[2] in ('start', 'part')):
+            # A show's title typed in full, or begun or outgrown when no film has the name
+            # in full: alien is the film, not the start of Alien: Earth, and spirited away
+            # the film, not Spirited and a word more.
             i, title, _how = named
             return {'title': f'More like {title}', 'kind': 'show', 'shows': self.more_like(i, matched)}
+        elif film:
+            kind, title = 'film', film[1]
         elif mine.typing or len(''.join(words)) < MEANT:
             return None
         else:
             kind = 'meaning'
-        shows = self.meaning(q, words, cards, topics, matched)
+        shows = self.meaning(q, words, cards, topics, matched, film[0] if kind == 'film' else None)
         if len(shows) < FEWEST:
             return None
-        return {'title': f"Shows like {' '.join(q.split())}", 'kind': kind, 'shows': shows}
+        return {'title': f'Shows like {title}', 'kind': kind, 'shows': shows}
 
     def named(self, words, cards, mine):
         """(show, title, how) for the show a search names, or None; title is the one it
@@ -421,6 +553,39 @@ class Related:
                 out.append(list(dict.fromkeys(b' '.join(words[:-1] + [last]) for last in numbers(words[-1]))))
         return out
 
+    def film_phrases(self, film):
+        """What a film is about as phrases to look for in the shows' own summaries and
+        keywords, each with what a hit is worth: its main subjects, whether shows carry
+        them in Wikidata or not, and its rarest genres the shows carry, on at most
+        TEXT_SHOWS of them. A film about dinosaurs finds the shows whose summaries speak
+        of dinosaurs, whatever Wikidata says of the shows; one about simulated reality,
+        the shows that say simulated reality."""
+        films, f = self.films(), self.e.facets
+        said = [(topic, FILM_TOPIC) for topic in films.topics[film]]
+        rare = sorted(((c, w) for c, w in films.row(film) if self.family.get(c) == 'genre' and f.df[c] <= TEXT_SHOWS),
+                      key=lambda cw: (-self.rarity[cw[0]] * cw[1], cw[0]))
+        said += [(f.keys[c], FILM_GENRE * w) for c, w in rare[:TEXT_GENRES]]
+        out = []
+        for text, worth in said:
+            words = fold([text])[0].split()
+            if words and not all(word in STOP for word in words) and len(out) < TEXTS:
+                out.append((list(dict.fromkeys(b' '.join(words[:-1] + [last]) for last in numbers(words[-1]))), worth))
+        return out
+
+    def hits(self, phrases):
+        """{show: the most any of phrases is worth to it}, for (spellings, worth) pairs,
+        from the shows' summaries and keywords. A phrase in more than TOPIC_MOST
+        summaries says too little of what a show is about, and counts nowhere, keywords
+        included: loss (171) and revenge (386) go, dinosaur (87) and shark (83) stay."""
+        found = {}
+        for spellings, value in phrases:
+            said = self.phrase_hits(spellings, most=TOPIC_MOST)
+            if said is None:
+                continue
+            for j in said + [j for j, _whole in self.phrase_hits(spellings, keywords=True)]:
+                found[j] = max(found.get(j, 0.0), value)
+        return found
+
     def evidence(self, q, words, cards, topics):
         """{show: evidence}, anchors for the profile and candidates for the row."""
         e = self.e
@@ -449,38 +614,58 @@ class Related:
                 found[j] = found.get(j, 0.0) + TITLE
         return found
 
-    def profile(self, anchors):
+    def profile(self, anchors, film=None):
         """The genres and subjects the anchors lean toward, each weighed by how directly
         and how many of the anchors carry it and by how rare it is, as a unit vector:
-        {column: weight}."""
+        {column: weight}. film, for a search that names one, is (its weight, its genres
+        and subjects as (column, how much each counts)), an anchor like the others, whose
+        main subjects count even when they are places or events: a war film is about
+        World War II where a show set in Atlanta is not about Atlanta."""
         f = self.e.facets
-        if not f or not anchors:
+        if not f or not (anchors or film):
             return {}
         scales = self.ready()[3]
+        rows = [(w, [(c, self.carries(j, c, v, scales)) for c, v in f.row(j) if c in self.family and c not in self.proper])
+                for j, w in anchors]
+        if film:
+            rows.append(film)
         # Every anchor counts toward the shares, labelled or not: where most anchors carry
         # no Wikidata genre (boxing's are mostly fight nights), the one romance among them
         # says nothing about boxing.
-        weight, share, total = {}, {}, sum(w for _j, w in anchors)
-        for j, w in anchors:
-            for c, v in f.row(j):
-                if c not in self.family or c in self.proper:
-                    continue
-                weight[c] = weight.get(c, 0.0) + w * self.carries(j, c, v, scales) * self.rarity[c] ** RARE
-                share[c] = share.get(c, 0.0) + w
+        weight, share, total = {}, {}, sum(w for w, _row in rows)
+        for w, row in rows:
+            for c, presence in row:
+                if c in self.family:
+                    weight[c] = weight.get(c, 0.0) + w * presence * self.rarity[c] ** RARE
+                    share[c] = share.get(c, 0.0) + w
         kept = {c: x for c, x in weight.items()
                 if share[c] >= LEAN * total and share[c] / total >= LIFT * self.base[c]}
         norm = math.sqrt(sum(x * x for x in kept.values())) or 1.0
         return {c: x / norm for c, x in kept.items()}
 
-    def meaning(self, q, words, cards, topics, matched):
-        """The row for a search by what it means: its shows, best first."""
+    def meaning(self, q, words, cards, topics, matched, film=None):
+        """The row for a search by what it means, and by the film it names when it names
+        one (a film in films()): its shows, best first."""
         e = self.e
         found = self.evidence(q, words, cards, topics)
-        if not found:
+        if not found and film is None:
             return []
         known = e.popularity
         anchors = heapq.nlargest(ANCHORS, found.items(), key=lambda kv: (kv[1], known[kv[0]], -kv[0]))
         profile = self.profile(anchors)
+        named, said, shared = None, {}, 0
+        if film is not None:
+            # The film is what the search is about: its own genres and subjects lead,
+            # rarer ones counting more, and what the search's evidence leans toward joins
+            # them at BLEND. Mad Max's series is dystopian first; Daybreak, whose summary
+            # names Mad Max, tilts its row toward the post-apocalyptic.
+            films = self.films()
+            mine = self.profile([], (1.0, films.row(film)))
+            profile = {c: mine.get(c, 0.0) + BLEND * profile.get(c, 0.0) for c in set(mine) | set(profile)}
+            norm = math.sqrt(sum(x * x for x in profile.values())) or 1.0
+            profile = {c: x / norm for c, x in profile.items()}
+            named = (max(FILM, sum(w for _j, w in anchors)), 'Animation' if films.animated[film] else 'Scripted')
+            said, shared = self.hits(self.film_phrases(film)), films.genre_bits[film]
         # Closeness to the profile: the part of it a show carries best, and a quarter of
         # the rest it carries, so what the profile is most about leads. Summed alone, a
         # show with Daybreak's three commoner genres would pass one that is only
@@ -500,17 +685,27 @@ class Related:
         near = {j: x + FURTHER * rest[j] for j, x in best.items()}
         top = max(near.values(), default=0.0) or 1.0
         # How well each format fits: its share of the anchors, measured against the most
-        # common one's.
+        # common one's. A film counts as scripted, or as animation when it is animated.
         formats = {}
         for j, w in anchors:
             kind = e.shows[j]['type']
             formats[kind] = formats.get(kind, 0.0) + w
+        if named:
+            formats[named[1]] = formats.get(named[1], 0.0) + named[0]
         most = max(formats.values())
+        # What a film is about, found in a show's own words, counts only for a show already
+        # like the film in some way: sharing a genre or subject with the row's profile, or
+        # one of TVmaze's genres with the film. Primal speaks of dinosaurs and is action;
+        # Jessie has a pet one and is a family comedy.
+        said = {j: v for j, v in said.items() if offered[j] and (j in near or e.shows[j]['genre_bits'] & shared)}
+        # A film's format is a looser guide than a show's: Jurassic Park's dinosaurs are
+        # as much in Camp Cretaceous, a cartoon, as in any live-action show.
+        floor = FILM_FIT if named else FIT
         scores = {}
-        for j in set(near) | {j for j in found if self.offered[j]}:
+        for j in set(near) | set(said) | {j for j in found if offered[j]}:
             if j in matched:
                 continue
-            fit = FIT + (1 - FIT) * formats.get(e.shows[j]['type'], 0.0) / most
-            value = min(found.get(j, 0.0), MOST) + PROFILE * near.get(j, 0.0) / top
+            fit = floor + (1 - floor) * formats.get(e.shows[j]['type'], 0.0) / most
+            value = min(found.get(j, 0.0) + said.get(j, 0.0), MOST) + PROFILE * near.get(j, 0.0) / top
             scores[j] = (known[j] / 100) ** FAME * fit * value
         return heapq.nsmallest(COUNT, scores, key=lambda j: (-scores[j], e.shows[j]['id']))

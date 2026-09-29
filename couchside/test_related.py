@@ -2,11 +2,17 @@
 it and what is not.
 
 Run from the repository root:  .venv/bin/python couchside/test_related.py
-It reads the repository's model/ directly, its Wikidata facets included, and reaches
-nothing else: TVmaze's search is left out, so each answer is the catalogue's own.
+It reads the repository's model/ directly, its Wikidata facets and film index included,
+and reaches nothing else: TVmaze's search is left out, so each answer is the catalogue's
+own.
 """
 from pathlib import Path
+import contextlib
+import gzip
+import io
+import json
 import sys
+import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,7 +26,10 @@ from related import Related, fold, numbers, slipped, COUNT      # noqa: E402
 engine = Engine(ROOT / 'model')
 lib = Library(engine, ROOT / 'couchside' / 'art.bin.gz')
 pool = lib.pool_stats(DEFAULT_SETTINGS)['pool']
-rel = Related(engine, pool)
+FILMS = ROOT / 'model' / 'films.json.gz'
+# As the server has it, films and all; plain has no film index, as a model without one.
+rel = Related(engine, pool, FILMS)
+plain = Related(engine, pool)
 failures = []
 
 
@@ -122,16 +131,16 @@ for q, among in (('space opera', {'The Expanse', 'Firefly', 'The Mandalorian'}),
           row and named(row['shows']))
 check('either number of a topic names it', search('zombie')[1]['kind'] == 'topic' and search('vampire')[1]['kind'] == 'topic')
 
-# 4. Anything else by meaning: mad max is in Daybreak's summary, Daybreak is
-# post-apocalyptic, and so the row is post-apocalyptic shows.
-cards, row = search('mad max')
-check('mad max, a film, finds only a documentary by name and gets Shows like mad max',
+# 4. Anything else by meaning. Without a film index, mad max is in Daybreak's summary,
+# Daybreak is post-apocalyptic, and so the row is post-apocalyptic shows.
+cards, row = search('mad max', plain)
+check('without films, mad max, a film, finds only a documentary by name and gets Shows like mad max',
       named(engine.by_id[c['id']] for c in cards) == ['Mad Max, univers brûlant'] and row['kind'] == 'meaning'
       and row['title'] == 'Shows like mad max', row and row['title'])
 apocalyptic = [j for j in row['shows'] if carries(j, 'post apocalyptic')]
 check('its shows are post-apocalyptic, led by Daybreak and Fallout', len(apocalyptic) >= 15
       and named(row['shows'][:2]) == ['Daybreak', 'Fallout'], named(row['shows']))
-cards, row = search('the matrix')
+cards, row = search('the matrix', plain)
 check('the matrix is not taken for Matrix, a 1993 series about a hitman, and finds cyberpunk',
       cards[0]['name'] == 'Matrix' and row['kind'] == 'meaning'
       and {'Altered Carbon', 'Cyberpunk: Edgerunners', 'The Ghost in the Shell'} & set(named(row['shows'][:10])), named(row['shows']))
@@ -139,7 +148,58 @@ _cards, row = search('boxing')
 check('boxing finds boxing, not the romances one boxer is in', row and {'Lights Out', 'The Contender'} <= set(named(row['shows'])),
       row and named(row['shows']))
 check('a search with nothing behind it gets no row, not Jurassic War for jurassic park',
-      search('jurassic park')[1] is None and search('xyzzyq')[1] is None)
+      search('jurassic park', plain)[1] is None and search('xyzzyq')[1] is None)
+
+# 4b. A search that names a film gets Shows like the film: its genres and subjects from
+# Wikidata (scripts/build_films.py), rarer ones counting more, blended with the search's
+# own evidence, and its subjects looked for in the shows' own words.
+films = rel.films()
+check('the film index reads, some 9,000 films and series', films is not None and len(films) > 5000, films and len(films))
+check('a title goes before an alias: alien is Alien, not Taxi Driver, which Wikidata aliases Alien',
+      films.titles[films.named(['alien'])[0]] == 'Alien')
+mad = films.named(['mad', 'max'])
+check('a series goes before a film of its name, and a year typed picks the film',
+      films.kinds[mad[0]] == 'series' and films.years[films.named(['the', 'thing', '1982'])[0]] == 1982)
+cards, row = search('mad max')
+check('mad max gets Shows like Mad Max, by the series', row['kind'] == 'film' and row['title'] == 'Shows like Mad Max',
+      row and row['title'])
+check('and its first eight bring Twisted Metal, Fallout and Daybreak',
+      {'Twisted Metal', 'Fallout', 'Daybreak'} <= set(named(row['shows'][:8])), named(row['shows']))
+_cards, row = search('jurassic park')
+dinosaurs = [j for j in row['shows'] if 'dinosaur' in (engine.shows[j]['summary'] or '').lower()
+             or any(f.labels[c] == 'dinosaur' for c, _v in f.row(j))]
+check('jurassic park brings shows about dinosaurs', row['kind'] == 'film' and len(dinosaurs) >= 6
+      and {'Prehistoric Planet', 'Dino Dana'} <= set(named(row['shows'][:8])), named(row['shows']))
+_cards, row = search('the godfather')
+check('the godfather brings mafia dramas', row['kind'] == 'film' and row['title'] == 'Shows like The Godfather'
+      and {'The Sopranos', 'Tulsa King', 'MobLand'} <= set(named(row['shows'][:8])), named(row['shows']))
+cards, row = search('the matrix')
+check('the matrix, now a film, brings cyberpunk and artificial minds', cards[0]['name'] == 'Matrix' and row['kind'] == 'film'
+      and {'Altered Carbon', 'Person of Interest', 'Cyberpunk: Edgerunners', 'Westworld'} <= set(named(row['shows'][:12])),
+      named(row['shows']))
+_cards, row = search('기생충')
+check('a film by its original title is named by it: 기생충 is Parasite', row['kind'] == 'film'
+      and row['title'] == 'Shows like 기생충' and 'Severance' in named(row['shows'][:8]), row and named(row['shows']))
+_cards, row = search('千と千尋の神隠し')
+check('千と千尋の神隠し, Spirited Away, an anime film, brings anime', row['kind'] == 'film'
+      and sum(1 for j in row['shows'][:8] if engine.shows[j]['type'] == 'Animation') >= 6, row and named(row['shows']))
+_cards, row = search('train to busan')
+check('train to busan brings zombies', row['kind'] == 'film' and {'Z Nation', 'All of Us Are Dead'} <= set(named(row['shows'])))
+check('a film typed in full goes before a show only begun or outgrown: alien is not Alien: Earth, spirited away is not Spirited',
+      search('alien')[1]['title'] == 'Shows like Alien' and search('spirited away')[1]['title'] == 'Shows like Spirited Away')
+check('but a show typed in full goes before a film of its name, and a topic before either',
+      search('fargo')[1]['title'] == 'More like Fargo' and search('titanic')[1]['kind'] == 'show'
+      and search('zombies')[1]['kind'] == 'topic')
+broken = Path(tempfile.mkdtemp(prefix='related-test-')) / 'films.json.gz'
+broken.write_bytes(gzip.compress(json.dumps({'version': 2, 'films': []}).encode()))
+said = io.StringIO()
+with contextlib.redirect_stderr(said):
+    none = Related(engine, pool, broken)
+    check('a film index that will not read means no films, said once, never a failure',
+          none.films() is None and none.films() is None and search('mad max', none)[1]['kind'] == 'meaning'
+          and said.getvalue().count('Ignoring') == 1, said.getvalue())
+broken.unlink()
+broken.parent.rmdir()
 
 # 5. While a search is typed: the start of a household name's title names it; half a word
 # gets nothing; a show begun by another of its titles goes by its own name.
@@ -155,8 +215,9 @@ again = search('mad max')[1]
 check('an answer is kept and comes back at once', again is first and time.perf_counter() - started < 0.05)
 rel.answers.clear()
 check('worked out again it is the same', search('mad max')[1] == first)
-cold = Related(engine, pool)
-check('built on first use it is the same as warmed', search('zombies', cold)[1] == search('zombies')[1])
+cold = Related(engine, pool, FILMS)
+check('built on first use it is the same as warmed', search('zombies', cold)[1] == search('zombies')[1]
+      and search('mad max', cold)[1] == search('mad max')[1])
 
 # 7. Without Wikidata's facets there are no topics, and a search still gets its row.
 facets = engine.facets
