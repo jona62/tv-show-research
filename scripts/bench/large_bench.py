@@ -37,6 +37,7 @@ SIZES = (300, 1000, 3000)
 FILES = ('personas.json', 'holdout.json')
 RECENT = 60
 HIT_AT = (10, 24, 100)
+VIEWERS = 24
 
 
 def ranks(engine, module, profile, targets, settings, pool):
@@ -71,7 +72,8 @@ def main():
     parser.add_argument('--model', default=str(ROOT / 'model'))
     parser.add_argument('--sizes', default=','.join(map(str, SIZES)))
     parser.add_argument('--files', default=','.join(FILES))
-    parser.add_argument('--viewers', type=int, default=16, help='viewers per size and file')
+    parser.add_argument('--viewers', type=int, help='viewers per size and file: 24, or as many as the '
+                        'report compared against has')
     parser.add_argument('--out', help='write the report here as JSON')
     parser.add_argument('--compare', help='an earlier report to print deltas against')
     parser.add_argument('--set', action='append', default=[], metavar='NAME=VALUE',
@@ -94,6 +96,13 @@ def main():
     pool = [i for i in range(engine.n) if engine.eligible(i, settings)]
     relations = Relations(engine)
     base = json.loads(Path(args.compare).read_text()) if args.compare else None
+    # Deltas mean something only over the same viewers, so a comparison takes the earlier
+    # report's count unless told otherwise, and says when anything else differs.
+    args.viewers = args.viewers or (base or {}).get('viewers') or VIEWERS
+    if base:
+        for key, now in (('viewers', args.viewers), ('recent', RECENT), ('model', engine.version), ('set', args.set)):
+            if base.get(key) != now:
+                print(f'note: the earlier report had {key} {base.get(key)!r}, this run {now!r}', file=sys.stderr)
     report = {'recent': RECENT, 'viewers': args.viewers, 'model': engine.version, 'set': args.set, 'results': {}}
     for name in args.files.split(','):
         for size in map(int, args.sizes.split(',')):
