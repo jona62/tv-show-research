@@ -6,12 +6,14 @@ For each size and each of a few viewers, it times:
   home         Couchside's first home request (library.Library.home): the hero and
                the first eight rows
   more         the request for the next six rows, as a browser asks at the foot of
-               the page
+               the page: cold, the first one, which lays the page out to its end
+               (library.Kept); warm, a later one, answered from that page
   title        a title page (library.Library.title) for a show near the list's taste
   recommend    Next Watch's recommendations (engine.Engine.calculate)
 
-each cold, with the engine's per-show caches emptied first, as for a list the server
-has not seen lately, and warm, straight after. Memory is the peak Python allocation
+each cold, with the engine's per-show caches and the pages kept for the requests for
+more emptied first, as for a list the server has not seen lately, and warm, straight
+after. The library lays each page out in the request timed, never behind a first one. Memory is the peak Python allocation
 during a cold request, from tracemalloc, in a separate pass since tracing slows
 everything down. Bytes are the JSON request as a browser sends it, with the list
 packed as ids and rating codes where the engine reads that (engine.CODES) and as a
@@ -62,13 +64,16 @@ def timed(fn, limit):
     return time.perf_counter() - t, answer
 
 
-def cold(engine):
+def cold(engine, lib=None):
     """Empty the engine's per-show caches (closeness arrays, and closest shows from the
-    neighbour index), as for a list the server has not seen lately."""
+    neighbour index) and the pages the library keeps for the requests for more (Kept),
+    as for a list the server has not seen lately."""
     for name in ('components', 'blended', '_row'):
         cached = getattr(type(engine), name, None)
         if hasattr(cached, 'cache_clear'):
             cached.cache_clear()
+    if hasattr(lib, 'kept'):
+        lib.kept.clear()
 
 
 def size_of(value, codes=None):
@@ -107,6 +112,7 @@ def main():
     t = time.perf_counter()
     engine = Engine(args.model)
     lib = library.Library(engine, ROOT / 'couchside' / 'art.bin.gz')
+    lib.ahead = False
     # As the servers do once loaded: the collector leaves the model's objects alone.
     gc.collect()
     gc.freeze()
@@ -132,7 +138,7 @@ def main():
             steps['recommend'] = lambda: engine.calculate({'profile': v.profile, 'settings': dict(DEFAULT_SETTINGS)})
             for kind in kinds:
                 if kind == 'more':
-                    cold(engine)
+                    cold(engine, lib)
                     _s, ask = timed(more, args.timeout)
                     if ask is None:
                         found[kind]['cold'].append(None)
@@ -144,7 +150,7 @@ def main():
                     request = body if kind != 'title' else {**body, 'id': 0}
                     if kind == 'recommend':
                         request = {'profile': v.profile, 'settings': dict(DEFAULT_SETTINGS)}
-                cold(engine)
+                cold(engine, lib)
                 seconds, answer = timed(run, args.timeout)
                 found[kind]['cold'].append(seconds)
                 if answer is None:
@@ -155,7 +161,7 @@ def main():
                 found[kind]['bytes_in'].append(size_of(request, codes))
                 found[kind]['bytes_out'].append(size_of(answer))
                 if n < args.memory:
-                    cold(engine)
+                    cold(engine, lib)
                     tracemalloc.start()
                     try:
                         timed(run, args.timeout * 4)

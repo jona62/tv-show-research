@@ -4,7 +4,8 @@ The engine answers one question, what to watch next. A streaming front page asks
 several at once (top picks, more like each show you loved, the best of a genre for
 you, what is new), so this works out how close everything sits to each rated show
 once per request and cuts every row from that. Nothing about a person is kept
-between requests.
+between requests but the rows of a home page they are paging through (Kept): in
+memory, for half an hour at most, under a hash of what they asked.
 
 The home page (Page) follows what Netflix, Prime Video, YouTube and Spotify have
 published about theirs. It weighs many candidate rows: more like each favourite,
@@ -20,17 +21,21 @@ the browser's memory of what it showed into the day's order, cards and hero.
 """
 from array import array
 from bisect import bisect_left
-from collections import Counter
+from collections import Counter, OrderedDict
 from datetime import date
 from functools import lru_cache
 from operator import itemgetter
 import gzip
+import hashlib
 import heapq
+import json
 import math
 import re
 import statistics
 import struct
 import sys
+import threading
+import time
 
 from engine import CO_POWER, CO_TIE, CO_WEIGHT, DEFAULT_SETTINGS, FORMAT_GROUPS, TIE_COMMON, Closeness, Wide
 from fresh import dither, pick_one, spread, shuffle_rows, ROW_EPSILON, ROW_KEY
@@ -107,6 +112,9 @@ MOST_ROWS = 30          # today's rows (tier 0) are at most this many
 FEWEST_ROWS = 20        # and, when there is enough to show, at least this many
 TIERS = 4               # tiers past today's rows: the list itself, each interest, exploring, browsing
 LONGEST = 300           # a page without a set end still stops here, which bounds what a request carries
+KEPT_PAGES = 32         # pages laid out whole for the requests for their next rows, the latest asked (Kept)
+KEPT_FOR = 1800         # seconds a page is kept for, about a visit
+KEPT_WAIT = 30          # seconds a request waits for the page another is laying out, before laying it out itself
 RECENT = 12             # a deeper tier is judged by its own rows, or this many rows above while it has fewer
 WEAK = 0.5              # and is weak once its best row falls below this share of their median
 PINNED = 2              # cards at the front of a row that keep their places from day to day
@@ -2538,6 +2546,47 @@ def read_count(body, shown):
     return count
 
 
+def asked(body):
+    """What a request for the home page asks, less which rows the browser shows and how
+    many more it wants: the key its page is kept under. The same list, settings, day and
+    memory of what was shown lay out the same page."""
+    rest = {key: value for key, value in body.items() if key not in ('shown', 'count')}
+    return hashlib.sha256(json.dumps(rest, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
+class Kept:
+    """A home page laid out to its end once (Library.keep), from which each request for
+    more rows is answered. The pages asked for one at a time are the page laid out at
+    once, so this is the same answer, without laying the page out again for every six
+    rows: that took about two seconds a time on the workspace's one core, and a reader
+    flicking down a phone outran it. Behind a first request its own rows go in first,
+    today's, the page's first rows, while the rest is laid out (Library.keep_ahead).
+
+    laid is (keys, rows, base, whole, extras), replaced at once: every row's key so far
+    in order, the rows from base on as the browser gets them, whether they run to the
+    page's end, and the rest of each answer. ready is set once the page is whole, or
+    could not be laid out."""
+
+    def __init__(self):
+        self.ready = threading.Event()
+        self.at = time.monotonic()
+        self.laid = None
+
+    def answers(self, shown, count):
+        """(rows, more, extras) for a request showing these rows and asking for count
+        more, when what is laid out so far carries on from them and says; else None."""
+        laid = self.laid
+        if laid is None:
+            return None
+        keys, rows, base, whole, extras = laid
+        n = len(shown)
+        if not base <= n <= len(keys) or [key for key, _ids, _tier in shown] != keys[:n]:
+            return None
+        if not whole and len(keys) <= n + count:
+            return None
+        return rows[n - base:n - base + count], len(keys) > n + count or not whole, extras
+
+
 class Library:
     def __init__(self, engine, art_path):
         self.e = e = engine
@@ -2598,6 +2647,10 @@ class Library:
                 fronted.add(top)
                 self.genres.append({'key': key, 'label': label, 'poster': self.poster(top)})
         self._home_setup()
+        # Home pages laid out whole for the requests for their next rows (Kept), and
+        # whether a first request has its page laid out behind it (ahead), one at a time.
+        self.kept, self.kept_lock = OrderedDict(), threading.Lock()
+        self.ahead, self.laying = True, threading.BoundedSemaphore(1)
 
     def _home_setup(self):
         """What the home page needs that is the same for everyone."""
@@ -2936,7 +2989,8 @@ class Library:
 
     def home(self, body):
         """The home page, or the next rows of it. A first request gets the hero and the
-        first eight rows; one that says which rows it shows (shown) gets the next six."""
+        first eight rows, and has the page laid out to its end behind it; one that says
+        which rows it shows (shown) gets the next six, from that page (Kept)."""
         profile, settings, positives, negatives, rated, candidates, fresh = self.prepare(body)
         saved = self.read_list(body)
         lang = read_lang(body)
@@ -2945,38 +2999,115 @@ class Library:
         e = self.e
         if not positives:
             return self._cold(saved, rated, fresh, lang, shown, count)
-        page = Page(self, profile, settings, positives, negatives, rated, candidates, saved, fresh, lang)
+        prepared = (profile, settings, positives, negatives, rated, candidates, saved, fresh, lang)
+        if shown:
+            rows, more, extras = self.keep(asked(body), prepared, shown, count)
+            return {'personal': True, 'date': e.date, 'day': fresh.day, 'rows': rows, 'more': more, **extras}
+        page = Page(self, *prepared)
         new, rows = page.layout(shown, count)
         taste = page.taste
-        answer = {
-            'personal': True, 'date': e.date, 'day': fresh.day,
-            'rows': [page.row(shelf, items) for shelf, items in new[:count]],
-            'more': len(new) > count,
-            # What the list leans toward and away from, and the interests it holds, for
-            # showing a person their own taste.
-            'taste': e.taste(profile).summary(),
+        answer = {'personal': True, 'date': e.date, 'day': fresh.day,
+                  'rows': [page.row(shelf, items) for shelf, items in new[:count]],
+                  'more': len(new) > count, **self.extras(page, profile, saved)}
+        hero = page.hero(rows) if page.usable else self.top10[0]
+        if hero is None:
+            hero = self.top10[0]
+        taste.score_others([hero])
+        popular = next((items for shelf, items in rows if shelf.key == 'popular'), None)
+        by_taste = lambda items: sorted(items, key=lambda i: (-(taste.match(i) or 0), e.shows[i]['id']))
+        unrated = [i for i in self.fresh if e.shows[i]['id'] not in rated]
+        answer.update({
+            'hero': {**self.detail(hero, taste), 'because': taste.closest(hero) if page.usable else None},
+            'top10': [self.card(i, taste) for i in self.top10],
+            'fresh': [self.card(i, taste) for i in by_taste(unrated)[:ROW]],
+            'soon': [{**self.card(i), 'premiered': e.shows[i]['premiered']} for i in self.soon],
+            'popular': [self.card(i, taste) for i in (popular or page.popular().items[:ROW])],
+        })
+        if self.ahead:
+            self.keep_ahead(asked(body), prepared, page, new, answer)
+        return answer
+
+    def extras(self, page, profile, saved):
+        """What an answer for the home page carries besides its rows: what the list leans
+        toward and away from, and the interests it holds, for showing a person their own
+        taste, and My List's matches (the page draws My List, which keeps it instant)."""
+        return {
+            'taste': self.e.taste(profile).summary(),
             'interests': [{**interest, 'names': [page.names[i] for i in interest['shows']]}
                           for interest in page.ranking.describe()],
-            # My List is drawn by the page, which keeps it instant; these carry its matches.
-            'list': [self.card(i, taste) for i in saved],
+            'list': [self.card(i, page.taste) for i in saved],
             'message': '' if page.usable else 'Nothing matches these settings. Widen the catalogue in your profile menu.',
         }
-        if not shown:
-            hero = page.hero(rows) if page.usable else self.top10[0]
-            if hero is None:
-                hero = self.top10[0]
-            taste.score_others([hero])
-            popular = next((items for shelf, items in rows if shelf.key == 'popular'), None)
-            by_taste = lambda items: sorted(items, key=lambda i: (-(taste.match(i) or 0), e.shows[i]['id']))
-            unrated = [i for i in self.fresh if e.shows[i]['id'] not in rated]
-            answer.update({
-                'hero': {**self.detail(hero, taste), 'because': taste.closest(hero) if page.usable else None},
-                'top10': [self.card(i, taste) for i in self.top10],
-                'fresh': [self.card(i, taste) for i in by_taste(unrated)[:ROW]],
-                'soon': [{**self.card(i), 'premiered': e.shows[i]['premiered']} for i in self.soon],
-                'popular': [self.card(i, taste) for i in (popular or page.popular().items[:ROW])],
-            })
-        return answer
+
+    def keep(self, ask, prepared, shown, count):
+        """(rows, more, extras) for a request for more, from the page kept for it
+        (asked): at once from what is laid out so far when that says, else once it is
+        whole. A page that does not carry on from the rows shown, as after a rating, whose
+        rows not yet shown come from the new list, is laid out again after them."""
+        with self.kept_lock:
+            self.forget()
+            kept = self.kept.get(ask)
+            if kept is not None:
+                self.kept.move_to_end(ask)
+        if kept is not None:
+            found = kept.answers(shown, count)
+            if found is None and kept.ready.wait(KEPT_WAIT):
+                found = kept.answers(shown, count)
+            if found is not None:
+                return found
+        with self.kept_lock:
+            kept = self.put(ask)
+        try:
+            self.lay_out(kept, prepared, shown)
+        finally:
+            kept.ready.set()
+        return kept.answers(shown, count)
+
+    def keep_ahead(self, ask, prepared, page, new, answer):
+        """Keep a first request's page for the requests for more that follow it at once,
+        as a browser asks as soon as the first rows are on screen: at once the rows it
+        laid out, today's, and behind it the page laid out to its end, one page at a
+        time. Nothing when it is kept already."""
+        with self.kept_lock:
+            self.forget()
+            if ask in self.kept or not self.laying.acquire(blocking=False):
+                return
+            kept = self.put(ask)
+        extras = {key: answer[key] for key in ('taste', 'interests', 'list', 'message')}
+
+        def lay():
+            try:
+                rows = answer['rows'] + [page.row(shelf, items) for shelf, items in new[len(answer['rows']):]]
+                kept.laid = ([shelf.key for shelf, _items in new], rows, 0, False, extras)
+                self.lay_out(kept, prepared, ())
+            except Exception:  # noqa: BLE001 - a request for more lays the page out again, and says why
+                kept.laid = None
+            finally:
+                kept.ready.set()
+                self.laying.release()
+        threading.Thread(target=lay, name='keep-ahead', daemon=True).start()
+
+    def forget(self):
+        """Let go of pages kept past KEPT_FOR. Hold kept_lock."""
+        now = time.monotonic()
+        for key in [key for key, kept in self.kept.items() if now - kept.at > KEPT_FOR]:
+            del self.kept[key]
+
+    def put(self, ask):
+        """A new Kept under ask, the latest; the oldest go past KEPT_PAGES. Hold kept_lock."""
+        kept = self.kept[ask] = Kept()
+        self.kept.move_to_end(ask)
+        while len(self.kept) > KEPT_PAGES:
+            self.kept.popitem(last=False)
+        return kept
+
+    def lay_out(self, kept, prepared, shown):
+        """Lay the page out to its end after the rows shown, into kept."""
+        page = Page(self, *prepared)
+        new, _rows = page.layout(list(shown), None)
+        kept.laid = ([key for key, _ids, _tier in shown] + [shelf.key for shelf, _items in new],
+                     [page.row(shelf, items) for shelf, items in new], len(shown), True,
+                     self.extras(page, prepared[0], prepared[6]))
 
     def _cold(self, saved, rated, fresh, lang, shown, count):
         """A page before anything is rated: what is popular now, all-time favourites, new

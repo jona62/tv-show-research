@@ -578,6 +578,11 @@ function watchEnd() {
 }
 const sentinel = el('div', '', 'more-rows');
 const moreButton = button('btn ghost', 'More rows', () => loadMore());
+// Rows still to come stand in at the foot, so a reader who catches up with them sees the
+// page going on rather than ending. Not section.row, which the page counts as its rows.
+const moreLoading = el('div', '', 'more-loading');
+moreLoading.setAttribute('aria-hidden', 'true');
+moreLoading.append(skelRow('div'), skelRow('div'));
 // The foot of the page, once the server has no more rows: a quiet note and a way back up.
 const pageEnd = el('div', '', 'page-end');
 pageEnd.append(el('p', 'That’s everything for today. Rate more shows to grow your rows.'),
@@ -585,13 +590,14 @@ pageEnd.append(el('p', 'That’s everything for today. Rate more shows to grow y
     $('page').focus({ preventScroll: true });
     window.scrollTo({ top: 0, behavior: motion() ? 'smooth' : 'auto' });
   }));
-sentinel.append(moreButton, pageEnd);
+sentinel.append(moreLoading, moreButton, pageEnd);
 const moreWatch = 'IntersectionObserver' in window
   ? new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) loadMore(); },
     { rootMargin: `0px 0px ${ROWS_AHEAD * 100}% 0px` })
   : null;
 // More rows where the scroll cannot be watched, and the end once there are no more.
 function syncFoot() {
+  moreLoading.hidden = !home?.more;
   moreButton.hidden = !home?.more || !!moreWatch;
   pageEnd.hidden = !home || home.more || !home.rows.length;
 }
@@ -601,8 +607,8 @@ function syncFoot() {
 const seenWatch = watcher(id => { noteSeen(memory, id, today()); keepMemory(); });
 const rowWatch = watcher(key => { noteRow(memory, key, today()); keepMemory(); });
 
-function skelRow() {
-  const sec = el('section', '', 'row');
+function skelRow(tag = 'section') {
+  const sec = el(tag, '', 'row');
   sec.append(el('span', '', 'skel line row-skel'));
   const track = el('ul', '', 'track');
   for (let n = 0; n < 9; n++) {

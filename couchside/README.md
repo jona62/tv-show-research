@@ -226,15 +226,21 @@ asks for six more while fewer than three screens of rows are left below you, and
 again as soon as they land if that is still so; with less than a screen left it asks
 for the eight the server allows, and no poster starts until they land. Where it
 cannot watch the scroll it offers *More rows*, and a request that fails is tried again
-after 2 seconds, then 4, and so on up to a minute. Once there are no more rows it says
-*That's everything for today*, with a button back to the top. The server keeps
-nothing between requests, so the request says which rows the page shows, their
-first six cards and, past today's rows, the tier each came in, and the same
-request builds the same page. Today's rows are laid out whole each time, as they
-always were; the rows past them get their cards as they are placed, so the ones
-the browser shows are replayed rather than chosen again and only the rows asked
-for, and one more to say whether more follow, are laid out. A rating or My List
-change in the meantime changes only the rows not shown yet.
+after 2 seconds, then 4, and so on up to a minute. Rows still to come stand in as
+grey placeholders at the foot, so a reader who catches up sees the page going on.
+Once there are no more rows it says *That's everything for today*, with a button
+back to the top. The request says which rows the page shows, their first six cards
+and, past today's rows, the tier each came in, and the same request builds the same
+page: the pages asked for one at a time are the page laid out at once. So the server
+lays each page out to its end once and answers the requests for more from it
+(`library.Kept`): behind the first request it keeps that request's rows, today's,
+at once, and lays out the rest. Laying the page out again for every six rows took
+about two seconds a time on the workspace's one core, and a reader flicking down a
+phone outran it. A page is kept in memory only, under a hash of what was asked, for
+half an hour at most, and the latest 32; without it, as after a restart, the rows
+the browser shows are replayed rather than chosen again and the rest laid out after
+them. A rating or My List change in the meantime changes only the rows not shown
+yet.
 
 **Posters ahead of you.** A row's posters start two screens before it comes into
 view: those it shows and the next two, and, swiped along, the next two past wherever
@@ -592,13 +598,16 @@ rows, on an Apple M3 Pro:
 | distinct shows per page | 302 | 1,249 |
 | repeated cards per page | 69 | 282 |
 | rows that are not personal | 32% | 67% |
-| first request, median and 95th percentile | 120 and 146 ms | 121 and 147 ms |
-| each request for more, the same | 115 and 149 ms | 157 and 190 ms |
+| first request, median and 95th percentile | 123 and 152 ms | 122 and 151 ms |
+| each request for more, the same | 118 and 150 ms | 4 and 173 ms |
 
 Today's rows match the page with a fixed length for all 71 personas. Held out
 this way, a love mostly turns up in the first eight rows; the rows past today's
-add a few more, and a page of shows the list has not had yet. `--stub-tiers` runs
-the same with stand-in rows for the tiers.
+add a few more, and a page of shows the list has not had yet. A request for more
+is answered from the page kept for it, in a few milliseconds; the slowest are each
+page's first, which here lays the page out to its end (the bench turns off laying
+it out behind the first request, which the server does). `--stub-tiers` runs the
+same with stand-in rows for the tiers.
 
 ## Deploy
 

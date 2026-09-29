@@ -160,6 +160,9 @@ def main():
     art = COUCHSIDE / 'art.bin.gz'
     modules = {'old': old_library(args.old), 'new': library}
     pages = {which: module.Library(engine, art) for which, module in modules.items()}
+    # Each page is laid out in the requests timed, never behind a first one (library.Kept).
+    for lib in pages.values():
+        lib.ahead = False
     report, started = {}, time.time()
     times = {'old': [], 'new': []}
     for name in FILES:

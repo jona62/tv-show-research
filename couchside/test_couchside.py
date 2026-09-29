@@ -105,12 +105,16 @@ from engine import DEFAULT_SETTINGS, QUICK_PICKS, Engine         # noqa: E402
 from fallback import Remote                                      # noqa: E402
 from library import ROW, MORE, GLANCE, SHORTEST, GENRE_ROWS, NEW_DAYS, FALLBACK, UNRELATED, Library, lower_first  # noqa: E402
 from library import SIMILAR_AT, similarity                       # noqa: E402
+from library import Kept, KEPT_PAGES, KEPT_FOR, asked as kept_under, read_shown  # noqa: E402
 from library import (Page, Deeper, FIRST_PAGE, NEXT_PAGE, MOST_ROWS, CREATOR_SHORTEST, NOT_FOR_ME,  # noqa: E402
                      INTEREST_CAP, HIDDEN, PINNED, LONGEST, TIERS)
 from live import (Live, LiveError, Icons, trim_show, trim_episodes, trim_videos,        # noqa: E402
                   trim_seasons, match_rating, IMAGES)
 
 engine, lib = server.ENGINE, server.LIBRARY
+# Here a page kept for the requests for more (library.Kept) is laid out in step with them,
+# not behind a first request, so each check sees the page it asked for; 4i checks both.
+lib.ahead = False
 PROFILE = [{'id': 169, 'weight': 1}, {'id': 82, 'weight': .7}, {'id': 44933, 'weight': 1},
            {'id': 269, 'weight': .7}, {'id': 80, 'weight': -1}]
 RATED = {p['id'] for p in PROFILE}
@@ -642,6 +646,8 @@ def watched(deeper, options, p):
 
 Deeper.best = watched
 with stub_tiers.installed(Page, tier_rows=counted):
+    # Pages kept from before the stand-ins went in are not theirs.
+    lib.kept.clear()
     for shape, day in (('five shows', {}), ('twenty-five mixed', seeded('2026-10-05'))):
         body = {'settings': {}, 'list': [], **SHAPES[shape], **day}
         page_rows, answers = whole(body)
@@ -677,17 +683,34 @@ with stub_tiers.installed(Page, tier_rows=counted):
         picks.clear()
 
     # body, page_rows and today are the seeded page of twenty-five mixed shows from here.
+    lib.kept.clear()
     built.clear()
     lib.home(body)
     check('the first rows build no tier past today\'s', not built and len(today) > FIRST_PAGE, dict(built))
     built.clear()
-    lib.home({**body, 'shown': shown_of(today)})
-    check('the rows just past today\'s build tier 1, once', built[1] == 1 and max(built.values()) == 1, dict(built))
+    first_more = lib.home({**body, 'shown': shown_of(today)})
+    check('the first request for more lays the page out to its end, building each tier once',
+          set(built) == set(range(1, TIERS + 1)) and max(built.values()) == 1
+          and first_more['rows'] == page_rows[len(today):len(today) + NEXT_PAGE], dict(built))
     deep = next(n for n, r in enumerate(page_rows) if r.get('tier', 0) >= 3)
     built.clear()
-    lib.home({**body, 'shown': shown_of(page_rows[:deep + 1])})
-    check('rows further down build the tiers they reach, each once', {1, 2, 3} <= set(built) and max(built.values()) == 1,
-          dict(built))
+    deeper_rows = lib.home({**body, 'shown': shown_of(page_rows[:deep + 1])})
+    check('the requests for more after it build nothing, answered from the page kept, the page\'s next rows',
+          not built and deeper_rows['rows'] == page_rows[deep + 1:deep + 1 + NEXT_PAGE], dict(built))
+    lib.kept.clear()
+    lib.ahead = True
+    built.clear()
+    lib.home(body)
+    kept = lib.kept.get(kept_under(body))
+    laid = kept is not None and kept.ready.wait(60)
+    check('with ahead on, a first request has its page laid out to its end behind it',
+          laid and set(built) == set(range(1, TIERS + 1)) and kept.laid[3]
+          and kept.laid[0] == [r['key'] for r in page_rows], dict(built))
+    lib.ahead = False
+    built.clear()
+    check('so the first request for more builds nothing and gets the page\'s next rows',
+          lib.home({**body, 'shown': shown_of(page_rows[:FIRST_PAGE])})['rows']
+          == page_rows[FIRST_PAGE:FIRST_PAGE + NEXT_PAGE] and not built, dict(built))
     upto = len(today) + 20
     ask = {**body, 'shown': shown_of(page_rows[:upto])}
     again = lib.home(ask)
@@ -718,6 +741,39 @@ with stub_tiers.installed(Page, tier_rows=counted):
                                             and rested[rested_keys.index(tired_deep)]['tier'] >= page_rows[len(today) + 3]['tier']),
           tired_deep)
 Deeper.best = choosing
+# Pages kept while the stand-ins were in are not the real ones.
+lib.kept.clear()
+
+# 4j. Pages kept for the requests for more (library.Kept): the latest KEPT_PAGES, each for
+# KEPT_FOR, and one past its time is laid out again, the same.
+with lib.kept_lock:
+    for n in range(KEPT_PAGES + 5):
+        lib.put(f'page-{n}')
+check(f'at most {KEPT_PAGES} pages are kept, the latest asked for',
+      len(lib.kept) == KEPT_PAGES and 'page-0' not in lib.kept and f'page-{KEPT_PAGES + 4}' in lib.kept)
+lib.kept.clear()
+body = {'profile': PROFILE, 'settings': {}, 'list': [], **seeded('2026-10-05')}
+first = lib.home(body)
+more = lib.home({**body, 'shown': shown_of(first['rows'])})
+kept = lib.kept[kept_under(body)]
+check('a page is kept under what was asked, less the rows shown and how many more',
+      kept_under({**body, 'shown': shown_of(first['rows']), 'count': 3}) == kept_under(body)
+      and kept_under({**body, 'list': [169]}) != kept_under(body))
+kept.at -= KEPT_FOR + 1
+check('a page kept past its time is laid out again, the same',
+      lib.home({**body, 'shown': shown_of(first['rows'])}) == more and lib.kept[kept_under(body)] is not kept)
+extras = lib.kept[kept_under(body)].laid[4]
+rows = first['rows'] + more['rows']
+so_far = Kept()
+so_far.laid = ([r['key'] for r in rows[:12]], rows[:12], 0, False, extras)
+showing = lambda rows_: read_shown({'shown': shown_of(rows_)})
+check('a page laid out so far, as today\'s rows are behind a first request, answers what it holds at once',
+      len(rows) > 12 and so_far.answers(showing(rows[:FIRST_PAGE]), 3) == (rows[FIRST_PAGE:FIRST_PAGE + 3], True, extras))
+check('but not what it cannot yet say: the rows past it, or whether any follow',
+      so_far.answers(showing(rows[:FIRST_PAGE]), 4) is None and so_far.answers(showing(rows[:13]), 1) is None)
+check('nor rows that do not carry on from its own',
+      so_far.answers(showing(rows[1:FIRST_PAGE]), 3) is None)
+lib.kept.clear()
 
 # 5. A title page explains itself and finds what is like it.
 page = lib.title({'profile': PROFILE, 'settings': {}, 'id': reference['picks'][0]['id']})
