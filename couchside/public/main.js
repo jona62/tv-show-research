@@ -5,6 +5,7 @@ import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere
   whereToWatch, trailerSearch, searchNote } from './format.js';
 import { pageKey, resumable, keptText, shownRows, withoutCard, viewedStore, noteViewed, recentlyViewed } from './format.js';
 import { genreChoices, nextByLetter, searchText, recentStore, noteSearch, withoutSearch, recentMatches } from './format.js';
+import { keeper, sessionAnswers } from './format.js';
 import { freshStore, today, dayNumber, noteSeen, noteEngaged, noteRow, noteHero, prune, freshness, watcher }
   from './fresh.js';
 import { daySeed, startersQuery, mergeStarters, browserLanguage, MAX_ROUND, MAX_PICKED } from './starters.js';
@@ -174,27 +175,48 @@ function button(cls, label, onClick, iconName) {
   if (onClick) b.addEventListener('click', onClick);
   return b;
 }
+// Every image is asked for with CORS, which TVmaze, TMDB and YouTube's image servers all
+// allow, so the service worker can keep a readable copy (sw.js) rather than an opaque one.
 function picture(src, cls, onLoad) {
   const img = new Image();
   img.alt = '';
   img.decoding = 'async';
   img.referrerPolicy = 'no-referrer';
+  img.crossOrigin = 'anonymous';
   if (cls) img.className = cls;
   if (onLoad) img.addEventListener('load', onLoad, { once: true });
   if (src) img.src = src;
   return img;
 }
+// Posters a view is about to draw again, by address, while redraw runs: artEl hands them
+// over instead of making new ones, so drawing a list again neither asks for a poster
+// again nor fades it in a second time.
+let spare = null;
+function redraw(holder, draw) {
+  const outer = spare;
+  spare = new Map();
+  for (const art of holder.querySelectorAll('.art[data-src]')) spare.set(art.dataset.src, art);
+  try { return draw(); } finally { spare = outer; }
+}
 // A poster, over a tile in the show's own colour that names it until the image arrives.
 function artEl(c, src = c.poster, lazy = true) {
+  const kept = src && spare?.get(src);
+  if (kept) {
+    spare.delete(src);
+    return kept;
+  }
   const box = el('span', '', 'art');
   box.style.setProperty('--h', String(hue(c.id)));
   box.append(el('span', c.name || '', 'art-name'));
   if (src) {
+    box.dataset.src = src;
     const img = picture(null);
     if (lazy) img.loading = 'lazy';
     img.addEventListener('load', () => box.classList.add('loaded'), { once: true });
     img.addEventListener('error', () => img.remove(), { once: true });
     img.src = src;
+    // One this page already holds shows at once, without fading in again.
+    if (img.complete && img.naturalWidth) box.classList.add('loaded');
     box.append(img);
   }
   return box;
@@ -230,7 +252,7 @@ function toast(text) {
 if (!POPOVER) $('toast').hidden = true;
 
 /* ----------------------------------------------------------------- api */
-async function call(path, options = {}) {
+async function request(path, options = {}) {
   let res;
   try {
     res = await fetch(path, options);
@@ -251,46 +273,62 @@ async function call(path, options = {}) {
   }
   return body;
 }
+
+// What the page has been told is kept by what it asked (keeper in format.js): a title, a
+// genre's rows, a search and a show's live details come back without a request for a
+// while, and two asking at once share one. Live details, which the server fetches from
+// TVmaze, KinoCheck and iTunes, also outlast a reload of the tab in sessionStorage. The
+// home page keeps itself (keepPage).
+const MINUTE = 60_000;
+const KEEP = {
+  '/api/extra': 30, '/api/trailer': 30, '/api/rating': 30, '/api/episodes': 30,
+  '/api/search': 10, '/api/title': 10, '/api/browse': 10,
+};
+const LIVE = ['/api/extra', '/api/trailer', '/api/rating', '/api/episodes'];
+const ANSWERS_KEY = 'couchside-answers';
+const asked = keeper();
+let answers = {};
+try { answers = sessionAnswers(JSON.parse(sessionStorage.getItem(ANSWERS_KEY)), Date.now(), 30 * MINUTE); } catch { /* none yet */ }
+function keepAnswers() {
+  answers = sessionAnswers(answers, Date.now(), 30 * MINUTE);
+  try { sessionStorage.setItem(ANSWERS_KEY, JSON.stringify(answers)); } catch { /* storage full or off */ }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') keepAnswers(); });
+window.addEventListener('pagehide', keepAnswers);
+
+function call(path, options) {
+  const route = path.split('?')[0];
+  if (options || !KEEP[route]) return request(path, options);
+  const ms = KEEP[route] * MINUTE;
+  return asked(path, ms, () => {
+    const held = answers[path];
+    if (held && Date.now() - held.at < ms) return held.value;
+    return request(path).then(value => {
+      if (LIVE.includes(route)) answers[path] = { at: Date.now(), value };
+      return value;
+    });
+  });
+}
 const wait = ms => new Promise(done => setTimeout(done, ms));
 // Live lookups can find the server busy for a moment; one quiet retry covers that.
 const patient = path => call(path).catch(e => (e.status === 503 ? wait(1500).then(() => call(path)) : Promise.reject(e)));
-const post = (path, body, signal) => call(path, {
-  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal,
-});
+// A title's page and a genre's rows follow your list, your settings and what is asked,
+// not what this browser has seen since, so they are kept by those alone.
+function post(path, body, signal) {
+  const send = () => request(path, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal,
+  });
+  if (!KEEP[path]) return send();
+  const { profile, settings, id, genre } = body;
+  return asked(`${path} ${JSON.stringify([profile, settings, id, genre])}`, KEEP[path] * MINUTE, send);
+}
 const taste = () => ({ profile: state.profile.map(({ id, weight }) => ({ id, weight })), settings: state.settings });
 
-// Live details come once per show and are shared by the hero and the title page.
-const extras = new Map();
-function details(id) {
-  if (!extras.has(id)) {
-    extras.set(id, patient(`/api/extra?id=${id}`).then(r => r.details).catch(() => {
-      extras.delete(id);
-      return null;
-    }));
-  }
-  return extras.get(id);
-}
-
-// Trailers and age ratings, once per show. A failure reads as none, and is asked again later.
-const trailerCache = new Map(), ageCache = new Map();
-function trailersOf(id) {
-  if (!trailerCache.has(id)) {
-    trailerCache.set(id, patient(`/api/trailer?id=${id}`).then(r => r.videos).catch(() => {
-      trailerCache.delete(id);
-      return [];
-    }));
-  }
-  return trailerCache.get(id);
-}
-function ageOf(id) {
-  if (!ageCache.has(id)) {
-    ageCache.set(id, patient(`/api/rating?id=${id}`).catch(() => {
-      ageCache.delete(id);
-      return { rating: null, apple: null };
-    }));
-  }
-  return ageCache.get(id);
-}
+// Live details, trailers and age ratings, shared by the hero and the title page. A
+// failure reads as none, and is asked again next time.
+const details = id => patient(`/api/extra?id=${id}`).then(r => r.details).catch(() => null);
+const trailersOf = id => patient(`/api/trailer?id=${id}`).then(r => r.videos).catch(() => []);
+const ageOf = id => patient(`/api/rating?id=${id}`).catch(() => ({ rating: null, apple: null }));
 
 // TMDB's data comes with a title, and with the hero, so those lookups are asked only for
 // what it lacks. The Apple TV link matters only where TMDB lists nowhere to watch.
@@ -429,7 +467,7 @@ async function loadHome() {
     home = { ...data, day, tasteKey: key };
     homeKey = key;
     rememberHome(data);
-    renderHome();
+    redraw($('rows'), renderHome);
     keepPage();
     if (view === 'new') renderNew();
     if (view === 'list') renderList();
@@ -594,7 +632,8 @@ function recentRow() {
   return sec;
 }
 function updateRecentRow() {
-  $('row-recent')?.replaceWith(recentRow());
+  const row = $('row-recent');
+  if (row) redraw(row, () => row.replaceWith(recentRow()));
 }
 
 function renderHero(s) {
@@ -603,6 +642,8 @@ function renderHero(s) {
   const bg = el('div', '', 'hero-bg');
   if (s.art) bg.append(picture(s.art, 'hero-blur'));
   const backdrop = picture(null, 'hero-backdrop', () => hero.classList.add('has-backdrop'));
+  // Phones hide the backdrop, and a lazy image that is hidden is never fetched.
+  backdrop.loading = 'lazy';
   bg.append(backdrop);
   const poster = artEl(s, s.art, false);
   poster.classList.add('hero-poster');
@@ -997,6 +1038,7 @@ function buildTitle(c) {
   const art = c.art || c.poster;
   if (art) hero.append(picture(art, 't-blur'));
   const backdrop = picture(null, 't-backdrop', () => hero.classList.add('has-backdrop'));
+  backdrop.loading = 'lazy';
   const poster = artEl(c, art, false);
   poster.classList.add('t-poster');
   const name = el('h2', c.name || '', 't-name');
@@ -1525,7 +1567,7 @@ function renderNew() {
   }
   if (home.soon.length) rows.push({ key: 'soon', title: 'Coming soon', kind: 'soon', items: home.soon });
   if (home.popular?.length) rows.push({ key: 'popular', title: 'Popular right now', kind: 'row', items: home.popular });
-  holder.replaceChildren(...rows.map(rowEl));
+  redraw(holder, () => holder.replaceChildren(...rows.map(rowEl)));
   reveal(holder.children);
 }
 
@@ -1538,7 +1580,7 @@ const GROUPS = {
 const NOTES = { 1: 'you loved it', '-1': 'not for you' };
 
 function fill(grid, items, options = () => ({})) {
-  grid.replaceChildren(...items.map(c => {
+  redraw(grid, () => grid.replaceChildren(...items.map(c => {
     const li = el('li');
     const o = options(c);
     li.append(cardEl(c, o));
@@ -1549,7 +1591,7 @@ function fill(grid, items, options = () => ({})) {
       li.append(caption);
     }
     return li;
-  }));
+  })));
 }
 
 function renderList() {
@@ -2184,9 +2226,18 @@ window.addEventListener('online', () => {
   if (!home) loadHome();
   if (view === 'browse') { browseKey = null; renderBrowse(); }
 });
-// Offline, the service worker serves a page asking for the connection back.
+// The service worker (sw.js) starts the app from the build it keeps, online or not, and
+// keeps the posters. A new build it finds waits until this page has loaded all its own
+// files, then takes over, so the next load is the new build whole.
 if ('serviceWorker' in navigator && window.isSecureContext) {
-  const register = () => navigator.serviceWorker.register('/sw.js').catch(() => {});
+  const takeOver = worker => worker?.postMessage('take-over');
+  const register = () => navigator.serviceWorker.register('/sw.js').then(reg => {
+    takeOver(reg.waiting);
+    reg.addEventListener('updatefound', () => {
+      const worker = reg.installing;
+      worker?.addEventListener('statechange', () => { if (worker.state === 'installed') takeOver(worker); });
+    });
+  }).catch(() => {});
   if (document.readyState === 'complete') register(); else window.addEventListener('load', register);
 }
 
