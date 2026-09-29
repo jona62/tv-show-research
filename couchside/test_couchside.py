@@ -101,9 +101,10 @@ import server                                                    # noqa: E402
 import follow                                                    # noqa: E402
 import tmdb                                                      # noqa: E402
 from build import MODULES                                        # noqa: E402
-from engine import DEFAULT_SETTINGS, QUICK_PICKS                 # noqa: E402
+from engine import DEFAULT_SETTINGS, QUICK_PICKS, Engine         # noqa: E402
 from fallback import Remote                                      # noqa: E402
-from library import ROW, MORE, GLANCE, SHORTEST, GENRE_ROWS, NEW_DAYS, FALLBACK, lower_first  # noqa: E402
+from library import ROW, MORE, GLANCE, SHORTEST, GENRE_ROWS, NEW_DAYS, FALLBACK, UNRELATED, Library, lower_first  # noqa: E402
+from library import SIMILAR_AT, similarity                       # noqa: E402
 from library import (Page, Deeper, FIRST_PAGE, NEXT_PAGE, MOST_ROWS, CREATOR_SHORTEST, NOT_FOR_ME,  # noqa: E402
                      INTEREST_CAP, HIDDEN, PINNED, LONGEST, TIERS)
 from live import (Live, LiveError, Icons, trim_show, trim_episodes, trim_videos,        # noqa: E402
@@ -183,6 +184,15 @@ check('official trailers lead, trailers before teasers, newest first',
       [v['youtube'] for v in things['videos']] == ['TRAILER0005', 'TRAILER0001', 'TEASER00001', 'FANMADE0001'])
 check('trailers take the shape the page plays', things['videos'][1] == {
     'youtube': 'TRAILER0001', 'title': 'Season 1 Trailer', 'kind': 'Trailer', 'published': '2016-07-07'})
+seasonal = tmdb.videos([{'key': 'SEASON5TEAS', 'name': 'Official Teaser', 'type': 'Teaser', 'official': True,
+                         'published': '2013-06-01', 'season': 5},
+                        {'key': 'SEASON1TRLR', 'name': 'Official Trailer', 'type': 'Trailer', 'official': True,
+                         'published': '2008-01-10', 'season': 1},
+                        {'key': 'ODDSEASON01', 'name': 'Odd', 'type': 'Trailer', 'official': False, 'season': '2'}])
+check('a trailer TMDB keeps on a season says which season, and nothing else does', seasonal == [
+    {'youtube': 'SEASON1TRLR', 'title': 'Official Trailer', 'kind': 'Trailer', 'published': '2008-01-10', 'season': 1},
+    {'youtube': 'SEASON5TEAS', 'title': 'Official Teaser', 'kind': 'Teaser', 'published': '2013-06-01', 'season': 5},
+    {'youtube': 'ODDSEASON01', 'title': 'Odd', 'kind': 'Trailer', 'published': ''}], seasonal)
 check('the rating, watch page and backdrop come through', things['rating'] == 'TV-14'
       and things['link'] == 'https://www.themoviedb.org/tv/66732/watch?locale=US'
       and things['backdrop'] == IMAGE_URL + 'w1280/stranger.jpg')
@@ -601,8 +611,8 @@ check('browsing takes a day too, and keeps each row\'s first two', browsed['rows
       lib.browse({'profile': PROFILE, 'settings': {}, 'genre': 'Crime', **seeded('2026-10-06')})['rows'][0]['items'][:PINNED])
 more_today = [c['id'] for c in lib.title({'profile': PROFILE, 'id': 169, **seeded('2026-10-05')})['more']]
 more_plain = [c['id'] for c in lib.title({'profile': PROFILE, 'id': 169})['more']]
-check("more like this keeps its closest six and takes the day's for the rest",
-      more_today[:GLANCE] == more_plain[:GLANCE] and len(more_today) == len(more_plain))
+check('more like this is the same every day, with no day drawn into it',
+      more_today == more_plain == [c['id'] for c in lib.title({'profile': PROFILE, 'id': 169, **seeded('2026-10-06')})['more']])
 
 # 4i. Past today's rows, with rows of their own in every tier (stand-ins cut with the page's
 # own helpers, scripts/bench/stub_tiers.py): the page goes on tier by tier until the last is
@@ -723,6 +733,112 @@ check('more like this carries summaries', all('summary' in c for c in page['more
 check('a rated title does not explain itself', lib.title({'profile': PROFILE, 'settings': {}, 'id': 169})['show']['because'] is None)
 bare = lib.title({'profile': [], 'settings': {}, 'id': 169})
 check('a title works with nothing rated', bare['show']['match'] is None and bare['more'])
+
+# More like this is about the title, not the viewer: closeness to it, its own world first,
+# no padding, and a percent similar in place of a match. Franchises and what readers look
+# up next come with the repository's model, which the temporary one leaves out, so it is
+# read here as well.
+def falling(cards):
+    """Every card a whole percent similar from 60 to 99, none above the card before it."""
+    percents = [c.get('similar') for c in cards]
+    return all(type(p) is int and 60 <= p <= 99 for p in percents) and percents == sorted(percents, reverse=True)
+
+
+check('no card under more like this carries a match, though the title has one',
+      page['show']['match'] and all('match' not in c for c in page['more']))
+check('each card says how similar it is, and the list runs from the most similar down',
+      falling(page['more']) and falling(bare['more']), [c.get('similar') for c in page['more']])
+check('more like this is stories for a story, with or without facets',
+      all(c['type'] in ('Scripted', 'Animation') for c in page['more'] + bare['more']))
+low, high = SIMILAR_AT
+check('similarity reads 60% at its low anchor and 99% from its high one', similarity(low) == 60
+      and similarity(high) == 99 and similarity(high * 10) == 99 and similarity(low * .99) is None)
+steps = [similarity(low * 1.1 ** n) for n in range(60)]
+check('similarity only rises with the score, a point or so at a time', steps == sorted(steps)
+      and all(b - a <= 2 for a, b in zip(steps, steps[1:])), steps)
+full_engine = Engine(ROOT / 'model')
+full = Library(full_engine, ROOT / 'couchside' / 'art.bin.gz')
+
+
+def more_of(show_id, profile=(), part='more'):
+    return full.title({'profile': list(profile), 'settings': {}, 'id': show_id})[part]
+
+
+def ids_of(cards):
+    return [c['id'] for c in cards]
+
+
+thrones = more_of(82)
+dragon = next((c for c in thrones if c['id'] == 44778), {})
+check('Game of Thrones brings House of the Dragon, among the first, as its own world and in the 90s',
+      44778 in ids_of(thrones)[:2] and dragon.get('why') == 'Same world' and dragon.get('similar', 0) >= 90,
+      [(c['name'], c.get('similar')) for c in thrones])
+bad = more_of(169)
+check('Breaking Bad brings Better Call Saul first, as its own world and in the 90s',
+      bad[0]['id'] == 618 and bad[0]['why'] == 'Same world' and bad[0]['similar'] >= 90,
+      [(c['name'], c.get('similar')) for c in bad])
+check('a show that is only a little like the title reads well below its spin-offs',
+      thrones[-1]['similar'] <= 85 and bad[-1]['similar'] <= 85, (thrones[-1], bad[-1]))
+check('a card says why when it can, the cast included', any(c.get('why') == 'With Jim Beaver' for c in bad),
+      [(c['name'], c.get('why')) for c in bad])
+office = more_of(526)
+check('a sitcom brings half-hour comedies', office and all(
+    'Comedy' in c['genres'] and c['runtime'] and c['runtime'] <= 40 for c in office), [c['name'] for c in office])
+check('live action brings live action', all(c['type'] == 'Scripted' for c in thrones + bad + office),
+      [(c['name'], c['type']) for c in thrones + bad + office if c['type'] != 'Scripted'])
+check('a factual show brings factual shows', all(c['type'] not in ('Scripted', 'Animation') for c in more_of(2950)))
+check('a show\'s own world comes in any form: the animated Tales from \'85 for Stranger Things',
+      any(c['id'] == 85214 and c.get('why') == 'Same world' for c in more_of(2993)),
+      [(c['name'], c['type'], c.get('why')) for c in more_of(2993)])
+
+# Fans also like: what the title's readers also look up, which More like this no longer
+# ranks by. Game of Thrones' readers look up The Sopranos and Mad Men, which are not alike.
+thrones_fans, bad_fans = more_of(82, part='fans'), more_of(169, part='fans')
+sopranos, mad_men = 527, 385
+check('shows that are not alike leave More like this for Fans also like',
+      {sopranos, mad_men} <= set(ids_of(thrones_fans)) and not {sopranos, mad_men} & set(ids_of(thrones)),
+      ([c['name'] for c in thrones], [c['name'] for c in thrones_fans]))
+links = [full_engine.shows[j]['id'] for j, _s in sorted(full_engine.cointerest(full_engine.by_id[82]),
+                                                         key=lambda link: (-link[1], full_engine.shows[link[0]]['id']))]
+check('Fans also like runs strongest first, twelve at most, and repeats nothing from More like this',
+      0 < len(thrones_fans) <= MORE and ids_of(thrones_fans) == [x for x in links if x in ids_of(thrones_fans)]
+      and not set(ids_of(thrones_fans)) & set(ids_of(thrones)) and not set(ids_of(bad_fans)) & set(ids_of(bad)))
+check('Fans also like carries no percent and no match', all('similar' not in c and 'match' not in c
+                                                              for c in thrones_fans + bad_fans))
+check('its cards say why where they can, the same creator and the cast included',
+      any(c['id'] == 86175 and c.get('why') == 'Same creator' for c in bad_fans)
+      and any(c.get('why') == 'With Bryan Cranston' for c in bad_fans), [(c['name'], c.get('why')) for c in bad_fans])
+check('no card says its fans overlap, since Fans also like says so',
+      all(c.get('why') != 'Shared fans' for c in thrones + bad + office + thrones_fans + bad_fans))
+winning = full_engine.by_id[59390]
+check('Fans also like is left out with fewer than four shows',
+      1 <= len(full_engine.cointerest(winning)) <= 3 and more_of(59390, part='fans') == [])
+trek = more_of(491)
+worlds = [c for c in trek if c.get('why') == 'Same world']
+check('a show\'s own world leads, six at most', 1 <= len(worlds) <= 6 and trek[:len(worlds)] == worlds
+      and len(trek) == MORE, [(c['name'], c.get('why')) for c in trek])
+check('a drama after another in its time slot is not its world',
+      57705 not in full.kin(full_engine.by_id[56464])[0] and all(c.get('why') != 'Same world' for c in more_of(56464)))
+settled = thrones
+viewers = [more_of(82, [{'id': 431, 'weight': 1}]), more_of(82, [{'id': 169, 'weight': 1}, {'id': 2993, 'weight': .7}])]
+percent_of = {c['id']: c['similar'] for c in settled}
+check('whoever looks, the same shows at the same percents, the viewer\'s taste only ordering equals',
+      all(set(ids_of(cards)) == set(percent_of) and falling(cards)
+          and all(c['similar'] == percent_of[c['id']] for c in cards) for cards in viewers),
+      [[(c['name'], c['similar']) for c in cards] for cards in viewers])
+wire, deadwood, saul = 179, 565, 618
+disliked = ids_of(more_of(169, [{'id': wire, 'weight': -1}]))
+check('a show more like one marked Not for me than like the title is left out, and one more like the title stays',
+      wire not in disliked and deadwood in ids_of(bad) and deadwood not in disliked and saul in disliked, disliked)
+close = full.likeness(full_engine.by_id[82], DEFAULT_SETTINGS)
+check('every show there has something in common with the title',
+      all(close[full_engine.by_id[c['id']]] >= UNRELATED for c in thrones))
+prom = 17035
+check('a title with few shows much like it gets a short list rather than a padded one',
+      0 < len(more_of(prom)) < MORE, len(more_of(prom)))
+check('every list runs from the most similar down, never under 60%',
+      all(falling(cards) for cards in (bad, office, trek, more_of(prom), more_of(2950), more_of(56464))))
+del full, full_engine
 soon_id = cold['soon'][0]['id']
 check('an upcoming show opens too', lib.title({'profile': PROFILE, 'settings': {}, 'id': soon_id})['show']['id'] == soon_id)
 rejects('an unknown title', lambda: lib.title({'profile': [], 'id': 999_999_999}), 'not in this catalog')

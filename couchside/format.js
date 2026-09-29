@@ -126,6 +126,29 @@ export function whereToWatch(show, tmdb, site, channels, apple) {
   };
 }
 
+/* ------------------------------------------------------------ a title page's long parts */
+// A season starts with its first three episodes and the trailers with the first two, or a
+// wide screen's row of three; a button opens the rest. Hiding just one is not worth a
+// button, so a part only one longer than its snippet shows whole.
+export const SNIPPETS = { episodes: 3, clips: 2, clipsWide: 3 };
+export const snippet = (count, most) => (count > most + 1 ? most : count);
+
+// What that button says, opening the part or closing it again.
+export function revealLabel(part, count, open) {
+  if (part === 'episodes') return open ? 'Show fewer episodes' : `Show all ${count} episodes`;
+  return open ? 'Show fewer' : `Show all (${count})`;
+}
+
+// Where to watch keeps to one line. Given where each service's pill ends along it, left
+// to right, and the line's width: how many it shows whole. All of them when they fit;
+// otherwise those that end before the fade at its end, and the first one at least.
+export function fitsOnLine(ends, width, fade) {
+  if (!ends.length || ends[ends.length - 1] <= width) return ends.length;
+  let n = 0;
+  while (n < ends.length && ends[n] <= width - fade) n++;
+  return Math.max(1, n);
+}
+
 // What the search page says over its results. Checking the spelling is suggested only
 // when neither the catalogue, typos and all, nor TVmaze found anything.
 export function searchNote(query, found, missing) {
