@@ -343,9 +343,14 @@ function easeIn(row, delay) {
   if (!moving()) return;
   row.animate([{ opacity: 0, transform: 'translateY(18px)' }, { opacity: 1, transform: 'none' }],
     { duration: 280, delay, easing: OUT, fill: 'backwards' });
-  [...row.querySelectorAll('.track > li')].slice(0, 6).forEach((li, i) => li.animate(
-    [{ opacity: 0, transform: 'translateX(26px)' }, { opacity: 1, transform: 'none' }],
-    { duration: 260, delay: delay + 60 + stagger(i, 35, 175), easing: OUT, fill: 'backwards' }));
+  // The cards rise into their slots, and the slots stay put: a slot is where the row snaps
+  // when swiped, and sliding one in from the side made the row snap to it mid-slide, pulling
+  // the whole row left and then back.
+  [...row.querySelectorAll('.track > li')].slice(0, 6).forEach((li, i) => {
+    for (const part of li.children) part.animate(
+      [{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }],
+      { duration: 260, delay: delay + 60 + stagger(i, 35, 175), easing: OUT, fill: 'backwards' });
+  });
 }
 
 // Puts `nodes` in `box` in place of what it holds, crossfading from the old to the new;
