@@ -145,6 +145,118 @@ measure:
 Keep it that way: judge a change on `holdout.json` only after deciding it on
 `personas.json`, and never tune on it.
 
+## Long lists
+
+A list may rate up to 3,000 shows, and past 60 the engine ranks it from each show's
+48 closest shows (`engine.Wide`, over `neighbours.bin.gz`). Nobody has published a
+real list of thousands of television ratings, so `large_lists.py` builds them: each
+viewer is three to six personas united and extended to 300, 1,000 or 3,000 ratings
+with what someone of that taste plausibly also rated (shows tied to a liked show by
+franchise, creator, Wikipedia's readers, network and genre or a rare genre; well-known
+shows in its languages and formats; the best-known shows of all; and shows tied to
+its dislikes), each rated from a spread that fits where it came from, lukewarm and
+indifferent ratings throughout. Plot text, the ranking's strongest signal of its own,
+plays no part in choosing them. A third of each persona's loves are held out before
+anything is drawn and never rated, and the order of the list is shuffled, so its most
+recent 60 are a sample of the whole.
+
+`large_bench.py` ranks the held-out loves twice, with the whole list and with its 60
+most recent ratings (which the engine ranks as it ranked every list before), 24
+viewers a size and file:
+
+| held-out loves | size | HR@10 | HR@24 | HR@100 | MRR | median rank |
+|---|---:|---:|---:|---:|---:|---:|
+| personas.json, whole list | 300 | 34.5% | 46.4% | 58.3% | 0.154 | 31 |
+| personas.json, 60 most recent | 300 | 4.8% | 13.1% | 25.0% | 0.030 | 930 |
+| personas.json, whole list | 1,000 | 21.2% | 34.5% | 50.4% | 0.097 | 95 |
+| personas.json, 60 most recent | 1,000 | 5.3% | 8.0% | 15.0% | 0.016 | 2,553 |
+| personas.json, whole list | 3,000 | 20.2% | 27.6% | 41.1% | 0.099 | 178 |
+| personas.json, 60 most recent | 3,000 | 2.5% | 4.3% | 11.0% | 0.014 | 2,650 |
+| holdout.json, whole list | 300 | 17.3% | 30.9% | 51.8% | 0.124 | 95 |
+| holdout.json, 60 most recent | 300 | 11.1% | 18.5% | 30.9% | 0.061 | 505 |
+| holdout.json, whole list | 1,000 | 13.1% | 20.6% | 45.8% | 0.080 | 161 |
+| holdout.json, 60 most recent | 1,000 | 1.9% | 3.7% | 6.5% | 0.008 | 3,183 |
+| holdout.json, whole list | 3,000 | 16.5% | 18.3% | 32.9% | 0.075 | 325 |
+| holdout.json, 60 most recent | 3,000 | 1.2% | 2.4% | 6.1% | 0.004 | 4,990 |
+
+More ratings help at every size, and the more there are the more they help against
+the recent ones alone. The whole list's rates fall as lists grow because a longer
+list holds more interests (three personas at 300, six at 3,000) sharing the same 24
+places. Ranking the whole list the old way instead, from every show's closeness to
+each rated one, did little better than the recent 60 (HR@24 19% against 17% at 300 on
+personas.json, 12 viewers) and cannot be run at 1,000 or more in reasonable time.
+`large-baseline.json` holds this run; `--compare` prints deltas against it.
+
+The whole list has one limit the recent 60 do not: a show outside every liked show's
+48 closest gets no score from it and ranks last. That was 5% to 10% of the held-out
+loves on personas.json and 10% to 23% on holdout.json, most at 300 ratings, where the
+fewest liked shows reach out (`unscored` in the report).
+
+What was tried to keep the noise down, on personas.json's lists, and kept only where
+it helped:
+
+- **Fewer, closer neighbours.** 32, 48, 64 and 100 a show at each size, and 200 at
+  300: fewer did as well or better everywhere, and far better at 3,000 (HR@24 32%
+  with 48, 20% with 100), since the faint likeness of any two dramas is noise over
+  hundreds of rated shows. 48 kept, which also leaves a seed's row room.
+- **Lukewarm ratings count little.** An OK at 0.1 of a love rather than 0.35: about
+  2 points of HR@24 at each size. Leaving OKs out altogether did better at 300 and
+  1,000 but not at 3,000, and an OK is still a small yes. 0.1 kept.
+- **Informative over broad.** Themes and genres at half their weight in what a rated
+  show adds, beside plot and franchise; and a show that is among the closest of many
+  shows damped by its count to the power 0.3. With the lukewarm ratings above and the
+  dislike penalty below, MRR at 3,000 went from 0.080 to 0.106 and HR@100 from 37% to
+  42%; without the damping MRR fell back to 0.098, and without the half weight HR@100
+  to 39%. Kept.
+- **Interests found at scale.** Clustering the 150 most telling liked shows (loves,
+  then the newest) and joining the rest to the nearest: 100 anchors lost 10 points of
+  HR@24 at 300 and at 3,000 (and gained 7 at 1,000), 250 moved it a point or two
+  either way. Kept at 150.
+- **Each interest's taste against its own dislikes.** Rather than all of them: HR@24
+  at 300 from 41% to 48% and at 1,000 from 23% to 29%, the same at 3,000. Kept.
+- **A minimum support for an interest.** 1% of the liked shows and three at least:
+  neutral here, but a four-show interest's taste had run to factors of 14 on a title
+  page. Kept.
+- **A dislike penalty at the setting's strength** (0.35 of what a disliked show adds):
+  none lost 5 points of HR@24 at 300, four times as much lost 6 at 3,000, and twice
+  as much was about the same but for a worse median rank at 3,000. Kept.
+- Tried and left out: damping what a candidate gathers with a square root (worse at
+  every size) or a 0.75 power (no better, and a worse median rank at every size),
+  halving a candidate only one liked show lists (mixed: more held-out loves in the
+  top 24 at 300, fewer in the top 10, nothing at 3,000), and shrinking each
+  interest's taste toward the whole list's (a point or two either way).
+- **Recency.** Ratings fade toward half their weight, halfway there 300 ratings back.
+  These lists are shuffled, so here recency can only add noise (it moved the results
+  a point or two either way), and nothing here can show it helping. It is kept at
+  that mild setting for real lists, where the recent ratings are the likelier to say
+  what someone watches now.
+
+`scale_bench.py` times each request on an Apple M3 Pro, cold (the engine's per-show
+caches empty, as for a list the server has not seen lately) and with the collector
+leaving the model's objects alone, as the servers do; memory is the peak allocation
+while a cold request runs, and bytes the request as a browser sends it:
+
+| rated shows | first home request, p50 and p95 | Next Watch, p50 | memory | request |
+|---|---:|---:|---:|---:|
+| 60 | 1,164 and 1,268 ms, as before | 1,125 ms, as before | 81 MB | 0.6 KB (1.7 before) |
+| 300 | 72 and 79 ms (5.4 and 6.0 s before) | 88 ms (5.2 s) | 9 MB (161 before) | 2.2 KB (7.7) |
+| 1,000 | 125 and 135 ms (37 s before) | 130 ms (37 s) | 17 MB | 6.8 KB (25) |
+| 3,000 | 235 and 239 ms | 244 ms (650 s) | 31 MB | 20 KB (75) |
+
+Before, memory at 1,000 and 3,000 was not traced (it would have taken hours), but the
+old way holds a 358 KB closeness array for each liked or disliked show, about 900 and
+2,700 of them in these lists: some 320 MB and 960 MB, where 300 ratings traced at
+161 MB. The home page at 3,000 does the same work as Next Watch's 650 s and was not
+run. A list of 60 or fewer is ranked exactly as before, so its first request still
+works out 60 closeness arrays (about 20 ms each, cached afterwards: 261 ms warm).
+
+```sh
+.venv/bin/python scripts/bench/large_bench.py --compare scripts/bench/large-baseline.json
+.venv/bin/python scripts/bench/large_bench.py --files holdout.json --sizes 3000 --set WIDE_HUB=0
+.venv/bin/python scripts/bench/scale_bench.py
+.venv/bin/python scripts/bench/scale_bench.py --code /tmp/old/couchside --sizes 60,300 --timeout 120
+```
+
 ## Caveats
 
 - The personas encode general fan knowledge of which shows go together, not

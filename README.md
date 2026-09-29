@@ -8,7 +8,10 @@ Both apps share one recommender. A pick has to sit close to shows you liked (plo
 themes, genres, and a shared franchise or maker from Wikidata) and fit what your
 whole list leans toward: its languages, formats, networks, eras, subgenres, and how
 well known and well rated its shows are, learned from your ratings and dislikes.
-A list with several tastes gets picks for each. [scripts/bench](scripts/bench/)
+A list with several tastes gets picks for each, and a list may rate up to 3,000
+shows: past 60 it is ranked from each show's closest shows, which the nightly
+build precomputes, so a heavy watcher's whole history counts and a page still
+comes in a quarter of a second. [scripts/bench](scripts/bench/)
 measures it against 71 viewer personas: on the 20 nobody tuned on, a held-out
 favourite lands in the top 24 picks 54% of the time, up from 10%. Besides each
 show's own data it uses which shows the same readers look up on Wikipedia, from the
@@ -75,6 +78,10 @@ it without storing it (about 500 MB, three months on the first build), keeping
 only the counts between shows' articles for the latest three months. When a month
 will not download, the months already held serve, and it is tried again next run.
 
+Last, `scripts/build_neighbours.py` works out every show's 48 closest shows under
+the apps' own closeness (about two minutes and 600 MB on a laptop, 13 MB on disk),
+which is what the apps rank a list of more than 60 ratings from.
+
 With `TMDB_API_KEY` set, each build also fetches TMDB's US age ratings, streaming
 services, trailers and backdrops for the 23,000 or so best-known shows, 6,000 a
 night, keeping each for at most TMDB's six months. Couchside shows them, credited
@@ -86,6 +93,7 @@ MODEL_ROOT=/tmp/tv-model SEED_MODEL_DIR=model RAW_SOURCE_DIR=data/raw \
   .venv/bin/python scripts/refresher.py    # http://localhost:8083
 .venv/bin/python scripts/test_refresher.py
 .venv/bin/python scripts/test_facets.py
+.venv/bin/python scripts/test_neighbours.py
 ```
 
 ## Deploy

@@ -21,8 +21,10 @@ Four screens and nothing else:
   per rated show then shows how close the pick sits to each of them individually.
 - **Saved** is the watchlist. Anything you save waits there until you watch it;
   rating it then moves it into your shows, where it starts shaping the picks.
-- **Your shows** is the rated list, five ratings per row, and the place to move
-  a list between devices. *More like this* on any liked show narrows the picks
+- **Your shows** is the rated list, five ratings per row, newest first, and the
+  place to move a list between devices. A list may hold up to 3,000 shows; past
+  60 it shows 60 at a time with *Show more*, and a box finds any show on it by
+  name. *More like this* on any liked show narrows the picks
   to it; tick several and they are matched to those alone. Your taste, the
   signals and the fit chart keep describing the whole list, since narrowing is a
   lens on the picks, not a different taste.
@@ -157,8 +159,8 @@ at startup (0.35 s and 6 MB over the catalogue alone).
 
 There are no accounts, so *Move to another device* packs your ratings, your
 watchlist and your settings into a link. Only catalog ids and ratings go in and
-titles are looked up again on arrival, which keeps a typical list near 140
-characters and the largest possible one under 1,200.
+titles are looked up again on arrival, about four bytes a rating, which keeps a
+typical list near 140 characters and a list of 3,000 ratings near 14,000.
 
 The payload rides in the URL fragment, which browsers never send to a server, so
 a shared link keeps the same promise as the rest of the app: nothing about you
@@ -169,6 +171,14 @@ ratings where the two lists disagree, so merging twice changes nothing. A bare
 code can be pasted instead, for when a messaging app mangles long links, and a
 QR code sits above it so a phone can pick the list up by camera with no copying
 at all.
+
+A QR code holds about 2,300 bytes, a list of a few hundred ratings. A longer list
+moves the same way without it: the link or the code copied and sent to yourself,
+which carry any length (a pasted code is read with any line breaks a mail program
+folded into it taken out), or *Save as a file*, a small text file holding the link,
+to AirDrop, mail or keep in a cloud folder and open on the other device with *Open
+a saved file*. The link stays the one format, so nothing new has to be learned or
+trusted, and the file is for the channels that mangle long text.
 
 `qr.js` is a byte-mode encoder at error-correction level M, written here because
 the page loads no third-party script. Supporting one correction level keeps the
@@ -208,7 +218,12 @@ The first verifies the app engine ranks identically to the research recommender 
 matched settings, that rated shows never come back as picks, that matching to
 chosen shows changes only the ranking and equals re-rating the rest as neutral,
 that bad input is rejected, that plot terms behave, and that search finds the show
-meant by every kind of query above on the real catalogue. The second checks search
+meant by every kind of query above on the real catalogue. For long lists it checks
+that the neighbour index holds each sampled show's true closest shows with the
+engine's own closeness, under the default settings and rebuilt for others, that a
+list of 3,000 is answered quickly with nothing rated among its picks, that 60 ratings
+still take the old way and 61 the index, and that a model without the index falls
+back to the most recent 60 likes and dislikes. The second checks search
 on its own over a small made-up catalogue: how text is read, each tier and its
 order, other titles and a bad `search.json.gz`, and the TVmaze fallback against
 fakes, one of them a local HTTP server, for its cache, rate window, 429s, timeout
@@ -220,8 +235,10 @@ their other titles and asks a fake TVmaze only when it should, and the follower
 leaves only for a complete new model, never for one still being written or a link
 to nothing. Nothing reaches the network. The fourth pins which chosen
 shows survive a change to the list and how they are named. The fifth round-trips transfer
-codes, including a full 60-plus-200 list, and checks that damaged, truncated and
-wrong-version codes are refused rather than half-applied. The sixth holds the QR
+codes, including a full 3,000-plus-200 list and a 400-rating one that still fits a QR
+code, packs a list for a request, reads a code out of a link or folded text, and
+checks that damaged, truncated and wrong-version codes are refused rather than
+half-applied. The sixth holds the QR
 encoder to its recorded matrices, its version boundaries, and the structure a
 scanner depends on. The last three cover freshness: `fresh.py` over sixty simulated
 days, `fresh.js`'s memory and its one-second rule with a stand-in observer, and
@@ -298,8 +315,29 @@ shares with the show it came from (`ties`: a franchise, a maker, cast), and the
 answer says what the list leans toward and away from (`taste`) and its interests.
 Missing data contributes zero rather than being guessed at.
 
-`scripts/bench` measures all of this against 71 viewer personas; its README has
-the numbers and how the constants were chosen.
+**Long lists.** A list may rate up to 3,000 shows. Up to 60, the old limit, it is
+ranked exactly as above. Past that, working out every show's closeness to each rated
+one is out of reach (about 20 ms and 360 KB a rated show, a minute and a gigabyte for
+3,000 before any ranking; run on 3,000 the old way took 11 minutes), and averaged
+over hundreds of shows it would favour whatever sits near the middle of them all. So
+a long list is ranked by `Wide` from `neighbours.bin.gz`, each show's 48 closest
+shows, which the nightly build precomputes (`scripts/build_neighbours.py`) and
+`neighbours.py` reads: each liked show adds its closeness to each of its closest
+shows, so a candidate close to many liked shows gathers the most, as item-to-item
+recommenders have long ranked. Over so many ratings the noise is kept down: an OK
+counts a tenth of a love, older ratings fade toward half, themes and genres count
+half as much as plot and franchise, a show that is everyone's neighbour is damped,
+interests are found among the 150 most telling liked shows and need 1% of the liked
+shows to stand, and each learns its taste against the dislikes closest to it. A long
+list's answer carries the liked shows its picks and interests name rather than all of
+them (`liked_count` says how many there are), each interest names a dozen of its
+shows and says how many it holds (`size`), and `fit` gives the taste chart's shares
+over the whole list. Without the neighbour index, a long list is ranked from its 60
+most recent likes and dislikes. Next Watch ranks 3,000 ratings in about a quarter of
+a second here.
+
+`scripts/bench` measures all of this against 71 viewer personas, and long lists built
+from them; its README has the numbers and how the constants were chosen.
 
 `titles.py` is search. It indexes every show's titles once at startup, as flat
 arrays and byte strings rather than an object per title, and answers
@@ -309,7 +347,9 @@ the catalogue comes up short. Couchside copies both, with the engine.
 
 `server.py` is a standard-library HTTP server with `GET /api/search`,
 `GET /api/starters` and `POST /api/recommend`. All are stateless: your list lives in your browser and is
-posted with each request, never stored. Three concurrent calculations at most.
+posted with each request, never stored, packed as its ids and one character a rating
+(`{"ids": [...], "weights": "43..."}`, 19 KB for 3,000 ratings; a list of objects is
+still read). A body may run to 64 KB. Three concurrent calculations at most.
 It renders the page once at startup and answers `/` and the three tab paths with
 it, so a refresh keeps the tab; everything else in `public/` is served as files.
 

@@ -32,7 +32,8 @@ rebuilt every night. Nothing plays. It is for finding your next show.
 - **New & Popular** has the Top 10, new shows this year ranked for you, and
   premieres coming soon with their dates.
 - **My List** holds what you saved, and every show you rated, filterable by
-  rating.
+  rating. You may rate up to 3,000 shows; past 60 the ratings show 60 at a time,
+  newest first, with *Show more* and a box that finds any of them by name.
 - **Search** finds a show however it is typed: with typos, odd spacing or
   punctuation, by another of its titles in any language (the card then says
   *Also known as* that title), with a year to pick between a show and its remake,
@@ -43,7 +44,10 @@ rebuilt every night. Nothing plays. It is for finding your next show.
 The page and any open title live in the URL (`/new`, `/list`, `/search?q=`,
 `?show=169`), so refresh, Back and shared links behave. Your ratings and My List
 stay in the browser. *Move your list to another device* uses the same code as
-Next Watch, so a list moves between the two apps as well as between devices.
+Next Watch, so a list moves between the two apps as well as between devices: a
+link, the code alone, a QR code while the list fits one (a few hundred ratings),
+and *Save as a file* for any length, opened on the other device with *Open a saved
+file* (Next Watch's README says why).
 
 ## An app on your phone
 
@@ -108,6 +112,17 @@ twelve posters from the plain screen in case the request fails.
 show sits to each rated show and scores everything with one ranking, then cuts
 every candidate row from that. It follows what Netflix, Prime Video, YouTube and
 Spotify have published about their home pages.
+
+A list of more than 60 ratings is ranked from each show's closest shows instead
+(the engine's `Wide`, in Next Watch's README), and the page follows it there: a
+seed's row, *More like your list* and what a show marked *Not for me* keeps off
+the page come from the closest shows too, a show is kept off only when the
+disliked shows it sits near outweigh the liked ones (a list of thousands has so
+many dislikes that the plain rule would clear whole genres), and rows of their own
+are cut for the list's 60 most telling liked shows, loves first and then the
+newest. A title page's *More like this* takes the page's interests rather than
+working them out again. The first home request for 3,000 ratings takes about a
+quarter of a second here and about 30 MB (`scripts/bench/scale_bench.py`).
 
 **Candidate rows.** For each interest in your list (the engine's groups of liked
 shows, weighed by rating, love 1, like 0.6, OK 0.2, with recent ratings counting
@@ -329,6 +344,7 @@ from whichever model it loaded.
 .venv/bin/python couchside/test_couchside.py
 node couchside/test_format.mjs
 node couchside/test_gestures.mjs
+.venv/bin/python couchside/test_long_lists.py
 ```
 
 The first runs everything over a temporary model laid out the way the refresher
@@ -364,7 +380,12 @@ answers; and it runs the service worker against a stand-in for the browser's
 caches and network: a build kept whole or not at all, pages, files, the offline
 page, images and which of them go first. The third holds the gestures to their numbers:
 how far down and how fast a sheet must go to close, how it gives when pulled the other
-way, a finger's speed, a long press, and a swipe back from the edge.
+way, a finger's speed, a long press, and a swipe back from the edge. The fourth builds
+pages for lists of 300, 1,000 and 3,000 ratings from the bench personas
+(`scripts/bench/large_lists.py`) on the repository's model, neighbour index and all:
+each page and each request for more in reasonable time, nothing rated on any of them,
+rows of the list's own, interests named but not listed whole, the same page for the
+same request, title pages and genres, and 60 ratings still ranked the old way.
 
 `scripts/bench/home_bench.py` compares the home page with an earlier one over the
 71 bench personas: one of each persona's loves is held out, and it counts how
