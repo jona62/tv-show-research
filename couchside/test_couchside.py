@@ -976,6 +976,8 @@ check('the manifest can be installed', manifest['display'] == 'standalone' and m
       and any(i.get('purpose') == 'maskable' for i in manifest['icons']))
 check('every manifest icon and shortcut resolves', all(fetch(i['src'])[0] == 200 for i in manifest['icons'])
       and all(fetch(sc['url'])[0] == 200 for sc in manifest['shortcuts']))
+check('the manifest offers its shortcuts, Search first', [sc['url'] for sc in manifest['shortcuts']] == ['/search', '/list', '/browse', '/new']
+      and all(0 < len(sc['short_name']) <= 12 for sc in manifest['shortcuts']))
 for path, kind in [('/favicon.ico', 'image/x-icon'), ('/favicon.svg', 'image/svg+xml'), ('/apple-touch-icon.png', 'image/png'),
                    ('/og.jpg', 'image/jpeg'), ('/sw.js', 'text/javascript'), ('/robots.txt', 'text/plain; charset=utf-8'),
                    ('/offline.html', 'text/html; charset=utf-8')]:
