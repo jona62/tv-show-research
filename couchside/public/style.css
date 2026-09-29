@@ -18,9 +18,11 @@
 @media(min-width:1500px){:root{--card:196px}}
 
 *{box-sizing:border-box}
-html{-webkit-text-size-adjust:100%;scroll-padding:calc(var(--nav) + var(--safe-t)) 0 var(--dock-space)}
+/* The page never rubber-bands: a sideways swipe on a row that set off a little diagonal pulled
+   the whole page down and let it spring back. */
+html{-webkit-text-size-adjust:100%;overscroll-behavior-y:none;scroll-padding:calc(var(--nav) + var(--safe-t)) 0 var(--dock-space)}
 html.modal-open{overflow:hidden}
-body{margin:0;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;
+body{margin:0;overscroll-behavior-y:none;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;
   font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
 a{color:inherit}
 button,input,select,textarea{font:inherit;color:inherit}
@@ -666,14 +668,15 @@ body.loose{display:grid;place-items:center;min-height:100vh;min-height:100dvh;
 @media(any-pointer:coarse){
   .card,.card img,.peek img{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 }
-/* A quick press on what a finger taps. It waits a moment, so a scroll that starts on a
-   poster never shows it. */
+/* A quick press on what a finger taps. Posters and tiles dim rather than shrink: a shrink
+   began before a swipe was known to be a swipe, so a row bobbed as it started to scroll. */
 @media(hover:none) and (prefers-reduced-motion:no-preference){
   .card-hit,.tile,.more-open,.clip,.pick,.btn,.icon-btn,.chip,.menu-item,.peek-art{-webkit-tap-highlight-color:transparent}
-  .card-hit,.tile,.more-open,.clip,.pick,.btn,.icon-btn,.chip{transition:transform .2s ease}
+  .card-hit,.tile,.more-open,.clip,.pick{transition:filter .2s ease}
+  .btn,.icon-btn,.chip{transition:transform .2s ease}
   .round{-webkit-tap-highlight-color:transparent;transition:border-color .15s,background .15s,transform .2s ease}
   .watch-link{-webkit-tap-highlight-color:transparent;transition:border-color .15s,transform .2s ease}
-  .card-hit:active,.tile:active,.more-open:active,.clip:active,.pick:active{transform:scale(.96);transition:transform .12s ease .05s}
+  .card-hit:active,.tile:active,.more-open:active,.clip:active,.pick:active{filter:brightness(.75);transition:filter .12s ease .06s}
   .btn:active,.icon-btn:active,.chip:active,.watch-link:active{transform:scale(.95);transition:transform .1s ease .04s}
   .round:active{transform:scale(.9);transition:border-color .15s,background .15s,transform .1s ease .04s}
   .menu-item:active{background:#ffffff14}
