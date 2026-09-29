@@ -20,8 +20,9 @@ rebuilt every night. Nothing plays. It is for finding your next show.
 - **A title page** opens over any screen with the match, years, age rating,
   seasons, why it surfaced (the liked show it sits closest to and what they
   share), where to watch it, the summary, cast, genres, themes and network, every
-  season's episodes with stills, its trailers, up to twelve more like it, and
-  links to TVmaze, IMDb and the official site. Long sections start short: where
+  season's episodes with stills, its trailers, up to twelve more like it, each
+  saying how similar it is and why, and links to TVmaze, IMDb and the official
+  site. Long sections start short: where
   to watch keeps to one line of services, each season to its first three
   episodes and the trailers to the first two, and a button opens the rest and
   closes it again. *Trailer* plays it right there. Rate it *Not for me*, *I like
@@ -212,25 +213,40 @@ it fits your list's leanings, not that you will enjoy the show.
 ## More like this
 
 A title page's *More like this* is about the title, not about you
-(`Library.more_like`). It ranks shows as the engine ranks more like any one show
+(`Library.more_like`). It scores shows as the engine scores more like any one show
 outside a list: closeness to the title (plot words, themes, genres, a franchise or
-maker they share, and what the title's Wikipedia readers go on to read), less the
-pull of anything you marked *Not for me*, times how well each fits the title's own
-leanings (its language, format, network, era and genres). Your match only breaks
-near ties, lifting a show by a tenth at most. The title's own world comes first,
-six shows at most: the spin-offs, prequels and remakes it shares a Wikidata
-franchise with that its readers look up too, or that share a maker or a cast
-member with it, since Wikidata also links a drama to the next one in its time slot
-and those share nothing else. Stories stay with stories and factual shows with
-factual ones. A show less than 30% as like the title as its third closest, or with
-next to nothing in common with it (a closeness under 0.1), is left out, so a list
-may be short rather than padded, and it is the same every day. A bar on closeness
-alone would empty the lists of Korean dramas, documentaries and slice-of-life
-anime, whose short summaries keep even close neighbours near 0.2. Each card says
-why it is there where it can, *Same world*, *Same creator*, *Shared fans* (the
+maker they share, and what the title's Wikipedia readers go on to read) times how
+well each fits the title's own leanings (its language, format, network, era and
+genres). The title's own world comes first, six shows at most: the spin-offs,
+prequels and remakes it shares a Wikidata franchise with that its readers look up
+too, or that share a maker or a cast member with it, since Wikidata also links a
+drama to the next one in its time slot and those share nothing else. Stories stay
+with stories and factual shows with factual ones. A show less than 30% as like the
+title as its third closest, or with next to nothing in common with it (a closeness
+under 0.1), is left out, so a list may be short rather than padded. A bar on
+closeness alone would empty the lists of Korean dramas, documentaries and
+slice-of-life anime, whose short summaries keep even close neighbours near 0.2.
+
+Each card reads how similar it is, *97% similar* in the green a match wears, beside
+why it is there where it can say: *Same world*, *Same creator*, *Shared fans* (the
 title's readers look it up), *Vince Gilligan worked on it* or *With Bryan
-Cranston*, and carries no match: how close a show sits to one title says nothing
-of how well it fits your list.
+Cranston*. It is never a match, which measures a show against your list, not
+against one title. The percent places the card's score on one scale for the whole
+catalogue, set by the scores of every card More like this shows for 773 titles
+drawn as often as they are well known: 60% is the score only 1 card in 100 falls
+below (0.42), 99% the score only 1 in 100 reaches (30), and between them it goes by
+the score's logarithm, about six points each time the score doubles, since a score
+is closeness times fit and spreads by factors. Dividing by a list's best card would
+make the second card of a weak list read 99%; on one scale a spin-off reads in the
+90s (Better Call Saul 99% for Breaking Bad, House of the Dragon 97% for Game of
+Thrones), a good match in the 80s, and a weak list in the 60s and 70s. A show that
+would read under 60% is left out.
+
+The shows are the twelve best scores and run in the order of their percents, the
+same for everyone and every day: your match only orders shows that read the same
+percent. A show more like one you marked *Not for me* than like the title, and very
+like it (the home page's 0.5), is left out, so disliking *The Rings of Power* takes
+*The Wheel of Time* off *Game of Thrones*' list but not *House of the Dragon*.
 
 Over the 215 loves of the bench personas, each opened with nothing rated, the
 lists hold 25.4% of each persona's other liked shows (25.0% when half of each list

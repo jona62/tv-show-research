@@ -533,7 +533,9 @@ dialog.unfolding{overflow-anchor:none}
 .more-open .art{border-radius:0}
 .more-body{display:flex;flex-direction:column;gap:8px;padding:10px 12px 14px}
 .more-body h4{margin:0;font-size:14.5px;overflow-wrap:anywhere}
-.more-why{display:block;margin-top:-4px;font-size:12.5px;font-weight:700;line-height:1.35;color:var(--brand);overflow-wrap:anywhere}
+/* How similar a show is, in a match's green, and why, beside it or under it on a narrow card. */
+.more-why{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;margin-top:-4px;font-size:13px;line-height:1.35}
+.more-why span{font-weight:600;color:var(--ink-2);overflow-wrap:anywhere}
 .more-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .more-info{display:flex;flex-wrap:wrap;gap:4px 8px;font-size:13px;color:var(--ink-2)}
 .more-body p{margin:0;font-size:13px;line-height:1.45;color:var(--muted);display:-webkit-box;-webkit-line-clamp:4;line-clamp:4;

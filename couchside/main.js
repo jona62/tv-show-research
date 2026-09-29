@@ -1475,12 +1475,14 @@ function paintMore() {
   T.moreList.replaceChildren(...(items.length ? items.map(moreCard)
     : [el('li', 'Nothing in the catalogue sits close enough to this one.', 'muted')]));
 }
-// A show like this one, with why it is here (the same world, the same creator) rather
-// than a match: how close it sits to this title says nothing of how well it fits a list.
+// A show like this one: how similar it is to this title, in the green a match wears, and
+// why it is here (the same world, the same creator). Never a match: how close a show sits
+// to this title says nothing of how well it fits a list, so it reads "% similar".
 function moreCard(c) {
   const li = el('li', '', 'more-card');
   const open = button('more-open', '', () => openTitle(c.id));
-  open.setAttribute('aria-label', [c.name, c.year, c.why].filter(Boolean).join(', '));
+  const similar = c.similar ? `${c.similar}% similar` : '';
+  open.setAttribute('aria-label', [c.name, c.year, similar, c.why].filter(Boolean).join(', '));
   open.append(artEl(c));
   const top = el('div', '', 'more-top');
   const facts = el('div', '', 'more-info');
@@ -1488,7 +1490,12 @@ function moreCard(c) {
   top.append(facts, listButton(c, 'round'));
   const body = el('div', '', 'more-body');
   body.append(el('h4', c.name));
-  if (c.why) body.append(el('span', c.why, 'more-why'));
+  if (similar || c.why) {
+    const why = el('div', '', 'more-why');
+    if (similar) why.append(el('b', similar, 'match'));
+    if (c.why) why.append(el('span', c.why));
+    body.append(why);
+  }
   body.append(top);
   if (c.summary) body.append(el('p', c.summary));
   li.append(open, body);

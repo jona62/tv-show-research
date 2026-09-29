@@ -104,6 +104,7 @@ from build import MODULES                                        # noqa: E402
 from engine import DEFAULT_SETTINGS, QUICK_PICKS, Engine         # noqa: E402
 from fallback import Remote                                      # noqa: E402
 from library import ROW, MORE, GLANCE, SHORTEST, GENRE_ROWS, NEW_DAYS, FALLBACK, UNRELATED, Library, lower_first  # noqa: E402
+from library import SIMILAR_AT, similarity                       # noqa: E402
 from library import (Page, Deeper, FIRST_PAGE, NEXT_PAGE, MOST_ROWS, CREATOR_SHORTEST, NOT_FOR_ME,  # noqa: E402
                      INTEREST_CAP, HIDDEN, PINNED, LONGEST, TIERS)
 from live import (Live, LiveError, Icons, trim_show, trim_episodes, trim_videos,        # noqa: E402
@@ -730,12 +731,27 @@ bare = lib.title({'profile': [], 'settings': {}, 'id': 169})
 check('a title works with nothing rated', bare['show']['match'] is None and bare['more'])
 
 # More like this is about the title, not the viewer: closeness to it, its own world first,
-# no padding, and no match. Franchises and what readers look up next come with the
-# repository's model, which the temporary one leaves out, so it is read here as well.
+# no padding, and a percent similar in place of a match. Franchises and what readers look
+# up next come with the repository's model, which the temporary one leaves out, so it is
+# read here as well.
+def falling(cards):
+    """Every card a whole percent similar from 60 to 99, none above the card before it."""
+    percents = [c.get('similar') for c in cards]
+    return all(type(p) is int and 60 <= p <= 99 for p in percents) and percents == sorted(percents, reverse=True)
+
+
 check('no card under more like this carries a match, though the title has one',
       page['show']['match'] and all('match' not in c for c in page['more']))
+check('each card says how similar it is, and the list runs from the most similar down',
+      falling(page['more']) and falling(bare['more']), [c.get('similar') for c in page['more']])
 check('more like this is stories for a story, with or without facets',
       all(c['type'] in ('Scripted', 'Animation') for c in page['more'] + bare['more']))
+low, high = SIMILAR_AT
+check('similarity reads 60% at its low anchor and 99% from its high one', similarity(low) == 60
+      and similarity(high) == 99 and similarity(high * 10) == 99 and similarity(low * .99) is None)
+steps = [similarity(low * 1.1 ** n) for n in range(60)]
+check('similarity only rises with the score, a point or so at a time', steps == sorted(steps)
+      and all(b - a <= 2 for a, b in zip(steps, steps[1:])), steps)
 full_engine = Engine(ROOT / 'model')
 full = Library(full_engine, ROOT / 'couchside' / 'art.bin.gz')
 
@@ -749,11 +765,16 @@ def ids_of(cards):
 
 
 thrones = more_of(82)
-check('Game of Thrones brings House of the Dragon, among the first, as its own world',
-      44778 in ids_of(thrones)[:2] and thrones[ids_of(thrones).index(44778)]['why'] == 'Same world', ids_of(thrones))
+dragon = next((c for c in thrones if c['id'] == 44778), {})
+check('Game of Thrones brings House of the Dragon, among the first, as its own world and in the 90s',
+      44778 in ids_of(thrones)[:2] and dragon.get('why') == 'Same world' and dragon.get('similar', 0) >= 90,
+      [(c['name'], c.get('similar')) for c in thrones])
 bad = more_of(169)
-check('Breaking Bad brings Better Call Saul first, as its own world',
-      bad[0]['id'] == 618 and bad[0]['why'] == 'Same world', ids_of(bad))
+check('Breaking Bad brings Better Call Saul first, as its own world and in the 90s',
+      bad[0]['id'] == 618 and bad[0]['why'] == 'Same world' and bad[0]['similar'] >= 90,
+      [(c['name'], c.get('similar')) for c in bad])
+check('a show that is only a little like the title reads well below its spin-offs',
+      thrones[-1]['similar'] <= 85 and bad[-1]['similar'] <= 85, (thrones[-1], bad[-1]))
 check('a card says why when it can: the same creator',
       any(c['id'] == 86175 and c['why'] == 'Same creator' for c in bad), [(c['name'], c.get('why')) for c in bad])
 office = more_of(526)
@@ -768,18 +789,23 @@ check('a show\'s own world leads, six at most', 1 <= len(worlds) <= 6 and trek[:
 check('a drama after another in its time slot is not its world',
       57705 not in full.kin(full_engine.by_id[56464])[0] and all(c.get('why') != 'Same world' for c in more_of(56464)))
 settled = thrones
-check('whoever looks, the same shows, the viewer\'s taste only breaking near ties',
-      len(set(ids_of(more_of(82, [{'id': 431, 'weight': 1}]))) & set(ids_of(settled))) >= len(settled) - 2
-      and len(set(ids_of(more_of(82, [{'id': 169, 'weight': 1}]))) & set(ids_of(settled))) >= len(settled) - 2)
-wheel, rings = 35083, 33352
-disliked = ids_of(more_of(82, [{'id': rings, 'weight': -1}])) + [wheel]
-check('a show marked Not for me pushes what is like it down',
-      rings not in disliked and ids_of(settled).index(wheel) < disliked.index(wheel), disliked)
+viewers = [more_of(82, [{'id': 431, 'weight': 1}]), more_of(82, [{'id': 169, 'weight': 1}, {'id': 2993, 'weight': .7}])]
+percent_of = {c['id']: c['similar'] for c in settled}
+check('whoever looks, the same shows at the same percents, the viewer\'s taste only ordering equals',
+      all(set(ids_of(cards)) == set(percent_of) and falling(cards)
+          and all(c['similar'] == percent_of[c['id']] for c in cards) for cards in viewers),
+      [[(c['name'], c['similar']) for c in cards] for cards in viewers])
+wheel, rings, dragon_id = 35083, 33352, 44778
+disliked = ids_of(more_of(82, [{'id': rings, 'weight': -1}]))
+check('a show more like one marked Not for me than like the title is left out, and one more like the title stays',
+      rings not in disliked and wheel in ids_of(settled) and wheel not in disliked and dragon_id in disliked, disliked)
 close = full_engine.blend(full_engine.by_id[82], DEFAULT_SETTINGS)
 check('every show there has something in common with the title',
       all(close[full_engine.by_id[c['id']]] >= UNRELATED for c in thrones))
 check('a title with few shows much like it gets a short list rather than a padded one',
       0 < len(more_of(67633)) < MORE, len(more_of(67633)))
+check('every list runs from the most similar down, never under 60%',
+      all(falling(cards) for cards in (bad, office, trek, more_of(67633), more_of(2950), more_of(56464))))
 del full, full_engine
 soon_id = cold['soon'][0]['id']
 check('an upcoming show opens too', lib.title({'profile': PROFILE, 'settings': {}, 'id': soon_id})['show']['id'] == soon_id)

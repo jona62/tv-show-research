@@ -46,8 +46,16 @@ MORE = 12           # cards, at most
 SIBLINGS = 6        # of them from the title's own world (a spin-off, a prequel, a remake), at most
 FLOOR = 0.3         # a show there is at least this share as like the title as its third closest
 UNRELATED = 0.1     # and at least this close to it: below, two shows have next to nothing in common
-TIEBREAK = 0.1      # how far the viewer's own match lifts a show there: enough to break a near tie
 STORIES = ('Scripted', 'Animation')     # a story is like stories, and a factual show like factual ones
+# "94% similar" on a card there: where its score falls among the scores of every card More
+# like this shows across the catalogue, for titles drawn as often as they are well known
+# (as people open them). 60% is the score only 1 card in 100 falls below, and 99% the score
+# only 1 in 100 reaches; between them it goes by the score's logarithm, since a score is
+# closeness times fit and so spreads by factors. A show that would read under 60% is left
+# out. Measured on 773 titles of the repository's model in September 2026. Across samples
+# of titles the low anchor came to 0.41 to 0.55 and the high one to 18 to 31, higher the
+# better known the titles, so the scale follows the titles people open.
+SIMILAR_AT = (0.42, 30.0)
 MAX_SAVED = 200     # My List, the same ceiling the transfer code carries
 FALLBACK = 12       # first-visit posters the page carries for when it cannot ask for starters
 
@@ -2337,6 +2345,16 @@ def ranks(values):
     return {i: 1 - n / last for n, i in enumerate(order)}
 
 
+def similarity(score):
+    """A More like this score as a whole percent similar, from 60 to 99 on the catalogue's
+    scale (SIMILAR_AT), or None for a score that would read under 60%. The same score
+    reads the same for every title, viewer and day."""
+    low, high = SIMILAR_AT
+    if not score >= low:
+        return None
+    return min(99, round(60 + 39 * math.log(score / low) / math.log(high / low)))
+
+
 def phrase_of(parts):
     """The subject of a micro-genre as it reads mid-sentence: "crime dramas", "Nordic noir"."""
     role = {p['role']: p for p in parts}
@@ -2991,7 +3009,7 @@ class Library:
         show = self.detail(i, taste)
         show['because'] = taste.closest(i) if taste and show_id not in rated else None
         show['summary'] = show['summary'] or ''
-        return {'show': show, 'more': [self.more_card(i, j, world, fans) for j in more]}
+        return {'show': show, 'more': [self.more_card(i, j, similar, world, fans) for j, similar in more]}
 
     def kin(self, i):
         """Show i's own world and its fans' other shows, as sets of indices. Its world is
@@ -3017,39 +3035,45 @@ class Library:
         return world, fans
 
     def more_like(self, i, settings, negatives, candidates, taste=None, world=frozenset()):
-        """More like this: the shows most like show i itself, whoever is looking. The engine
-        ranks them as it ranks more like any one show outside a list: closeness (plot,
-        themes, genres, a shared franchise or maker, and what its readers also look up),
-        less the pull of anything disliked, times how well each fits show i's own leanings
-        (its language, format, network, era and genres), never the viewer's. A show from
-        its world counts as close as the strongest reader link, so its spin-offs and
-        prequels lead, SIBLINGS of them at most, and stories stay with stories and factual
-        shows with factual ones. A show less like show i than FLOOR of its third closest
-        (the third, so one or two unusually strong links do not set the bar), or with next
-        to nothing in common with it, is left out, so a list may be short rather than
-        padded. The viewer's own match only breaks near ties. The same list every day."""
+        """More like this: the shows most like show i itself, as [(index, percent similar)].
+        Each is scored as the engine scores more like any one show outside a list:
+        closeness (plot, themes, genres, a shared franchise or maker, and what its readers
+        also look up) times how well it fits show i's own leanings (its language, format,
+        network, era and genres). A show from its world counts as close as the strongest
+        reader link, so its spin-offs and prequels lead, SIBLINGS of them at most, and
+        stories stay with stories and factual shows with factual ones. A show less like
+        show i than FLOOR of its third closest (the third, so one or two unusually strong
+        links do not set the bar), with next to nothing in common with it, or that would
+        read under 60% similar is left out, so a list may be short rather than padded.
+
+        The score and its percent (similarity) are the same whoever looks and whatever the
+        day, the shows are the twelve best scores, and the list runs in their order: the
+        viewer's own match only orders shows that read the same percent. A show more like
+        one the viewer marked Not for me than like show i, and very like it (NOT_FOR_ME,
+        the home page's bar), is left out: disliking The Rings of Power takes The Wheel of
+        Time off Game of Thrones' list, but not House of the Dragon."""
         e = self.e
-        show_id = e.shows[i]['id']
         near = array('f', e.blend(i, settings))
         lift = CO_WEIGHT * settings['facets'] / DEFAULT_SETTINGS['facets']
         for j in world:
             near[j] += lift
         story = e.shows[i]['type'] in STORIES
-        pool = [j for j in candidates
-                if j != i and near[j] >= UNRELATED and (e.shows[j]['type'] in STORIES) == story]
-        if not pool:
-            return []
-        affinities = {p['id']: taste.affinities[p['id']] if taste else e.blend(e.by_id[p['id']], settings)
-                      for p in negatives}
-        affinities[show_id] = near
-        scores = e.rank(pool, [{'id': show_id, 'weight': 1}], negatives, affinities, settings)
-        ranked = sorted((j for j in pool if scores[j] > 0), key=lambda j: (-scores[j], e.shows[j]['id']))
+        disliked = [taste.affinities[p['id']] if taste else e.blend(e.by_id[p['id']], settings) for p in negatives]
+        leanings = e.taste([{'id': e.shows[i]['id'], 'weight': 1}])
+        score = {}
+        for j in candidates:
+            if j == i or near[j] < UNRELATED or (e.shows[j]['type'] in STORIES) != story:
+                continue
+            if any(close[j] >= max(NOT_FOR_ME, near[j]) for close in disliked):
+                continue
+            score[j] = near[j] * leanings.factor(j)
+        ranked = sorted(score, key=lambda j: (-score[j], e.shows[j]['id']))
         others = [j for j in ranked[:len(world) + 3] if j not in world]
-        bar = FLOOR * scores[others[min(2, len(others) - 1)]] if others else 0.0
-        tiebreak = (lambda j: 1 + TIEBREAK * taste.unit(j)) if taste else (lambda j: 1.0)
-        kept = sorted((j for j in ranked if scores[j] >= bar), key=lambda j: (-scores[j] * tiebreak(j), e.shows[j]['id']))
+        bar = FLOOR * score[others[min(2, len(others) - 1)]] if others else 0.0
         out, siblings = [], 0
-        for j in kept:
+        for j in ranked:
+            if score[j] < bar or similarity(score[j]) is None:
+                break
             if j in world:
                 if siblings == SIBLINGS:
                     continue
@@ -3057,14 +3081,18 @@ class Library:
             out.append(j)
             if len(out) == MORE:
                 break
-        return out
+        similar = {j: similarity(score[j]) for j in out}
+        mine = taste.unit if taste else (lambda j: 0.0)
+        out.sort(key=lambda j: (-similar[j], -mine(j), -score[j], e.shows[j]['id']))
+        return [(j, similar[j]) for j in out]
 
-    def more_card(self, i, j, world, fans):
-        """A card under More like this. It says why the show is like show i where it can,
-        and carries no match: how close a show sits to one title says nothing of how well
-        it fits the viewer's list, and a match of 3% beside it only confuses."""
+    def more_card(self, i, j, similar, world, fans):
+        """A card under More like this: how similar the show is to show i and why, where it
+        can say. It carries no match: how close a show sits to one title says nothing of how
+        well it fits the viewer's list, and a match of 3% beside it only confuses."""
         card = self.card(j)
         del card['match']
+        card['similar'] = similar
         card['summary'] = self.e.shows[j]['summary'] or ''
         why = self.kinship(i, j, world, fans)
         if why:
