@@ -18,18 +18,17 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'couchside'))
 
-from engine import Engine, DEFAULT_SETTINGS                     # noqa: E402
+from engine import Engine                                       # noqa: E402
 from fallback import answer                                     # noqa: E402
-from library import Library                                     # noqa: E402
-from related import Related, fold, numbers, slipped, COUNT      # noqa: E402
+from library import Library, MORE                               # noqa: E402
+from related import Related, fold, numbers, slipped             # noqa: E402
 
 engine = Engine(ROOT / 'model')
 lib = Library(engine, ROOT / 'couchside' / 'art.bin.gz')
-pool = lib.pool_stats(DEFAULT_SETTINGS)['pool']
 FILMS = ROOT / 'model' / 'films.json.gz'
 # As the server has it, films and all; plain has no film index, as a model without one.
-rel = Related(engine, pool, FILMS)
-plain = Related(engine, pool)
+rel = Related(lib, FILMS)
+plain = Related(lib)
 failures = []
 
 
@@ -84,17 +83,23 @@ matched = {engine.by_id[c['id']] for c in cards}
 got = index('Game of Thrones')
 check('game of thrones matches House of the Dragon, and gets More like Game of Thrones',
       'House of the Dragon' in [c['name'] for c in cards] and row and row['kind'] == 'show'
-      and row['title'] == 'More like Game of Thrones' and len(row['shows']) == COUNT, row)
+      and row['title'] == 'More like Game of Thrones' and len(row['shows']) == MORE, row)
 check('its row leads with the rest of the franchise and shows like it',
       'A Knight of the Seven Kingdoms' in named(row['shows'][:3])
-      and {'The Lord of the Rings: The Rings of Power', 'The Wheel of Time'} <= set(named(row['shows'])), named(row['shows']))
+      and 'The Lord of the Rings: The Rings of Power' in named(row['shows']), named(row['shows']))
 check('no show in the row is one the search matched, or the show itself', not matched & set(row['shows']) and got not in row['shows'])
-near = engine.blend(got, DEFAULT_SETTINGS)
-whole = [j for j in pool if j != got and j not in matched]
-scores = engine.rank(whole, [{'id': 82, 'weight': 1}], [], {82: near}, DEFAULT_SETTINGS)
-page = sorted((j for j in whole if scores[j] > 0), key=lambda j: (-scores[j], engine.shows[j]['id']))
-check('it is the title page\'s ranking, weighed over the whole catalogue', row['shows'][:12] == page[:12],
-      (named(row['shows'][:12]), named(page[:12])))
+page = [engine.by_id[c['id']] for c in lib.title({'id': 82})['more']]
+kept = [j for j in page if j not in matched]
+check('it is the title page\'s own More like this, less what the search matched, in its order and filled up',
+      [j for j in row['shows'] if j in kept] == kept and len(row['shows']) == len(page),
+      (named(row['shows']), named(page)))
+for q in ('breaking bad', 'the office', 'stranger things', 'attack on titan', 'squid game'):
+    cards, row = search(q)
+    matched = {engine.by_id[c['id']] for c in cards}
+    page = [engine.by_id[c['id']] for c in lib.title({'id': cards[0]['id']})['more']]
+    check(f'{q} too: every show of its title page the search did not match, in order',
+          row['kind'] == 'show' and [j for j in row['shows'] if j in page] == [j for j in page if j not in matched],
+          (named(row['shows']), named(page)))
 for q, title, among in (('breaking bad', 'More like Breaking Bad', 'Better Call Saul'),
                         ('the office', 'More like The Office', 'Parks and Recreation'),
                         ('stranger things', 'More like Stranger Things', 'Dark'),
@@ -102,7 +107,7 @@ for q, title, among in (('breaking bad', 'More like Breaking Bad', 'Better Call 
                         ('attack on titan', 'More like Attack on Titan', 'Demon Slayer'),
                         ('shingeki no kyojin', 'More like Shingeki no Kyojin', 'Jujutsu Kaisen'),
                         ('money heist', 'More like Money Heist', 'Vis a Vis'),
-                        ('la casa de papel', 'More like La Casa de Papel', 'Élite'),
+                        ('la casa de papel', 'More like La Casa de Papel', 'Berlín y la dama del armiño'),
                         ('오징어 게임', 'More like 오징어 게임', 'Alice in Borderland'),
                         ('supernatural', 'More like Supernatural', None),
                         ('atlanta', 'More like Atlanta', None)):
@@ -194,7 +199,7 @@ broken = Path(tempfile.mkdtemp(prefix='related-test-')) / 'films.json.gz'
 broken.write_bytes(gzip.compress(json.dumps({'version': 2, 'films': []}).encode()))
 said = io.StringIO()
 with contextlib.redirect_stderr(said):
-    none = Related(engine, pool, broken)
+    none = Related(lib, broken)
     check('a film index that will not read means no films, said once, never a failure',
           none.films() is None and none.films() is None and search('mad max', none)[1]['kind'] == 'meaning'
           and said.getvalue().count('Ignoring') == 1, said.getvalue())
@@ -215,7 +220,7 @@ again = search('mad max')[1]
 check('an answer is kept and comes back at once', again is first and time.perf_counter() - started < 0.05)
 rel.answers.clear()
 check('worked out again it is the same', search('mad max')[1] == first)
-cold = Related(engine, pool, FILMS)
+cold = Related(lib, FILMS)
 check('built on first use it is the same as warmed', search('zombies', cold)[1] == search('zombies')[1]
       and search('mad max', cold)[1] == search('mad max')[1])
 
@@ -223,7 +228,7 @@ check('built on first use it is the same as warmed', search('zombies', cold)[1] 
 facets = engine.facets
 engine.facets = None
 try:
-    bare = Related(engine, pool)
+    bare = Related(Library(engine, ROOT / 'couchside' / 'art.bin.gz'))
     check('without facets, a search that names a show still gets More like it',
           search('game of thrones', bare)[1]['title'] == 'More like Game of Thrones')
     _cards, row = search('boxing', bare)

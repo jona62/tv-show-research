@@ -10,7 +10,7 @@ import os
 import re
 import threading
 
-from engine import Engine, DEFAULT_SETTINGS
+from engine import Engine
 from fallback import Remote, answer
 from library import Library, DESCRIPTION
 from live import (Live, LiveError, Icons, KINOCHECK, ITUNES, trim_videos, trim_seasons,
@@ -107,9 +107,9 @@ SOURCE = model_dir()
 MODEL = Path(os.path.realpath(SOURCE))
 ENGINE = Engine(MODEL)
 LIBRARY = Library(ENGINE, art_file(MODEL))
-# A search's row of shows like it offers what a title page's More like this does, and a
-# search for a film finds shows like it through the model's film index.
-RELATED = Related(ENGINE, LIBRARY.pool_stats(DEFAULT_SETTINGS)['pool'], MODEL / 'films.json.gz')
+# A search's row of shows like it is the title page's own More like this for a show it
+# names, and a search for a film finds shows like it through the model's film index.
+RELATED = Related(LIBRARY, MODEL / 'films.json.gz')
 TMDB = tmdb.load(MODEL / 'tmdb.json.gz', ENGINE.by_id)
 # TVmaze allows about 20 calls every 10 seconds from this host, shared with Next Watch:
 # 12 for title pages here, 4 for this app's search and 4 for Next Watch's.

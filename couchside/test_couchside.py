@@ -1157,11 +1157,12 @@ status, _headers, body = fetch('/api/search?q=breaking%20bad')
 found = json.loads(body)['shows']
 check('search returns cards with posters', status == 200 and found[0]['id'] == 169 and found[0]['poster'])
 # Beside its matches, a search carries a row of shows like it (related.py, whose own checks
-# are in test_related.py): here, a search that names a show gets More like it.
+# are in test_related.py): here, a search that names a show gets More like it, the title
+# page's own twelve.
 related = json.loads(body)['related']
 check('a search that names a show carries More like it, as cards like the matches', related['title'] == 'More like Breaking Bad'
-      and related['kind'] == 'show' and len(related['shows']) == 18 and set(related['shows'][0]) == set(found[0])
-      and sum(1 for c in related['shows'] if c['poster']) >= 16, related)
+      and related['kind'] == 'show' and len(related['shows']) == MORE and set(related['shows'][0]) == set(found[0])
+      and sum(1 for c in related['shows'] if c['poster']) >= MORE - 2, related)
 check('and none of the shows it matched', not {c['id'] for c in related['shows']} & {c['id'] for c in found})
 check('the row is the same each time, so the answer keeps its tag', fetch('/api/search?q=breaking%20bad')[2] == body)
 status, _headers, body = fetch('/api/search?q=money%20heist')

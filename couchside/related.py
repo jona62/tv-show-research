@@ -5,29 +5,37 @@ Watch's own), and this adds one row of shows related to the search, as Netflix's
 search does. Which row depends on what was typed:
 
 - A search that names a show gets *More like* that show: the title page's own More
-  like this (engine.py: closeness in plot, themes and genres, a franchise or makers
-  shared, and what the show's Wikipedia readers look up next), less the shows the
-  search already matched. It names a show when it is one of the show's titles typed
-  in full, or with a slip or two, or holding the whole title and more, or when
-  TVmaze's search put the show first; or when it starts the title of a show nearly
-  everyone knows, as "game of" does while it is typed. The show must be well known
-  too, so that "the matrix" is not taken for Matrix, a 1993 series about a hitman.
+  like this (library.py's Library.more_like, as a visitor with no list sees it),
+  weighed over every show but those the search already matched. It names a show when
+  it is one of the show's titles typed in full, or with a slip or two, or holding the
+  whole title and more, or when TVmaze's search put the show first; or when it starts
+  the title of a show nearly everyone knows, as "game of" does while it is typed. The
+  show must be well known too, so that "the matrix" is not taken for Matrix, a 1993
+  series about a hitman.
 - A search that names a topic, a genre or subject from Wikidata's labels such as
   "zombies", "space opera" or "true crime", gets *Shows like* it, by meaning. A show
   nearly everyone knows keeps its own name (Supernatural), and so does any
   well-known show named after a place (Atlanta, Dallas).
+- A search that names a well-known film or film series, one of the model's
+  films.json.gz (scripts/build_films.py) by its title, an original title or an
+  alias, gets *Shows like* it: the film's Wikidata genres and main subjects lead its
+  profile, blended with what the search's own evidence leans toward, and its subjects
+  are looked for in the shows' own words, so "jurassic park" finds the shows whose
+  summaries speak of dinosaurs. A show's title typed in full still names the show
+  (Fargo), but a film typed in full goes before a show whose title it only begins or
+  holds: "alien" is the film, not Alien: Earth.
 - Anything else gets *Shows like* it by meaning when the catalogue holds evidence of
-  what it means, as for a film ("mad max"); a search still being typed waits.
+  what it means; a search still being typed waits.
 
 Meaning comes from evidence about each show: a Wikidata genre or subject the search
 names; the search among a show's keywords, the terms its summary is most about; the
 search as a phrase in its summary; and the search in its title. The shows with
 evidence are anchors. Their Wikidata genres and subjects, weighed by how rare each
 is and kept only when the anchors lean toward it, make a profile: "mad max" is in
-Daybreak's summary, Daybreak is post-apocalyptic, and so the row is post-apocalyptic
-shows. A show's place in the row is its evidence plus its closeness to the profile,
-times how well known it is and how well its format (scripted, animation, reality...)
-fits the anchors'.
+Daybreak's summary, Daybreak is post-apocalyptic, and so the row leans that way
+beside the film's own genres. A show's place in the row is its evidence plus its
+closeness to the profile, times how well known it is and how well its format
+(scripted, animation, reality...) fits the anchors' or the film's.
 
 The summaries and keywords of the 47,000 shows at least REACH well known are searched
 as byte strings of plain lowercase words, about 19 MB built once, in the background
@@ -51,15 +59,12 @@ import zlib
 from engine import DEFAULT_SETTINGS
 from titles import YEAR, forms, normalize
 
-COUNT = 18          # shows in a related row
-FEWEST = 4          # a row found by meaning needs at least this many
-MEANT = 4           # and a search of at least this many letters: gam or mad is half a word
+COUNT = 18          # shows in a row of Shows like; More like has the title page's twelve
+FEWEST = 4          # a row needs at least this many
+MEANT = 4           # and a search by meaning at least this many letters: gam or mad is half a word
 NAMED = 75          # how well known a show must be for its title typed in full to name it
 TYPED = 95          # and for the start of its title to name it
 HOUSEHOLD = 97      # a show this well known keeps its name even when a topic has it too
-# More like weighs the 3,000 closest shows by taste, not all 25,000: its first twelve are
-# then the title page's for 96% of the 300 best-known shows, in half the time.
-CLOSEST = 3000
 # Summaries and keywords searched belong to shows at least this well known: the 47,000
 # down to The Animatrix (48), whose summary tells what "the matrix" means, where the
 # 25,000 a row may offer would leave that search to fantasy romances.
@@ -270,15 +275,16 @@ class Films:
 
 
 class Related:
-    """The related row for any search, over one engine. pool is the shows a row may
-    offer: those a title page's More like this offers before any settings. films is the
+    """The related row for any search, over one Library and its engine. A row offers the
+    shows a title page's More like this offers before any list or settings. films is the
     path of the model's films.json.gz, read when the rest of the index is built."""
 
-    def __init__(self, engine, pool, films=None, settings=None):
-        e = self.e = engine
+    def __init__(self, library, films=None, settings=None):
+        self.library = library
+        e = self.e = library.e
         self.film_path = Path(films) if films else None
         self.settings = dict(settings or DEFAULT_SETTINGS)
-        self.pool = list(pool)
+        self.pool = list(library.pool_stats(self.settings)['pool'])
         self.offered = bytearray(e.n)
         for i in self.pool:
             self.offered[i] = 1
@@ -422,7 +428,8 @@ class Related:
     def of(self, q, cards):
         """The related row for search q, whose title matches are cards (the answer's, best
         first): {'title', 'kind', 'shows': [index]} or None. kind is 'show' for More like
-        one show, 'topic' for a Wikidata genre or subject, 'meaning' for anything else."""
+        one show, 'topic' for a Wikidata genre or subject, 'film' for a film or film
+        series, 'meaning' for anything else."""
         words = normalize([q])[0].split()
         if len(''.join(words)) < 3:
             return None
@@ -454,9 +461,11 @@ class Related:
         elif named and not (film and named[2] in ('start', 'part')):
             # A show's title typed in full, or begun or outgrown when no film has the name
             # in full: alien is the film, not the start of Alien: Earth, and spirited away
-            # the film, not Spirited and a word more.
+            # the film, not Spirited and a word more. Any of a show's titles typed in full
+            # names it: avatar is Avatar: The Last Airbender, which Wikidata also calls so.
             i, title, _how = named
-            return {'title': f'More like {title}', 'kind': 'show', 'shows': self.more_like(i, matched)}
+            shows = self.more_like(i, matched)
+            return {'title': f'More like {title}', 'kind': 'show', 'shows': shows} if len(shows) >= FEWEST else None
         elif film:
             kind, title = 'film', film[1]
         elif mine.typing or len(''.join(words)) < MEANT:
@@ -528,16 +537,12 @@ class Related:
     # ---------------------------------------------------------------- More like
 
     def more_like(self, i, matched):
-        """The title page's More like this for show i, before any list or settings are
-        known, less the matched shows."""
-        e, settings = self.e, self.settings
-        show_id = e.shows[i]['id']
-        near = e.blend(i, settings)
-        pool = [j for j in self.pool if j != i and j not in matched]
-        closest = sorted(pool, key=near.__getitem__, reverse=True)[:CLOSEST]
-        scores = e.rank(closest, [{'id': show_id, 'weight': 1}], [], {show_id: near}, settings)
-        ranked = sorted((j for j in closest if scores[j] > 0), key=lambda j: (-scores[j], e.shows[j]['id']))
-        return ranked[:COUNT]
+        """The title page's More like this for show i, as a visitor with no list sees it
+        (Library.more_like, over show i's own world from Library.kin), weighed over every
+        show but those the search matched, so the row stays full. Its shows, best first."""
+        world, _fans = self.library.kin(i)
+        pool = [j for j in self.pool if j not in matched]
+        return [j for j, _similar in self.library.more_like(i, self.settings, [], pool, None, world)]
 
     # ---------------------------------------------------------------- meaning
 
