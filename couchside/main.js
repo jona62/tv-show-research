@@ -4,6 +4,7 @@ import { tieText, leaning, leaningHeading } from './format.js';
 import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere, longDate, airs,
   whereToWatch, trailerSearch, searchNote } from './format.js';
 import { pageKey, resumable, keptText, shownRows, withoutCard, viewedStore, noteViewed, recentlyViewed } from './format.js';
+import { genreChoices, nextByLetter } from './format.js';
 import { freshStore, today, dayNumber, noteSeen, noteEngaged, noteRow, noteHero, prune, freshness, watcher }
   from './fresh.js';
 import { daySeed, startersQuery, mergeStarters, browserLanguage, MAX_ROUND, MAX_PICKED } from './starters.js';
@@ -1296,28 +1297,103 @@ function episodeEl(ep) {
 }
 
 /* --------------------------------------------------------------- browse */
-let browseKey = null, browseReq = 0;
+// Genres are picked from a row of chips, or from All genres: a sheet on phones and a
+// panel under its button on wide screens. Both are listboxes, and choosing a genre
+// changes the address as a link does, so Back steps through the genres chosen.
+let browseKey = null, browseReq = 0, browseShown = null;
 const genreLabel = key => boot.genres.find(g => g.key === key)?.label;
+const GENRES = genreChoices(boot.genres);
+const genreHref = key => (key ? `/browse?genre=${encodeURIComponent(key)}` : '/browse');
+
+function genreOption(g, cls) {
+  const b = el('button', '', cls);
+  b.type = 'button';
+  b.tabIndex = -1;
+  b.dataset.genre = g.key;
+  b.setAttribute('role', 'option');
+  b.append(g.short);
+  return b;
+}
+
+// Marks the option for a genre as chosen and gives it the listbox's one tab stop, which
+// the first option takes when none is chosen.
+function markGenre(box, key) {
+  const options = [...box.querySelectorAll('[role=option]')];
+  const chosen = options.find(o => o.dataset.genre === key) || null;
+  for (const o of options) {
+    o.setAttribute('aria-selected', String(o === chosen));
+    o.tabIndex = o === (chosen || options[0]) ? 0 : -1;
+  }
+  return chosen;
+}
+
+// Arrow keys move along a listbox, Home and End go to either end and a letter to the next
+// option it begins; Enter, Space or a click chooses.
+function listboxKeys(box, back, ahead) {
+  box.addEventListener('keydown', e => {
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    const options = [...box.querySelectorAll('[role=option]')];
+    const at = options.indexOf(e.target);
+    if (at < 0) return;
+    const k = e.key;
+    const to = k === ahead ? Math.min(at + 1, options.length - 1) : k === back ? Math.max(at - 1, 0)
+      : k === 'Home' ? 0 : k === 'End' ? options.length - 1
+        : k.length === 1 && k.trim() ? nextByLetter(options.map(o => o.textContent), at, k) : -1;
+    if (to < 0) return;
+    e.preventDefault();
+    for (const o of options) o.tabIndex = o === options[to] ? 0 : -1;
+    options[to].focus();
+  });
+}
+
+// Brings a chip into view near the middle of the row, unless it is in full view already.
+function showChip(chip) {
+  const bar = $('genre-scroll');
+  if (!chip) { bar.scrollLeft = 0; return; }
+  const inset = parseFloat(getComputedStyle(bar).paddingLeft) || 0;
+  const start = chip.offsetLeft, end = start + chip.offsetWidth;
+  if (start >= bar.scrollLeft + inset && end <= bar.scrollLeft + bar.clientWidth - inset) return;
+  bar.scrollLeft = start - (bar.clientWidth - chip.offsetWidth) / 2;
+}
+
+// On a mouse, arrows at either end page through the chips, as they do through a row.
+const syncGenreNudges = (() => {
+  const bar = $('genre-scroll');
+  const page = dir => bar.scrollBy({ left: dir * bar.clientWidth * .8, behavior: motion() ? 'smooth' : 'auto' });
+  const prev = button('nudge prev', '', () => page(-1), 'left');
+  const next = button('nudge next', '', () => page(1), 'right');
+  prev.setAttribute('aria-label', 'Back through the genres');
+  next.setAttribute('aria-label', 'More genres');
+  $('genre-bar').prepend(prev);
+  $('genre-bar').append(next);
+  const sync = () => {
+    prev.hidden = bar.scrollLeft < 8;
+    next.hidden = bar.scrollLeft + bar.clientWidth >= bar.scrollWidth - 8;
+  };
+  bar.addEventListener('scroll', () => requestAnimationFrame(sync), { passive: true });
+  window.addEventListener('resize', sync);
+  return sync;
+})();
 
 function renderBrowse() {
   const { genre } = where();
   const valid = genreLabel(genre) ? genre : '';
-  const pick = $('genre-pick');
-  if (!pick.options.length) {
-    const all = el('option', 'All genres');
-    all.value = '';
-    pick.append(all, ...boot.genres.map(g => {
-      const option = el('option', g.label);
-      option.value = g.key;
-      return option;
-    }));
+  const row = $('genre-pick');
+  if (!row.childElementCount) row.append(...GENRES.map(g => genreOption(g, 'genre-chip')));
+  const chip = markGenre(row, valid);
+  $('genre-all').classList.toggle('on', !valid);
+  if (valid !== browseShown) {
+    // A new choice starts from the top of the page, with its chip in sight.
+    if (browseShown !== null && window.scrollY) window.scrollTo(0, 0);
+    browseShown = valid;
+    showChip(chip);
   }
-  pick.value = valid;
+  syncGenreNudges();
   $('browse-h').textContent = valid ? genreLabel(valid) : 'Browse';
   if (!valid) {
     browseKey = '';
     const tiles = el('ul', '', 'tiles');
-    tiles.append(...boot.genres.map(g => {
+    tiles.append(...GENRES.map(g => {
       const li = el('li');
       const a = el('a', '', 'tile');
       a.href = `/browse?genre=${encodeURIComponent(g.key)}`;
@@ -1350,10 +1426,49 @@ async function loadBrowse(genre) {
     $('browse-body').replaceChildren(el('p', e.message, 'row-empty'));
   }
 }
-$('genre-pick').addEventListener('change', () => {
-  const g = $('genre-pick').value;
-  go(g ? `/browse?genre=${encodeURIComponent(g)}` : '/browse');
+$('genre-pick').addEventListener('click', e => {
+  const option = e.target.closest('[role=option]');
+  if (option) go(genreHref(option.dataset.genre));
 });
+listboxKeys($('genre-pick'), 'ArrowLeft', 'ArrowRight');
+
+// All genres: every genre A to Z after All genres itself, with the one on screen ticked.
+function openGenres() {
+  const list = $('genre-list');
+  if (!list.childElementCount) {
+    list.append(...[{ key: '', short: 'All genres' }, ...GENRES].map(g => {
+      const option = genreOption(g, 'genre-opt');
+      option.append(icon('check'));
+      return option;
+    }));
+  }
+  const { genre } = where();
+  const chosen = markGenre(list, genreLabel(genre) ? genre : '');
+  placeGenres();
+  $('genres').showModal();
+  $('genre-all').setAttribute('aria-expanded', 'true');
+  chosen.focus();
+}
+function placeGenres() {
+  if (!wide()) return;
+  const r = $('genre-all').getBoundingClientRect();
+  $('genres').style.setProperty('--x', `${Math.round(r.left)}px`);
+  $('genres').style.setProperty('--y', `${Math.round(r.bottom + 8)}px`);
+}
+$('genre-all').append(icon('more'));
+$('genre-all').addEventListener('click', openGenres);
+$('genre-list').addEventListener('click', e => {
+  const option = e.target.closest('[role=option]');
+  if (!option) return;
+  $('genres').close();
+  go(genreHref(option.dataset.genre));
+});
+listboxKeys($('genre-list'), 'ArrowUp', 'ArrowDown');
+$('genres').addEventListener('click', e => { if (e.target === $('genres')) $('genres').close(); });
+$('genres').addEventListener('close', () => $('genre-all').setAttribute('aria-expanded', 'false'));
+const followGenres = () => { if ($('genres').open) placeGenres(); };
+window.addEventListener('resize', followGenres);
+window.addEventListener('scroll', followGenres, { passive: true });
 
 /* ----------------------------------------------------------- new & popular */
 function renderNew() {

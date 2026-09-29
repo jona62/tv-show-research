@@ -79,7 +79,14 @@
   <section id="browse" class="view page" aria-labelledby="browse-h" hidden>
     <div class="browse-head">
       <h1 id="browse-h" class="page-h">Browse</h1>
-      <label class="genre-pick" for="genre-pick"><span class="sr">Genre</span><select id="genre-pick"></select></label>
+      <div class="genre-bar" id="genre-bar">
+        <div class="genre-scroll" id="genre-scroll">
+          <button class="genre-chip genre-all" id="genre-all" type="button" aria-haspopup="dialog" aria-controls="genres"
+                  aria-expanded="false">All genres</button>
+          <span class="genre-sep" aria-hidden="true"></span>
+          <div class="genre-row" id="genre-pick" role="listbox" aria-label="Genre" aria-orientation="horizontal"></div>
+        </div>
+      </div>
     </div>
     <div id="browse-body"></div>
   </section>
@@ -153,6 +160,14 @@
   <button class="menu-item" id="open-move" type="button">Move your list to another device</button>
   <button class="menu-item" id="open-about-2" type="button">How Couchside works</button>
   <button class="menu-item danger" id="reset" type="button">Start over</button>
+</div></dialog>
+
+<dialog id="genres" class="menu genre-menu" aria-labelledby="genres-h"><div class="menu-sheet">
+  <div class="menu-head">
+    <h2 id="genres-h">Genres</h2>
+    <button class="icon-btn close-btn" type="button" data-close aria-label="Close"></button>
+  </div>
+  <div class="genre-list" id="genre-list" role="listbox" aria-labelledby="genres-h"></div>
 </div></dialog>
 
 <dialog id="move" class="modal small" aria-labelledby="move-h"><div class="sheet pad">
