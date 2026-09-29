@@ -978,6 +978,10 @@ for path, kind in [('/favicon.ico', 'image/x-icon'), ('/favicon.svg', 'image/svg
     status, headers, _body = fetch(path)
     check(f'{path} is served as {kind}', status == 200 and headers.get('Content-Type') == kind, headers.get('Content-Type'))
 check('the service worker carries this build', b'__BUILD__' not in fetch('/sw.js')[2])
+imported = sorted(set(re.findall(r"from '\./([\w.-]+\.js)'", (ROOT / 'couchside' / 'main.js').read_text())))
+check('every module the page imports is built and served as JavaScript', 'gestures.js' in imported
+      and all(status == 200 and headers.get('Content-Type') == 'text/javascript'
+              for status, headers, _body in map(fetch, (f'/{name}' for name in imported))), imported)
 check('robots stay out of the api', b'Disallow: /api/' in fetch('/robots.txt')[2])
 check('powerful features are switched off', 'camera=()' in fetch('/')[1].get('Permissions-Policy', ''))
 check('the engine sources are not served', fetch('/engine.py')[0] == 404 and fetch('/art.bin.gz')[0] == 404)

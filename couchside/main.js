@@ -7,6 +7,7 @@ import { pageKey, resumable, keptText, shownRows, withoutCard, viewedStore, note
 import { freshStore, today, dayNumber, noteSeen, noteEngaged, noteRow, noteHero, prune, freshness, watcher }
   from './fresh.js';
 import { daySeed, startersQuery, mergeStarters, browserLanguage, MAX_ROUND, MAX_PICKED } from './starters.js';
+import { sheets, closing, reveal, swapView, crossfade, peeks, edgeBack } from './gestures.js';
 
 const boot = JSON.parse(document.getElementById('boot').textContent);
 const $ = id => document.getElementById(id);
@@ -318,7 +319,14 @@ function route() {
 }
 
 function showView(name) {
+  const first = view === null;
   view = name;
+  // On phones a view crossfades in (gestures.js). The search box takes focus as its view
+  // opens, so that view comes in at once rather than a frame later.
+  swapView(() => paintView(name), $(name), { quiet: first, sync: name === 'search' });
+}
+
+function paintView(name) {
   for (const id of VIEWS) $(id).hidden = id !== name;
   const current = name === 'welcome' ? 'home' : name;
   for (const a of document.querySelectorAll('[data-page]')) {
@@ -350,6 +358,9 @@ document.addEventListener('click', e => {
 });
 window.addEventListener('popstate', route);
 window.addEventListener('scroll', syncNav, { passive: true });
+// Installed, a swipe in from the left edge goes back from a title page or a view off home.
+edgeBack(() => !!titleId || (view !== 'home' && !document.querySelector('dialog[open]')),
+  () => (titleId ? closeTitle() : history.back()));
 
 /* ---------------------------------------------------------------- home */
 // The page arrives eight rows at a time: the first answer brings the hero and the first
@@ -551,6 +562,8 @@ function appendRows(rows) {
     }
   }
   if (!$('row-recent') && !home.more) holder.insertBefore(recentRow(), sentinel);
+  // On phones each new row eases in as it comes into view (gestures.js).
+  reveal(holder.querySelectorAll('section.row'));
 }
 
 // After a rating or a My List change: the card leaves the rows chosen for you, and every
@@ -617,7 +630,8 @@ function renderHero(s) {
   });
   const body = el('div', '', 'hero-body');
   body.append(poster, copy);
-  hero.replaceChildren(bg, el('div', '', 'hero-shade'), body);
+  // On phones a new hero crossfades over the one before (gestures.js).
+  crossfade(hero, bg, el('div', '', 'hero-shade'), body);
   // TMDB's backdrop when it has one, else TVmaze's.
   if (s.tmdb?.backdrop) backdrop.src = s.tmdb.backdrop;
   else {
@@ -755,6 +769,29 @@ function cardEl(c, { rank = 0, soon = false, note = '', row = '' } = {}) {
   return card;
 }
 
+// A long press on a poster, on a touch screen, lifts it into a peek (gestures.js) with the
+// quick buttons the hover shows: more info, My List, I like this and Love this. More info
+// and the poster do what a tap on the card does.
+function peekOf(card, close) {
+  const c = info(Number(card.dataset.id));
+  const open = () => { close(true); card.querySelector('.card-hit').click(); };
+  const art = button('peek-art', '', open);
+  art.setAttribute('aria-label', `Open ${c.name}`);
+  art.append(artEl(c, c.poster, false));
+  const panel = el('div', '', 'peek-panel');
+  panel.append(el('h2', c.name, 'peek-name'), metaEl(c, null));
+  if (c.genres?.length) panel.append(el('p', c.genres.join(', '), 'peek-genres'));
+  const listed = listButton(c, 'round');
+  listed.className = 'round';
+  const acts = el('div', '', 'peek-acts');
+  acts.append(button('btn primary', 'More info', open, 'info'), listed, ...rateButtons(c, [.7, 1]));
+  panel.append(acts);
+  const box = el('div', '', 'peek-box');
+  box.append(art, panel);
+  return box;
+}
+peeks(peekOf);
+
 function listRow() {
   const items = state.saved.slice().reverse().slice(0, 20).map(s => ({ ...s, ...(known.get(s.id) || {}) }));
   const sec = rowEl({ key: 'list', title: 'My List', kind: 'list', items });
@@ -876,23 +913,29 @@ function hideTitle() {
   titleToken++;
   titleId = null;
   T = null;
+  // A trailer stops at once. The rest of the page goes once the sheet has slid away.
+  $('t-sheet').querySelector('.t-player iframe')?.remove();
   if ($('title').open) $('title').close();
-  // Emptying the page also stops a trailer that is still playing.
-  $('t-sheet').replaceChildren();
   document.documentElement.classList.remove('modal-open');
   document.title = TITLES[view] || 'Couchside';
   if (view === 'home') updateRecentRow();
 }
+// The page is emptied once its sheet has closed, unless a title opened again meanwhile.
+$('title').addEventListener('close', () => { if (!titleId) $('t-sheet').replaceChildren(); });
 $('title').addEventListener('cancel', e => { e.preventDefault(); closeTitle(); });
 $('t-sheet').addEventListener('click', e => { if (titleId && e.target.closest('a[target="_blank"]')) engaged(titleId); });
 $('title').addEventListener('click', e => { if (e.target === $('title')) closeTitle(); });
+// Every dialog is a sheet (gestures.js): a swipe down closes it as its close button does,
+// and the title page through its history.
+sheets(d => (d === $('title') ? closeTitle() : d.close()));
 
 function showTitle(id, play = false) {
   const token = ++titleToken;
   titleId = id;
   T = buildTitle({ ...info(id), id });
   const dialog = $('title');
-  if (!dialog.open) {
+  // A title page still sliding away comes back up.
+  if (!dialog.open || closing(dialog)) {
     dialog.showModal();
     document.documentElement.classList.add('modal-open');
   }
@@ -1344,6 +1387,7 @@ async function loadBrowse(genre) {
     for (const r of data.rows) r.items.forEach(remember);
     $('browse-body').replaceChildren(...(data.rows.length ? data.rows.map(rowEl)
       : [el('p', 'Nothing in this genre fits your settings yet.', 'row-empty')]));
+    reveal($('browse-body').querySelectorAll('section.row'));
   } catch (e) {
     if (id !== browseReq) return;
     browseKey = null;
@@ -1366,6 +1410,7 @@ function renderNew() {
   if (home.soon.length) rows.push({ key: 'soon', title: 'Coming soon', kind: 'soon', items: home.soon });
   if (home.popular?.length) rows.push({ key: 'popular', title: 'Popular right now', kind: 'row', items: home.popular });
   holder.replaceChildren(...rows.map(rowEl));
+  reveal(holder.children);
 }
 
 /* -------------------------------------------------------------- my list */
