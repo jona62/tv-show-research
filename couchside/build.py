@@ -43,9 +43,12 @@ def manifest(description):
         {'src': '/icon-maskable-512.png', 'sizes': '512x512', 'type': 'image/png', 'purpose': 'maskable'},
         {'src': '/favicon.svg', 'sizes': 'any', 'type': 'image/svg+xml'},
     ],
+    # A long press on the installed icon offers these, Search first; a short name fits under an icon.
     'shortcuts': [
-        {'name': name, 'url': url, 'icons': [{'src': '/icon-192.png', 'sizes': '192x192', 'type': 'image/png'}]}
-        for name, url in (('My List', '/list'), ('Browse', '/browse'), ('New & Popular', '/new'), ('Search', '/search'))
+        {'name': name, 'short_name': short, 'url': url,
+         'icons': [{'src': '/icon-192.png', 'sizes': '192x192', 'type': 'image/png'}]}
+        for name, short, url in (('Search', 'Search', '/search'), ('My List', 'My List', '/list'),
+                                 ('Browse', 'Browse', '/browse'), ('New & Popular', 'New', '/new'))
     ],
     }
 ROBOTS = 'User-agent: *\nDisallow: /api/\n'

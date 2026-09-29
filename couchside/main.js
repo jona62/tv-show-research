@@ -1952,6 +1952,16 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
 /* ---------------------------------------------------------------- start */
 if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 for (const a of document.querySelectorAll('.dock [data-icon]')) a.prepend(icon(a.dataset.icon));
+// The dock tucks itself smaller while the page scrolls down and comes back on the way up,
+// as iOS 26 tab bars do. The empty touchstart lets iOS show a pressed tab.
+let dockY = window.scrollY;
+window.addEventListener('scroll', () => {
+  const y = window.scrollY;
+  if (Math.abs(y - dockY) < 10) return;
+  $('dock').classList.toggle('tucked', y > dockY && y > 160 && motion());
+  dockY = y;
+}, { passive: true });
+$('dock').addEventListener('touchstart', () => {}, { passive: true });
 for (const b of document.querySelectorAll('.close-btn')) b.append(icon('close'));
 updateCounts();
 route();
