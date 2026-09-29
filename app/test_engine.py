@@ -114,7 +114,8 @@ for label, body in [
     ('out-of-range popularity', {'profile': [{'id': 169, 'weight': 1}], 'settings': {'known_min': 140}}),
     ('zero feature weights', {'profile': [{'id': 169, 'weight': 1}], 'settings': {'text': 0, 'themes': 0, 'genres': 0, 'facets': 0}}),
     ('unknown language', {'profile': [{'id': 169, 'weight': 1}], 'settings': {'language': 'Klingon'}}),
-    ('oversized list', {'profile': [{'id': i, 'weight': 1} for i in range(1, 80)], 'settings': {}}),
+    ('oversized list', {'profile': [{'id': s['id'], 'weight': 1} for s in app.shows[:engine_module.MAX_LIST + 1]],
+                        'settings': {}}),
 ]:
     try:
         app.calculate(body)
@@ -248,7 +249,8 @@ for label, body, said in [
     ('choosing a disliked show', {'profile': PROFILE, 'settings': {}, 'similar_to': [80]}, 'counted as liked'),
     ('choosing a show not on the list', {'profile': PROFILE, 'settings': {}, 'similar_to': [999_999_999]}, 'on your list'),
     ('choosing a neutral show', {'profile': [{'id': 169, 'weight': 0}], 'settings': {}, 'similar_to': [169]}, 'counted as liked'),
-    ('an oversized selection', {'profile': PROFILE, 'settings': {}, 'similar_to': list(range(1, 62))}, 'up to 60'),
+    ('an oversized selection', {'profile': PROFILE, 'settings': {}, 'similar_to': list(range(1, engine_module.MAX_LIST + 2))},
+     'up to 3,000'),
     ('choosing with an empty list', {'profile': [], 'settings': {}, 'similar_to': [169]}, 'on your list'),
 ]:
     try:
@@ -365,6 +367,93 @@ if app.co:
         check('co-interest for another catalog size is refused', 'rows' in str(exc), str(exc))
 else:
     print('skip  the model has no co-interest yet')
+
+# 13. Long lists. Past DENSE_MAX a list is ranked from each show's closest shows in the
+# neighbour index (Wide), which must agree with the engine's own closeness.
+import random                                                    # noqa: E402
+if app.neighbours:
+    recommendable = [i for i, s in enumerate(app.shows) if s['recommendable']]
+    story = {**DEFAULT_SETTINGS, 'text': 70, 'themes': 20, 'genres': 10}
+    for sample in (169, 2993, 44933, app.shows[4321]['id']):
+        i = app.by_id[sample]
+        exact = app.blend(i, DEFAULT_SETTINGS)
+        best = sorted((j for j in recommendable if j != i), key=lambda j: -exact[j])[:app.neighbours.width]
+        index, near, _evidence = app.row(i, DEFAULT_SETTINGS)
+        cut = exact[best[-1]]
+        check(f'the index holds the closest shows to {app.shows[i]["name"]}',
+              set(index) == set(best) or all(exact[j] >= cut - 0.02 for j in index), str(sorted(set(best) - set(index))[:5]))
+        check(f'and how close each sits, as the engine has it',
+              all(abs(v - exact[j]) <= 0.02 * exact[j] + 0.01 for j, v in zip(index, near)))
+        story_exact = app.blend(i, story)
+        _index, story_near, _evidence = app.row(i, story)
+        check('and other settings rebuild from its parts',
+              all(abs(v - story_exact[j]) <= 0.02 * story_exact[j] + 0.02 for j, v in zip(index, story_near)))
+        others = random.Random(sample).sample(recommendable, 20)
+        check('closeness a pair at a time is the engine\'s',
+              all(abs(v - exact[j]) < 1e-4 for v, j in zip(app.pairs(i, others, DEFAULT_SETTINGS), others)))
+
+    # A long list, as someone who has watched a great deal might rate it: the best-known
+    # shows, mostly liked, some loved, some only OK and some disliked.
+    pool = sorted(recommendable, key=lambda i: (-app.popularity[i], app.shows[i]['id']))
+    draw = random.Random(7)
+    longest = [{'id': app.shows[i]['id'], 'weight': draw.choice((1, .7, .7, .7, .35, 0, -1))}
+               for i in pool[:engine_module.MAX_LIST]]
+    rated = {p['id'] for p in longest}
+    started = time.perf_counter()
+    answer = app.calculate({'profile': longest, 'settings': {}})
+    spent = time.perf_counter() - started
+    positives = [p for p in longest if p['weight'] > 0]
+    check(f'a list of {engine_module.MAX_LIST:,} is answered, in {spent:.2f}s', len(answer['picks']) == 24 and spent < 5)
+    check('none of its picks is a rated show', not rated & {p['id'] for p in answer['picks']})
+    check('its liked shows come back cut to the ones it names',
+          answer['liked_count'] == len(positives) and 0 < len(answer['liked']) <= 3 * engine_module.WIDE_LIKED
+          and {p['because_id'] for p in answer['picks']} <= {s['id'] for s in answer['liked']})
+    check('each pick links to each liked show sent', all(len(p['links']) == len(answer['liked']) for p in answer['picks']))
+    check('its interests say how many shows each holds and name a few',
+          answer['interests'] and all(0 < len(it['shows']) <= engine_module.WIDE_NAMED and it['size'] >= len(it['shows'])
+                                      for it in answer['interests'])
+          and sum(it['size'] for it in answer['interests']) == len(positives))
+    check('the taste chart comes whole', answer['fit']['genres'] and all(0 < v <= 100 for v in answer['fit']['genres'].values()))
+    liked = [p for p in longest if p['weight'] > 0]
+    cut = engine_module.DENSE_MAX
+    check('a list of the old limit is ranked as it always was, and one past it from the index',
+          type(app.ranking(liked[:cut], [], engine_module.Closeness(app, DEFAULT_SETTINGS), DEFAULT_SETTINGS)).__name__ == 'Ranking'
+          and type(app.ranking(liked[:cut + 1], [], {}, DEFAULT_SETTINGS)).__name__ == 'Wide')
+    chosen = app.calculate({'profile': longest, 'settings': {}, 'similar_to': [positives[0]['id']]})
+    check('a long list can still match just one of its shows',
+          chosen['picks'] and all(p['because_id'] == positives[0]['id'] for p in chosen['picks']))
+    story_answer = app.calculate({'profile': longest, 'settings': story})
+    check('and takes other settings', story_answer['picks'] and story_answer['settings']['text'] == 70)
+    # Without the index a long list is ranked from its most recent ratings alone.
+    kept, app.neighbours = app.neighbours, None
+    try:
+        focused = app.focus(longest)
+        started = time.perf_counter()
+        fallback = app.calculate({'profile': longest, 'settings': {}})
+        check('a model without the index ranks a long list from its most recent ratings',
+              sum(1 for p in focused if p['weight']) == engine_module.DENSE_MAX and fallback['picks']
+              and not rated & {p['id'] for p in fallback['picks']} and time.perf_counter() - started < 10)
+    finally:
+        app.neighbours = kept
+    # Average linkage kept a best partner per group; it must merge as the plain way does.
+    draw = random.Random(3)
+    for size in (2, 7, 25, 60):
+        sim = [[0.0] * size for _ in range(size)]
+        for x in range(size):
+            for y in range(x + 1, size):
+                sim[x][y] = sim[y][x] = draw.random() * 0.3
+        groups = [[x] for x in range(size)]
+        while len(groups) > 1:
+            link, pair = max((sum(sim[a][b] for a in g for b in h) / (len(g) * len(h)), (x, y))
+                             for x, g in enumerate(groups) for y, h in enumerate(groups) if y > x)
+            if link < engine_module.INTEREST_JOIN:
+                break
+            groups[pair[0]] = groups[pair[0]] + groups.pop(pair[1])
+        mine = engine_module.average_linkage([row[:] for row in sim], engine_module.INTEREST_JOIN)
+        check(f'average linkage of {size} merges as the plain way does',
+              sorted(map(sorted, groups)) == sorted(mine))
+else:
+    print('skip  the model has no neighbour index yet')
 
 print()
 if failures:

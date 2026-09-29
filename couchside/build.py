@@ -6,8 +6,9 @@ The engine is Next Watch's own, copied in so this app deploys by itself, and so 
 taste.py, its model of what a list leans toward, its search (titles.py) and the
 TVmaze fallback for that search (fallback.py), follow.py, which restarts the server
 when the model is replaced, facets.py, which reads the model's Wikidata and network
-facets, and starters.py, which draws a first visit's shows; test_couchside.py fails if
-any of them ever drifts apart. The transfer codec and QR encoder come from Next Watch
+facets, neighbours.py, which reads each show's closest shows for ranking long lists,
+and starters.py, which draws a first visit's shows; test_couchside.py fails if any of
+them ever drifts apart. The transfer codec and QR encoder come from Next Watch
 too, so a list moves between the two apps, and so do fresh.js and starters.js, which
 ask for a first visit's shows. Icons and the share image are rendered once by
 brand/make.py and copied from brand/, beside TMDB's own logo.
@@ -28,7 +29,8 @@ PUBLIC = HERE / 'public'
 OWN = ('style.css', 'main.js', 'format.js', 'gestures.js')
 SHARED = ('transfer.js', 'qr.js', 'fresh.js', 'starters.js')
 # Next Watch's server modules, copied beside this server so it deploys by itself.
-MODULES = ('engine.py', 'taste.py', 'titles.py', 'fallback.py', 'follow.py', 'facets.py', 'fresh.py', 'starters.py')
+MODULES = ('engine.py', 'taste.py', 'titles.py', 'fallback.py', 'follow.py', 'facets.py', 'neighbours.py', 'fresh.py',
+           'starters.py')
 BRAND = ('favicon.ico', 'favicon.svg', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png',
          'icon-maskable-512.png', 'og.jpg', 'tmdb.svg')
 # What the service worker keeps with the page, whatever the app's files come to be, and

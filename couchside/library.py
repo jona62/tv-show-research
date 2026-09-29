@@ -32,7 +32,7 @@ import statistics
 import struct
 import sys
 
-from engine import FORMAT_GROUPS, TIE_COMMON
+from engine import FORMAT_GROUPS, TIE_COMMON, Closeness, Wide
 from fresh import dither, pick_one, spread, shuffle_rows, ROW_EPSILON, ROW_KEY
 from starters import Starters
 from taste import COUNTRIES, decade as decade_of
@@ -107,6 +107,7 @@ SEED_POOL = 80          # the cards a seed's row keeps, from every similar show 
 LIKE_POOL = 600         # the shows closest to My List that its row weighs
 FITTING = 3000          # a seed's row looks among the best this many fits, overall and in its interest
 ROTATE = 3              # a day's seed rotates among an interest's best this many
+WIDE_SEEDS = 60         # a long list's liked shows that rows of their own are cut for, loves and then the newest
 INTEREST_FLOOR = 0.08   # an interest this heavy gets at least one row
 INTEREST_CAP = 0.4      # and none, with three or more interests, holds more of the rows
 MOST_INTERESTS = 8      # interests weighed for rows of their own
@@ -286,9 +287,11 @@ class Taste:
         self.lib, self.e = library, library.e
         self.positives, self.negatives, self.settings = positives, negatives, settings
         self.candidates = candidates
-        self.affinities = {p['id']: self.e.blend(self.e.by_id[p['id']], settings) for p in positives + negatives}
+        # Worked out as the ranking asks: all of them for a short list, a few for a long one.
+        self.affinities = Closeness(self.e, settings)
         # Kept for the request, so a show scored later (score_others) sits on the same scale.
         self.ranking = self.e.ranking(positives, negatives, self.affinities, settings)
+        self.wide = isinstance(self.ranking, Wide)
         self.scores = self.ranking.score(candidates)
         self.best = max((self.scores[i] for i in candidates), default=0.0)
         self.extra = {}
@@ -323,7 +326,7 @@ class Taste:
 
     def closest(self, i):
         """The liked show a title sits nearest to, with the signals they share."""
-        source = max(self.positives, key=lambda p: self.affinities[p['id']][i])
+        source = self.ranking.source(i, self.positives)
         mine, theirs = self.e.signals(i), self.e.signals(self.e.by_id[source['id']])
         shared = [t.split(' / ')[0] for t in mine[0] if t in theirs[0]] + [g for g in mine[1] if g in theirs[1]]
         seen, labels = set(), []
@@ -404,9 +407,18 @@ class Page:
         self.stats = lib.pool_stats(settings)
         e = self.e
         ranked = taste.ranked()
-        # Anything very close to a show marked Not for me stays off the page.
+        # Anything very close to a show marked Not for me stays off the page. A long list
+        # has so many that this would clear whole genres, so there it goes only when the
+        # disliked shows it sits near outweigh the liked ones.
         self.excluded = set()
-        if negatives and candidates:
+        if negatives and candidates and taste.wide:
+            groups, taken, _closest = taste.ranking.gathered or taste.ranking.gather()
+            pool = set(candidates)
+            for p in negatives:
+                index, close, _evidence = taste.ranking.row(e.by_id[p['id']])
+                self.excluded.update(i for i, v in zip(index, close) if v >= NOT_FOR_ME and i in pool
+                                     and taken.get(i, 0.0) >= max((found.get(i, 0.0) for found in groups), default=0.0))
+        elif negatives and candidates:
             gather = itemgetter(*candidates) if len(candidates) > 1 else (lambda values: (values[candidates[0]],))
             for p in negatives:
                 values = gather(taste.affinities[p['id']])
@@ -451,7 +463,7 @@ class Page:
         self._matching = {}
         countries = Counter(e.shows[e.by_id[p['id']]]['country'] for p in positives)
         self.usual_country = countries.most_common(1)[0][0] if countries else None
-        self._near = {}
+        self._near, self._fitting = {}, {}
 
     # ------------------------------------------------------------ scales
 
@@ -507,15 +519,26 @@ class Page:
         many, and (closeness, index) closest first). Closeness to a show marked Not for
         me is taken off, as the engine takes it off its ranking."""
         if (show_id, k) not in self._near:
-            affinity = self.taste.affinities.get(show_id) or self.e.blend(self.e.by_id[show_id], self.taste.settings)
-            pool = list(dict.fromkeys(self.usable[:FITTING] + (self.by_interest[k][:FITTING] if k is not None else [])))
-            close = [(v, i) for v, i in zip(itemgetter(*pool)(affinity) if len(pool) > 1 else
-                                            [affinity[i] for i in pool], pool) if v >= SIMILAR]
+            if self.taste.wide:
+                # A long list's shows are matched from their closest shows alone.
+                if k not in self._fitting:
+                    self._fitting[k] = set(self.usable[:FITTING]) | set(self.by_interest[k][:FITTING] if k is not None else ())
+                pool = self._fitting[k]
+                index, near, _evidence = self.ranking.row(self.e.by_id[show_id])
+                close = [(v, i) for i, v in zip(index, near) if v >= SIMILAR and i in pool]
+            else:
+                affinity = self.taste.affinities.get(show_id) or self.e.blend(self.e.by_id[show_id], self.taste.settings)
+                pool = list(dict.fromkeys(self.usable[:FITTING] + (self.by_interest[k][:FITTING] if k is not None else [])))
+                close = [(v, i) for v, i in zip(itemgetter(*pool)(affinity) if len(pool) > 1 else
+                                                [affinity[i] for i in pool], pool) if v >= SIMILAR]
             self._near[show_id, k] = (len(close), self.penalised(close))
         return self._near[show_id, k]
 
     def penalised(self, close):
-        if self.negatives:
+        if self.negatives and self.taste.wide:
+            penalty = self.ranking.penalty
+            close = [(v - penalty(i), i) for v, i in close]
+        elif self.negatives:
             share = self.taste.settings['dislike'] / len(self.negatives)
             arrays = [self.taste.affinities[p['id']] for p in self.negatives]
             close = [(v - share * sum(a[i] for a in arrays), i) for v, i in close]
@@ -547,6 +570,12 @@ class Page:
     def members(self, k):
         """An interest's liked shows, loves first and then newest first."""
         return sorted(self.interests[k], key=lambda p: (-p['weight'], -self.order[p['id']]))
+
+    def telling(self, shows):
+        """Liked shows loves first and then newest first, and for a long list only the first
+        WIDE_SEEDS of them: the ones rows of their own are cut for."""
+        ordered = sorted(shows, key=lambda p: (-p['weight'], -self.order[p['id']]))
+        return ordered[:WIDE_SEEDS] if self.taste.wide else ordered
 
     def seeds(self, k):
         """The interest's seeds for the day: loves before likes, each with enough similar
@@ -681,7 +710,7 @@ class Page:
         owner = {p['id']: k for k, interest in enumerate(self.interests) for p in interest}
         found = {k: [] for k in range(len(self.interests))}
         pooled, pooled_from = set(), {}
-        liked = sorted(self.positives, key=lambda p: (-p['weight'], -self.order[p['id']]))
+        liked = self.telling(self.positives)
         worlds = set()
         for p in liked:
             if p['weight'] < .7:
@@ -782,8 +811,7 @@ class Page:
         more of the casts, and the channels, subjects and decades liked shows share. Each
         kind comes best first, and a key or a title only once."""
         e = self.e
-        liked = sorted((p for p in self.positives if p['weight'] >= .7),
-                       key=lambda p: (-p['weight'], -self.order[p['id']]))
+        liked = self.telling(p for p in self.positives if p['weight'] >= .7)
         owner = {p['id']: k for k, interest in enumerate(self.interests) for p in interest}
         usable = set(self.usable)
         seeds = {p['id']: self.seed_row(p, owner[p['id']]) for p in liked
@@ -919,6 +947,9 @@ class Page:
                 count[c] += 1
                 backers.setdefault(c, []).append(p)
         shared = sorted((c for c, n in count.items() if n >= 2), key=lambda c: (-count[c], c))
+        if self.taste.wide:
+            # A long list shares hundreds of actors; the most shared are enough for rows.
+            shared = shared[:4 + WIDE_SEEDS]
         wanted = [(c, 'cast-shared') for c in shared[4:] if self.regular(c) >= self.REGULAR_SHARE]
         for p in liked:
             if p['weight'] < 1:
@@ -1278,14 +1309,24 @@ class Page:
         pool = self.usable[:FITTING]
         if not saved or len(pool) < 2:
             return None
-        arrays = [self.e.blend(i, self.taste.settings) for i in saved]
         keep = set(saved)
-        gather = itemgetter(*pool)
-        sums = [0.0] * len(pool)
-        for affinity in arrays:
-            sums = [a + b for a, b in zip(sums, gather(affinity))]
-        close = self.penalised(heapq.nlargest(LIKE_POOL, ((v / len(arrays), i) for v, i in zip(sums, pool)
-                                                        if i not in keep)))
+        if self.taste.wide:
+            # A long list's page takes the saved shows' closest shows, as it takes its seeds'.
+            allowed, sums = set(pool), {}
+            for i in saved:
+                index, near, _evidence = self.ranking.row(i)
+                for j, v in zip(index, near):
+                    if j in allowed and j not in keep:
+                        sums[j] = sums.get(j, 0.0) + v
+            close = self.penalised(heapq.nlargest(LIKE_POOL, ((v / len(saved), j) for j, v in sums.items())))
+        else:
+            arrays = [self.e.blend(i, self.taste.settings) for i in saved]
+            gather = itemgetter(*pool)
+            sums = [0.0] * len(pool)
+            for affinity in arrays:
+                sums = [a + b for a, b in zip(sums, gather(affinity))]
+            close = self.penalised(heapq.nlargest(LIKE_POOL, ((v / len(arrays), i) for v, i in zip(sums, pool)
+                                                            if i not in keep)))
         if not close:
             return None
         items, score = self.closeness_row(close)
@@ -2811,9 +2852,10 @@ class Library:
         """The request checked: its list split by rating, its settings, the pool those
         settings allow less what is rated, and what the browser has shown (fresh.py)."""
         profile, settings, _chosen, fresh = self.e.read(body)
+        rated = {p['id'] for p in profile}
+        profile = self.e.focus(profile)
         positives = [p for p in profile if p['weight'] > 0]
         negatives = [p for p in profile if p['weight'] < 0]
-        rated = {p['id'] for p in profile}
         pool = self.pool_stats(settings)['pool']
         candidates = [i for i in pool if self.e.shows[i]['id'] not in rated]
         return profile, settings, positives, negatives, rated, candidates, fresh
@@ -2980,9 +3022,10 @@ class Library:
         taste = Taste(self, positives, negatives, settings, candidates) if positives else None
         # More like this: closeness to this one show, less the pull of anything disliked,
         # and when the show is one you liked, the taste of the interest it belongs to.
-        affinities = {show_id: e.blend(i, settings)}
-        affinities.update(taste.affinities if taste else
-                          {p['id']: e.blend(e.by_id[p['id']], settings) for p in negatives})
+        affinities = Closeness(e, settings)
+        affinities[show_id] = e.blend(i, settings)
+        if taste:
+            affinities.update(taste.affinities)
         pool = [j for j in candidates if j != i]
         near = e.rank(pool, [{'id': show_id, 'weight': 1}], negatives, affinities, settings, positives or None)
         ranked = sorted((j for j in pool if near[j] > 0), key=lambda j: (-near[j], e.shows[j]['id']))

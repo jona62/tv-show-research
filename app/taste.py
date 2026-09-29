@@ -249,12 +249,19 @@ class Taste:
         return hit
 
     def score(self, i):
-        """How well show i fits the list's leanings, from zero for a typical show."""
+        """How well show i fits the list's leanings, from zero for a typical show. It is
+        family_score for each set family, written out: a long list's ranking asks for it
+        tens of thousands of times."""
         total = 0.0
         for column, contributions in self.tables:
             total += contributions[column[i]]
-        for entry in self.sets:
-            total += self.family_score(entry, i)
+        for _family, masks, known, delta, offset, weight, limit, cache in self.sets:
+            if known[i]:
+                mask = masks[i]
+                hit = cache.get(mask)
+                if hit is None:
+                    hit = cache[mask] = weight * clamp(offset + sum(delta[bit] for bit in bits(mask)), limit)
+                total += hit
         return total
 
     def quality(self, i):
@@ -360,7 +367,20 @@ def distinct(ranked, limit):
 
 
 def bits(mask):
-    while mask:
-        low = mask & -mask
-        yield low.bit_length() - 1
-        mask ^= low
+    """The positions of mask's set bits, lowest first. Shows share far fewer masks than
+    there are shows, so each is worked out once and kept (up to BITS_KEPT of them)."""
+    found = _BITS.get(mask)
+    if found is None:
+        out, rest = [], mask
+        while rest:
+            low = rest & -rest
+            out.append(low.bit_length() - 1)
+            rest ^= low
+        found = tuple(out)
+        if len(_BITS) < BITS_KEPT:
+            _BITS[mask] = found
+    return found
+
+
+_BITS = {}
+BITS_KEPT = 100_000
