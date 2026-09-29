@@ -660,7 +660,7 @@ body.loose{display:grid;place-items:center;min-height:100vh;min-height:100dvh;
     width:38px;height:5px;margin-left:-19px;border-radius:3px;background:#ffffffb8;box-shadow:0 1px 4px #0009;pointer-events:none}
   dialog.at-top>.grab{top:calc(var(--grab-top,0px) + var(--edge-t,var(--safe-t,0px)) + 7px)}
 }
-/* Rows wait unseen until they come into view, then ease in. */
+/* A new row waits unseen for a frame, until gestures.js knows whether it eases in. */
 .pre{opacity:0}
 /* The hero on its way out, over the one coming in, laid out as the hero is. */
 .swap-ghost{position:absolute;inset:0;z-index:1;display:inherit;flex-direction:inherit;align-items:inherit;

@@ -1,7 +1,7 @@
 // The thresholds and maths behind Couchside's gestures (gestures.js), which imports here
 // without a page: nothing in it touches one until main.js calls it.
 import { LONG_PRESS, SLOP, EDGE, FLICK, rubber, follow, speed, dismisses, glide, heading, wandered, fromEdge, goesBack,
-  stagger } from './gestures.js';
+  stagger, REST, easesIn } from './gestures.js';
 let fails = 0;
 const check = (name, ok, extra = '') => { console.log(`${ok ? 'pass' : 'FAIL'}  ${name}${ok ? '' : '  ' + extra}`); if (!ok) fails++; };
 
@@ -46,6 +46,11 @@ check('its speed counts too, but not going back the other way', goesBack(40, .5,
 
 check('a batch eases in step by step, the last not kept waiting', stagger(0, 40, 200) === 0 && stagger(3, 40, 200) === 120
   && stagger(9, 40, 200) === 200);
+
+check('a row that lands on screen while the page is still eases in', easesIn(true, REST) && easesIn(true, Infinity));
+check('one that lands while the reader scrolls is simply there', !easesIn(true, REST - 1) && !easesIn(true, 0));
+check('and so is one that lands below the screen, however still', !easesIn(false, Infinity) && !easesIn(false, REST));
+check('a page is still once it has not moved for a moment', REST >= 100 && REST <= 250);
 
 console.log(fails ? `\n${fails} failed` : '\nall gesture checks passed');
 process.exit(fails ? 1 : 0);

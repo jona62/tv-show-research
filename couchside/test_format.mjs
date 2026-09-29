@@ -181,6 +181,44 @@ check('recently viewed is the last fortnight, newest first', same(recentlyViewed
   && VIEWED_DAYS === 14);
 check('rated and listed titles leave it', same(recentlyViewed(viewed, day, { rated: new Set([2]), saved: new Set([3]) }), []));
 
+// Loading ahead of the reader: a row's posters two screens before it is seen, those it
+// shows and the next two, and more rows while three screens of them are still to come.
+const { POSTERS_AHEAD, ROWS_AHEAD, CARDS_AHEAD, POSTERS_AT_ONCE, FLUNG, FLUNG_AT_ONCE, STILL_FLUNG, posterPace, SLOW_POSTER,
+  postersToLoad, catchingUp, NEXT_ROWS, CATCH_UP_ROWS, rowsToAsk, retryAfter } = await import('./format.js');
+// A phone's row: 112px posters 8px apart after a 16px gutter, on a screen 390px wide.
+const phoneRow = [16, 136, 256, 376, 496, 616, 736, 856];
+check('posters start two screens ahead, and rows are asked for three ahead',
+  POSTERS_AHEAD === 2 && ROWS_AHEAD === 3 && CARDS_AHEAD === 2);
+check('posters ahead go a few at a time, enough to keep a slow connection busy and no more',
+  POSTERS_AT_ONCE >= 4 && POSTERS_AT_ONCE <= 8);
+check('a page flung past rows moves faster than a reader scrolls, and slower than a flick lands',
+  FLUNG > .6 && FLUNG < 2);
+check('while it is flung over a slow connection, fewer posters load at once, and some still do',
+  FLUNG_AT_ONCE >= 1 && FLUNG_AT_ONCE < POSTERS_AT_ONCE);
+check('the first poster sets the pace, and each after moves it a fifth of the way',
+  posterPace(0, 300) === 300 && posterPace(300, 800) === 400 && posterPace(400, 400) === 400);
+check('a poster from a cache leaves the pace as it was', posterPace(900, 3) === 900 && posterPace(0, 10) === 0);
+let pace = 0;
+for (const ms of [120, 90, 150, 110, 1400, 100, 130]) pace = posterPace(pace, ms);
+check('one slow poster on a fast connection does not make it slow', pace < SLOW_POSTER);
+for (const ms of [900, 1300, 700, 1100, 1600]) pace = posterPace(pace, ms);
+check('a run of slow ones does', pace > SLOW_POSTER);
+check('it counts as flung through the moment a finger lands for the next flick, and not much longer',
+  STILL_FLUNG >= 200 && STILL_FLUNG <= 500);
+check('on a phone a row loads the posters it shows and the next two, its first six', postersToLoad(phoneRow, 390) === 6);
+check('swiped along, the two past wherever it has got to', postersToLoad(phoneRow.map(x => x - 250), 390) === 8);
+check('a wide screen loads what it shows and two more',
+  postersToLoad([58, 242, 426, 610, 794, 978, 1162, 1346, 1530, 1714, 1898, 2082], 1440) === 10);
+check('never more than a row holds', postersToLoad([16, 136, 256], 390) === 3 && postersToLoad([], 390) === 0);
+check('a reader with less than a screen of rows left is catching up', catchingUp(843, 844) && catchingUp(-10, 844)
+  && !catchingUp(844, 844) && !catchingUp(2500, 844));
+check('a reader well above the end gets six rows, and one catching up the eight the server allows',
+  rowsToAsk(1700, 844) === NEXT_ROWS && rowsToAsk(844, 844) === NEXT_ROWS && rowsToAsk(843, 844) === CATCH_UP_ROWS
+  && rowsToAsk(-200, 844) === CATCH_UP_ROWS && NEXT_ROWS === 6 && CATCH_UP_ROWS === 8);
+check('after failures, more rows are asked for again later each time, a minute at most',
+  retryAfter(0) === 0 && retryAfter(1) === 2000 && retryAfter(2) === 4000 && retryAfter(3) === 8000
+  && retryAfter(12) === 60_000);
+
 // Answers kept by what was asked: within their time, shared while in flight, never a failure.
 const { keeper, sessionAnswers } = await import('./format.js');
 let clock = 1_000;

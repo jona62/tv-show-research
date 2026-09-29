@@ -588,6 +588,10 @@ rejects('a shown row with ids that are not numbers', lambda: lib.home({'profile'
 rejects('a row shown twice', lambda: lib.home({'profile': [], 'shown': [{'key': 'top'}, {'key': 'top'}]}), 'only once')
 rejects('a count that is too big', lambda: lib.home({'profile': [], 'count': 9}), '0 to 8')
 rejects('a count that is not a number', lambda: lib.home({'profile': [], 'count': '6'}), '0 to 8')
+# The page asks for NEXT_ROWS more, or CATCH_UP_ROWS for a reader close to the end (format.js).
+asks = dict(re.findall(r'export const (NEXT_ROWS|CATCH_UP_ROWS) = (\d+);', (ROOT / 'couchside' / 'format.js').read_text()))
+check('the page asks for as many rows as the server gives, and a reader catching up no more than it allows',
+      int(asks.get('NEXT_ROWS', 0)) == NEXT_PAGE and int(asks.get('CATCH_UP_ROWS', 0)) == FIRST_PAGE, asks)
 rejects('a day without its seed', lambda: lib.home({'profile': [], 'day': '2026-10-05'}), 'together')
 rejects('a malformed seed', lambda: lib.home({'profile': [], 'day': '2026-10-05', 'seed': 'zz'}), 'hexadecimal')
 rejects('seen counts that are not numbers', lambda: lib.home({'profile': [], 'seen': {'169': 'x'}}), '0 to 50')
