@@ -145,5 +145,36 @@ check('recently viewed is the last fortnight, newest first', same(recentlyViewed
   && VIEWED_DAYS === 14);
 check('rated and listed titles leave it', same(recentlyViewed(viewed, day, { rated: new Set([2]), saved: new Set([3]) }), []));
 
+// Answers kept by what was asked: within their time, shared while in flight, never a failure.
+const { keeper, sessionAnswers } = await import('./format.js');
+let clock = 1_000;
+const asked = keeper({ most: 3, now: () => clock });
+let requests = 0;
+const answer = value => () => { requests++; return Promise.resolve({ value }); };
+const [one, two] = await Promise.all([asked('a', 100, answer(1)), asked('a', 100, answer(2))]);
+check('two asking at once share one request', requests === 1 && one === two && one.value === 1);
+clock += 99;
+check('asking again within its time gets the same answer without a request',
+  (await asked('a', 100, answer(3))) === one && requests === 1);
+clock += 1;
+check('past its time it is asked again', (await asked('a', 100, answer(4))).value === 4 && requests === 2);
+check('another question is asked on its own', (await asked('b', 100, answer(5))).value === 5 && requests === 3);
+let failed = '';
+await asked('c', 100, () => { requests++; return Promise.reject(new Error('down')); }).catch(e => { failed = e.message; });
+check('a failure reaches the caller and is not kept', failed === 'down'
+  && (await asked('c', 100, answer(6))).value === 6 && requests === 5);
+await asked('d', 100, answer(7));
+check('past the most it keeps, the oldest go first', (await asked('a', 100, answer(8))).value === 8 && requests === 7
+  && (await asked('d', 100, answer(9))).value === 7 && requests === 7);
+let thrown = '';
+await asked('e', 100, () => { throw new Error('at once'); }).catch(e => { thrown = e.message; });
+check('an ask that throws at once fails like any other', thrown === 'at once');
+const at = 50_000;
+check('answers kept for a reload are read defensively, the newest that are young enough',
+  same(sessionAnswers({ '/api/extra?id=1': { at: at - 10, value: { details: 1 } }, '/api/rating?id=2': { at: at - 99_999, value: {} },
+    '/api/trailer?id=3': { at: at - 5, value: { videos: [] } }, 'elsewhere': { at, value: {} }, '/api/x': { at, value: 'text' },
+    '/api/y': null, '/api/z': { at: at + 5, value: {} } }, at, 60_000, 1), { '/api/trailer?id=3': { at: at - 5, value: { videos: [] } } })
+  && same(sessionAnswers(null, at, 1), {}) && same(sessionAnswers([1], at, 1), {}) && same(sessionAnswers('x', at, 1), {}));
+
 console.log(fails ? `\n${fails} failed` : '\nall format checks passed');
 process.exit(fails ? 1 : 0);

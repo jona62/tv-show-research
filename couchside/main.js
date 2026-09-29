@@ -4,6 +4,7 @@ import { tieText, leaning, leaningHeading } from './format.js';
 import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere, longDate, airs,
   whereToWatch, trailerSearch, searchNote } from './format.js';
 import { pageKey, resumable, keptText, shownRows, withoutCard, viewedStore, noteViewed, recentlyViewed } from './format.js';
+import { keeper, sessionAnswers } from './format.js';
 import { freshStore, today, dayNumber, noteSeen, noteEngaged, noteRow, noteHero, prune, freshness, watcher }
   from './fresh.js';
 import { daySeed, startersQuery, mergeStarters, browserLanguage, MAX_ROUND, MAX_PICKED } from './starters.js';
@@ -227,7 +228,7 @@ function toast(text) {
 if (!POPOVER) $('toast').hidden = true;
 
 /* ----------------------------------------------------------------- api */
-async function call(path, options = {}) {
+async function request(path, options = {}) {
   let res;
   try {
     res = await fetch(path, options);
@@ -248,46 +249,62 @@ async function call(path, options = {}) {
   }
   return body;
 }
+
+// What the page has been told is kept by what it asked (keeper in format.js): a title, a
+// genre's rows, a search and a show's live details come back without a request for a
+// while, and two asking at once share one. Live details, which the server fetches from
+// TVmaze, KinoCheck and iTunes, also outlast a reload of the tab in sessionStorage. The
+// home page keeps itself (keepPage).
+const MINUTE = 60_000;
+const KEEP = {
+  '/api/extra': 30, '/api/trailer': 30, '/api/rating': 30, '/api/episodes': 30,
+  '/api/search': 10, '/api/title': 10, '/api/browse': 10,
+};
+const LIVE = ['/api/extra', '/api/trailer', '/api/rating', '/api/episodes'];
+const ANSWERS_KEY = 'couchside-answers';
+const asked = keeper();
+let answers = {};
+try { answers = sessionAnswers(JSON.parse(sessionStorage.getItem(ANSWERS_KEY)), Date.now(), 30 * MINUTE); } catch { /* none yet */ }
+function keepAnswers() {
+  answers = sessionAnswers(answers, Date.now(), 30 * MINUTE);
+  try { sessionStorage.setItem(ANSWERS_KEY, JSON.stringify(answers)); } catch { /* storage full or off */ }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') keepAnswers(); });
+window.addEventListener('pagehide', keepAnswers);
+
+function call(path, options) {
+  const route = path.split('?')[0];
+  if (options || !KEEP[route]) return request(path, options);
+  const ms = KEEP[route] * MINUTE;
+  return asked(path, ms, () => {
+    const held = answers[path];
+    if (held && Date.now() - held.at < ms) return held.value;
+    return request(path).then(value => {
+      if (LIVE.includes(route)) answers[path] = { at: Date.now(), value };
+      return value;
+    });
+  });
+}
 const wait = ms => new Promise(done => setTimeout(done, ms));
 // Live lookups can find the server busy for a moment; one quiet retry covers that.
 const patient = path => call(path).catch(e => (e.status === 503 ? wait(1500).then(() => call(path)) : Promise.reject(e)));
-const post = (path, body, signal) => call(path, {
-  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal,
-});
+// A title's page and a genre's rows follow your list, your settings and what is asked,
+// not what this browser has seen since, so they are kept by those alone.
+function post(path, body, signal) {
+  const send = () => request(path, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal,
+  });
+  if (!KEEP[path]) return send();
+  const { profile, settings, id, genre } = body;
+  return asked(`${path} ${JSON.stringify([profile, settings, id, genre])}`, KEEP[path] * MINUTE, send);
+}
 const taste = () => ({ profile: state.profile.map(({ id, weight }) => ({ id, weight })), settings: state.settings });
 
-// Live details come once per show and are shared by the hero and the title page.
-const extras = new Map();
-function details(id) {
-  if (!extras.has(id)) {
-    extras.set(id, patient(`/api/extra?id=${id}`).then(r => r.details).catch(() => {
-      extras.delete(id);
-      return null;
-    }));
-  }
-  return extras.get(id);
-}
-
-// Trailers and age ratings, once per show. A failure reads as none, and is asked again later.
-const trailerCache = new Map(), ageCache = new Map();
-function trailersOf(id) {
-  if (!trailerCache.has(id)) {
-    trailerCache.set(id, patient(`/api/trailer?id=${id}`).then(r => r.videos).catch(() => {
-      trailerCache.delete(id);
-      return [];
-    }));
-  }
-  return trailerCache.get(id);
-}
-function ageOf(id) {
-  if (!ageCache.has(id)) {
-    ageCache.set(id, patient(`/api/rating?id=${id}`).catch(() => {
-      ageCache.delete(id);
-      return { rating: null, apple: null };
-    }));
-  }
-  return ageCache.get(id);
-}
+// Live details, trailers and age ratings, shared by the hero and the title page. A
+// failure reads as none, and is asked again next time.
+const details = id => patient(`/api/extra?id=${id}`).then(r => r.details).catch(() => null);
+const trailersOf = id => patient(`/api/trailer?id=${id}`).then(r => r.videos).catch(() => []);
+const ageOf = id => patient(`/api/rating?id=${id}`).catch(() => ({ rating: null, apple: null }));
 
 // TMDB's data comes with a title, and with the hero, so those lookups are asked only for
 // what it lacks. The Apple TV link matters only where TMDB lists nowhere to watch.
