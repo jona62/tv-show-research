@@ -172,27 +172,48 @@ function button(cls, label, onClick, iconName) {
   if (onClick) b.addEventListener('click', onClick);
   return b;
 }
+// Every image is asked for with CORS, which TVmaze, TMDB and YouTube's image servers all
+// allow, so the service worker can keep a readable copy (sw.js) rather than an opaque one.
 function picture(src, cls, onLoad) {
   const img = new Image();
   img.alt = '';
   img.decoding = 'async';
   img.referrerPolicy = 'no-referrer';
+  img.crossOrigin = 'anonymous';
   if (cls) img.className = cls;
   if (onLoad) img.addEventListener('load', onLoad, { once: true });
   if (src) img.src = src;
   return img;
 }
+// Posters a view is about to draw again, by address, while redraw runs: artEl hands them
+// over instead of making new ones, so drawing a list again neither asks for a poster
+// again nor fades it in a second time.
+let spare = null;
+function redraw(holder, draw) {
+  const outer = spare;
+  spare = new Map();
+  for (const art of holder.querySelectorAll('.art[data-src]')) spare.set(art.dataset.src, art);
+  try { return draw(); } finally { spare = outer; }
+}
 // A poster, over a tile in the show's own colour that names it until the image arrives.
 function artEl(c, src = c.poster, lazy = true) {
+  const kept = src && spare?.get(src);
+  if (kept) {
+    spare.delete(src);
+    return kept;
+  }
   const box = el('span', '', 'art');
   box.style.setProperty('--h', String(hue(c.id)));
   box.append(el('span', c.name || '', 'art-name'));
   if (src) {
+    box.dataset.src = src;
     const img = picture(null);
     if (lazy) img.loading = 'lazy';
     img.addEventListener('load', () => box.classList.add('loaded'), { once: true });
     img.addEventListener('error', () => img.remove(), { once: true });
     img.src = src;
+    // One this page already holds shows at once, without fading in again.
+    if (img.complete && img.naturalWidth) box.classList.add('loaded');
     box.append(img);
   }
   return box;
@@ -433,7 +454,7 @@ async function loadHome() {
     home = { ...data, day, tasteKey: key };
     homeKey = key;
     rememberHome(data);
-    renderHome();
+    redraw($('rows'), renderHome);
     keepPage();
     if (view === 'new') renderNew();
     if (view === 'list') renderList();
@@ -596,7 +617,8 @@ function recentRow() {
   return sec;
 }
 function updateRecentRow() {
-  $('row-recent')?.replaceWith(recentRow());
+  const row = $('row-recent');
+  if (row) redraw(row, () => row.replaceWith(recentRow()));
 }
 
 function renderHero(s) {
@@ -605,6 +627,8 @@ function renderHero(s) {
   const bg = el('div', '', 'hero-bg');
   if (s.art) bg.append(picture(s.art, 'hero-blur'));
   const backdrop = picture(null, 'hero-backdrop', () => hero.classList.add('has-backdrop'));
+  // Phones hide the backdrop, and a lazy image that is hidden is never fetched.
+  backdrop.loading = 'lazy';
   bg.append(backdrop);
   const poster = artEl(s, s.art, false);
   poster.classList.add('hero-poster');
@@ -969,6 +993,7 @@ function buildTitle(c) {
   const art = c.art || c.poster;
   if (art) hero.append(picture(art, 't-blur'));
   const backdrop = picture(null, 't-backdrop', () => hero.classList.add('has-backdrop'));
+  backdrop.loading = 'lazy';
   const poster = artEl(c, art, false);
   poster.classList.add('t-poster');
   const name = el('h2', c.name || '', 't-name');
@@ -1382,7 +1407,7 @@ function renderNew() {
   }
   if (home.soon.length) rows.push({ key: 'soon', title: 'Coming soon', kind: 'soon', items: home.soon });
   if (home.popular?.length) rows.push({ key: 'popular', title: 'Popular right now', kind: 'row', items: home.popular });
-  holder.replaceChildren(...rows.map(rowEl));
+  redraw(holder, () => holder.replaceChildren(...rows.map(rowEl)));
 }
 
 /* -------------------------------------------------------------- my list */
@@ -1394,7 +1419,7 @@ const GROUPS = {
 const NOTES = { 1: 'you loved it', '-1': 'not for you' };
 
 function fill(grid, items, options = () => ({})) {
-  grid.replaceChildren(...items.map(c => {
+  redraw(grid, () => grid.replaceChildren(...items.map(c => {
     const li = el('li');
     const o = options(c);
     li.append(cardEl(c, o));
@@ -1405,7 +1430,7 @@ function fill(grid, items, options = () => ({})) {
       li.append(caption);
     }
     return li;
-  }));
+  })));
 }
 
 function renderList() {
