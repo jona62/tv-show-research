@@ -4,9 +4,11 @@ import { tieText, leaning, leaningHeading } from './format.js';
 import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere, longDate, airs,
   whereToWatch, trailerSearch, searchNote } from './format.js';
 import { pageKey, resumable, keptText, shownRows, withoutCard, viewedStore, noteViewed, recentlyViewed } from './format.js';
+import { genreChoices, nextByLetter, searchText, recentStore, noteSearch, withoutSearch, recentMatches } from './format.js';
 import { freshStore, today, dayNumber, noteSeen, noteEngaged, noteRow, noteHero, prune, freshness, watcher }
   from './fresh.js';
 import { daySeed, startersQuery, mergeStarters, browserLanguage, MAX_ROUND, MAX_PICKED } from './starters.js';
+import { sheets, closing, reveal, swapView, crossfade, peeks, edgeBack } from './gestures.js';
 
 const boot = JSON.parse(document.getElementById('boot').textContent);
 const $ = id => document.getElementById(id);
@@ -34,6 +36,7 @@ const TITLES = {
 // Thumb, heart, search and navigation shapes follow Feather icons (MIT, Cole Bemis).
 const ICONS = {
   search: '<circle cx="11" cy="11" r="7"/><path d="M20.5 20.5l-4.3-4.3"/>',
+  clock: '<circle cx="12" cy="12" r="9.5"/><path d="M12 6.5V12l3.5 2"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   check: '<path d="M20 6L9 17l-5-5"/>',
   close: '<path d="M18 6L6 18M6 6l12 12"/>',
@@ -318,7 +321,14 @@ function route() {
 }
 
 function showView(name) {
+  const first = view === null;
   view = name;
+  // On phones a view crossfades in (gestures.js). The search box takes focus as its view
+  // opens, so that view comes in at once rather than a frame later.
+  swapView(() => paintView(name), $(name), { quiet: first, sync: name === 'search' });
+}
+
+function paintView(name) {
   for (const id of VIEWS) $(id).hidden = id !== name;
   const current = name === 'welcome' ? 'home' : name;
   for (const a of document.querySelectorAll('[data-page]')) {
@@ -350,6 +360,9 @@ document.addEventListener('click', e => {
 });
 window.addEventListener('popstate', route);
 window.addEventListener('scroll', syncNav, { passive: true });
+// Installed, a swipe in from the left edge goes back from a title page or a view off home.
+edgeBack(() => !!titleId || (view !== 'home' && !document.querySelector('dialog[open]')),
+  () => (titleId ? closeTitle() : history.back()));
 
 /* ---------------------------------------------------------------- home */
 // The page arrives eight rows at a time: the first answer brings the hero and the first
@@ -551,6 +564,8 @@ function appendRows(rows) {
     }
   }
   if (!$('row-recent') && !home.more) holder.insertBefore(recentRow(), sentinel);
+  // On phones each new row eases in as it comes into view (gestures.js).
+  reveal(holder.querySelectorAll('section.row'));
 }
 
 // After a rating or a My List change: the card leaves the rows chosen for you, and every
@@ -617,7 +632,8 @@ function renderHero(s) {
   });
   const body = el('div', '', 'hero-body');
   body.append(poster, copy);
-  hero.replaceChildren(bg, el('div', '', 'hero-shade'), body);
+  // On phones a new hero crossfades over the one before (gestures.js).
+  crossfade(hero, bg, el('div', '', 'hero-shade'), body);
   // TMDB's backdrop when it has one, else TVmaze's.
   if (s.tmdb?.backdrop) backdrop.src = s.tmdb.backdrop;
   else {
@@ -755,6 +771,29 @@ function cardEl(c, { rank = 0, soon = false, note = '', row = '' } = {}) {
   return card;
 }
 
+// A long press on a poster, on a touch screen, lifts it into a peek (gestures.js) with the
+// quick buttons the hover shows: more info, My List, I like this and Love this. More info
+// and the poster do what a tap on the card does.
+function peekOf(card, close) {
+  const c = info(Number(card.dataset.id));
+  const open = () => { close(true); card.querySelector('.card-hit').click(); };
+  const art = button('peek-art', '', open);
+  art.setAttribute('aria-label', `Open ${c.name}`);
+  art.append(artEl(c, c.poster, false));
+  const panel = el('div', '', 'peek-panel');
+  panel.append(el('h2', c.name, 'peek-name'), metaEl(c, null));
+  if (c.genres?.length) panel.append(el('p', c.genres.join(', '), 'peek-genres'));
+  const listed = listButton(c, 'round');
+  listed.className = 'round';
+  const acts = el('div', '', 'peek-acts');
+  acts.append(button('btn primary', 'More info', open, 'info'), listed, ...rateButtons(c, [.7, 1]));
+  panel.append(acts);
+  const box = el('div', '', 'peek-box');
+  box.append(art, panel);
+  return box;
+}
+peeks(peekOf);
+
 function listRow() {
   const items = state.saved.slice().reverse().slice(0, 20).map(s => ({ ...s, ...(known.get(s.id) || {}) }));
   const sec = rowEl({ key: 'list', title: 'My List', kind: 'list', items });
@@ -876,23 +915,29 @@ function hideTitle() {
   titleToken++;
   titleId = null;
   T = null;
+  // A trailer stops at once. The rest of the page goes once the sheet has slid away.
+  $('t-sheet').querySelector('.t-player iframe')?.remove();
   if ($('title').open) $('title').close();
-  // Emptying the page also stops a trailer that is still playing.
-  $('t-sheet').replaceChildren();
   document.documentElement.classList.remove('modal-open');
   document.title = TITLES[view] || 'Couchside';
   if (view === 'home') updateRecentRow();
 }
+// The page is emptied once its sheet has closed, unless a title opened again meanwhile.
+$('title').addEventListener('close', () => { if (!titleId) $('t-sheet').replaceChildren(); });
 $('title').addEventListener('cancel', e => { e.preventDefault(); closeTitle(); });
 $('t-sheet').addEventListener('click', e => { if (titleId && e.target.closest('a[target="_blank"]')) engaged(titleId); });
 $('title').addEventListener('click', e => { if (e.target === $('title')) closeTitle(); });
+// Every dialog is a sheet (gestures.js): a swipe down closes it as its close button does,
+// and the title page through its history.
+sheets(d => (d === $('title') ? closeTitle() : d.close()));
 
 function showTitle(id, play = false) {
   const token = ++titleToken;
   titleId = id;
   T = buildTitle({ ...info(id), id });
   const dialog = $('title');
-  if (!dialog.open) {
+  // A title page still sliding away comes back up.
+  if (!dialog.open || closing(dialog)) {
     dialog.showModal();
     document.documentElement.classList.add('modal-open');
   }
@@ -1296,28 +1341,103 @@ function episodeEl(ep) {
 }
 
 /* --------------------------------------------------------------- browse */
-let browseKey = null, browseReq = 0;
+// Genres are picked from a row of chips, or from All genres: a sheet on phones and a
+// panel under its button on wide screens. Both are listboxes, and choosing a genre
+// changes the address as a link does, so Back steps through the genres chosen.
+let browseKey = null, browseReq = 0, browseShown = null;
 const genreLabel = key => boot.genres.find(g => g.key === key)?.label;
+const GENRES = genreChoices(boot.genres);
+const genreHref = key => (key ? `/browse?genre=${encodeURIComponent(key)}` : '/browse');
+
+function genreOption(g, cls) {
+  const b = el('button', '', cls);
+  b.type = 'button';
+  b.tabIndex = -1;
+  b.dataset.genre = g.key;
+  b.setAttribute('role', 'option');
+  b.append(g.short);
+  return b;
+}
+
+// Marks the option for a genre as chosen and gives it the listbox's one tab stop, which
+// the first option takes when none is chosen.
+function markGenre(box, key) {
+  const options = [...box.querySelectorAll('[role=option]')];
+  const chosen = options.find(o => o.dataset.genre === key) || null;
+  for (const o of options) {
+    o.setAttribute('aria-selected', String(o === chosen));
+    o.tabIndex = o === (chosen || options[0]) ? 0 : -1;
+  }
+  return chosen;
+}
+
+// Arrow keys move along a listbox, Home and End go to either end and a letter to the next
+// option it begins; Enter, Space or a click chooses.
+function listboxKeys(box, back, ahead) {
+  box.addEventListener('keydown', e => {
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    const options = [...box.querySelectorAll('[role=option]')];
+    const at = options.indexOf(e.target);
+    if (at < 0) return;
+    const k = e.key;
+    const to = k === ahead ? Math.min(at + 1, options.length - 1) : k === back ? Math.max(at - 1, 0)
+      : k === 'Home' ? 0 : k === 'End' ? options.length - 1
+        : k.length === 1 && k.trim() ? nextByLetter(options.map(o => o.textContent), at, k) : -1;
+    if (to < 0) return;
+    e.preventDefault();
+    for (const o of options) o.tabIndex = o === options[to] ? 0 : -1;
+    options[to].focus();
+  });
+}
+
+// Brings a chip into view near the middle of the row, unless it is in full view already.
+function showChip(chip) {
+  const bar = $('genre-scroll');
+  if (!chip) { bar.scrollLeft = 0; return; }
+  const inset = parseFloat(getComputedStyle(bar).paddingLeft) || 0;
+  const start = chip.offsetLeft, end = start + chip.offsetWidth;
+  if (start >= bar.scrollLeft + inset && end <= bar.scrollLeft + bar.clientWidth - inset) return;
+  bar.scrollLeft = start - (bar.clientWidth - chip.offsetWidth) / 2;
+}
+
+// On a mouse, arrows at either end page through the chips, as they do through a row.
+const syncGenreNudges = (() => {
+  const bar = $('genre-scroll');
+  const page = dir => bar.scrollBy({ left: dir * bar.clientWidth * .8, behavior: motion() ? 'smooth' : 'auto' });
+  const prev = button('nudge prev', '', () => page(-1), 'left');
+  const next = button('nudge next', '', () => page(1), 'right');
+  prev.setAttribute('aria-label', 'Back through the genres');
+  next.setAttribute('aria-label', 'More genres');
+  $('genre-bar').prepend(prev);
+  $('genre-bar').append(next);
+  const sync = () => {
+    prev.hidden = bar.scrollLeft < 8;
+    next.hidden = bar.scrollLeft + bar.clientWidth >= bar.scrollWidth - 8;
+  };
+  bar.addEventListener('scroll', () => requestAnimationFrame(sync), { passive: true });
+  window.addEventListener('resize', sync);
+  return sync;
+})();
 
 function renderBrowse() {
   const { genre } = where();
   const valid = genreLabel(genre) ? genre : '';
-  const pick = $('genre-pick');
-  if (!pick.options.length) {
-    const all = el('option', 'All genres');
-    all.value = '';
-    pick.append(all, ...boot.genres.map(g => {
-      const option = el('option', g.label);
-      option.value = g.key;
-      return option;
-    }));
+  const row = $('genre-pick');
+  if (!row.childElementCount) row.append(...GENRES.map(g => genreOption(g, 'genre-chip')));
+  const chip = markGenre(row, valid);
+  $('genre-all').classList.toggle('on', !valid);
+  if (valid !== browseShown) {
+    // A new choice starts from the top of the page, with its chip in sight.
+    if (browseShown !== null && window.scrollY) window.scrollTo(0, 0);
+    browseShown = valid;
+    showChip(chip);
   }
-  pick.value = valid;
+  syncGenreNudges();
   $('browse-h').textContent = valid ? genreLabel(valid) : 'Browse';
   if (!valid) {
     browseKey = '';
     const tiles = el('ul', '', 'tiles');
-    tiles.append(...boot.genres.map(g => {
+    tiles.append(...GENRES.map(g => {
       const li = el('li');
       const a = el('a', '', 'tile');
       a.href = `/browse?genre=${encodeURIComponent(g.key)}`;
@@ -1344,16 +1464,56 @@ async function loadBrowse(genre) {
     for (const r of data.rows) r.items.forEach(remember);
     $('browse-body').replaceChildren(...(data.rows.length ? data.rows.map(rowEl)
       : [el('p', 'Nothing in this genre fits your settings yet.', 'row-empty')]));
+    reveal($('browse-body').querySelectorAll('section.row'));
   } catch (e) {
     if (id !== browseReq) return;
     browseKey = null;
     $('browse-body').replaceChildren(el('p', e.message, 'row-empty'));
   }
 }
-$('genre-pick').addEventListener('change', () => {
-  const g = $('genre-pick').value;
-  go(g ? `/browse?genre=${encodeURIComponent(g)}` : '/browse');
+$('genre-pick').addEventListener('click', e => {
+  const option = e.target.closest('[role=option]');
+  if (option) go(genreHref(option.dataset.genre));
 });
+listboxKeys($('genre-pick'), 'ArrowLeft', 'ArrowRight');
+
+// All genres: every genre A to Z after All genres itself, with the one on screen ticked.
+function openGenres() {
+  const list = $('genre-list');
+  if (!list.childElementCount) {
+    list.append(...[{ key: '', short: 'All genres' }, ...GENRES].map(g => {
+      const option = genreOption(g, 'genre-opt');
+      option.append(icon('check'));
+      return option;
+    }));
+  }
+  const { genre } = where();
+  const chosen = markGenre(list, genreLabel(genre) ? genre : '');
+  placeGenres();
+  $('genres').showModal();
+  $('genre-all').setAttribute('aria-expanded', 'true');
+  chosen.focus();
+}
+function placeGenres() {
+  if (!wide()) return;
+  const r = $('genre-all').getBoundingClientRect();
+  $('genres').style.setProperty('--x', `${Math.round(r.left)}px`);
+  $('genres').style.setProperty('--y', `${Math.round(r.bottom + 8)}px`);
+}
+$('genre-all').append(icon('more'));
+$('genre-all').addEventListener('click', openGenres);
+$('genre-list').addEventListener('click', e => {
+  const option = e.target.closest('[role=option]');
+  if (!option) return;
+  $('genres').close();
+  go(genreHref(option.dataset.genre));
+});
+listboxKeys($('genre-list'), 'ArrowUp', 'ArrowDown');
+$('genres').addEventListener('click', e => { if (e.target === $('genres')) $('genres').close(); });
+$('genres').addEventListener('close', () => $('genre-all').setAttribute('aria-expanded', 'false'));
+const followGenres = () => { if ($('genres').open) placeGenres(); };
+window.addEventListener('resize', followGenres);
+window.addEventListener('scroll', followGenres, { passive: true });
 
 /* ----------------------------------------------------------- new & popular */
 function renderNew() {
@@ -1366,6 +1526,7 @@ function renderNew() {
   if (home.soon.length) rows.push({ key: 'soon', title: 'Coming soon', kind: 'soon', items: home.soon });
   if (home.popular?.length) rows.push({ key: 'popular', title: 'Popular right now', kind: 'row', items: home.popular });
   holder.replaceChildren(...rows.map(rowEl));
+  reveal(holder.children);
 }
 
 /* -------------------------------------------------------------- my list */
@@ -1421,9 +1582,12 @@ function renderList() {
 }
 
 /* --------------------------------------------------------------- search */
-let searchReq = 0, searchTimer = 0;
+// searchShown is the search on screen or on its way, and resultsFor the one whose
+// results are showing ('' for the suggestions).
+let searchReq = 0, searchTimer = 0, searchShown = null, resultsFor = '';
 
 function suggestions() {
+  resultsFor = '';
   $('search-note').textContent = 'Search by title. Until then, here is what people are watching.';
   const popular = home?.popular || [];
   fill($('results'), home ? [...home.top10, ...popular] : boot.starters);
@@ -1431,10 +1595,14 @@ function suggestions() {
 }
 
 // The server forgives typos, spacing and other titles, and asks TVmaze about shows
-// too new for the catalogue, so a search here rarely comes back empty.
+// too new for the catalogue, so a search here rarely comes back empty. Coming back to
+// the search on screen, such as by closing a title opened from it, keeps its results.
 function search(q, typed = true) {
   const query = q.trim();
   for (const input of [$('q'), $('q-page')]) if (document.activeElement !== input && input.value !== q) input.value = q;
+  paintRecent();
+  if (query === searchShown) return;
+  searchShown = query;
   clearTimeout(searchTimer);
   const id = ++searchReq;
   if (!query) { suggestions(); return; }
@@ -1448,12 +1616,15 @@ function search(q, typed = true) {
       const { shows, missing = [], missing_first: first = false } = await call(`/api/search?q=${encodeURIComponent(query)}`);
       if (id !== searchReq || (quiet && !shows.length)) return;
       shows.forEach(remember);
+      resultsFor = query;
       $('search-note').textContent = searchNote(query, shows.length, missing.length);
       fill($('results'), shows.map(s => ({ ...s, ...(known.get(s.id) || {}), aka: s.aka })),
         c => (c.aka ? { note: `also known as ${c.aka}`, caption: `Also known as ${c.aka}` } : {}));
       showMissing(missing, first);
     } catch (e) {
-      if (id === searchReq && !quiet) $('search-note').textContent = e.message;
+      if (id !== searchReq) return;
+      searchShown = null;
+      if (!quiet) $('search-note').textContent = e.message;
     }
   }, typed ? 200 : 0);
 }
@@ -1476,31 +1647,146 @@ function showMissing(missing, first) {
   $('search').insertBefore(box, first ? $('results') : null);
 }
 
-function typed(input) {
-  const q = input.value;
+// What is typed shows at /search?q= at once. Typing while already searching replaces the
+// address, so Back leaves the search rather than stepping back through it letter by letter.
+function toSearch(q, typed = true) {
   const url = q ? `/search?q=${encodeURIComponent(q)}` : '/search';
   if (view !== 'search') { history.pushState(null, '', url); showView('search'); }
   else history.replaceState(history.state, '', url);
-  search(q);
+  search(q, typed);
 }
-for (const input of [$('q'), $('q-page')]) {
-  input.addEventListener('input', () => typed(input));
+
+// Recent searches (format.js keeps the list): a search counts once it is committed, by
+// Enter, by opening one of its results or by choosing it here again.
+const SEARCHES_KEY = 'couchside-searches';
+const readRecents = text => { try { return recentStore(JSON.parse(text)); } catch { return []; } };
+let recents = [];
+try { recents = readRecents(localStorage.getItem(SEARCHES_KEY)); } catch { /* storage is off */ }
+function keepRecents(list) {
+  if (list === recents) return;
+  recents = list;
+  try { localStorage.setItem(SEARCHES_KEY, JSON.stringify(recents)); } catch { /* private mode */ }
+  paintRecent();
+}
+const commitSearch = q => keepRecents(noteSearch(recents, q));
+window.addEventListener('storage', e => {
+  if (e.key !== SEARCHES_KEY) return;
+  recents = readRecents(e.newValue);
+  paintRecent();
+});
+
+// They show under the search page's box on phones while it has the focus or is empty,
+// and drop from the nav's box on wide screens while it has the focus. Once something is
+// typed, only those it begins, or begins a word of, stay.
+const holdsFocus = (...nodes) => nodes.some(n => n.contains(document.activeElement));
+function paintRecent() {
+  const phone = !wide(), page = $('q-page');
+  fillRecent($('recent-page'), page,
+    phone && view === 'search' && (holdsFocus(page, $('recent-page')) || !searchText(page.value)));
+  fillRecent($('recent-drop'), $('q'), !phone && $('find').classList.contains('open') && holdsFocus($('find')));
+}
+function fillRecent(box, input, show) {
+  const items = show ? recentMatches(recents, input.value) : [];
+  box.hidden = !items.length;
+  const drawn = items.join('\n');
+  if (box.dataset.drawn === drawn) return;
+  box.dataset.drawn = drawn;
+  if (!items.length) { box.replaceChildren(); return; }
+  const h = el('h2', 'Recent searches', 'recent-h');
+  h.id = `${box.id}-h`;
+  const clear = button('recent-clear', 'Clear', () => {
+    const inside = box.contains(document.activeElement);
+    keepRecents([]);
+    if (inside) input.focus();
+  });
+  clear.setAttribute('aria-label', 'Clear recent searches');
+  const head = el('div', '', 'recent-head');
+  head.append(h, clear);
+  const list = el('ul', '', 'recent-list');
+  list.setAttribute('aria-labelledby', h.id);
+  list.append(...items.map(q => {
+    const li = el('li');
+    const again = button('recent-q', '', () => searchAgain(q), 'clock');
+    again.append(el('span', q, 'recent-text'));
+    const x = button('icon-btn recent-x', '', () => forget(box, input, q), 'close');
+    x.setAttribute('aria-label', `Remove “${q}” from recent searches`);
+    li.append(again, x);
+    return li;
+  }));
+  box.replaceChildren(head, list);
+}
+function searchAgain(q) {
+  for (const input of [$('q'), $('q-page')]) input.value = q;
+  toSearch(q, false);
+  commitSearch(q);
+  document.activeElement?.blur();
+}
+// Taking one out from the keyboard leaves the focus on the next one's x, or in the box.
+function forget(box, input, q) {
+  const at = [...box.querySelectorAll('.recent-x')].indexOf(document.activeElement);
+  keepRecents(withoutSearch(recents, q));
+  if (at < 0) return;
+  const left = box.querySelectorAll('.recent-x');
+  (left[Math.min(at, left.length - 1)] || input).focus();
+}
+for (const [box, input] of [[$('recent-page'), $('q-page')], [$('recent-drop'), $('q')]]) {
+  // Pressing one keeps the focus, and a phone's keyboard, in the box.
+  box.addEventListener('mousedown', e => { if (e.target.closest('button')) e.preventDefault(); });
+  box.addEventListener('keydown', e => {
+    const items = [...box.querySelectorAll('.recent-q')];
+    const at = items.indexOf(e.target);
+    if (e.key === 'Escape') { e.preventDefault(); input.focus(); }
+    else if (at >= 0 && e.key === 'ArrowDown') { e.preventDefault(); items[Math.min(at + 1, items.length - 1)].focus(); }
+    else if (at >= 0 && e.key === 'ArrowUp') { e.preventDefault(); (items[at - 1] || input).focus(); }
+  });
   input.addEventListener('keydown', e => {
-    if (e.key === 'Enter') input.blur();
+    const first = box.hidden ? null : box.querySelector('.recent-q');
+    if (e.key === 'ArrowDown' && first) { e.preventDefault(); first.focus(); }
+  });
+}
+// The nav's box folds away once it is empty and the focus has gone elsewhere.
+function settleFind() {
+  if (!$('q').value && !$('find').contains(document.activeElement)) $('find').classList.remove('open');
+  paintRecent();
+}
+for (const area of [$('find'), $('search')]) {
+  area.addEventListener('focusin', paintRecent);
+  area.addEventListener('focusout', () => requestAnimationFrame(settleFind));
+}
+window.addEventListener('resize', paintRecent);
+
+for (const input of [$('q'), $('q-page')]) {
+  input.addEventListener('input', () => toSearch(input.value));
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { commitSearch(input.value); input.blur(); }
     if (e.key === 'Escape' && input === $('q')) { input.value = ''; input.blur(); $('find').classList.remove('open'); }
   });
 }
+// Opening one of a search's results commits it too.
+$('results').addEventListener('click', e => { if (e.target.closest('.card-hit, .push')) commitSearch(resultsFor); });
+$('missing').addEventListener('click', e => { if (e.target.closest('a')) commitSearch(resultsFor); });
+
+// Search from the nav or the dock: coming from another page starts afresh with recent
+// searches showing, while on the search page it keeps what is there and takes the focus.
+function openSearch() {
+  if (view !== 'search') go('/search');
+  else window.scrollTo(0, 0);
+  $('q-page').focus();
+}
 $('find-open').append(icon('search'));
 $('find-open').addEventListener('click', () => {
-  if (wide()) {
-    $('find').classList.add('open');
-    $('q').focus();
-  } else {
-    go('/search');
-    $('q-page').focus();
-  }
+  if (!wide()) { openSearch(); return; }
+  if (view !== 'search') $('q').value = '';
+  $('find').classList.add('open');
+  $('q').focus();
 });
-$('q').addEventListener('blur', () => { if (!$('q').value) $('find').classList.remove('open'); });
+for (const a of document.querySelectorAll('a[data-page="search"]')) {
+  a.addEventListener('click', e => {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    openSearch();
+  });
+}
 document.addEventListener('keydown', e => {
   if (e.key !== '/' || e.target.closest('input, textarea, select') || document.querySelector('dialog[open]')) return;
   e.preventDefault();
@@ -1907,6 +2193,16 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
 /* ---------------------------------------------------------------- start */
 if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 for (const a of document.querySelectorAll('.dock [data-icon]')) a.prepend(icon(a.dataset.icon));
+// The dock tucks itself smaller while the page scrolls down and comes back on the way up,
+// as iOS 26 tab bars do. The empty touchstart lets iOS show a pressed tab.
+let dockY = window.scrollY;
+window.addEventListener('scroll', () => {
+  const y = window.scrollY;
+  if (Math.abs(y - dockY) < 10) return;
+  $('dock').classList.toggle('tucked', y > dockY && y > 160 && motion());
+  dockY = y;
+}, { passive: true });
+$('dock').addEventListener('touchstart', () => {}, { passive: true });
 for (const b of document.querySelectorAll('.close-btn')) b.append(icon('close'));
 updateCounts();
 route();

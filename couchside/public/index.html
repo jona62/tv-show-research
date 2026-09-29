@@ -11,6 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="format-detection" content="telephone=no">
 <title>Couchside</title>
 <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
@@ -44,6 +45,7 @@
       <button class="icon-btn" id="find-open" type="button" aria-label="Search"></button>
       <input id="q" type="search" placeholder="Search by title" autocomplete="off" maxlength="100"
              aria-label="Search shows by title" enterkeyhint="search">
+      <div class="recent drop" id="recent-drop" hidden></div>
     </div>
     <button class="avatar" id="account-open" type="button" aria-label="Your profile and settings" aria-haspopup="dialog"></button>
   </div>
@@ -79,7 +81,14 @@
   <section id="browse" class="view page" aria-labelledby="browse-h" hidden>
     <div class="browse-head">
       <h1 id="browse-h" class="page-h">Browse</h1>
-      <label class="genre-pick" for="genre-pick"><span class="sr">Genre</span><select id="genre-pick"></select></label>
+      <div class="genre-bar" id="genre-bar">
+        <div class="genre-scroll" id="genre-scroll">
+          <button class="genre-chip genre-all" id="genre-all" type="button" aria-haspopup="dialog" aria-controls="genres"
+                  aria-expanded="false">All genres</button>
+          <span class="genre-sep" aria-hidden="true"></span>
+          <div class="genre-row" id="genre-pick" role="listbox" aria-label="Genre" aria-orientation="horizontal"></div>
+        </div>
+      </div>
     </div>
     <div id="browse-body"></div>
   </section>
@@ -105,6 +114,7 @@
       <input id="q-page" type="search" placeholder="Search by title" autocomplete="off" maxlength="100"
              aria-label="Search shows by title" enterkeyhint="search">
     </div>
+    <div class="recent" id="recent-page" hidden></div>
     <p class="note" id="search-note" role="status" aria-live="polite"></p>
     <ul class="grid" id="results"></ul>
     <div class="missing" id="missing" hidden>
@@ -124,12 +134,12 @@
   <p>Nothing plays here: Couchside is for finding your next show.</p>
 </footer>
 
-<nav class="dock" aria-label="Sections">
-  <a href="/" data-link data-page="home" data-icon="home">Home</a>
-  <a href="/browse" data-link data-page="browse" data-icon="grid">Browse</a>
-  <a href="/new" data-link data-page="new" data-icon="spark" aria-label="New &amp; Popular">New</a>
-  <a href="/list" data-link data-page="list" data-icon="saved">My List</a>
-  <a href="/search" data-link data-page="search" data-icon="search">Search</a>
+<nav class="dock" id="dock" aria-label="Sections">
+  <a href="/" data-link data-page="home" data-icon="home"><span class="dock-label">Home</span></a>
+  <a href="/browse" data-link data-page="browse" data-icon="grid"><span class="dock-label">Browse</span></a>
+  <a href="/new" data-link data-page="new" data-icon="spark" aria-label="New &amp; Popular"><span class="dock-label">New</span></a>
+  <a href="/list" data-link data-page="list" data-icon="saved"><span class="dock-label">My List</span></a>
+  <a href="/search" data-link data-page="search" data-icon="search"><span class="dock-label">Search</span></a>
 </nav>
 
 <dialog id="title" class="modal" aria-labelledby="t-name"><div class="sheet" id="t-sheet"></div></dialog>
@@ -153,6 +163,14 @@
   <button class="menu-item" id="open-move" type="button">Move your list to another device</button>
   <button class="menu-item" id="open-about-2" type="button">How Couchside works</button>
   <button class="menu-item danger" id="reset" type="button">Start over</button>
+</div></dialog>
+
+<dialog id="genres" class="menu genre-menu" aria-labelledby="genres-h"><div class="menu-sheet">
+  <div class="menu-head">
+    <h2 id="genres-h">Genres</h2>
+    <button class="icon-btn close-btn" type="button" data-close aria-label="Close"></button>
+  </div>
+  <div class="genre-list" id="genre-list" role="listbox" aria-labelledby="genres-h"></div>
 </div></dialog>
 
 <dialog id="move" class="modal small" aria-labelledby="move-h"><div class="sheet pad">
