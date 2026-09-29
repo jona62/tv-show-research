@@ -3,20 +3,27 @@
 The refresher runs this after each build, as a process of its own. A show is matched
 to TMDB by the IMDb id TVmaze keeps for it, or failing that its TheTVDB id, and every
 answer, misses included, is remembered in MODEL_ROOT/tmdb/ids.json; a miss is asked
-again after 30 days. Each night up to TMDB_DAILY_LIMIT shows are fetched: first those
-with nothing yet, then the 3,000 most popular, then the stalest. Answers are trimmed
+again after 30 days. Each night shows are fetched in turn, first those with nothing
+yet, then the 3,000 most popular, then the stalest, until TMDB_DAILY_LIMIT requests
+are spent: one for each show's details, and one for each season asked for its
+trailers. TMDB keeps many shows' trailers on their seasons rather than on the show
+(Breaking Bad has none of its own, but a trailer on season 1 and a teaser on its
+last), so a show with no trailer or teaser of its own is asked for the videos of its
+first and latest seasons too, and a night with many of those fetches fewer shows;
+the rest wait, and come first the next night. Answers are trimmed
 to what the apps show and kept in MODEL_ROOT/tmdb/cache.json.gz, and a version gets a
 tmdb.json.gz holding only the shows in its own catalog. TMDB allows caching for six
 months, so a record older than 180 days is dropped.
 
-Nothing here feeds the model or its vectors. Standard library only.
+Nothing here feeds the model or its vectors, or the ranking. Standard library only.
 
     TMDB_API_KEY=... python tmdb.py --root MODEL_ROOT --version DIR
     python tmdb.py --version DIR --carry OLD_VERSION/tmdb.json.gz
 
 TMDB_API_KEY takes a v4 read access token (sent as a bearer token) or a v3 key (sent
 as the api_key parameter). TMDB_REGION (US), TMDB_MIN_POPULARITY (60, TVmaze's 0 to
-100 weight) and TMDB_DAILY_LIMIT (6000 shows) tune the rest.
+100 weight) and TMDB_DAILY_LIMIT (6000 requests for a show's details or a season's
+videos, so at most 6,000 shows) tune the rest.
 """
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -40,7 +47,7 @@ import zlib
 HOST = 'api.themoviedb.org'
 REGION = 'US'
 MIN_POPULARITY = 60
-DAILY_LIMIT = 6000
+DAILY_LIMIT = 6000                # requests a night for a show's details or a season's videos
 TOP = 3000                        # the most popular shows, refreshed every night the budget allows
 WORKERS = 6
 RATE = 20.0                       # requests a second, across every worker
@@ -62,6 +69,8 @@ FIND = '/3/find/{id}?external_source={source}'
 # Written out by hand: urlencode would turn the slash in watch/providers into %2F.
 DETAILS = ('/3/tv/{id}?language=en-US&append_to_response=content_ratings,watch/providers,videos'
            '&include_video_language=en,null')
+# A season's videos, asked for with the same languages as a show's own.
+SEASON_VIDEOS = '/3/tv/{id}/season/{season}/videos?language=en-US&include_video_language=en,null'
 AGENT = 'tv-model-refresher/1.0 (+https://github.com/jona62/tv-show-research)'
 
 
@@ -305,8 +314,15 @@ def trim_providers(block, region):
     return providers
 
 
-def trim_trailers(block):
-    """YouTube trailers, then teasers; official ones first, then the newest. At most six."""
+def trim_trailers(block, season=None):
+    """YouTube trailers, then teasers; official ones first, then the newest. At most six.
+    A season's carry its number, since a trailer named only "Official Trailer" does not
+    say which season it is for."""
+    return rank_trailers(trailers_in(block, season))
+
+
+def trailers_in(block, season=None):
+    """The YouTube trailers and teasers in a videos block, each once."""
     results = block.get('results') if isinstance(block, dict) else None
     found, seen = [], set()
     for video in results if isinstance(results, list) else []:
@@ -319,10 +335,35 @@ def trim_trailers(block):
         published = video.get('published_at')
         day = published[:10] if isinstance(published, str) and DAY.fullmatch(published[:10]) else None
         found.append({'key': key, 'name': video['name'][:200] if isinstance(video.get('name'), str) else '',
-                      'type': video['type'], 'official': video.get('official') is True, 'published': day})
-    found.sort(key=lambda t: t['published'] or '', reverse=True)
-    found.sort(key=lambda t: (TRAILER_TYPES.index(t['type']), not t['official']))
-    return found[:6]
+                      'type': video['type'], 'official': video.get('official') is True, 'published': day,
+                      **({'season': season} if season is not None else {})})
+    return found
+
+
+def rank_trailers(found):
+    """Trailers before teasers, official ones first, then the newest; each video once, and
+    six at most."""
+    unique, seen = [], set()
+    for trailer in found:
+        if trailer['key'] not in seen:
+            seen.add(trailer['key'])
+            unique.append(trailer)
+    unique.sort(key=lambda t: t['published'] or '', reverse=True)
+    unique.sort(key=lambda t: (TRAILER_TYPES.index(t['type']), not t['official']))
+    return unique[:6]
+
+
+def trailer_seasons(raw):
+    """The seasons to ask for trailers when a show has none of its own: its first and its
+    latest, specials aside, from the seasons its details list (or, without them, from how
+    many it has). One when they are the same season, none when it lists none."""
+    listed = sorted({s['season_number'] for s in raw.get('seasons') or [] if isinstance(s, dict)
+                     and type(s.get('season_number')) is int and s['season_number'] > 0}) \
+        if isinstance(raw, dict) and isinstance(raw.get('seasons'), list) else []
+    if not listed and isinstance(raw, dict):
+        count = raw.get('number_of_seasons')
+        listed = [1, count] if type(count) is int and count > 0 else []
+    return list(dict.fromkeys([listed[0], listed[-1]])) if listed else []
 
 
 def trim_details(raw, tmdb_id, region, fetched_at):
@@ -377,7 +418,9 @@ def same_ids(mapping, imdb, tvdb):
 def plan(index, in_catalog, shows, ids, now, min_popularity=MIN_POPULARITY, limit=DAILY_LIMIT, top=TOP):
     """Tonight's shows, in order: those with no data yet, then those among the 3,000
     most popular, then the stalest. Popular shows need an IMDb or TheTVDB id to be
-    found at all; a recent miss waits out its 30 days. Returns (shows, eligible)."""
+    found at all; a recent miss waits out its 30 days. Each show takes one request of
+    the night's limit at least, so no more than the limit are planned; the step stops
+    sooner when season requests have spent the rest. Returns (shows, eligible)."""
     eligible = sorted((sid for sid, (weight, imdb, tvdb) in index.items()
                        if weight >= min_popularity and (imdb or tvdb) and sid in in_catalog),
                       key=lambda sid: (-index[sid][0], sid))
@@ -489,11 +532,45 @@ def refresh(root, version, raw=None, key=None, region=REGION, min_popularity=MIN
         f'{len(shows):,} cached.')
     lock = threading.Lock()
     stop = threading.Event()
-    counts = {'fetched': 0, 'missing': 0, 'failed': 0}
+    # seasons: requests for a season's videos; deferred: planned shows the night's limit
+    # did not reach, which stay due and come first another night.
+    counts = {'fetched': 0, 'missing': 0, 'failed': 0, 'seasons': 0, 'deferred': 0}
     trouble = {'streak': 0, 'error': None}
+    budget = {'left': max(0, limit)}
+
+    def spend():
+        """One of the night's requests for details or a season's videos, if any are left."""
+        with lock:
+            if budget['left'] <= 0:
+                return False
+            budget['left'] -= 1
+            return True
+
+    def defer():
+        with lock:
+            counts['deferred'] += 1
+
+    def season_trailers(tmdb_id, raw_show):
+        """For a show with no trailer or teaser of its own, those of its first and latest
+        seasons, as far as the night's requests allow. A season TMDB cannot answer costs
+        only its own trailers."""
+        found = []
+        for season in trailer_seasons(raw_show):
+            if not spend():
+                break
+            with lock:
+                counts['seasons'] += 1
+            try:
+                found += trailers_in(client.get(SEASON_VIDEOS.format(id=tmdb_id, season=season)), season)
+            except TmdbError:
+                continue
+        return rank_trailers(found)
 
     def one(sid):
         if stop.is_set():
+            return
+        if budget['left'] <= 0:
+            defer()
             return
         key_ = str(sid)
         _weight, imdb, tvdb = index[sid]
@@ -511,7 +588,13 @@ def refresh(root, version, raw=None, key=None, region=REGION, min_popularity=MIN
                         return
             else:
                 tmdb_id = mapping['tmdb_id']
+            if not spend():
+                defer()
+                return
             raw_show = client.get(DETAILS.format(id=tmdb_id))
+            record = trim_details(raw_show, tmdb_id, region, stamp) if raw_show is not None else None
+            if record is not None and not record['trailers']:
+                record['trailers'] = season_trailers(tmdb_id, raw_show)
             with lock:
                 if raw_show is None:
                     # TMDB no longer has it: forget the match and look again in 30 days.
@@ -519,7 +602,7 @@ def refresh(root, version, raw=None, key=None, region=REGION, min_popularity=MIN
                     shows.pop(key_, None)
                     counts['missing'] += 1
                 else:
-                    shows[key_] = trim_details(raw_show, tmdb_id, region, stamp)
+                    shows[key_] = record
                     counts['fetched'] += 1
                 trouble['streak'] = 0
         except KeyRejected:
@@ -544,10 +627,13 @@ def refresh(root, version, raw=None, key=None, region=REGION, min_popularity=MIN
                 say(f'TMDB: {n:,}/{len(todo):,} shows, {client.calls:,} requests, {time.monotonic() - started:.0f}s')
     if trouble['error']:
         say(f"TMDB: stopped early: {trouble['error']}.")
+    if counts['deferred']:
+        say(f"TMDB: the night's {limit:,} requests are spent; {counts['deferred']:,} shows wait for another night.")
     store.save(ids, shows, region)
     written = write_version(version, shows, in_catalog, region, now)
     say(f"TMDB: fetched {counts['fetched']:,}, not on TMDB {counts['missing']:,}, failed {counts['failed']:,}, "
-        f"{client.calls:,} requests; {written['shows']:,} shows in this version.")
+        f"{counts['seasons']:,} seasons asked for trailers, {client.calls:,} requests; "
+        f"{written['shows']:,} shows in this version.")
     return {'eligible': eligible, 'planned': len(todo), **counts, 'requests': client.calls, **written,
             'error': trouble['error']}
 

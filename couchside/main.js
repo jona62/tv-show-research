@@ -4,12 +4,15 @@ import { tieText, leaning, leaningHeading } from './format.js';
 import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere, longDate, airs,
   whereToWatch, trailerSearch, searchNote } from './format.js';
 import { pageKey, resumable, keptText, shownRows, withoutCard, viewedStore, noteViewed, recentlyViewed } from './format.js';
+import { POSTERS_AHEAD, POSTERS_AT_ONCE, FLUNG, FLUNG_AT_ONCE, STILL_FLUNG, SLOW_POSTER, ROWS_AHEAD, postersToLoad,
+  posterPace, catchingUp, rowsToAsk, retryAfter } from './format.js';
 import { genreChoices, nextByLetter, searchText, recentStore, noteSearch, withoutSearch, recentMatches, keepsRow } from './format.js';
 import { keeper, sessionAnswers } from './format.js';
+import { SNIPPETS, snippet, revealLabel, fitsOnLine } from './format.js';
 import { freshStore, today, dayNumber, noteSeen, noteEngaged, noteRow, noteHero, prune, freshness, watcher }
   from './fresh.js';
 import { daySeed, startersQuery, mergeStarters, browserLanguage, MAX_ROUND, MAX_PICKED } from './starters.js';
-import { sheets, closing, reveal, crossfade, peeks, edgeBack } from './gestures.js';
+import { sheets, closing, reveal, crossfade, peeks, edgeBack, speed } from './gestures.js';
 
 const boot = JSON.parse(document.getElementById('boot').textContent);
 // iOS zooms into a field it judges small and stays zoomed. maximum-scale=1 in the page's
@@ -208,7 +211,10 @@ function redraw(holder, draw) {
   try { return draw(); } finally { spare = outer; }
 }
 // A poster, over a tile in the show's own colour that names it until the image arrives.
-function artEl(c, src = c.poster, lazy = true) {
+// `load` says when: true once the browser finds it near (lazy), false at once, 'first'
+// at once and ahead of everything else, and 'ahead' when its row's turn comes (see
+// startPosters), so a row's posters are in before it is seen.
+function artEl(c, src = c.poster, load = true) {
   const kept = src && spare?.get(src);
   if (kept) {
     spare.delete(src);
@@ -220,15 +226,23 @@ function artEl(c, src = c.poster, lazy = true) {
   if (src) {
     box.dataset.src = src;
     const img = picture(null);
-    if (lazy) img.loading = 'lazy';
     img.addEventListener('load', () => box.classList.add('loaded'), { once: true });
     img.addEventListener('error', () => img.remove(), { once: true });
-    img.src = src;
-    // One this page already holds shows at once, without fading in again.
-    if (img.complete && img.naturalWidth) box.classList.add('loaded');
     box.append(img);
+    if (load === 'ahead' && rowsNear) return box;
+    if (load === true || load === 'ahead') img.loading = 'lazy';
+    loadPoster(box, load === 'first');
   }
   return box;
+}
+// Starts a poster's image, unless it has started already.
+function loadPoster(box, urgent = false) {
+  const img = box.querySelector('img');
+  if (!img || img.getAttribute('src') !== null) return;
+  if (urgent) img.fetchPriority = 'high';
+  img.src = box.dataset.src;
+  // One this page already holds shows at once, without fading in again.
+  if (img.complete && img.naturalWidth) box.classList.add('loaded');
 }
 function fact(label, value) {
   if (!value) return null;
@@ -420,12 +434,13 @@ edgeBack(() => !!titleId || (view !== 'home' && !document.querySelector('dialog[
   () => (titleId ? closeTitle() : history.back()));
 
 /* ---------------------------------------------------------------- home */
-// The page arrives eight rows at a time: the first answer brings the hero and the first
-// eight, and as the reader nears the end the next six are asked for, telling the server
-// which rows are already shown so it builds the same page. Within a visit the page holds
-// still: a reload within half an hour on the same day with the same list shows it again
-// as it was, and a rating or a My List change merges into it rather than laying it out
-// again. Impressions are only written down, never a reason to re-render.
+// The page arrives a few rows at a time: the first answer brings the hero and the first
+// eight, and the next six are asked for while three screens of rows are still to come
+// (loadMore), telling the server which rows are already shown so it builds the same
+// page. Within a visit the page holds still: a reload within half an hour on the same
+// day with the same list shows it again as it was, and a rating or a My List change
+// merges into it rather than laying it out again. Impressions are only written down,
+// never a reason to re-render.
 let home = null, homeKey = '', homeReq = 0, homeAbort = null, homeTimer = 0, moreBusy = false;
 const PAGE_KEY = 'couchside-home';
 const currentKey = () => pageKey(taste(), state.saved.map(s => s.id));
@@ -460,6 +475,14 @@ function rememberHome(data) {
   for (const list of [data.top10, data.fresh, data.soon, data.list, data.popular]) (list || []).forEach(remember);
 }
 
+// The views drawn from the home page's answer, drawn again once it is here: a view opened
+// first (a link to /new, a reload on My List) drew placeholders while it was on its way.
+function homeArrived() {
+  if (view === 'new') renderNew();
+  if (view === 'list') renderList();
+  if (view === 'search' && where().q.trim().length < 2) suggestions();
+}
+
 async function loadHome() {
   const key = currentKey();
   if (home && key === homeKey) return;
@@ -473,6 +496,7 @@ async function loadHome() {
     homeKey = key;
     rememberHome(home);
     renderHome();
+    homeArrived();
     return;
   }
   if (!home) renderHomeLoading();
@@ -486,9 +510,7 @@ async function loadHome() {
     rememberHome(data);
     redraw($('rows'), renderHome);
     keepPage();
-    if (view === 'new') renderNew();
-    if (view === 'list') renderList();
-    if (view === 'search' && where().q.trim().length < 2) suggestions();
+    homeArrived();
   } catch (e) {
     if (e.name === 'AbortError' || id !== homeReq) return;
     if (home) toast(e.message);
@@ -509,16 +531,23 @@ async function moreBody(count) {
   };
 }
 
-// The next rows, once the reader is within a screen of the end. After a rating or a My
-// List change the request carries the new list, so the rows not yet shown are built
-// from it while those on screen stay as they are.
+// The next rows, asked for while ROWS_AHEAD screens of rows are still to come below the
+// reader, and asked for again as soon as a page lands if they still are, so a reader
+// scrolling on does not meet the end. A reader within a screen of it gets a longer page,
+// and posters ahead wait for it (startPosters). After a rating or a My List change the
+// request carries the new list, so the rows not yet shown are built from it while those
+// on screen stay as they are.
+let moreFailures = 0, moreTimer = 0;
 async function loadMore() {
   if (!home?.more || moreBusy) return;
   moreBusy = true;
   const id = homeReq;
+  const left = sentinel.getBoundingClientRect().top - innerHeight;
+  rowsWanted = catchingUp(left, innerHeight);
   try {
-    const data = await post('/api/home', await moreBody(6));
+    const data = await post('/api/home', await moreBody(rowsToAsk(left, innerHeight)));
     if (id !== homeReq || !home) return;
+    moreFailures = 0;
     rememberHome(data);
     home.rows.push(...data.rows);
     Object.assign(home, { more: data.more, taste: data.taste, interests: data.interests, tasteKey: homeKey });
@@ -527,12 +556,22 @@ async function loadMore() {
     syncFoot();
   } catch (e) {
     moreButton.hidden = !home?.more;
-    toast(e.message);
+    // Asking again goes on by itself, so a failure is said once, not at every try.
+    if (++moreFailures === 1) toast(e.message);
   } finally {
     moreBusy = false;
-    // Rows that arrive short of filling the screen leave the end in view: look again.
-    if (moreWatch && home?.more) { moreWatch.unobserve(sentinel); moreWatch.observe(sentinel); }
+    rowsWanted = false;
+    startPosters();
+    // Look again, since rows that arrive short of the look-ahead leave the end within it;
+    // after a failure, a little later each time.
+    clearTimeout(moreTimer);
+    moreTimer = setTimeout(watchEnd, retryAfter(moreFailures));
   }
+}
+function watchEnd() {
+  if (!moreWatch) return;
+  moreWatch.unobserve(sentinel);
+  if (home?.more) moreWatch.observe(sentinel);
 }
 const sentinel = el('div', '', 'more-rows');
 const moreButton = button('btn ghost', 'More rows', () => loadMore());
@@ -546,7 +585,7 @@ pageEnd.append(el('p', 'That’s everything for today. Rate more shows to grow y
 sentinel.append(moreButton, pageEnd);
 const moreWatch = 'IntersectionObserver' in window
   ? new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) loadMore(); },
-    { rootMargin: '0px 0px 100% 0px' })
+    { rootMargin: `0px 0px ${ROWS_AHEAD * 100}% 0px` })
   : null;
 // More rows where the scroll cannot be watched, and the end once there are no more.
 function syncFoot() {
@@ -602,10 +641,8 @@ function renderHome() {
     if (first) first.after(listRow()); else holder.insertBefore(listRow(), sentinel);
   }
   syncFoot();
-  if (moreWatch) {
-    moreWatch.unobserve(sentinel);
-    if (home.more) moreWatch.observe(sentinel);
-  }
+  moreFailures = 0;
+  watchEnd();
 }
 
 // Rows go in before the sentinel as they arrive; Recently viewed, which the browser
@@ -619,7 +656,7 @@ function appendRows(rows) {
     }
   }
   if (!$('row-recent') && !home.more) holder.insertBefore(recentRow(), sentinel);
-  // On phones each new row eases in as it comes into view (gestures.js).
+  // On phones a row that lands on screen eases in; the rest are simply there (gestures.js).
   reveal(holder.querySelectorAll('section.row'));
 }
 
@@ -662,7 +699,8 @@ function renderHero(s) {
   // Phones hide the backdrop, and a lazy image that is hidden is never fetched.
   backdrop.loading = 'lazy';
   bg.append(backdrop);
-  const poster = artEl(s, s.art, false);
+  // On a phone the hero's poster is the first screen's largest picture.
+  const poster = artEl(s, s.art, 'first');
   poster.classList.add('hero-poster');
   const copy = el('div', '', 'hero-copy');
   copy.append(el('h1', s.name, 'hero-title'));
@@ -724,6 +762,120 @@ function metaEl(s, live, hero = false, age = null) {
 let rowCount = 0;
 const syncers = new Set();
 
+// Posters load ahead of the reader. A row's wait until it comes within POSTERS_AHEAD
+// screens below the screen, or one above; then those it shows are wanted, with the
+// next two for a swipe, and, swiped along, the next two past wherever it has got to
+// (postersToLoad). Where a browser's own lazy loading waits until a row is near, and
+// Safari's until it is almost on screen, these are in before the row is seen.
+//
+// On a slow connection every image asked for shares it, and a crowd of posters no one
+// sees yet made those on screen, and the next rows, wait seconds for their turn. So
+// they start a few at a time (POSTERS_AT_ONCE): those each row shows before any row's
+// next two, nearest the screen first, while a row on screen starts those it shows at
+// once, up to as many again, and over a fast connection its next two with them. A page
+// flung over a slow connection, though, loads FLUNG_AT_ONCE at a time, rows on screen
+// included, leaving it to the rows the reader is heading for; and while the reader waits
+// at the end for rows (rowsWanted), no poster starts until they land.
+const wanted = new Map();       // rows within reach: the posters they show, and the next ones, not yet started
+const scrolls = [];             // the page's last few [time, scrollY], for its speed
+let postersLoading = 0, postersFrame = 0, postersTimer = 0, rowsWanted = false;
+let flungUntil = 0;             // a page flung is still being flung until a moment after it last went fast
+let pace = 0;                   // how long posters take, a running average in ms
+const rowsNear = 'IntersectionObserver' in window
+  ? new IntersectionObserver(entries => {
+    for (const { target, isIntersecting } of entries) {
+      if (isIntersecting) want(target); else wanted.delete(target);
+    }
+    startPosters();
+  }, { rootMargin: `100% 0px ${POSTERS_AHEAD * 100}% 0px` })
+  : null;
+const begun = box => box.querySelector('img')?.getAttribute('src') !== null;
+function waiting() {
+  for (const [shows, next] of wanted.values()) if (shows.length || next.length) return true;
+  return false;
+}
+// The posters a row within reach wants now and has not started: those it shows, and the next ones.
+function want(sec) {
+  const cards = [...sec.querySelectorAll('.track > li')];
+  const edge = sec.querySelector('.track')?.getBoundingClientRect().right ?? 0;
+  const lefts = cards.map(li => li.getBoundingClientRect().left);
+  const shows = [], next = [];
+  cards.slice(0, postersToLoad(lefts, edge)).forEach((li, i) => {
+    const box = li.querySelector('.art');
+    if (box && !begun(box)) (lefts[i] < edge ? shows : next).push(box);
+  });
+  wanted.set(sec, [shows, next]);
+}
+function startPosters() {
+  // Rows the reader is waiting for come before any poster.
+  if (rowsWanted) return;
+  const rows = [];
+  for (const [sec, lists] of wanted) {
+    if (!sec.isConnected) {
+      wanted.delete(sec);
+      rowsNear.unobserve(sec);
+    } else if (lists[0].length || lists[1].length) {
+      const r = sec.getBoundingClientRect();
+      rows.push([r.top >= innerHeight ? r.top - innerHeight : r.bottom <= 0 ? -r.bottom : 0, lists]);
+    }
+  }
+  rows.sort((a, b) => a[0] - b[0]);
+  // A page flung over a fast connection loads as one stopped at does.
+  const slow = pace > SLOW_POSTER;
+  const flung = slow && performance.now() < flungUntil;
+  const most = flung ? FLUNG_AT_ONCE : POSTERS_AT_ONCE;
+  // What each row shows, then each row's next ones; a row on screen, those it shows at
+  // once, up to twice as many, and over a fast connection its next ones with them.
+  for (const pass of [0, 1]) {
+    for (const [gap, lists] of rows) {
+      const boxes = lists[pass];
+      const now = !gap && !flung && (!pass || !slow);
+      while (boxes.length && (begun(boxes[0]) || postersLoading < (now ? 2 * most : most))) {
+        const box = boxes.shift();
+        if (!begun(box)) startPoster(box, now && !pass);
+      }
+    }
+  }
+}
+function startPoster(box, shown) {
+  const img = box.querySelector('img');
+  const from = performance.now();
+  let done = false;
+  const settle = () => {
+    if (done) return;
+    done = true;
+    postersLoading--;
+    startPosters();
+  };
+  postersLoading++;
+  img.addEventListener('load', () => {
+    pace = posterPace(pace, performance.now() - from);
+    settle();
+  }, { once: true });
+  img.addEventListener('error', settle, { once: true });
+  // A poster that never answers gives up its turn.
+  setTimeout(settle, 15_000);
+  loadPoster(box, shown);
+}
+// A row that comes on screen while its posters wait starts them, and so does a page that
+// stops. A flick that lands on the page stops it for a moment, so a page counts as flung
+// until STILL_FLUNG ms after it last went fast.
+window.addEventListener('scroll', () => {
+  const now = performance.now();
+  scrolls.push([now, scrollY]);
+  if (scrolls.length > 8) scrolls.shift();
+  if (Math.abs(speed(scrolls, now)) > FLUNG) flungUntil = now + STILL_FLUNG;
+  // Rows asked for ahead become the ones the reader waits for once they catch up.
+  if (moreBusy && !rowsWanted) rowsWanted = catchingUp(sentinel.getBoundingClientRect().top - innerHeight, innerHeight);
+  if (!waiting()) return;
+  postersFrame ||= requestAnimationFrame(() => {
+    postersFrame = 0;
+    startPosters();
+  });
+  clearTimeout(postersTimer);
+  postersTimer = setTimeout(startPosters, STILL_FLUNG + 50);
+}, { passive: true });
+
 // A row of posters. On the home page (watch) its cards count toward what this browser
 // has seen, and the row toward rows passed over; a click on any card in it counts as
 // engaging with the row.
@@ -743,7 +895,7 @@ function rowEl(r, { watch = false } = {}) {
       num.setAttribute('aria-hidden', 'true');
       li.append(num);
     }
-    const card = cardEl(c, { rank: r.kind === 'top10' ? n + 1 : 0, soon: r.kind === 'soon', row });
+    const card = cardEl(c, { rank: r.kind === 'top10' ? n + 1 : 0, soon: r.kind === 'soon', row, ahead: true });
     if (watch) seenWatch.observe(card, c.id);
     li.append(card);
     track.append(li);
@@ -753,10 +905,15 @@ function rowEl(r, { watch = false } = {}) {
   const next = button('nudge next', '', () => page(1), 'right');
   prev.setAttribute('aria-label', `Back through ${r.title}`);
   next.setAttribute('aria-label', `More of ${r.title}`);
+  // Swiped along, or resized, a row within reach wants the posters it now shows and the next two.
   const sync = () => {
     if (!track.isConnected) { syncers.delete(sync); return; }
     prev.hidden = track.scrollLeft < 8;
     next.hidden = track.scrollLeft + track.clientWidth >= track.scrollWidth - 8;
+    if (wanted.has(sec)) {
+      want(sec);
+      startPosters();
+    }
   };
   syncers.add(sync);
   track.addEventListener('scroll', () => requestAnimationFrame(sync), { passive: true });
@@ -773,6 +930,7 @@ function rowEl(r, { watch = false } = {}) {
   }
   sec.append(slider);
   if (row) rowWatch.observe(sec, row);
+  rowsNear?.observe(sec);
   return sec;
 }
 window.addEventListener('resize', () => { for (const sync of [...syncers]) sync(); });
@@ -780,8 +938,8 @@ window.addEventListener('resize', () => { for (const sync of [...syncers]) sync(
 // A poster that opens the title page. On a mouse, hovering shows its match and quick
 // buttons for My List and a rating; those skip the tab order, since the title page
 // offers the same actions to everyone. A card may carry one call-out, such as "Same
-// creator as Breaking Bad".
-function cardEl(c, { rank = 0, soon = false, note = '', row = '' } = {}) {
+// creator as Breaking Bad". In a row (ahead) its poster loads when the row asks.
+function cardEl(c, { rank = 0, soon = false, note = '', row = '', ahead = false } = {}) {
   const card = el('div', '', 'card');
   card.dataset.id = c.id;
   const hit = button('card-hit', '', () => openTitle(c.id, { row }));
@@ -790,7 +948,7 @@ function cardEl(c, { rank = 0, soon = false, note = '', row = '' } = {}) {
     rank ? `number ${rank} in the Top 10 today` : c.badge === 'top10' ? 'in the Top 10 today' : '',
     c.badge === 'new' ? 'new' : '', soon && c.premiered ? `premieres ${premiere(c.premiered)}` : '', c.callout, note,
   ].filter(Boolean).join(', '));
-  hit.append(artEl(c));
+  hit.append(artEl(c, c.poster, ahead ? 'ahead' : true));
   if (c.badge === 'top10' && !rank) {
     const top = el('span', '', 'badge-top');
     top.setAttribute('aria-hidden', 'true');
@@ -1005,7 +1163,7 @@ function showTitle(id, play = false) {
   loaded.then(data => {
     if (token !== titleToken) return;
     remember(data.show);
-    data.more.forEach(remember);
+    [...data.more, ...(data.fans || [])].forEach(remember);
     T.data = data;
     paintTitle();
     paintBackdrop();
@@ -1099,10 +1257,25 @@ function buildTitle(c) {
     moreList.append(li);
   }
   more.append(moreH, moreList);
+  // Fans also like: what this title's readers also look up, which may be nothing like it.
+  const fans = el('section', '', 't-section');
+  fans.hidden = true;
+  const fansH = el('h3', 'Fans also like');
+  fansH.id = 't-fans-h';
+  fans.setAttribute('aria-labelledby', fansH.id);
+  const fansSub = el('p', '', 't-sub');
+  fansSub.id = 't-fans-sub';
+  fans.setAttribute('aria-describedby', fansSub.id);
+  const fansList = el('ul', '', 'more');
+  fans.append(fansH, fansSub, fansList);
   const about = el('section', '', 't-section about');
-  $('t-sheet').replaceChildren(close, hero, body, episodes, videos, more, about);
+  $('t-sheet').replaceChildren(close, hero, body, episodes, videos, more, fans, about);
+  // Where to watch, the season's episodes and the trailers start short (unfold); each part
+  // remembers whether it was opened, so a repaint or another season keeps it so.
   const t = { id: c.id, card: c, hero, backdrop, name, out, acts, listed, main, side, episodes, clips: videos, moreList,
-              about, close, data: null, live: null, age: null, videos: null, error: '', eps: null };
+              fans, fansSub, fansList, about, close, data: null, live: null, age: null, videos: null, error: '',
+              eps: null, epsMore: null, clipList: null, clipsMore: null,
+              open: { watch: false, episodes: false, clips: false } };
   paintOut(t, c);
   return t;
 }
@@ -1149,6 +1322,7 @@ function paintTitle() {
   else if (T.error) main.push(el('p', T.error, 't-summary muted'));
   else main.push(skelLines(4));
   T.main.replaceChildren(...main);
+  if (watch) fitWatch(watch);
 
   const cast = live?.cast?.map(p => p.name) || [];
   T.side.replaceChildren(...[
@@ -1191,13 +1365,15 @@ function paintTitle() {
 
 // Where to watch: TMDB's services with their own logos, linking to TMDB's page for the
 // show and credited to JustWatch; without them, where TVmaze says it streams or airs and
-// Apple TV when iTunes sells it, each with the service's own small icon.
+// Apple TV when iTunes sells it, each with the service's own small icon. They keep to
+// one line that fades out where it runs over, and a caret at its end opens the rest.
 function watchEl(s, live, age, tm) {
   const { links, credit } = whereToWatch(s.name, tm, live?.site, live?.channels, age?.apple);
   if (!links.length) return null;
   const box = el('div', '', 'watch');
   box.append(el('span', 'Where to watch', 'k'));
   const list = el('div', '', 'watch-list');
+  list.id = 't-watch';
   for (const w of links) {
     const a = el('a', '', 'watch-link');
     a.href = w.href;
@@ -1216,9 +1392,127 @@ function watchEl(s, live, age, tm) {
     if (w.note) a.append(el('small', w.note));
     list.append(a);
   }
-  box.append(list);
+  const more = el('button', '', 'round watch-more');
+  more.type = 'button';
+  more.setAttribute('aria-controls', list.id);
+  more.setAttribute('aria-label', `All ${links.length} places to watch ${s.name}`);
+  more.append(icon('more'));
+  more.addEventListener('click', () => {
+    if (busy(list)) return;
+    T.open.watch = !T.open.watch;
+    unfold(list, open => setWatch(box, open), T.open.watch);
+  });
+  const line = el('div', '', 'watch-line');
+  line.append(list, more);
+  box.append(line);
   if (credit) box.append(el('span', 'Streaming data from JustWatch', 'watch-credit'));
   return box;
+}
+
+// Which services one line shows whole, measured on the page: when they run over, the caret
+// shows and the line fades out at its end, and the pills past the fade leave the tab order
+// until the line is opened.
+const FADE = 40;
+function fitWatch(box) {
+  const list = box.querySelector('.watch-list'), more = box.querySelector('.watch-more');
+  box.classList.remove('open', 'clipped');
+  more.hidden = true;
+  let shown = list.children.length;
+  if (list.scrollWidth > list.clientWidth + 1) {
+    box.classList.add('clipped');
+    more.hidden = false;
+    shown = fitsOnLine([...list.children].map(a => a.offsetLeft + a.offsetWidth), list.clientWidth, FADE);
+  }
+  box.dataset.shown = String(shown);
+  setWatch(box, T.open.watch);
+}
+function setWatch(box, open) {
+  const clipped = box.classList.contains('clipped');
+  const shown = Number(box.dataset.shown);
+  box.classList.toggle('open', clipped && open);
+  const more = box.querySelector('.watch-more');
+  more.setAttribute('aria-expanded', String(clipped && open));
+  more.title = open ? 'Show fewer' : 'Show all';
+  [...box.querySelector('.watch-list').children].forEach((a, n) => { a.inert = clipped && !open && n >= shown; });
+}
+window.addEventListener('resize', () => requestAnimationFrame(() => {
+  const box = T?.main.querySelector('.watch');
+  if (box && !busy(box.querySelector('.watch-list'))) fitWatch(box);
+  if (T?.clipList && !busy(T.clipList)) setClips(T.open.clips);
+}));
+
+// A long part of a title page opens with a button that closes it again (aria-expanded,
+// with a caret that turns). Opening runs the part's height up from what it was, so what
+// is below slides down; closing runs it back, and when the button sits below the part
+// the page moves with it, so the button stays under the finger. Quick, and at once under
+// reduced motion.
+const REVEAL = 220;
+const easeOut = k => 1 - (1 - k) ** 3;
+const busy = box => box.classList.contains('sizing');
+function unfold(box, set, open, anchor = null) {
+  // A hidden page runs no animations, so one begun there would hold the part half open.
+  const still = !motion() || document.hidden;
+  const page = $('title');
+  const from = box.offsetHeight;
+  // While a part runs, the page is not moved to keep what is below it in place.
+  const done = () => {
+    box.classList.remove('sizing');
+    page.classList.remove('unfolding');
+  };
+  if (open) {
+    set(true);
+    const to = box.offsetHeight;
+    if (still || to <= from || !box.animate) return;
+    box.classList.add('sizing');
+    page.classList.add('unfolding');
+    const run = box.animate({ height: [`${from}px`, `${to}px`] }, { duration: REVEAL, easing: 'cubic-bezier(.22,1,.36,1)' });
+    run.onfinish = run.oncancel = done;
+    return;
+  }
+  const y = anchor ? anchor.getBoundingClientRect().top : 0;
+  set(false);
+  const to = box.offsetHeight;
+  if (still || to >= from) {
+    if (anchor) page.scrollTop += anchor.getBoundingClientRect().top - y;
+    return;
+  }
+  // Closed for a moment to measure, then open again while it runs back down.
+  set(true);
+  const top = page.scrollTop, began = performance.now();
+  box.classList.add('sizing');
+  page.classList.add('unfolding');
+  const step = now => {
+    // A title page closed meanwhile has nothing left to close.
+    if (!T || !box.isConnected) {
+      done();
+      return;
+    }
+    const k = Math.min(1, (now - began) / REVEAL);
+    const height = from - (from - to) * easeOut(k);
+    box.style.height = `${height}px`;
+    if (anchor) page.scrollTop = top - (from - height);
+    if (k < 1) {
+      requestAnimationFrame(step);
+      return;
+    }
+    set(false);
+    box.style.height = '';
+    done();
+  };
+  requestAnimationFrame(step);
+}
+function revealButton(part, onClick) {
+  const b = el('button', '', 'reveal');
+  b.type = 'button';
+  b.setAttribute('aria-controls', part.id);
+  b.addEventListener('click', onClick);
+  const bar = el('div', '', 'reveal-bar');
+  bar.append(b);
+  return b;
+}
+function paintReveal(b, text, open) {
+  b.setAttribute('aria-expanded', String(open));
+  b.replaceChildren(document.createTextNode(text), icon('more'));
 }
 
 // With a trailer, Trailer leads and My List steps back; without one, a search on YouTube.
@@ -1241,24 +1535,43 @@ function paintTrailerButton() {
   }
 }
 
+// The first two trailers, and a button for the rest, so More like this is not far below.
 function paintVideos() {
   if (!T.videos.length) return;
   const list = el('ul', '', 'clips');
+  list.id = 't-clips';
   for (const v of T.videos) {
     const li = el('li');
     const b = button('clip', '', () => playVideo(v));
-    b.setAttribute('aria-label', `Play ${v.title || v.kind}`);
+    b.setAttribute('aria-label', `Play ${v.title || v.kind}${v.season ? `, season ${v.season}` : ''}`);
     const thumb = el('span', '', 'clip-thumb');
     const img = picture(null);
     img.loading = 'lazy';
     img.src = `https://i.ytimg.com/vi/${v.youtube}/mqdefault.jpg`;
     thumb.append(img, icon('play'));
-    b.append(thumb, el('b', v.title || v.kind), el('small', [v.kind, v.published ? longDate(v.published) : ''].filter(Boolean).join(' · ')));
+    // A trailer TMDB keeps on a season says which, since its name seldom does.
+    const said = [v.kind, v.season ? `Season ${v.season}` : '', v.published ? longDate(v.published) : ''];
+    b.append(thumb, el('b', v.title || v.kind), el('small', said.filter(Boolean).join(' · ')));
     li.append(b);
     list.append(li);
   }
-  T.clips.replaceChildren(el('h3', 'Trailers & more'), list);
+  T.clipList = list;
+  T.clipsMore = revealButton(list, () => {
+    if (busy(list)) return;
+    T.open.clips = !T.open.clips;
+    unfold(list, setClips, T.open.clips, T.clipsMore);
+  });
+  T.clips.replaceChildren(el('h3', 'Trailers & more'), list, T.clipsMore.parentElement);
+  setClips(T.open.clips);
   T.clips.hidden = false;
+}
+// Two trailers side by side on a phone, and a whole row of three on a wide screen.
+function setClips(open) {
+  const items = [...T.clipList.children];
+  const shown = snippet(items.length, wide() ? SNIPPETS.clipsWide : SNIPPETS.clips);
+  items.forEach((li, n) => { li.hidden = !open && n >= shown; });
+  T.clipsMore.parentElement.hidden = shown === items.length;
+  paintReveal(T.clipsMore, revealLabel('clips', items.length, open), open);
 }
 
 // YouTube's no-cookie player, loaded only now. It takes the top of the title page, and
@@ -1332,19 +1645,35 @@ function paintMore() {
   const items = T.data.more;
   T.moreList.replaceChildren(...(items.length ? items.map(moreCard)
     : [el('li', 'Nothing in the catalogue sits close enough to this one.', 'muted')]));
+  // The server sends none when fewer than four qualify, and the section stays hidden.
+  const fans = T.data.fans || [];
+  const name = T.data.show?.name || T.card.name;
+  T.fansSub.textContent = name ? `Shows that ${name} fans also look up` : 'Shows its fans also look up';
+  T.fansList.replaceChildren(...fans.map(moreCard));
+  T.fans.hidden = !fans.length;
 }
+// A show like this one: how similar it is to this title, in the green a match wears, and
+// why it is here (the same world, the same creator). Never a match: how close a show sits
+// to this title says nothing of how well it fits a list, so it reads "% similar".
 function moreCard(c) {
   const li = el('li', '', 'more-card');
   const open = button('more-open', '', () => openTitle(c.id));
-  open.setAttribute('aria-label', [c.name, c.year, c.match ? `${c.match}% match` : ''].filter(Boolean).join(', '));
+  const similar = c.similar ? `${c.similar}% similar` : '';
+  open.setAttribute('aria-label', [c.name, c.year, similar, c.why].filter(Boolean).join(', '));
   open.append(artEl(c));
   const top = el('div', '', 'more-top');
   const facts = el('div', '', 'more-info');
-  if (c.match) facts.append(el('b', `${c.match}% match`, 'match'));
   if (c.year) facts.append(el('span', String(c.year)));
   top.append(facts, listButton(c, 'round'));
   const body = el('div', '', 'more-body');
-  body.append(el('h4', c.name), top);
+  body.append(el('h4', c.name));
+  if (similar || c.why) {
+    const why = el('div', '', 'more-why');
+    if (similar) why.append(el('b', similar, 'match'));
+    if (c.why) why.append(el('span', c.why));
+    body.append(why);
+  }
+  body.append(top);
   if (c.summary) body.append(el('p', c.summary));
   li.append(open, body);
   return li;
@@ -1368,9 +1697,25 @@ function paintEpisodes() {
     head.append(pick);
   } else head.append(el('span', `Season ${list[0].number}`, 'muted'));
   T.eps = el('ol', '', 'eps');
-  T.episodes.replaceChildren(head, T.eps);
+  T.eps.id = 't-eps';
+  T.epsMore = revealButton(T.eps, () => {
+    if (busy(T.eps)) return;
+    T.open.episodes = !T.open.episodes;
+    unfold(T.eps, setEpisodes, T.open.episodes, T.epsMore);
+  });
+  T.episodes.replaceChildren(head, T.eps, T.epsMore.parentElement);
   T.episodes.hidden = false;
   loadSeason(list[0].number);
+}
+
+// A season shows its first few episodes until they are all asked for, and every season
+// after that shows whole until they are closed again.
+function setEpisodes(open) {
+  const items = [...T.eps.children];
+  const shown = snippet(items.length, SNIPPETS.episodes);
+  items.forEach((li, n) => { li.hidden = !open && n >= shown; });
+  T.epsMore.parentElement.hidden = shown === items.length;
+  paintReveal(T.epsMore, revealLabel('episodes', items.length, open), open);
 }
 
 async function loadSeason(number) {
@@ -1381,14 +1726,17 @@ async function loadSeason(number) {
     return li;
   };
   t.eps.replaceChildren(skeleton(), skeleton(), skeleton());
+  setEpisodes(t.open.episodes);
   try {
     const { episodes } = await patient(`/api/episodes?id=${t.id}&season=${number}`);
     if (token !== seasonToken || T !== t) return;
     t.eps.replaceChildren(...(episodes.length ? episodes.map(episodeEl)
       : [el('li', 'No episodes are listed for this season yet.', 'muted')]));
   } catch (e) {
-    if (token === seasonToken && T === t) t.eps.replaceChildren(el('li', e.message, 'muted'));
+    if (token !== seasonToken || T !== t) return;
+    t.eps.replaceChildren(el('li', e.message, 'muted'));
   }
+  setEpisodes(t.open.episodes);
 }
 
 function episodeEl(ep) {

@@ -20,9 +20,13 @@ rebuilt every night. Nothing plays. It is for finding your next show.
 - **A title page** opens over any screen with the match, years, age rating,
   seasons, why it surfaced (the liked show it sits closest to and what they
   share), where to watch it, the summary, cast, genres, themes and network, every
-  season's episodes with stills, its trailers, twelve more like it, and links to
-  TVmaze, IMDb and the official site. *Trailer* plays it right there. Rate it
-  *Not for me*, *I like this* or *Love this*, or add it to My List.
+  season's episodes with stills, its trailers, up to twelve more like it, each
+  saying how similar it is and why, up to twelve its fans also like, and links to
+  TVmaze, IMDb and the official site. Long sections start short: where to watch
+  keeps to one line of services, each season to its first three episodes and the
+  trailers to the first two (a row of three on a wide screen), and a button opens
+  the rest and closes it again. *Trailer* plays it right there. Rate it *Not for
+  me*, *I like this* or *Love this*, or add it to My List.
 - **Posters** wear *Top 10* and *New* badges. On a mouse, hovering one lifts it
   and shows its match with quick buttons for My List, *I like this*, *Love this*
   and more info. On a touch screen, a long press lifts it into a larger preview
@@ -61,7 +65,8 @@ or WhatsApp, and the home page previews as the wordmark over a wall of posters.
 On a phone it moves like one (`gestures.js`). Title pages and sheets slide up
 with a grab handle, follow a finger pulled down from their top, go once let go
 far enough down or flicked, and slide away however they close; buttons and
-posters press in under a finger; rows ease in as they come into view; a new
+posters press in under a finger; rows that land on screen while it is still ease
+in, and rows scrolled to are already there; a new
 hero fades in over the old; and tabs change at once, as a phone's own do. Installed, with no browser back button, a swipe in from
 the left edge goes back. With reduced motion, nothing animates.
 
@@ -193,9 +198,12 @@ its row, the first six are spread so they do not look alike, and a card may carr
 one call-out, such as *Same creator as Breaking Bad* or *Stars Kelly Macdonald*.
 Rows for one interest carry *For fans of* two of its shows.
 
-**Eight rows at a time.** The first answer brings the hero and eight rows; as you
-scroll within a screen of the end the page asks for six more (or offers *More
-rows* where it cannot watch the scroll), and once there are no more it says
+**Eight rows at a time.** The first answer brings the hero and eight rows. The page
+asks for six more while fewer than three screens of rows are left below you, and
+again as soon as they land if that is still so; with less than a screen left it asks
+for the eight the server allows, and no poster starts until they land. Where it
+cannot watch the scroll it offers *More rows*, and a request that fails is tried again
+after 2 seconds, then 4, and so on up to a minute. Once there are no more rows it says
 *That's everything for today*, with a button back to the top. The server keeps
 nothing between requests, so the request says which rows the page shows, their
 first six cards and, past today's rows, the tier each came in, and the same
@@ -205,9 +213,79 @@ the browser shows are replayed rather than chosen again and only the rows asked
 for, and one more to say whether more follow, are laid out. A rating or My List
 change in the meantime changes only the rows not shown yet.
 
+**Posters ahead of you.** A row's posters start two screens before it comes into
+view: those it shows and the next two, and, swiped along, the next two past wherever
+it has got to. A browser's own lazy loading waits until a row is near, and Safari's
+until it is almost on screen, while Chrome's asks for some hundred posters for the
+first eight rows at once. On a slow connection every image asked for shares it, so
+these go six at a time, those each row shows before any row's next two and nearest
+the screen first, and a row on screen starts its own at once. Only a page flung over
+a slow connection, one where posters have been taking over half a second, loads two
+at a time, rows on screen included, leaving it to the rows you are heading for.
+
 A match uses Next Watch's scale: 99% is your best pick and everything else is
 measured against it. It says how close a show sits to what you liked and how well
 it fits your list's leanings, not that you will enjoy the show.
+
+## More like this
+
+A title page's *More like this* is about the title, not about you
+(`Library.more_like`), and about how alike the shows are. It scores shows as the
+engine scores more like any one show outside a list: likeness to the title (plot
+words, themes, genres, a franchise or maker they share) times how well each fits
+the title's own leanings (its language, format, network, era and genres). What the
+title's Wikipedia readers go on to read, which the engine's closeness counts in
+full, keeps a tenth of its weight here: enough to put *How I Met Your Mother* ahead
+of *This Is Us* for *Friends*, never enough to carry in a show that is not alike,
+however many of the same readers look it up. Those go under *Fans also like*. Taken
+out altogether, the lists lost that ordering and took in more near misses.
+
+The title's own world comes first, six shows at most and in any form: the
+spin-offs, prequels and remakes it shares a Wikidata franchise with that its
+readers look up too, or that share a maker or a cast member with it, since
+Wikidata also links a drama to the next one in its time slot and those share
+nothing else. Otherwise live action stays with live action, animation with
+animation and factual shows with factual ones, so *Game of Thrones* no longer
+brings *Avatar* or *Batman: The Animated Series*. A show less than 30% as like the
+title as its third closest, or with next to nothing in common with it (a closeness
+under 0.1), is left out, so a list may be short rather than padded.
+
+Each card reads how similar it is, *97% similar* in the green a match wears, beside
+why it is there where it can say: *Same world*, *Same creator*, *Vince Gilligan
+worked on it* or *With Bryan Cranston*. It is never a match, which measures a show
+against your list, not against one title. The percent places the card's score on
+one scale for the whole catalogue, set by the scores of every card More like this
+shows for 773 titles drawn as often as they are well known: 60% is the score only 1
+card in 100 falls below (0.41), 99% the score only 1 in 100 reaches (27.6), and
+between them it goes by the score's logarithm, about six points each time the score
+doubles, since a score is likeness times fit and spreads by factors. Dividing by a
+list's best card would make the second card of a weak list read 99%; on one scale a
+spin-off reads in the 90s (Better Call Saul 99% for Breaking Bad, House of the
+Dragon 97% for Game of Thrones), a close match in the 80s, and the rest of a list in
+the 70s. A show that would read under 60% is left out.
+
+The shows are the twelve best scores and run in the order of their percents, the
+same for everyone and every day: your match only orders shows that read the same
+percent. A show more like one you marked *Not for me* than like the title, and very
+like it (the home page's 0.5), is left out, so disliking *The Wire* takes *Deadwood*
+and *The Sopranos* off *Breaking Bad*'s list but not *Better Call Saul*.
+
+## Fans also like
+
+Under it, *Fans also like* (`Library.fans_like`) holds what the title's Wikipedia
+readers also look up, the engine's co-interest, which already leaves out the
+title's own franchise: strongest first, twelve at most, none that More like this
+already shows, no award ceremonies, and nothing very close to a show you marked
+*Not for me*, as on the home page's rows of what fans look up. With fewer than four
+the section is left out. Its cards carry no percent, since readers looking both up
+says nothing of how alike two shows are, and its subtitle says so: *Shows that Game
+of Thrones fans also look up*. This is where *The Sopranos* and *Mad Men* now show
+for *Game of Thrones*, and *Weeds* and *Pluribus* for *Breaking Bad*.
+
+Over the 215 loves of the bench personas, each opened with nothing rated, More like
+this holds 23.1% of each persona's other liked shows (25.0% when half of each list
+was the day's draw from the top 36 and readers' links counted in full), and with
+Fans also like beside it the page holds 28.8%.
 
 ## What changes between visits
 
@@ -321,6 +399,14 @@ streaming first and renting or buying after, marked as such, each with its TMDB
 logo and linking to TMDB's watch page for the show, as TMDB requires for
 JustWatch's data, with *Streaming data from JustWatch* beside them.
 
+Trailers are the show's own YouTube trailers and teasers. TMDB keeps many shows'
+trailers on their seasons instead (Breaking Bad has none of its own, but a
+trailer on its first season and a teaser on its last), so for a show with none
+`scripts/tmdb.py` asks for its first and latest seasons' videos too, and each of
+those says which season it is for. Those requests count toward the night's
+`TMDB_DAILY_LIMIT` like a show's own, so a night with many of them fetches fewer
+shows, and the rest wait for the next.
+
 Whatever TMDB lacks falls back to the live sources below, item by item: the
 rating to iTunes, trailers to KinoCheck, the backdrop to TVmaze, and where to
 watch to TVmaze's channel and Apple TV. `/api/rating` and `/api/trailer` answer
@@ -389,8 +475,9 @@ new field. With stand-in rows for the tiers past today's (`scripts/bench/stub_ti
 it pages whole pages to their end: no row or title twice, *more* false only at the
 end, no row before its tier opens, a tier built only once the page reaches it, the
 same request giving the same rows, the page laid out at once matching the page
-asked for, and the rows shown kept after a rating deep down; and it sends the
-largest request a page can. It covers the rows, browsing, badges,
+asked for, and the rows shown kept after a rating deep down; it sends the
+largest request a page can, and holds the page to asking for no more rows than the
+server allows. It covers the rows, browsing, badges,
 title pages and validation; that the catalog, posters and TMDB data come from
 `MODEL_DIR`; TMDB's trimming, and that a bad or missing file means no TMDB data;
 TMDB first and every fallback, over HTTP; the live sources against fakes
@@ -404,20 +491,22 @@ every file the service worker keeps; first-visit starters over HTTP, as posters 
 pick and follow a browser's language; and the follower's decisions. It also fails if
 `engine.py`, `titles.py`, `fallback.py`, `follow.py`, `starters.py` or any other
 module copied here ever differs from Next Watch's. The
-second covers the page's small helpers, where to watch and what search says among
-them, what the home page keeps for a visit, asks for more with, merges after an
-action and shows as recently viewed, and what the page keeps of the server's
-answers; and it runs the service worker against a stand-in for the browser's
+second covers the page's small helpers, where to watch, how much of a title page's
+long parts shows before its button and what search says among them, what the home
+page keeps for a visit, asks for more with, merges after an action and shows as
+recently viewed, how far ahead it loads rows and posters and how many at once, and
+what the page keeps of the server's answers; and it runs the service worker against
+a stand-in for the browser's
 caches and network: a build kept whole or not at all, pages, files, the offline
 page, images and which of them go first. The third holds the gestures to their numbers:
 how far down and how fast a sheet must go to close, how it gives when pulled the other
-way, a finger's speed, a long press, and a swipe back from the edge. The fourth reads
-the repository's model, facets and all, and holds a search's row of shows like it to
-its rules: which searches name a show, which are topics and which go by meaning; no
-show the search matched in its row; More like as the title page ranks it; zombies for
-zombies, post-apocalyptic shows for *mad max* and cyberpunk for *the matrix*; nothing
-for a search with nothing behind it; searches still being typed; answers kept; and a
-model without facets.
+way, a finger's speed, a long press, a swipe back from the edge, and which rows ease in.
+The fourth reads the repository's model, facets and all, and holds a search's row of
+shows like it to its rules: which searches name a show, which are topics and which go
+by meaning; no show the search matched in its row; More like as the title page ranks
+it; zombies for zombies, post-apocalyptic shows for *mad max* and cyberpunk for *the
+matrix*; nothing for a search with nothing behind it; searches still being typed;
+answers kept; and a model without facets.
 
 `scripts/bench/home_bench.py` compares the home page with an earlier one over the
 71 bench personas: one of each persona's loves is held out, and it counts how

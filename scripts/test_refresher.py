@@ -898,11 +898,13 @@ class Answer:
 
 
 class FakeTMDB:
-    """A pretend api.themoviedb.org answering find and details from dicts. Every request
-    is recorded, and scripted answers or errors are served first."""
+    """A pretend api.themoviedb.org answering find, details and a season's videos from
+    dicts. Every request is recorded, and scripted answers or errors are served first;
+    the seasons in `failing` always answer 500."""
 
-    def __init__(self, finds=None, details=None, script=None, always=None):
+    def __init__(self, finds=None, details=None, script=None, always=None, seasons=None, failing=()):
         self.finds, self.details = finds or {}, details or {}
+        self.seasons, self.failing = seasons or {}, set(failing)
         self.script, self.always = list(script or []), always
         self.requests = []
         self.lock = threading.Lock()
@@ -916,6 +918,13 @@ class FakeTMDB:
             source = re.search(r'external_source=(\w+)', query)[1]
             found = self.finds.get((source, route.rsplit('/', 1)[1]))
             return Answer(200, json.dumps({'tv_results': [{'id': found}] if found else [], 'movie_results': []}).encode())
+        season = re.fullmatch(r'/3/tv/(\d+)/season/(\d+)/videos', route)
+        if season:
+            asked = (int(season[1]), int(season[2]))
+            if asked in self.failing:
+                return Answer(500)
+            block = self.seasons.get(asked)
+            return Answer(200, json.dumps(block).encode()) if block is not None else Answer(404, b'{"status_code":34}')
         show = self.details.get(int(route.rsplit('/', 1)[1]))
         return Answer(200, json.dumps(show).encode()) if show else Answer(404, b'{"status_code":34}')
 
@@ -1166,6 +1175,123 @@ with redirect_stderr(errors), redirect_stdout(io.StringIO()):
 del os.environ['TMDB_API_KEY']
 check('a crash exits 1 with the key scrubbed from its traceback', code == 1 and 'Traceback' in errors.getvalue()
       and KEY_V3 not in errors.getvalue() and '[key]' in errors.getvalue())
+
+# 10b. Trailers from seasons. TMDB keeps many shows' trailers on their seasons: Breaking Bad
+# has none of its own, but a trailer on season 1 and a teaser on its last.
+check('a show with seasons asks its first and its latest, specials aside',
+      tmdb.trailer_seasons({'seasons': [{'season_number': 0}, {'season_number': 1}, {'season_number': 2},
+                                        {'season_number': 5}, {'season_number': '6'}, 'junk']}) == [1, 5])
+check('a show of one season asks it once', tmdb.trailer_seasons({'seasons': [{'season_number': 1}]}) == [1])
+check('without a season list, how many seasons it has', tmdb.trailer_seasons({'number_of_seasons': 3}) == [1, 3]
+      and tmdb.trailer_seasons({'number_of_seasons': 1}) == [1])
+check('a show with no seasons asks none', tmdb.trailer_seasons({}) == [] and tmdb.trailer_seasons(None) == []
+      and tmdb.trailer_seasons({'seasons': [{'season_number': 0}], 'number_of_seasons': 'x'}) == [])
+
+
+def season_videos(key, kind, day, official=True):
+    return {'results': [
+        {'site': 'YouTube', 'type': kind, 'official': official, 'key': key, 'name': 'Official Trailer',
+         'published_at': f'{day}T00:00:00.000Z'},
+        {'site': 'YouTube', 'type': 'Featurette', 'official': True, 'key': f'{key[:10]}F', 'name': 'Inside',
+         'published_at': f'{day}T00:00:00.000Z'},
+        {'site': 'Vimeo', 'type': 'Trailer', 'official': True, 'key': f'{key[:10]}V', 'name': 'Elsewhere'}]}
+
+
+check('a season\'s videos are filtered as a show\'s are, and carry the season',
+      tmdb.trim_trailers(season_videos('SEASON1TRLR', 'Trailer', '2008-01-10'), season=1) == [
+          {'key': 'SEASON1TRLR', 'name': 'Official Trailer', 'type': 'Trailer', 'official': True,
+           'published': '2008-01-10', 'season': 1}])
+check('a show\'s own trailers carry no season', all('season' not in t for t in record['trailers']))
+
+
+def bare_details(tmdb_id, seasons):
+    """A show's details with no trailer or teaser of its own, only a clip."""
+    return {**details(tmdb_id), 'seasons': [{'season_number': n, 'episode_count': 8} for n in seasons],
+            'videos': {'results': [{'site': 'YouTube', 'type': 'Clip', 'official': True, 'key': 'CLIPONLY001',
+                                    'name': 'A clip', 'published_at': '2012-01-01T00:00:00.000Z'}]}}
+
+
+def seasons_step(folder, server, limit=tmdb.DAILY_LIMIT, now=NOW, clock=None):
+    """The TMDB step over four shows, one worker at a time so the order is fixed."""
+    folder = Path(folder)
+    model = folder / 'versions' / 'v1'
+    if not model.exists():
+        write_model(model, 4)
+        write_raw(folder / 'raw', shows=[{'id': i, 'weight': 100 - i, 'externals': {'imdb': f'tt000000{i}'}}
+                                         for i in range(1, 5)])
+    clock = clock or FakeTime()
+    outcome = tmdb.refresh(folder, model, folder / 'raw', KEY_V3, now=now, connect=server.connect, workers=1,
+                           limiter=tmdb.Limiter(rate=20, clock=clock.clock, sleep=clock.sleep), log=logs.append,
+                           limit=limit)
+    return outcome, json.loads(gunzip(model / 'tmdb.json.gz'))['shows']
+
+
+FINDS = {('imdb_id', f'tt000000{i}'): 200 + i for i in range(1, 5)}
+server = FakeTMDB(finds=FINDS, details={
+    201: bare_details(201, [0, 1, 2, 3, 4, 5]),    # Breaking Bad's shape: trailers on seasons 1 and 5
+    202: details(202),                              # trailers of its own
+    203: bare_details(203, [1]),                    # one season, which TMDB keeps failing on
+    204: bare_details(204, [])},                    # no seasons listed
+    seasons={(201, 1): season_videos('SEASON1TRLR', 'Trailer', '2008-01-10'),
+             (201, 5): season_videos('SEASON5TEAS', 'Teaser', '2013-06-01')},
+    failing={(203, 1)})
+outcome, cached = seasons_step(TMP / 'tmdb-seasons', server)
+asked = [q['path'] for q in server.requests if '/season/' in q['path']]
+check('a show with no trailer of its own asks its first and latest seasons, and only such a show does',
+      sorted({path.split('?')[0] for path in asked}) == ['/3/tv/201/season/1/videos', '/3/tv/201/season/5/videos',
+                                                         '/3/tv/203/season/1/videos'], asked)
+check('a season is asked in the languages a show\'s own videos are',
+      all('language=en-US' in path and 'include_video_language=en,null' in path and '%2C' not in path for path in asked))
+check('its trailers come from those seasons, trailer before teaser, each with its season',
+      [(t['key'], t['type'], t.get('season')) for t in cached['1']['trailers']]
+      == [('SEASON1TRLR', 'Trailer', 1), ('SEASON5TEAS', 'Teaser', 5)], cached['1']['trailers'])
+check('a show with trailers of its own keeps them', cached['2']['trailers']
+      and all('season' not in t for t in cached['2']['trailers']))
+check('a season TMDB cannot answer costs only its trailers, not the show',
+      '3' in cached and cached['3']['trailers'] == [] and cached['3']['rating'] == 'TV-MA' and outcome['failed'] == 0)
+check('a show with no seasons listed asks for none', cached['4']['trailers'] == []
+      and not any('/tv/204/season' in path for path in asked))
+check('season requests are counted among the step\'s requests', outcome['seasons'] == 3
+      and outcome['requests'] == len(server.requests) and outcome['fetched'] == 4 and outcome['deferred'] == 0, outcome)
+check('the log says how many seasons were asked for trailers', any('3 seasons asked for trailers' in line for line in logs))
+
+server = FakeTMDB(finds=FINDS, details={201: bare_details(201, [1, 5]), 202: details(202), 203: details(203),
+                                        204: details(204)},
+                  seasons={(201, 1): season_videos('SEASON1TRLR', 'Trailer', '2008-01-10'),
+                           (201, 5): season_videos('SEASON5TEAS', 'Teaser', '2013-06-01')})
+clock = FakeTime()
+seasons_step(TMP / 'tmdb-season-rate', server, clock=clock)
+check('season requests wait their turn at 20 a second like any other',
+      abs(clock.now - 1000 - (len(server.requests) - 1) / 20) < 0.01 and len(server.requests) == 10,
+      (clock.now, len(server.requests)))
+
+# The night's limit counts a season's request as it counts a show's details: with room
+# for three, three shows are planned, and the first one's details and two seasons spend
+# it, so the other two wait.
+server = FakeTMDB(finds=FINDS, details={201: bare_details(201, [1, 5]), 202: details(202), 203: details(203),
+                                        204: details(204)},
+                  seasons={(201, 1): season_videos('SEASON1TRLR', 'Trailer', '2008-01-10'),
+                           (201, 5): season_videos('SEASON5TEAS', 'Teaser', '2013-06-01')})
+outcome, cached = seasons_step(TMP / 'tmdb-season-limit', server, limit=3)
+spent = [q['path'] for q in server.requests if '/find/' not in q['path']]
+check('the night\'s limit counts season requests with details', len(spent) == 3 and outcome['seasons'] == 2
+      and outcome['planned'] == 3 and outcome['fetched'] == 1 and outcome['deferred'] == 2 and sorted(cached) == ['1'],
+      (spent, outcome))
+check('shows the limit did not reach are not even looked up',
+      not any(f'tt000000{i}' in q['path'] for q in server.requests for i in (2, 3, 4)))
+check('the log says the rest wait for another night', any('2 shows wait for another night' in line for line in logs))
+server.requests.clear()
+outcome, cached = seasons_step(TMP / 'tmdb-season-limit', server, limit=3, now=NOW + timedelta(hours=1))
+check('the next night they come first, and a show fetched within the day is not asked again',
+      sorted(cached) == ['1', '2', '3', '4'] and outcome['fetched'] == 3
+      and not any('/tv/201' in q['path'] for q in server.requests), outcome)
+server = FakeTMDB(finds=FINDS, details={201: bare_details(201, [1, 5])},
+                  seasons={(201, 1): season_videos('SEASON1TRLR', 'Trailer', '2008-01-10'),
+                           (201, 5): season_videos('SEASON5TEAS', 'Teaser', '2013-06-01')})
+outcome, cached = seasons_step(TMP / 'tmdb-season-short', server, limit=2)
+check('a season past the limit is not asked, and the show keeps what it found',
+      [t['key'] for t in cached['1']['trailers']] == ['SEASON1TRLR']
+      and not any('/season/5/' in q['path'] for q in server.requests) and outcome['seasons'] == 1, outcome)
 
 # 11. Wikidata, the fetch itself -------------------------------------------------------------------------------------
 

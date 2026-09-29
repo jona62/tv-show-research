@@ -1669,7 +1669,8 @@ def render_page(status):
                         f"latest {clickstream['months']}") + (
         f"; the last try, {when(clicked.get('at'))}: {trouble}" if trouble else '')
     last = tmdb.get('last') or {}
-    tmdb_line = (f"On, region {e(tmdb['region'])}, up to {tmdb['daily_limit']:,} shows a night"
+    tmdb_line = (f"On, region {e(tmdb['region'])}, up to {tmdb['daily_limit']:,} requests a night, "
+                 "one for each show and one for each season whose trailers it asks for"
                  if tmdb['configured'] else 'Off: set TMDB_API_KEY to add where to watch, ratings and trailers')
     tmdb_note = (f"Last run {e(when(last.get('at')))}: " + e(last['error'] if last.get('error') else
                  f"{last.get('fetched', 0):,} fetched, {last.get('shows', 0):,} shows kept")) if last else ''

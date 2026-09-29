@@ -126,6 +126,29 @@ export function whereToWatch(show, tmdb, site, channels, apple) {
   };
 }
 
+/* ------------------------------------------------------------ a title page's long parts */
+// A season starts with its first three episodes and the trailers with the first two, or a
+// wide screen's row of three; a button opens the rest. Hiding just one is not worth a
+// button, so a part only one longer than its snippet shows whole.
+export const SNIPPETS = { episodes: 3, clips: 2, clipsWide: 3 };
+export const snippet = (count, most) => (count > most + 1 ? most : count);
+
+// What that button says, opening the part or closing it again.
+export function revealLabel(part, count, open) {
+  if (part === 'episodes') return open ? 'Show fewer episodes' : `Show all ${count} episodes`;
+  return open ? 'Show fewer' : `Show all (${count})`;
+}
+
+// Where to watch keeps to one line. Given where each service's pill ends along it, left
+// to right, and the line's width: how many it shows whole. All of them when they fit;
+// otherwise those that end before the fade at its end, and the first one at least.
+export function fitsOnLine(ends, width, fade) {
+  if (!ends.length || ends[ends.length - 1] <= width) return ends.length;
+  let n = 0;
+  while (n < ends.length && ends[n] <= width - fade) n++;
+  return Math.max(1, n);
+}
+
 // What the search page says over its results. Checking the spelling is suggested only
 // when neither the catalogue, typos and all, nor TVmaze found anything.
 export function searchNote(query, found, missing) {
@@ -259,6 +282,56 @@ export function shownRows(rows, listIds = []) {
 // while the Top 10 keeps its ten and My List follows the list itself.
 export const withoutCard = (rows, id) =>
   rows.map(r => (r.kind === 'row' ? { ...r, items: r.items.filter(c => c.id !== id) } : r));
+
+// How far ahead of the reader the home page loads, in screens: a row's posters start
+// two screens before it comes into view, and more rows are asked for while three
+// screens of them are still to come.
+export const POSTERS_AHEAD = 2;
+export const ROWS_AHEAD = 3;
+// Past the posters a row shows, the next two load with them, and as it is swiped along,
+// the next two past wherever it has got to.
+export const CARDS_AHEAD = 2;
+// Posters load this many at a time, nearest the screen first, so on a slow connection
+// those ahead of the reader never crowd out the ones on screen, which may start as many
+// again at once.
+export const POSTERS_AT_ONCE = 6;
+// A page moving faster than this, in px a ms, is being flung past rows rather than read.
+// Over a slow connection its posters, those flying past included, then load only
+// FLUNG_AT_ONCE at a time, leaving it to the rows the reader is heading for. It is still
+// flung for STILL_FLUNG ms after, since a finger landing for the next flick stops it for
+// a moment.
+export const FLUNG = 1.2;
+export const FLUNG_AT_ONCE = 2;
+export const STILL_FLUNG = 300;
+
+// How long posters take, as a running average of each one's ms, and past what a
+// connection counts as slow. A poster in within CACHED ms came from a cache, such as a
+// show a row above already has, and says nothing about the connection.
+export const CACHED = 50;
+export const posterPace = (pace, ms) => (ms < CACHED ? pace : pace ? pace + (ms - pace) / 5 : ms);
+export const SLOW_POSTER = 500;
+
+// How many of a row's posters to load: those starting before its right `edge`, from
+// their left edges in order, and CARDS_AHEAD more.
+export function postersToLoad(lefts, edge, ahead = CARDS_AHEAD) {
+  let shown = 0;
+  while (shown < lefts.length && lefts[shown] < edge) shown++;
+  return Math.min(lefts.length, shown + ahead);
+}
+
+// A reader with less than a screen of rows left below them is catching up with the page,
+// and waits for the next rows.
+export const catchingUp = (left, screen) => left < screen;
+
+// The rows to ask for next: six, or the eight the server allows at most for a reader
+// catching up.
+export const NEXT_ROWS = 6;
+export const CATCH_UP_ROWS = 8;
+export const rowsToAsk = (left, screen) => (catchingUp(left, screen) ? CATCH_UP_ROWS : NEXT_ROWS);
+
+// How long to wait before asking again for more rows after `failures` failed in a row:
+// at once after none, then 2 seconds, doubling to a minute at most.
+export const retryAfter = failures => (failures > 0 ? Math.min(2000 * 2 ** (failures - 1), 60_000) : 0);
 
 export const VIEWED_DAYS = 14;
 export const VIEWED_KEEP = 40;

@@ -26,3 +26,7 @@ app/model/
 
 # Worktrees Claude Code makes for parallel agents.
 .claude/worktrees/
+
+# Editor swap files
+*.swp
+*.swo

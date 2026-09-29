@@ -1,6 +1,6 @@
 // Gestures and motion, for phones and touch screens. Sheets slide up as they open, follow
 // a finger down and go past a distance or a flick, and slide away however they close;
-// rows ease in as they come into view; views and the hero crossfade; a long press on a
+// rows that land on screen ease in; views and the hero crossfade; a long press on a
 // poster lifts it into a peek with its quick buttons; and, installed with no browser back
 // button, a swipe in from the left edge goes back. Nothing moves under reduced motion,
 // and a mouse keeps the hover and pop-ups it has. The maths is pure and checked by
@@ -61,6 +61,15 @@ export const goesBack = (dx, v, width) => v > -.2 && dx + Math.max(v, 0) * AHEAD
 
 // When the nth of a batch starts: `step` ms apart, the last by `most`.
 export const stagger = (n, step, most) => Math.min(n * step, most);
+
+// A page is at rest once it has not scrolled for this long.
+export const REST = 150;
+
+// Whether a row eases in: only one that arrives on screen while the page is at rest,
+// such as the first rows or rows that land while the reader waits at the end. A row
+// that arrives below the screen, or while the reader scrolls, is shown at once, since
+// fading it in as it comes into view would hold back what the reader came for.
+export const easesIn = (onScreen, sinceScroll) => onScreen && sinceScroll >= REST;
 
 /* ----------------------------------------------------------------- motion */
 const OUT = 'cubic-bezier(.22,1,.36,1)';      // quick, then settling
@@ -316,20 +325,32 @@ function letGo(d, s, e, dismiss) {
 
 /* ------------------------------------------------------ rows, views, hero */
 const seen = new WeakSet();
+const easing = new Set();       // rows' ease-ins under way
 let rowWatch = null;
+let scrolled = -Infinity;       // when the page last scrolled
 
-// Rows wait unseen until they come into view, then ease in, a row at a time with their
-// first posters just behind. A row already given here is left alone.
+// Rows that arrive on screen while the page is at rest ease in, a row at a time with
+// their first posters just behind (easesIn); every other row is simply there. A new row
+// waits unseen only until the next frame says where it landed, and an ease-in under way
+// ends at once when the page moves. A row already given here is left alone.
 export function reveal(rows) {
   if (!moving() || !('IntersectionObserver' in window)) return;
-  rowWatch ??= new IntersectionObserver(entries => {
-    let n = 0;
-    for (const entry of entries) {
-      if (!entry.isIntersecting) continue;
-      rowWatch.unobserve(entry.target);
-      easeIn(entry.target, stagger(n++, 80, 240));
-    }
-  }, { rootMargin: '0px 0px -60px 0px' });
+  if (!rowWatch) {
+    window.addEventListener('scroll', () => {
+      scrolled = performance.now();
+      for (const a of easing) a.finish();
+      easing.clear();
+    }, { passive: true });
+    rowWatch = new IntersectionObserver(entries => {
+      const since = performance.now() - scrolled;
+      let n = 0;
+      for (const entry of entries) {
+        rowWatch.unobserve(entry.target);
+        if (easesIn(entry.isIntersecting, since)) easeIn(entry.target, stagger(n++, 60, 180));
+        else entry.target.classList.remove('pre');
+      }
+    });
+  }
   for (const row of rows) {
     if (seen.has(row) || row.hidden) continue;
     seen.add(row);
@@ -341,16 +362,20 @@ export function reveal(rows) {
 function easeIn(row, delay) {
   row.classList.remove('pre');
   if (!moving()) return;
-  row.animate([{ opacity: 0, transform: 'translateY(18px)' }, { opacity: 1, transform: 'none' }],
-    { duration: 280, delay, easing: OUT, fill: 'backwards' });
+  const eased = [row.animate([{ opacity: 0, transform: 'translateY(18px)' }, { opacity: 1, transform: 'none' }],
+    { duration: 240, delay, easing: OUT, fill: 'backwards' })];
   // The cards rise into their slots, and the slots stay put: a slot is where the row snaps
   // when swiped, and sliding one in from the side made the row snap to it mid-slide, pulling
   // the whole row left and then back.
   [...row.querySelectorAll('.track > li')].slice(0, 6).forEach((li, i) => {
-    for (const part of li.children) part.animate(
+    for (const part of li.children) eased.push(part.animate(
       [{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }],
-      { duration: 260, delay: delay + 60 + stagger(i, 35, 175), easing: OUT, fill: 'backwards' });
+      { duration: 220, delay: delay + 40 + stagger(i, 25, 100), easing: OUT, fill: 'backwards' }));
   });
+  for (const a of eased) {
+    easing.add(a);
+    a.finished.then(() => easing.delete(a), () => easing.delete(a));
+  }
 }
 
 // Puts `nodes` in `box` in place of what it holds, crossfading from the old to the new;

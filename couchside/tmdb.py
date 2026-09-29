@@ -51,7 +51,8 @@ def providers(raw):
 
 def videos(raw):
     """Trailers in the shape the page plays: official ones first, trailers before teasers
-    before anything else, newest first within each."""
+    before anything else, newest first within each. One TMDB keeps on a season, for a
+    show with none of its own, says which season."""
     found, seen = [], set()
     for v in raw if isinstance(raw, list) else []:
         key = v.get('key') if isinstance(v, dict) else None
@@ -60,8 +61,10 @@ def videos(raw):
         seen.add(key)
         kind = v['type'].strip()[:40] if isinstance(v.get('type'), str) and v['type'].strip() else 'Video'
         day = v.get('published') if isinstance(v.get('published'), str) else ''
+        season = v.get('season') if type(v.get('season')) is int and 0 < v['season'] < 1000 else None
         found.append(({'youtube': key, 'title': v['name'][:200] if isinstance(v.get('name'), str) else '',
-                       'kind': kind, 'published': day[:10] if DAY.match(day) else ''}, v.get('official') is True))
+                       'kind': kind, 'published': day[:10] if DAY.match(day) else '',
+                       **({'season': season} if season else {})}, v.get('official') is True))
     found.sort(key=lambda f: f[0]['published'], reverse=True)
     found.sort(key=lambda f: (not f[1], VIDEO_ORDER.get(f[0]['kind'], 2)))
     return [video for video, _official in found[:MOST]]
