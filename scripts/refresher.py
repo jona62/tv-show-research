@@ -127,7 +127,8 @@ SECRETS = ('TMDB_API_KEY',)
 # A first clickstream fetch streams three months, about 1.5 GB: some 5 to 15 minutes on
 # the workspace's one vCPU, bound by the download. It keeps each month as soon as it is
 # counted, so even a first fetch that runs out of time keeps the months it finished.
-# The neighbour index takes about two minutes on a laptop, so perhaps fifteen here.
+# The neighbour index takes two minutes and 820 MB on one thread of a laptop, so perhaps
+# ten to twenty minutes here; one that fails leaves the version without it.
 TIMEOUTS = {'download': 3 * 3600, 'build_model': 2 * 3600, 'build_popularity': 1800, 'build_art': 1800,
             'wikidata': 3600, 'build_facets': 1800, 'films': 3600, 'build_films': 600, 'clickstream check': 300,
             'clickstream': 2 * 3600, 'build_cointerest': 1800, 'build_neighbours': 2 * 3600, 'tmdb': 3 * 3600,
@@ -1356,6 +1357,22 @@ class Refresher:
             self.state['clickstream'] = {'at': iso(self.clock()), **result}
         return cache if cache.is_file() else None
 
+    def neighbours_step(self, ctx, env, folder):
+        """Each show's closest shows, from the text, facets and co-interest just built
+        (build_neighbours.py). The apps rank a list of more than 60 ratings from it, and
+        without it from the list's 60 most recent likes and dislikes, so a build that fails
+        or runs out of time or memory leaves this version without one and a warning; it
+        never fails the run. The live version's cannot be carried forward, since an index
+        holds one catalogue's shows in that catalogue's order."""
+        try:
+            ctx.run_step('build_neighbours', self.script('build_neighbours.py'), env)
+        except StepFailed as exc:
+            for name in NEIGHBOUR_FILES:
+                remove(folder / name)
+                remove(folder / f'.{name}.tmp')
+            ctx.warn(f'The neighbour index would not build, so this version ranks long lists from their '
+                     f'most recent ratings: {exc}')
+
     def cointerest_step(self, ctx, env, cache):
         """The co-interest, from the clickstream cache when there is one; without one,
         build_cointerest.py writes none. A cache that will not build is set aside for this
@@ -1407,8 +1424,7 @@ class Refresher:
         self.facets_step(ctx, env, self.wikidata_step(ctx))
         self.films_step(ctx, env, folder, previous)
         self.cointerest_step(ctx, env, self.clickstream_step(ctx))
-        # Each show's closest shows, from the text, facets and co-interest just built.
-        ctx.run_step('build_neighbours', self.script('build_neighbours.py'), env)
+        self.neighbours_step(ctx, env, folder)
         self.tmdb_step(ctx, folder, previous, required=False)
         checked = ctx.validate(folder, previous and previous['build'].get('shows'), self.raw / 'manifest.json')
         self.finish(ctx, folder, {

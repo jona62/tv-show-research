@@ -31,8 +31,8 @@ of rows:
 
 With text and bonus, and themes and genres from the catalog, the engine rebuilds the
 closeness any other settings give. Environment: TV_MODEL_OUT (model), where the catalog,
-vectors, facets and co-interest are read and the file is written. It takes about three
-minutes and 700 MB here.
+vectors, facets and co-interest are read and the file is written. It takes about two
+minutes and at most 820 MB on one thread of an M3 Pro laptop, as the refresher runs it.
 """
 import gzip
 import json

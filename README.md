@@ -85,8 +85,10 @@ only the counts between shows' articles for the latest three months. When a mont
 will not download, the months already held serve, and it is tried again next run.
 
 Last, `scripts/build_neighbours.py` works out every show's 48 closest shows under
-the apps' own closeness (about two minutes and 600 MB on a laptop, 13 MB on disk),
-which is what the apps rank a list of more than 60 ratings from.
+the apps' own closeness (about two minutes and 820 MB on one laptop thread, 13 MB
+on disk), which is what the apps rank a list of more than 60 ratings from. A build
+that fails leaves that version without it, and long lists are then ranked from
+their 60 most recent likes and dislikes.
 
 With `TMDB_API_KEY` set, each build also fetches TMDB's US age ratings, streaming
 services, trailers and backdrops for the 23,000 or so best-known shows, 6,000 a

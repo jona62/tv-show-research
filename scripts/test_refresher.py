@@ -558,6 +558,17 @@ check('a fresh build calls for no catch-up', r.needs_catch_up() is None)
 check('everything the service writes is readable by other users', readable(r.root) is None, readable(r.root))
 check('the previous version stays for rollback', (r.root / seeded).is_dir())
 
+# A neighbour index that will not build (out of time or memory): the version goes without
+# one, and the apps rank long lists from their most recent ratings; the run still succeeds.
+nb_runner = FakeRunner(fail='build_neighbours')
+nb = make('neighbours-fail', nb_runner, seed=write_model(TMP / 'seed-neighbours-fail', 100))
+nb.boot()
+nb_done = run(nb)
+check('a neighbour index that will not build never fails the run', nb_done['outcome'] == 'success'
+      and any('The neighbour index would not build' in w for w in nb_done['warnings']), nb_done)
+check('and the version goes without one', not (nb.current()['path'] / 'neighbours.bin.gz').exists()
+      and nb.current()['build']['neighbours'] is None and nb.current()['version'] == nb_done['version'])
+
 misses = []
 stop = threading.Event()
 
