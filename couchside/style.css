@@ -433,10 +433,10 @@ dialog.modal::backdrop{background:#000000b8}
 .t-acts{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .t-icons{display:flex;align-items:center;gap:10px}
 /* On a phone, Trailer and My List share the first line and the round buttons keep to the
-   second, spread across it, so none is left on a line alone. */
+   second, close together and all on it: the gap narrows before any button wraps. */
 @media(max-width:759px){
   .t-acts>.btn{flex:1 1 0}
-  .t-icons{flex:1 0 100%;justify-content:space-between;gap:4px}
+  .t-icons{flex:1 0 100%;gap:clamp(4px,calc((90vw - 264px) / 5),10px)}
   .t-icons .rates{display:contents}
 }
 .rates{display:flex;gap:8px}

@@ -1118,6 +1118,16 @@ function paintTitle() {
   const live = T.live;
   T.name.textContent = s.name;
   document.title = `${s.name || 'Show'} · Couchside`;
+  // A title opened before the page knew the show (a shared link) gets its poster once the
+  // show has loaded, instead of keeping the blank tile it opened with.
+  const art = s.art || s.poster;
+  const poster = T.hero.querySelector('.t-poster');
+  if (art && poster && !poster.dataset.src) {
+    const shown = artEl(s, art, false);
+    shown.classList.add('t-poster');
+    poster.replaceWith(shown);
+    if (!T.hero.querySelector('.t-blur')) T.hero.prepend(picture(art, 't-blur'));
+  }
   T.acts.querySelector('.rates')?.setAttribute('aria-label', `Rate ${s.name}`);
   paintOut(T, s);
   syncList(s.id);
