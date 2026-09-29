@@ -460,6 +460,14 @@ function rememberHome(data) {
   for (const list of [data.top10, data.fresh, data.soon, data.list, data.popular]) (list || []).forEach(remember);
 }
 
+// The views drawn from the home page's answer, drawn again once it is here: a view opened
+// first (a link to /new, a reload on My List) drew placeholders while it was on its way.
+function homeArrived() {
+  if (view === 'new') renderNew();
+  if (view === 'list') renderList();
+  if (view === 'search' && where().q.trim().length < 2) suggestions();
+}
+
 async function loadHome() {
   const key = currentKey();
   if (home && key === homeKey) return;
@@ -473,6 +481,7 @@ async function loadHome() {
     homeKey = key;
     rememberHome(home);
     renderHome();
+    homeArrived();
     return;
   }
   if (!home) renderHomeLoading();
@@ -486,9 +495,7 @@ async function loadHome() {
     rememberHome(data);
     redraw($('rows'), renderHome);
     keepPage();
-    if (view === 'new') renderNew();
-    if (view === 'list') renderList();
-    if (view === 'search' && where().q.trim().length < 2) suggestions();
+    homeArrived();
   } catch (e) {
     if (e.name === 'AbortError' || id !== homeReq) return;
     if (home) toast(e.message);
