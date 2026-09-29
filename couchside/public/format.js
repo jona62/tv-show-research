@@ -150,11 +150,22 @@ export function fitsOnLine(ends, width, fade) {
 }
 
 // What the search page says over its results. Checking the spelling is suggested only
-// when neither the catalogue, typos and all, nor TVmaze found anything.
-export function searchNote(query, found, missing) {
+// when neither the catalogue, typos and all, nor TVmaze found anything, and no shows like
+// the search were found either; when only those were, they follow the note.
+export function searchNote(query, found, missing, related = 0) {
   if (found) return `Shows matching “${query}”`;
   if (missing) return `Nothing in the catalogue matches “${query}” yet.`;
+  if (related) return `No titles match “${query}”.`;
   return `Nothing matches “${query}”. Check the spelling.`;
+}
+
+// Whether an answer without a row of shows like the search should leave the row on
+// screen, found for the search shownFor: only while the search grows from it, letter by
+// letter, so the row does not blink out between one letter of a title and the next
+// (breaki, breakin, breaking). A search cut back, or another, clears it.
+export function keepsRow(shownFor, query) {
+  const was = searchText(shownFor).toLowerCase(), now = searchText(query).toLowerCase();
+  return !!was && now.length > was.length && now.startsWith(was);
 }
 
 // Recent searches: the last RECENT_SEARCHES committed, by pressing Enter or opening one
