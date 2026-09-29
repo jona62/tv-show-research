@@ -20,9 +20,12 @@ rebuilt every night. Nothing plays. It is for finding your next show.
 - **A title page** opens over any screen with the match, years, age rating,
   seasons, why it surfaced (the liked show it sits closest to and what they
   share), where to watch it, the summary, cast, genres, themes and network, every
-  season's episodes with stills, its trailers, twelve more like it, and links to
-  TVmaze, IMDb and the official site. *Trailer* plays it right there. Rate it
-  *Not for me*, *I like this* or *Love this*, or add it to My List.
+  season's episodes with stills, its trailers, up to twelve more like it, and
+  links to TVmaze, IMDb and the official site. Long sections start short: where
+  to watch keeps to one line of services, each season to its first three
+  episodes and the trailers to the first two, and a button opens the rest and
+  closes it again. *Trailer* plays it right there. Rate it *Not for me*, *I like
+  this* or *Love this*, or add it to My List.
 - **Posters** wear *Top 10* and *New* badges. On a mouse, hovering one lifts it
   and shows its match with quick buttons for My List, *I like this*, *Love this*
   and more info. On a touch screen, a long press lifts it into a larger preview
@@ -205,6 +208,35 @@ change in the meantime changes only the rows not shown yet.
 A match uses Next Watch's scale: 99% is your best pick and everything else is
 measured against it. It says how close a show sits to what you liked and how well
 it fits your list's leanings, not that you will enjoy the show.
+
+## More like this
+
+A title page's *More like this* is about the title, not about you
+(`Library.more_like`). It ranks shows as the engine ranks more like any one show
+outside a list: closeness to the title (plot words, themes, genres, a franchise or
+maker they share, and what the title's Wikipedia readers go on to read), less the
+pull of anything you marked *Not for me*, times how well each fits the title's own
+leanings (its language, format, network, era and genres). Your match only breaks
+near ties, lifting a show by a tenth at most. The title's own world comes first,
+six shows at most: the spin-offs, prequels and remakes it shares a Wikidata
+franchise with that its readers look up too, or that share a maker or a cast
+member with it, since Wikidata also links a drama to the next one in its time slot
+and those share nothing else. Stories stay with stories and factual shows with
+factual ones. A show less than 30% as like the title as its third closest, or with
+next to nothing in common with it (a closeness under 0.1), is left out, so a list
+may be short rather than padded, and it is the same every day. A bar on closeness
+alone would empty the lists of Korean dramas, documentaries and slice-of-life
+anime, whose short summaries keep even close neighbours near 0.2. Each card says
+why it is there where it can, *Same world*, *Same creator*, *Shared fans* (the
+title's readers look it up), *Vince Gilligan worked on it* or *With Bryan
+Cranston*, and carries no match: how close a show sits to one title says nothing
+of how well it fits your list.
+
+Over the 215 loves of the bench personas, each opened with nothing rated, the
+lists hold 25.4% of each persona's other liked shows (25.0% when half of each list
+was the day's draw from the top 36) in 2,492 cards rather than 2,580, 29 of the
+214 shows get fewer than twelve, and the mean closeness to the title is 0.85
+(0.82).
 
 ## What changes between visits
 

@@ -32,7 +32,7 @@ import statistics
 import struct
 import sys
 
-from engine import FORMAT_GROUPS, TIE_COMMON
+from engine import CO_POWER, CO_TIE, CO_WEIGHT, DEFAULT_SETTINGS, FORMAT_GROUPS, TIE_COMMON
 from fresh import dither, pick_one, spread, shuffle_rows, ROW_EPSILON, ROW_KEY
 from starters import Starters
 from taste import COUNTRIES, decade as decade_of
@@ -40,8 +40,14 @@ from taste import COUNTRIES, decade as decade_of
 IMAGE = 'https://static.tvmaze.com/uploads/images/{size}/{bucket}/{image}.jpg'
 ROW = 20            # cards in a row
 SHORTEST = 8        # a row with fewer cards than this is left out
-MORE = 12           # cards under More like this
 GLANCE = 6          # cards a row shows before scrolling, kept distinct across rows
+# More like this, on a title page (Library.more_like).
+MORE = 12           # cards, at most
+SIBLINGS = 6        # of them from the title's own world (a spin-off, a prequel, a remake), at most
+FLOOR = 0.3         # a show there is at least this share as like the title as its third closest
+UNRELATED = 0.1     # and at least this close to it: below, two shows have next to nothing in common
+TIEBREAK = 0.1      # how far the viewer's own match lifts a show there: enough to break a near tie
+STORIES = ('Scripted', 'Animation')     # a story is like stories, and a factual show like factual ones
 MAX_SAVED = 200     # My List, the same ceiling the transfer code carries
 FALLBACK = 12       # first-visit posters the page carries for when it cannot ask for starters
 
@@ -2975,25 +2981,118 @@ class Library:
         show_id = body.get('id') if isinstance(body, dict) else None
         if type(show_id) is not int or show_id not in self.e.by_id:
             raise ValueError('That show is not in this catalog.')
-        profile, settings, positives, negatives, rated, candidates, fresh = self.prepare(body)
-        e, i = self.e, self.e.by_id[show_id]
+        profile, settings, positives, negatives, rated, candidates, _fresh = self.prepare(body)
+        i = self.e.by_id[show_id]
         taste = Taste(self, positives, negatives, settings, candidates) if positives else None
-        # More like this: closeness to this one show, less the pull of anything disliked,
-        # and when the show is one you liked, the taste of the interest it belongs to.
-        affinities = {show_id: e.blend(i, settings)}
-        affinities.update(taste.affinities if taste else
-                          {p['id']: e.blend(e.by_id[p['id']], settings) for p in negatives})
-        pool = [j for j in candidates if j != i]
-        near = e.rank(pool, [{'id': show_id, 'weight': 1}], negatives, affinities, settings, positives or None)
-        ranked = sorted((j for j in pool if near[j] > 0), key=lambda j: (-near[j], e.shows[j]['id']))
-        # The closest few stay put; the rest of the twelve are the day's.
-        more = self.daily(ranked, fresh, f'more-{show_id}', MORE, GLANCE)
+        world, fans = self.kin(i)
+        more = self.more_like(i, settings, negatives, candidates, taste, world)
         if taste:
-            taste.score_others([i, *more])
+            taste.score_others([i])
         show = self.detail(i, taste)
         show['because'] = taste.closest(i) if taste and show_id not in rated else None
         show['summary'] = show['summary'] or ''
-        return {'show': show, 'more': [{**self.card(j, taste), 'summary': e.shows[j]['summary'] or ''} for j in more]}
+        return {'show': show, 'more': [self.more_card(i, j, world, fans) for j in more]}
+
+    def kin(self, i):
+        """Show i's own world and its fans' other shows, as sets of indices. Its world is
+        the shows it shares a franchise with (a spin-off, a prequel, a remake) that its
+        readers often look up too, or that share a maker or a cast member with it: Wikidata
+        also links a drama to the one after it in the same time slot, and those share
+        nothing else. Its fans' other shows are those its readers often look up, franchise
+        aside, as the engine counts them."""
+        e = self.e
+        fans = {j for j, strength in e.cointerest(i) if strength >= CO_TIE}
+        franchises, _creators, makers, cast = self.facet_sets(i)
+        if not franchises:
+            return set(), fans
+        read = {}
+        if e.co:
+            indptr, indices, values = e.co
+            read = {indices[k]: values[k] ** CO_POWER for k in range(indptr[i], indptr[i + 1])}
+        world = set()
+        for j in self.holders('franchise', franchises) - {i}:
+            theirs = self.facet_sets(j)
+            if read.get(j, 0.0) >= CO_TIE or makers & theirs[2] or cast & theirs[3]:
+                world.add(j)
+        return world, fans
+
+    def more_like(self, i, settings, negatives, candidates, taste=None, world=frozenset()):
+        """More like this: the shows most like show i itself, whoever is looking. The engine
+        ranks them as it ranks more like any one show outside a list: closeness (plot,
+        themes, genres, a shared franchise or maker, and what its readers also look up),
+        less the pull of anything disliked, times how well each fits show i's own leanings
+        (its language, format, network, era and genres), never the viewer's. A show from
+        its world counts as close as the strongest reader link, so its spin-offs and
+        prequels lead, SIBLINGS of them at most, and stories stay with stories and factual
+        shows with factual ones. A show less like show i than FLOOR of its third closest
+        (the third, so one or two unusually strong links do not set the bar), or with next
+        to nothing in common with it, is left out, so a list may be short rather than
+        padded. The viewer's own match only breaks near ties. The same list every day."""
+        e = self.e
+        show_id = e.shows[i]['id']
+        near = array('f', e.blend(i, settings))
+        lift = CO_WEIGHT * settings['facets'] / DEFAULT_SETTINGS['facets']
+        for j in world:
+            near[j] += lift
+        story = e.shows[i]['type'] in STORIES
+        pool = [j for j in candidates
+                if j != i and near[j] >= UNRELATED and (e.shows[j]['type'] in STORIES) == story]
+        if not pool:
+            return []
+        affinities = {p['id']: taste.affinities[p['id']] if taste else e.blend(e.by_id[p['id']], settings)
+                      for p in negatives}
+        affinities[show_id] = near
+        scores = e.rank(pool, [{'id': show_id, 'weight': 1}], negatives, affinities, settings)
+        ranked = sorted((j for j in pool if scores[j] > 0), key=lambda j: (-scores[j], e.shows[j]['id']))
+        others = [j for j in ranked[:len(world) + 3] if j not in world]
+        bar = FLOOR * scores[others[min(2, len(others) - 1)]] if others else 0.0
+        tiebreak = (lambda j: 1 + TIEBREAK * taste.unit(j)) if taste else (lambda j: 1.0)
+        kept = sorted((j for j in ranked if scores[j] >= bar), key=lambda j: (-scores[j] * tiebreak(j), e.shows[j]['id']))
+        out, siblings = [], 0
+        for j in kept:
+            if j in world:
+                if siblings == SIBLINGS:
+                    continue
+                siblings += 1
+            out.append(j)
+            if len(out) == MORE:
+                break
+        return out
+
+    def more_card(self, i, j, world, fans):
+        """A card under More like this. It says why the show is like show i where it can,
+        and carries no match: how close a show sits to one title says nothing of how well
+        it fits the viewer's list, and a match of 3% beside it only confuses."""
+        card = self.card(j)
+        del card['match']
+        card['summary'] = self.e.shows[j]['summary'] or ''
+        why = self.kinship(i, j, world, fans)
+        if why:
+            card['why'] = why
+        return card
+
+    def kinship(self, i, j, world, fans):
+        """Why show j is like show i, in a few words, or None: its world, its creators, that
+        show i's readers also look it up, a creator of show i who worked on it, or someone
+        in both casts, the one in the most shows. A network or a broad genre is no reason,
+        and a list's taste never is."""
+        if j in world:
+            return 'Same world'
+        f = self.e.facets
+        _franchises, creators, _makers, cast = self.facet_sets(i)
+        theirs = self.facet_sets(j)
+        shared = creators & theirs[1]
+        if shared:
+            return 'Same creators' if len(shared) > 1 else 'Same creator'
+        if j in fans:
+            return 'Shared fans'
+        worked = sorted(creators & theirs[2], key=lambda c: f.labels[c])
+        if worked:
+            return f'{f.labels[worked[0]]} worked on it'
+        stars = sorted(cast & theirs[3], key=lambda c: (-f.df[c], f.labels[c]))
+        if stars:
+            return f'With {f.labels[stars[0]]}'
+        return None
 
     def cards(self, ids):
         return [self.card(self.e.by_id[i]) for i in ids if i in self.e.by_id]

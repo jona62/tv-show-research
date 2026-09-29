@@ -101,9 +101,9 @@ import server                                                    # noqa: E402
 import follow                                                    # noqa: E402
 import tmdb                                                      # noqa: E402
 from build import MODULES                                        # noqa: E402
-from engine import DEFAULT_SETTINGS, QUICK_PICKS                 # noqa: E402
+from engine import DEFAULT_SETTINGS, QUICK_PICKS, Engine         # noqa: E402
 from fallback import Remote                                      # noqa: E402
-from library import ROW, MORE, GLANCE, SHORTEST, GENRE_ROWS, NEW_DAYS, FALLBACK, lower_first  # noqa: E402
+from library import ROW, MORE, GLANCE, SHORTEST, GENRE_ROWS, NEW_DAYS, FALLBACK, UNRELATED, Library, lower_first  # noqa: E402
 from library import (Page, Deeper, FIRST_PAGE, NEXT_PAGE, MOST_ROWS, CREATOR_SHORTEST, NOT_FOR_ME,  # noqa: E402
                      INTEREST_CAP, HIDDEN, PINNED, LONGEST, TIERS)
 from live import (Live, LiveError, Icons, trim_show, trim_episodes, trim_videos,        # noqa: E402
@@ -597,8 +597,8 @@ check('browsing takes a day too, and keeps each row\'s first two', browsed['rows
       lib.browse({'profile': PROFILE, 'settings': {}, 'genre': 'Crime', **seeded('2026-10-06')})['rows'][0]['items'][:PINNED])
 more_today = [c['id'] for c in lib.title({'profile': PROFILE, 'id': 169, **seeded('2026-10-05')})['more']]
 more_plain = [c['id'] for c in lib.title({'profile': PROFILE, 'id': 169})['more']]
-check("more like this keeps its closest six and takes the day's for the rest",
-      more_today[:GLANCE] == more_plain[:GLANCE] and len(more_today) == len(more_plain))
+check('more like this is the same every day, with no day drawn into it',
+      more_today == more_plain == [c['id'] for c in lib.title({'profile': PROFILE, 'id': 169, **seeded('2026-10-06')})['more']])
 
 # 4i. Past today's rows, with rows of their own in every tier (stand-ins cut with the page's
 # own helpers, scripts/bench/stub_tiers.py): the page goes on tier by tier until the last is
@@ -719,6 +719,59 @@ check('more like this carries summaries', all('summary' in c for c in page['more
 check('a rated title does not explain itself', lib.title({'profile': PROFILE, 'settings': {}, 'id': 169})['show']['because'] is None)
 bare = lib.title({'profile': [], 'settings': {}, 'id': 169})
 check('a title works with nothing rated', bare['show']['match'] is None and bare['more'])
+
+# More like this is about the title, not the viewer: closeness to it, its own world first,
+# no padding, and no match. Franchises and what readers look up next come with the
+# repository's model, which the temporary one leaves out, so it is read here as well.
+check('no card under more like this carries a match, though the title has one',
+      page['show']['match'] and all('match' not in c for c in page['more']))
+check('more like this is stories for a story, with or without facets',
+      all(c['type'] in ('Scripted', 'Animation') for c in page['more'] + bare['more']))
+full_engine = Engine(ROOT / 'model')
+full = Library(full_engine, ROOT / 'couchside' / 'art.bin.gz')
+
+
+def more_of(show_id, profile=()):
+    return full.title({'profile': list(profile), 'settings': {}, 'id': show_id})['more']
+
+
+def ids_of(cards):
+    return [c['id'] for c in cards]
+
+
+thrones = more_of(82)
+check('Game of Thrones brings House of the Dragon, among the first, as its own world',
+      44778 in ids_of(thrones)[:2] and thrones[ids_of(thrones).index(44778)]['why'] == 'Same world', ids_of(thrones))
+bad = more_of(169)
+check('Breaking Bad brings Better Call Saul first, as its own world',
+      bad[0]['id'] == 618 and bad[0]['why'] == 'Same world', ids_of(bad))
+check('a card says why when it can: the same creator',
+      any(c['id'] == 86175 and c['why'] == 'Same creator' for c in bad), [(c['name'], c.get('why')) for c in bad])
+office = more_of(526)
+check('a sitcom brings half-hour comedies', office and all(
+    'Comedy' in c['genres'] and c['runtime'] and c['runtime'] <= 40 for c in office), [c['name'] for c in office])
+check('a story brings stories', all(c['type'] in ('Scripted', 'Animation') for c in thrones + bad + office))
+check('a factual show brings factual shows', all(c['type'] not in ('Scripted', 'Animation') for c in more_of(2950)))
+trek = more_of(491)
+worlds = [c for c in trek if c.get('why') == 'Same world']
+check('a show\'s own world leads, six at most', 1 <= len(worlds) <= 6 and trek[:len(worlds)] == worlds
+      and len(trek) == MORE, [(c['name'], c.get('why')) for c in trek])
+check('a drama after another in its time slot is not its world',
+      57705 not in full.kin(full_engine.by_id[56464])[0] and all(c.get('why') != 'Same world' for c in more_of(56464)))
+settled = thrones
+check('whoever looks, the same shows, the viewer\'s taste only breaking near ties',
+      len(set(ids_of(more_of(82, [{'id': 431, 'weight': 1}]))) & set(ids_of(settled))) >= len(settled) - 2
+      and len(set(ids_of(more_of(82, [{'id': 169, 'weight': 1}]))) & set(ids_of(settled))) >= len(settled) - 2)
+wheel, rings = 35083, 33352
+disliked = ids_of(more_of(82, [{'id': rings, 'weight': -1}])) + [wheel]
+check('a show marked Not for me pushes what is like it down',
+      rings not in disliked and ids_of(settled).index(wheel) < disliked.index(wheel), disliked)
+close = full_engine.blend(full_engine.by_id[82], DEFAULT_SETTINGS)
+check('every show there has something in common with the title',
+      all(close[full_engine.by_id[c['id']]] >= UNRELATED for c in thrones))
+check('a title with few shows much like it gets a short list rather than a padded one',
+      0 < len(more_of(67633)) < MORE, len(more_of(67633)))
+del full, full_engine
 soon_id = cold['soon'][0]['id']
 check('an upcoming show opens too', lib.title({'profile': PROFILE, 'settings': {}, 'id': soon_id})['show']['id'] == soon_id)
 rejects('an unknown title', lambda: lib.title({'profile': [], 'id': 999_999_999}), 'not in this catalog')
