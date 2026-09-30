@@ -1596,6 +1596,84 @@ check('a search asked again with its tag is a bodiless 304', status == 304 and b
       and again.get('Cache-Control') == 'public, max-age=300')
 check('another search has another tag', fetch('/api/search?q=the%20office')[1].get('ETag') not in (None, headers['ETag']))
 check('a refused search is not kept', fetch('/api/search?q=' + 'x' * 101)[1].get('Cache-Control') == 'no-store')
+
+# Text goes gzipped to a browser that takes gzip and whole to one that does not, the same
+# bytes either way once unpacked, each with a tag of its own, and a cache is told it varies.
+GZ = {'Accept-Encoding': 'gzip, deflate, br'}
+for path in ('/', '/?show=169', '/main.js', '/style.css', '/format.js', '/sw.js', '/manifest.webmanifest', '/favicon.ico',
+             '/api/search?q=breaking%20bad'):
+    status, plain, body = fetch(path)
+    zstatus, zipped, zbody = fetch(path, headers=GZ)
+    check(f'{path} goes gzipped to a browser that takes gzip, and unpacks to the same bytes',
+          status == zstatus == 200 and zipped.get('Content-Encoding') == 'gzip' and plain.get('Content-Encoding') is None
+          and gzip.decompress(zbody) == body and int(zipped['Content-Length']) == len(zbody) < len(body) / 2
+          and zipped.get('Content-Type') == plain.get('Content-Type'), (status, zstatus, zipped.get('Content-Encoding')))
+    check(f'{path} says it varies by Accept-Encoding, packed or not',
+          plain.get('Vary') == 'Accept-Encoding' and zipped.get('Vary') == 'Accept-Encoding')
+    check(f'{path} gzipped has a tag of its own', plain.get('ETag') and zipped.get('ETag')
+          and zipped['ETag'] != plain['ETag'] and zipped.get('Cache-Control') == plain.get('Cache-Control'))
+    status, again, body = fetch(path, headers={**GZ, 'If-None-Match': zipped['ETag']})
+    check(f'{path} held gzipped is a bodiless 304 that says it varies', status == 304 and body == b''
+          and again.get('ETag') == zipped['ETag'] and again.get('Vary') == 'Accept-Encoding'
+          and again.get('Cache-Control') == plain.get('Cache-Control'))
+    check(f'{path} held whole is not what a browser taking gzip holds, and the other way round',
+          fetch(path, headers={**GZ, 'If-None-Match': plain['ETag']})[0] == 200
+          and fetch(path, headers={'If-None-Match': zipped['ETag']})[0] == 200
+          and fetch(path, headers={'If-None-Match': plain['ETag']})[0] == 304)
+status, headers, body = fetch('/main.js', method='HEAD', headers=GZ)
+check('a HEAD says what a GET would send, gzipped', status == 200 and body == b'' and headers.get('Content-Encoding') == 'gzip'
+      and int(headers['Content-Length']) == len(fetch('/main.js', headers=GZ)[2]))
+for said in ('gzip;q=0', 'identity', 'br', 'deflate, gzip;q=0, *', '*;q=0', 'gzip;q=nonsense', ''):
+    status, headers, body = fetch('/main.js', headers={'Accept-Encoding': said})
+    check(f'a browser that says Accept-Encoding: {said or "(nothing)"} gets the file whole',
+          status == 200 and headers.get('Content-Encoding') is None and body == fetch('/main.js')[2])
+for said in ('GZIP', 'x-gzip', '*', 'deflate, gzip;q=0.5', 'br;q=1.0, gzip;q=0.8, *;q=0.1'):
+    check(f'Accept-Encoding: {said} takes gzip', fetch('/main.js', headers={'Accept-Encoding': said})[1].get('Content-Encoding') == 'gzip')
+answers = [fetch('/api/home', {'profile': PROFILE, 'settings': DEFAULT_SETTINGS}, headers=headers) for headers in (GZ, {})]
+check('a home page goes gzipped too, to the same answer, and is never kept', [a[0] for a in answers] == [200, 200]
+      and answers[0][1].get('Content-Encoding') == 'gzip' and answers[1][1].get('Content-Encoding') is None
+      and json.loads(gzip.decompress(answers[0][2])) == json.loads(answers[1][2]) and len(answers[0][2]) < len(answers[1][2]) / 4
+      and answers[0][1].get('Cache-Control') == 'no-store' and answers[0][1].get('ETag') is None)
+status, headers, body = fetch('/healthz', headers=GZ)
+check('an answer too small to be worth it goes whole', headers.get('Content-Encoding') is None and json.loads(body) == {'status': 'ok'})
+status, headers, body = fetch('/icon-192.png', headers=GZ)
+check('a picture is not gzipped again', status == 200 and headers.get('Content-Encoding') is None and headers.get('Vary') is None
+      and body.startswith(b'\x89PNG'))
+check('an error goes whole', fetch('/api/extra?id=abc', headers=GZ)[1].get('Content-Encoding') is None)
+
+# The page asks for its styles and scripts by the hash of what they hold, and each import
+# between the scripts names the hash of the module it imports, so an address means the same
+# bytes for as long as it is asked for: those are kept a year, and the same files by their
+# plain names are checked each time, as the page is.
+kept_for_a_year = 'public, max-age=31536000, immutable'
+asked_by_hash = re.findall(rb'(?:src|href)="/([\w.-]+\.(?:js|css))\?v=([0-9a-f]{16})"', page_root)
+imports_by_hash = [(name, version) for source in ('main.js', 'starters.js', 'start.js')
+                   for name, version in re.findall(rb"from '\./([\w.-]+\.js)\?v=([0-9a-f]{16})'", fetch(f'/{source}')[2])]
+check('the page asks for its styles, main.js and every module main.js imports by their hashes, beside main.js',
+      {name.decode() for name, _version in asked_by_hash} == {'style.css', 'main.js', *imported}
+      and page_root.count(b'rel="modulepreload"') + page_root.count(b'<script type="module" async') == len(imported),
+      asked_by_hash)
+check('and runs start.js, which asks for the home page, as soon as it is here',
+      re.search(rb'<script type="module" async src="/start\.js\?v=[0-9a-f]{16}" fetchpriority="high"></script>', page_root))
+check('and every import between them names the hash of the module it imports',
+      {name.decode() for name, _version in imports_by_hash} == set(imported)
+      and not any(re.search(rb"""(?:from|import)\s*\(?\s*['"]\./[\w.-]+\.js['"]""", fetch(f'/{name}')[2])
+                  for name in ('main.js', *imported)))
+for name, version in dict.fromkeys(asked_by_hash + imports_by_hash):
+    status, headers, body = fetch(f'/{name.decode()}?v={version.decode()}')
+    check(f'/{name.decode()} by its hash is those very bytes, kept a year', status == 200
+          and hashlib.sha256(body).hexdigest()[:16] == version.decode() and headers.get('Cache-Control') == kept_for_a_year)
+status, headers, _body = fetch('/main.js')
+check('by its plain name a script is checked every time, by its tag', headers.get('Cache-Control') == 'no-cache' and headers.get('ETag')
+      and fetch('/main.js', headers={'If-None-Match': headers['ETag']})[0] == 304)
+check('by a hash that is not its own it is checked every time too', fetch('/main.js?v=0123456789abcdef')[1].get('Cache-Control') == 'no-cache'
+      and fetch('/main.js?v=0123456789abcdef')[2] == fetch('/main.js')[2])
+check('the service worker is always checked', fetch('/sw.js')[1].get('Cache-Control') == 'no-cache')
+check('icons and pictures by their plain names are kept a day', all(
+    fetch(path)[1].get('Cache-Control') == 'public, max-age=86400' for path in ('/icon-192.png', '/og.jpg', '/favicon.svg', '/tmdb.svg')))
+check('the pages served without the app ask for the styles by their hash too', all(
+    f'href="/style.css?v={hashlib.sha256(fetch("/style.css")[2]).hexdigest()[:16]}"'.encode() in fetch(path)[2]
+    for path in ('/nope', '/offline.html')))
 check('robots stay out of the api', b'Disallow: /api/' in fetch('/robots.txt')[2])
 check('powerful features are switched off', 'camera=()' in fetch('/')[1].get('Permissions-Policy', ''))
 check('the engine sources are not served', fetch('/engine.py')[0] == 404 and fetch('/art.bin.gz')[0] == 404)

@@ -3,7 +3,7 @@
 // far and the browser's language; this asks for them and lays them out so a picked show
 // never moves. Picks keep their places and every other place takes the next show the
 // server sent, so after a pick only the swapped shows change on screen.
-import { today, seedFor, freshStore } from './fresh.js';
+import { today, seedFor, freshStore } from './fresh.js?v=4fb048095fde4af8';
 
 export const MAX_ROUND = 50;
 export const MAX_PICKED = 20;

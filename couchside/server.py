@@ -5,8 +5,10 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit, parse_qs
 import gc
+import gzip
 import hashlib
 import html
+import io
 import json
 import os
 import re
@@ -58,6 +60,21 @@ WORKER_CSP = ("default-src 'self'; "
 # A search answers from the catalogue, and from TVmaze's search, which fallback.py keeps
 # for an hour, so browsers keep an answer five minutes and then ask with its ETag.
 SEARCH_CACHE = 'public, max-age=300'
+# A file asked for by the hash build.py gave it (?v=) is those bytes for as long as anything
+# asks for it, so it is kept a year and never checked; a new build asks for new addresses.
+BUILT_CACHE = 'public, max-age=31536000, immutable'
+# Icons and pictures asked for by their plain names change only when brand/make.py runs, so
+# they are kept a day; code and pages without a hash are checked every time, by their tag.
+IMAGE_CACHE = 'public, max-age=86400'
+IMAGE_KINDS = ('image/png', 'image/jpeg', 'image/x-icon', 'image/svg+xml')
+# Text shrinks to a quarter or less gzipped: the page, its scripts and styles, JSON, SVG and
+# the manifest. A body under SMALLEST goes as it is, since gzip's framing would eat most of
+# what it saves, and so does one that gzip barely shrinks.
+COMPRESSIBLE = re.compile(r'text/|application/(?:json|javascript|manifest\+json)|image/(?:svg\+xml|x-icon)')
+SMALLEST = 1024
+# Answers are made for each request and gzipped at zlib's usual level, about a quarter of a
+# millisecond for a home page; files are gzipped once, at the most.
+LEVEL, FILE_LEVEL = 6, 9
 SHARE = re.compile(r'<!--share.*?<!--/share-->', re.S)
 HOST = re.compile(r'[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?(?::\d{1,5})?', re.I)
 HOLES = re.compile(r'__(BOOTSTRAP|CATALOG_COUNT|DATASET_DATE)__')
@@ -100,6 +117,78 @@ def held(header, tag):
     return '*' in names or tag in names
 
 
+def zipped_tag(tag):
+    """The tag of a body's gzipped bytes: other bytes, so another tag (RFC 9110 8.8.3)."""
+    return tag[:-1] + '-gz"'
+
+
+def accepts_gzip(header):
+    """Whether Accept-Encoding lets gzip through: named, or covered by *, and not at q=0."""
+    weights = {}
+    for part in (header or '').split(','):
+        coding, *params = part.split(';')
+        weight = 1.0
+        for param in params:
+            key, _, value = param.partition('=')
+            if key.strip().lower() == 'q':
+                try:
+                    weight = float(value)
+                except ValueError:
+                    weight = 0.0
+        weights[coding.strip().lower()] = weight
+    return weights.get('gzip', weights.get('x-gzip', weights.get('*', 0.0))) > 0
+
+
+def worth_packing(kind, body):
+    return len(body) >= SMALLEST and bool(COMPRESSIBLE.match(kind))
+
+
+def packed(body, level=LEVEL):
+    """body gzipped with no timestamp, so the same bytes always pack the same, or None when
+    gzip saves under a tenth of them."""
+    out = gzip.compress(body, level, mtime=0)
+    return out if len(out) < 0.9 * len(body) else None
+
+
+class Built:
+    """The public bundle's files as they are sent: each file's bytes, their gzip, its tag and
+    its hash as build.py writes it (?v=), worked out once and again only when the file
+    changes on disk, as a build does under a server running locally."""
+
+    def __init__(self):
+        self.files, self.lock = {}, threading.Lock()
+
+    def get(self, path, kind):
+        """(body, gzipped or None, tag, hash) for the file at path."""
+        stat = os.stat(path)
+        stamp = (stat.st_mtime_ns, stat.st_size)
+        kept = self.files.get(path)
+        if kept and kept[0] == stamp:
+            return kept[1]
+        body = Path(path).read_bytes()
+        digest = hashlib.sha256(body).hexdigest()
+        found = (body, packed(body, FILE_LEVEL) if worth_packing(kind, body) else None, f'"{digest[:20]}"', digest[:16])
+        with self.lock:
+            self.files[path] = (stamp, found)
+        return found
+
+
+class Pages:
+    """The page gzipped, by its tag: it differs only by the title a link opens and the host,
+    so a few hundred cover nearly every request, and the rest are packed again."""
+
+    def __init__(self, most=256):
+        self.most, self.kept = most, {}
+
+    def get(self, tag, body):
+        found = self.kept.get(tag)
+        if found is None:
+            if len(self.kept) >= self.most:
+                self.kept.clear()
+            found = self.kept[tag] = packed(body)
+        return found
+
+
 def fill(template, engine, library, credit):
     """The page with this model's count, date and first-visit posters, filled once at
     startup. TMDB's credit stays only when there is TMDB data to credit."""
@@ -131,6 +220,8 @@ PAGE = fill(TEMPLATE.read_text(), ENGINE, LIBRARY, bool(TMDB)) if TEMPLATE.exist
 # keeps a page only beside files of the same build.
 BUILD = build_of(PUBLIC)
 LOST = (PUBLIC / '404.html').read_bytes() if (PUBLIC / '404.html').exists() else b''
+FILES = Built()
+PACKED_PAGES = Pages()
 # KinoCheck allows 1,000 calls a day and iTunes about 20 a minute, so both cache for days.
 KINO = Live(base=KINOCHECK, ttl=3 * 86400, size=3000, calls=20, period=60)
 STORE = Live(base=ITUNES, ttl=7 * 86400, size=3000, calls=15, period=60)
@@ -318,26 +409,64 @@ class Handler(SimpleHTTPRequestHandler):
         if self.command != 'HEAD':
             self.wfile.write(LOST)
 
-    def send_body(self, body, kind, status=200, validate=False, head=False, extra=()):
-        """The body, or a bodiless 304 when validate is set and the browser already holds
-        these very bytes (If-None-Match)."""
-        tag = etag(body) if validate and status == 200 else None
+    def answer(self, body, kind, status=200, validate=False, extra=(), tag=None, pack=packed):
+        """Sends the status and headers for body and returns the bytes to follow them: the
+        body, gzipped for a browser that takes gzip when it is text worth packing, or None
+        for a bodiless 304 when validate is set and the browser already holds these very
+        bytes (If-None-Match). Gzipped bytes carry a tag of their own, and whatever could be
+        packed says it varies by Accept-Encoding, so no cache hands one to a browser that
+        asked for the other. tag is the body's own when it is known already, and pack makes
+        (or finds) the gzipped bytes, or None when they are not worth sending."""
+        tag = (tag or etag(body)) if validate and status == 200 else None
+        varies = worth_packing(kind, body)
+        sent = pack(body) if varies and accepts_gzip(self.headers.get('Accept-Encoding')) else None
+        if sent is not None and tag:
+            tag = zipped_tag(tag)
         fresh = tag and held(self.headers.get('If-None-Match'), tag)
         self.send_response(304 if fresh else status)
         if not fresh:
             self.send_header('Content-Type', kind)
-            self.send_header('Content-Length', str(len(body)))
+            self.send_header('Content-Length', str(len(body if sent is None else sent)))
+            if sent is not None:
+                self.send_header('Content-Encoding', 'gzip')
+        if varies:
+            self.send_header('Vary', 'Accept-Encoding')
         if tag:
             self.send_header('ETag', tag)
         for key, value in extra:
             self.send_header(key, value)
         self.end_headers()
-        if not fresh and not head:
-            self.wfile.write(body)
+        return None if fresh else body if sent is None else sent
+
+    def send_body(self, body, kind, status=200, validate=False, head=False, extra=()):
+        """An answer (answer), with its bytes unless it is to a HEAD."""
+        payload = self.answer(body, kind, status, validate, extra)
+        if payload is not None and not head:
+            self.wfile.write(payload)
 
     def send_page(self, query, head=False):
-        self.send_body(render_page(self.headers, query), 'text/html; charset=utf-8', validate=True, head=head,
-                       extra=(('X-Build', BUILD),) if BUILD else ())
+        """The page for this address, gzipped once for each version of it (Pages)."""
+        body = render_page(self.headers, query)
+        tag = etag(body)
+        payload = self.answer(body, 'text/html; charset=utf-8', validate=True, tag=tag,
+                              pack=lambda page: PACKED_PAGES.get(tag, page), extra=(('X-Build', BUILD),) if BUILD else ())
+        if payload is not None and not head:
+            self.wfile.write(payload)
+
+    def send_head(self):
+        """A file of the build, from what is kept of it (Built): kept a year when asked for
+        by its hash, a day for an icon or picture, and otherwise checked by its tag every
+        time. The standard handler copies what this returns, for a GET, and sends anything
+        that is not a file its own way."""
+        path = self.translate_path(self.path)
+        if not os.path.isfile(path):
+            return super().send_head()
+        kind = self.guess_type(path)
+        body, gz, tag, digest = FILES.get(path, kind)
+        version = parse_qs(urlsplit(self.path).query).get('v', [''])[0]
+        self.cache_control = BUILT_CACHE if version == digest else IMAGE_CACHE if kind in IMAGE_KINDS else 'no-cache'
+        payload = self.answer(body, kind, validate=True, tag=tag, pack=lambda _body: gz)
+        return None if payload is None else io.BytesIO(payload)
 
     def do_HEAD(self):
         self.cache_control = None

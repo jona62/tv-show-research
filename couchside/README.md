@@ -109,6 +109,31 @@ bodiless 304, and searches are kept five minutes. Without a connection, a path t
 is not the app's gets a page asking for the connection back, and a path that leads
 nowhere gets the app's own *Lost your way?* page.
 
+Text goes gzipped to any browser that takes it: the page, its scripts and styles,
+JSON answers, SVG and the manifest, a quarter or less of their size (a home page's
+53 KB is 7 KB). Each file is gzipped once and kept, every answer says it varies by
+Accept-Encoding, and gzipped bytes carry their own ETag. The page asks for its
+scripts and styles by the hash of what they hold (`/main.js?v=...`, written by
+`build.py`, which also names each module's hash in the imports between them), so
+those addresses are kept a year; the same files by their plain names, the page and
+the service worker are checked every time, and icons are kept a day. The page lists
+every module `main.js` imports, so they load beside it, and the service worker takes
+the files the page has just loaded from the browser's cache rather than again. A
+small module, `start.js`, reads the list and asks for the home page as soon as it
+arrives, while `main.js` is still on its way, and `main.js` takes that answer when it
+asks for the same page. Pressing a poster asks for its title page before the press
+lifts: at once with a mouse, and with a finger once it has rested a moment where it
+landed, so a scroll that starts on a poster asks for nothing.
+
+While a page is on its way, a skeleton in its own shape stands in: the home page's
+featured show in the hero's whole footprint and rows of posters of the row's size,
+New & Popular's Top 10 and Coming soon, a genre's rows, the search grid, and a title
+page, a person's page and an episode each with their parts where they will land. A
+line of text is a bar inside an element of the kind that will hold the text, so it
+has the text's line height, and nothing moves when the page lands. The page runs at
+least a screen tall, so the footer never shows before the page and is pushed away.
+The skeletons shimmer, and hold still under reduced motion.
+
 `brand/` holds the icon as SVG, drawn twice: an outline sofa for 16 to 48 pixels
 and a fuller one for home screens. `brand/make.py` renders the favicon, Apple and
 Android icons, the maskable icon and the share image, which lays real posters out
@@ -609,7 +634,10 @@ Wikidata out of reach, nothing about the viewer sent on); search over HTTP, by a
 through a fake TVmaze, with a show too new for the catalogue; the HTTP server end
 to end: pages and their previews, the loaded model's date and count on the page,
 TMDB's credit only with TMDB data, the policy, the 404 page, the manifest, icon
-sizes and file types, ETags and 304s, the build each page names and the hash of
+sizes and file types, ETags and 304s, gzip (packed only for a browser that takes it,
+unpacking to the same bytes, with its own tag, a 304 for it and Vary on every answer
+that could be packed), how long each file is kept, the page asking for its files and
+modules by their hashes, the build each page names and the hash of
 every file the service worker keeps; first-visit starters over HTTP, as posters that adapt to a
 pick and follow a browser's language; and the follower's decisions. It also fails if
 `engine.py`, `titles.py`, `fallback.py`, `follow.py`, `starters.py` or any other
@@ -620,9 +648,12 @@ address beside the title's, their age and dates and what each of their credits
 says, what the home
 page keeps for a visit, asks for more with, merges after an action and shows as
 recently viewed, how far ahead it loads rows and posters and how many at once, and
-what the page keeps of the server's answers; and it runs the service worker against
+what the page keeps of the server's answers; how `start.js` reads a stored list and asks for
+the home page as a page starts, handing the answer only to the same request, once, and asking
+nothing when the tab keeps its page; and it runs the service worker against
 a stand-in for the browser's
-caches and network: a build kept whole or not at all, pages, files, the offline
+caches and network: a build kept whole or not at all, its files asked for by their hashes,
+pages, files, the offline
 page, images and which of them go first. The third holds the gestures to their numbers:
 how far down and how fast a sheet must go to close, how it gives when pulled the other
 way, a finger's speed, a long press, a swipe back from the edge, and which rows ease in.

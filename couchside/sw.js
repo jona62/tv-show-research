@@ -30,10 +30,13 @@ self.addEventListener('install', event => event.waitUntil(keepBuild()));
 
 // Nothing is kept until all of it checks out: each file must hash to what build.py wrote,
 // and the page must say it is this build. A deploy landing midway fails the install, and
-// the worker before this one carries on.
+// the worker before this one carries on. Each file is asked for at the address that names
+// its hash, which the server lets the browser keep, so the files the page has just loaded
+// come from the browser's cache rather than over the network a second time; the page is
+// always checked.
 async function keepBuild() {
   const answers = await Promise.all(['/', ...Object.keys(FILES)].map(async path => {
-    const response = await fetch(path, { cache: 'no-cache' });
+    const response = await (path === '/' ? fetch(path, { cache: 'no-cache' }) : fetch(`${path}?v=${FILES[path]}`));
     const ours = response.ok && (path === '/' ? response.headers.get('X-Build') === VERSION
       : await digest(response.clone()) === FILES[path]);
     if (!ours) throw new Error(`${path} is not build ${VERSION}`);

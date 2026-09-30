@@ -111,7 +111,9 @@ button.avatar::after{content:'';position:absolute;inset:-6px}
   .dock-mini{border-color:CanvasText}}
 @media(min-width:760px){.dock,.dock-mini{display:none}}
 
-main{min-height:70vh;padding-bottom:calc(var(--dock-space) + 24px);outline:none}
+/* The page runs at least a screen tall, so the footer starts below the first screen and
+   never sits in view while the page is still on its way, to be pushed off it as it lands. */
+main{min-height:100vh;padding-bottom:calc(var(--dock-space) + 24px);outline:none}
 .view.page{padding-top:calc(var(--nav) + var(--safe-t) + 18px)}
 .page-h{font:800 clamp(24px,3vw,36px)/1.15 -apple-system,BlinkMacSystemFont,sans-serif;margin:0 var(--gutter) 6px}
 .page-h2{font:700 clamp(18px,1.8vw,22px)/1.3 -apple-system,BlinkMacSystemFont,sans-serif;margin:34px var(--gutter) 10px}
@@ -219,7 +221,6 @@ main{min-height:70vh;padding-bottom:calc(var(--dock-space) + 24px);outline:none}
   color:var(--muted);font-size:14px;text-align:center}
 .page-end p{margin:0;max-width:34em}
 .page-end .btn{min-height:38px;padding:6px 16px;font-size:14px}
-.skel.line.row-skel{width:180px;height:16px;margin:0 var(--gutter) 10px}
 /* Before anything is rated: an invitation to pick a few shows. */
 .invite{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 18px;
   margin:0 var(--gutter) clamp(18px,2.6vw,34px);padding:16px 18px;border:1px solid #4a3a16;border-radius:8px;
@@ -236,6 +237,9 @@ main{min-height:70vh;padding-bottom:calc(var(--dock-space) + 24px);outline:none}
   background:linear-gradient(160deg,hsl(var(--h,220) 42% 30%),hsl(var(--h,220) 36% 12%))}
 .art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .35s}
 .art.loaded img{opacity:1}
+/* A full-size picture's poster shows first, over it, and fades as the picture comes in. */
+.art.previewed img.preview{opacity:1}
+.art.loaded img.preview{opacity:0}
 .art-name{position:absolute;inset:auto 8px 10px;font-weight:700;font-size:13px;line-height:1.2;color:#fff;
   text-shadow:0 1px 4px #000;overflow-wrap:anywhere}
 .card-meta{display:none}
@@ -728,7 +732,6 @@ dialog.episode .sheet{overflow:hidden}
 .p-credit{margin:0;font-size:12.5px;color:var(--dim)}
 .p-credit a{color:var(--muted)}
 .t-section .p-grid{grid-template-columns:repeat(6,minmax(0,1fr));gap:16px 10px;padding:0}
-.p-grid .skel.card-fill{border-radius:var(--r)}
 .p-off{cursor:default}
 .p-caption{margin-top:7px;line-height:1.3}
 .p-as{display:block;font-size:12.5px;font-weight:600;color:var(--ink-2)}
@@ -745,22 +748,33 @@ dialog.episode .sheet{overflow:hidden}
 }
 
 /* skeletons ------------------------------------------------------------ */
-.skel{display:block;border-radius:4px;background:linear-gradient(90deg,#232323 0,#303030 40%,#232323 80%);
+/* What is on its way, in its own shape (main.js): laid out by the rules of what it stands
+   for, so nothing moves when that lands. A line of text is a bar as tall as the letters,
+   inside an element of the kind that will hold the text, so the element keeps a line of
+   that text's own height; a poster, still, face, pill or button is a block of its size.
+   They shimmer, and hold still under reduced motion; none of them takes a pointer. */
+.skel,.e-hero.loading,.cast .skel.face{background:linear-gradient(90deg,#232323 0,#303030 40%,#232323 80%);
   background-size:220% 100%;animation:shimmer 1.3s linear infinite}
-.skel.line{height:14px;margin:9px 0}
-.skel.line:last-child{width:62%}
-.skel.card{width:var(--card);aspect-ratio:2/3}
-.skel.card-fill{width:100%;aspect-ratio:2/3;border-radius:0}
 @keyframes shimmer{to{background-position:-220% 0}}
-/* An episode's parts on their way, each in its own shape: its still, its number and name, a
-   line of credits and the guest stars' faces. */
-.e-hero.loading,.cast .skel.face{background:linear-gradient(90deg,#232323 0,#303030 40%,#232323 80%);background-size:220% 100%;
-  animation:shimmer 1.3s linear infinite}
-.e-code .skel.line{width:64px;height:12px;margin:0 0 8px}
-.e-name .skel.line{width:62%;height:28px;margin:0}
-.e-meta .skel.line{width:170px;margin:4px 0}
-.e-crew .skel.line{width:46%}
-.cast li>.skel.line{width:70%;height:12px;margin:8px auto 0}
+.skel{display:block;border-color:transparent;pointer-events:none}
+.skel-card,.skel-item{pointer-events:none}
+/* Lines stay a block of their own, which holds a line's height in a flex line too. */
+.skel-lines{display:block;flex:1 1 100%;min-width:0}
+.skel.text{display:inline-block;vertical-align:middle;width:100%;height:.8em;margin:0;border-radius:4px}
+.skel.text:not(:only-child):last-child{width:62%}
+.row-title .skel.text,.hero-title .skel.text{height:.7em}
+.t-name .skel.text,.e-name .skel.text{height:.72em}
+/* The featured show, laid out by the hero's own rules, has three buttons as wide as its own. */
+.hero-acts .btn.skel{width:118px}
+.hero-acts .btn.skel:first-child{width:104px}
+/* A title page's Trailer beside My List, its services as pills and its season menu. */
+.t-acts .btn.skel{width:118px}
+.watch-link.skel{width:96px;height:calc(13.5px * 1.45 + 12px)}
+.watch-link.skel+.watch-link.skel{width:128px}
+.skel.pick{width:150px;height:36px;border-radius:4px}
+@media(any-pointer:coarse){.skel.pick{height:44px}}
+.reveal.skel{width:170px}
+.more-card>.art.skel{border-radius:0}
 
 /* menus and small dialogs --------------------------------------------- */
 /* The profile menu drops from the nav on a wide screen and rises from the foot on a phone;
