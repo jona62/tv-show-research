@@ -25,9 +25,17 @@
 <meta property="og:image" content="/og.jpg">
 <meta name="twitter:card" content="summary_large_image">
 <!--/share-->
+<!--start.js asks for the home page as soon as it arrives, while main.js is still on its way-->
+<script type="module" async src="/start.js?v=2e680b45e069e9f7" fetchpriority="high"></script>
 <link rel="preconnect" href="https://static.tvmaze.com" crossorigin>
-<link rel="stylesheet" href="/style.css">
-<script type="module" src="/main.js"></script>
+<link rel="stylesheet" href="/style.css?v=63a2a55785832767">
+<script type="module" src="/main.js?v=f3aca7f23711bb65"></script>
+<link rel="modulepreload" href="/transfer.js?v=aca34fe2830e9d29">
+<link rel="modulepreload" href="/qr.js?v=d7f92f94bb8911ea">
+<link rel="modulepreload" href="/format.js?v=d663df9002e164a1">
+<link rel="modulepreload" href="/gestures.js?v=99618de045f0089e">
+<link rel="modulepreload" href="/fresh.js?v=afcc972f76479400">
+<link rel="modulepreload" href="/starters.js?v=d559e3a61414a450">
 </head>
 <body>
 <a class="skip" href="#page">Skip to content</a>

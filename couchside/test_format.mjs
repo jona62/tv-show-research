@@ -436,7 +436,7 @@ const { createHash } = await import('node:crypto');
 const SITE = 'https://couch.test';
 const hash16 = text => createHash('sha256').update(text).digest('hex').slice(0, 16);
 function stubWorker({ files, network, build = 'b1', mostSmall = 1000 }) {
-  const on = {}, stores = new Map(), fetched = [];
+  const on = {}, stores = new Map(), fetched = [], caching = [];
   let tick = 0, skipped = false;
   const key = r => new URL(typeof r === 'string' ? r : r.url, SITE).href;
   const store = name => stores.get(name) || stores.set(name, new Map()).get(name);
@@ -457,6 +457,7 @@ function stubWorker({ files, network, build = 'b1', mostSmall = 1000 }) {
   const fetch = async (r, init = {}) => {
     const url = key(r);
     fetched.push(`${(typeof r === 'string' ? init.mode : r.mode) || 'cors'} ${url.replace(SITE, '')}`);
+    caching.push(`${url.replace(SITE, '')} ${init.cache || 'default'}`);
     return network(url);
   };
   const self = { addEventListener: (type, fn) => { on[type] = fn; }, location: new URL(SITE), skipWaiting: () => { skipped = true; },
@@ -469,7 +470,7 @@ function stubWorker({ files, network, build = 'b1', mostSmall = 1000 }) {
   const extendable = extra => ({ ...extra, waitUntil: p => waiting.push(p) });
   const settle = async () => { while (waiting.length) await waiting.shift().catch(() => {}); };
   return {
-    stores, fetched, skipped: () => skipped,
+    stores, fetched, caching, skipped: () => skipped,
     install: async () => { const e = extendable(); on.install(e); try { await Promise.all(waiting.splice(0)); return true; } catch { return false; } },
     activate: async () => { on.activate(extendable()); await settle(); },
     message: data => on.message({ data }),
@@ -484,9 +485,10 @@ function stubWorker({ files, network, build = 'b1', mostSmall = 1000 }) {
 }
 const shellFiles = { '/main.js': 'main build one', '/style.css': 'style build one', '/offline.html': 'offline page' };
 const files = Object.fromEntries(Object.entries(shellFiles).map(([path, body]) => [path, hash16(body)]));
+// The site answers a file asked for by any version (?v=) with the file it holds, as server.py does.
 const siteOf = (pages, { down = false } = {}) => async url => {
   if (down) throw new TypeError('offline');
-  const hit = pages[url.replace(SITE, '')] ?? pages[url];
+  const hit = pages[url.replace(SITE, '')] ?? pages[url] ?? (url.startsWith(SITE) ? pages[new URL(url).pathname] : undefined);
   if (!hit) return new Response('none', { status: 404 });
   return new Response(hit.body ?? hit, { status: 200, headers: hit.headers ?? {} });
 };
@@ -495,6 +497,8 @@ let net = siteOf({ ...shellFiles, '/': page('the page') });
 let sw = stubWorker({ files, network: url => net(url) });
 check('the service worker keeps the page and every file of its build, checked first', await sw.install()
   && same([...sw.stores.get('couchside-b1').keys()].map(u => u.replace(SITE, '')).sort(), ['/', '/main.js', '/offline.html', '/style.css']));
+check('it asks for each file at the address naming its hash, which the browser may already hold, and checks the page',
+  same([...sw.caching].sort(), ['/ no-cache', ...Object.entries(files).map(([path, hash]) => `${path}?v=${hash} default`)].sort()));
 net = siteOf({ ...shellFiles, '/main.js': 'main build two', '/': page('the page') });
 let mixed = stubWorker({ files, network: url => net(url) });
 check('a file from another build fails the install, and nothing is kept', !(await mixed.install()) && !mixed.stores.size);
@@ -548,6 +552,74 @@ check('taking over clears older builds, and keeps its own, the images and what i
   same([...sw.stores.keys()].sort(), ['couchside-b1', 'couchside-images', 'elsewhere']));
 sw.message('take-over');
 check('the page that found a new build lets it take over', sw.skipped());
+
+// start.js reads the list and memory as a page starts and asks for the home page at once,
+// handing the answer to the first to ask for the very same page. Each import of it below is
+// a page starting afresh, with storage and fetch standing in for the browser's; it is the
+// built one, beside the modules from Next Watch it imports.
+const storage = entries => {
+  const m = new Map(Object.entries(entries));
+  return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k), m };
+};
+const realFetch = globalThis.fetch;
+const storedList = { version: 2, profile: [{ id: 169, weight: 1, name: 'Breaking Bad' }, { id: 82, weight: 0.7 }, { id: 82, weight: 1 },
+  { id: -3, weight: 1 }, { id: 526, weight: 0.5 }], saved: [{ id: 2993, poster: 'https://elsewhere.test/x.jpg' }], settings: { known_min: 85 },
+onboarded: true };
+const starting = async (tag, { session = {}, list = storedList, remembered = null } = {}) => {
+  const asked = [];
+  Object.assign(globalThis, {
+    document: {}, sessionStorage: storage(session),
+    localStorage: storage({ 'couchside-v1': JSON.stringify(list), ...(remembered ? { 'couchside-fresh': remembered } : {}) }),
+    fetch: async (path, init) => { asked.push({ path, ...init }); return { ok: true, json: async () => ({ asked: asked.length }) }; },
+  });
+  const start = await import(new URL(`./public/start.js?${tag}`, import.meta.url).href);
+  await new Promise(done => setTimeout(done, 20));
+  return { start, asked };
+};
+const { start, asked: askedEarly } = await starting('early');
+check('the list is read as main.js keeps it: malformed and repeated ratings dropped, and posters from TVmaze only', same(
+  start.stored.profile.map(p => [p.id, p.weight]), [[169, 1], [82, 0.7]]) && start.stored.saved[0].poster === null
+  && start.stored.settings.known_min === 85 && start.stored.onboarded === true);
+const firstVisit = JSON.parse(sessionStorage.getItem('couchside-visit'));
+const memoryAfter = localStorage.getItem('couchside-fresh');
+check('a tab with no visit going on begins one, the day\'s first, and writes the memory at once for main.js and the starters',
+  start.opened.visit.n === 1 && /^[0-9a-f]{32}$/.test(start.remembered.salt)
+  && JSON.parse(localStorage.getItem('couchside-fresh')).salt === start.remembered.salt
+  && JSON.parse(localStorage.getItem('couchside-fresh')).visits.n === 1
+  && firstVisit.n === 1 && typeof firstVisit.ask === 'object' && firstVisit.ask.day === firstVisit.day);
+const homeAsked = start.homeBody(start.stored, await start.opened.ask);
+check('asking for the home page carries the list, My List, the visit\'s day and seeds, and the languages', same(
+  Object.keys(homeAsked).slice(0, 4), ['profile', 'settings', 'list', 'day']) && same(homeAsked.list, [2993])
+  && /^[0-9a-f]{16}$/.test(homeAsked.seed) && /^[0-9a-f]{16}$/.test(homeAsked.visit) && Array.isArray(homeAsked.lang));
+check('the home page is asked for as the page starts, packed as main.js packs it', askedEarly.length === 1
+  && askedEarly[0].path === '/api/home' && askedEarly[0].method === 'POST' && askedEarly[0].body === start.packed(homeAsked)
+  && typeof JSON.parse(askedEarly[0].body).profile.ids === 'object');
+const taken = await start.take(start.packed(homeAsked));
+check('and its answer goes to the first to ask for that very page, once', (await taken?.json())?.asked === 1
+  && (await start.take(start.packed(homeAsked))) === null);
+const other = await starting('other');
+check('a request for any other page asks again itself', (await other.start.take(other.start.packed({ ...homeAsked, lang: ['xx'] }))) === null
+  && other.asked.length === 1);
+const going = { ...firstVisit, at: Date.now() };
+const reload = await starting('reload', { session: { 'couchside-visit': JSON.stringify(going) }, remembered: memoryAfter });
+check('a reload goes on with the tab\'s visit and asks for its very page', reload.start.opened.visit.n === 1
+  && reload.asked.length === 1 && reload.asked[0].body === start.packed(homeAsked)
+  && JSON.parse(localStorage.getItem('couchside-fresh')).visits.n === 1);
+const keptPage = JSON.stringify({ v: 2, at: Date.now(), day: going.day, visit: going.n, key: pageKey(start.tasteOf(start.stored), [2993]),
+  home: { rows: [], ask: going.ask } });
+const reloaded = await starting('kept', { session: { 'couchside-visit': JSON.stringify(going), 'couchside-home': keptPage },
+  remembered: memoryAfter });
+check('a tab that keeps its page for this visit and list asks for nothing', reloaded.asked.length === 0
+  && (await reloaded.start.take(reloaded.start.packed(homeAsked))) === null);
+const later = await starting('later', { session: { 'couchside-visit': JSON.stringify({ ...going, at: Date.now() - 31 * 60_000 }),
+  'couchside-home': keptPage }, remembered: memoryAfter });
+check('but a tab come back to after half an hour away begins the day\'s next visit, and asks for its page',
+  later.start.opened.visit.n === 2 && later.asked.length === 1 && JSON.parse(later.asked[0].body).visit !== homeAsked.visit
+  && JSON.parse(later.asked[0].body).seed === homeAsked.seed);
+check('a list saved before version 2 moves to the wider reach once', start.sanitize({ version: 1, settings: { known_min: 85 } }).settings.known_min === 60
+  && start.sanitize({ version: 2, settings: { known_min: 85 } }).settings.known_min === 85);
+for (const name of ['document', 'localStorage', 'sessionStorage']) delete globalThis[name];
+globalThis.fetch = realFetch;
 
 // Every script the page loads parses as the browser parses it: its modules as modules and the
 // service worker as a classic script. main.js needs a page to run, so nothing above imports
