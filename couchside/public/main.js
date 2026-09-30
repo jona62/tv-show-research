@@ -1,24 +1,25 @@
-import { encode, decode, LIMITS, packList, codeFrom } from './transfer.js';
-import { matrix, svgPath } from './qr.js';
-import { tieText, leaning, leaningHeading } from './format.js';
+import { encode, decode, LIMITS, codeFrom } from './transfer.js?v=aca34fe2830e9d29';
+import { matrix, svgPath } from './qr.js?v=d7f92f94bb8911ea';
+import { tieText, leaning, leaningHeading } from './format.js?v=e565cc65c0882a95';
 import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere, longDate, airs,
-  whereToWatch, trailerSearch, searchNote } from './format.js';
+  whereToWatch, trailerSearch, searchNote } from './format.js?v=e565cc65c0882a95';
 import { pageKey, ongoing, resumable, keptText, shownRows, withoutCard, viewedStore, noteViewed, recentlyViewed }
-  from './format.js';
+  from './format.js?v=e565cc65c0882a95';
 import { POSTERS_AHEAD, POSTERS_AT_ONCE, FLUNG, FLUNG_AT_ONCE, STILL_FLUNG, SLOW_POSTER, ROWS_AHEAD, postersToLoad,
-  loopPosters, posterPace, catchingUp, rowsToAsk, retryAfter } from './format.js';
-import { genreChoices, nextByLetter, searchText, recentStore, noteSearch, withoutSearch, recentMatches, keepsRow } from './format.js';
-import { keeper, sessionAnswers } from './format.js';
-import { TURN_EVERY, slideIn, slotOf, reach, slideLabel, landing, TURN_OWN_MS, glideTime, turnTime } from './format.js';
-import { heading, wandered } from './gestures.js';
-import { SNIPPETS, snippet, revealLabel } from './format.js';
-import { withEpisode, episodeCode, episodeSaid, neighbours, credits, airing } from './format.js';
-import { withPerson, isoDay, yearsBetween, bornOn, diedOn, selfHeading, creditLines, knownFor } from './format.js';
-import { freshStore, merged, today, dayNumber, beginVisit, noteSeen, noteEngaged, noteRow, noteHero, prune, freshness,
-  watcher } from './fresh.js';
-import { daySeed, startersQuery, mergeStarters, browserLanguage, MAX_ROUND, MAX_PICKED } from './starters.js';
-import { sheets, closing, reveal, crossfade, peeks, edgeBack, speed } from './gestures.js';
-import { REST, LOOP_WAIT, goesRound, loopCopies, copiesOf, lapHome, restPlace, toCard } from './gestures.js';
+  loopPosters, posterPace, catchingUp, rowsToAsk, retryAfter } from './format.js?v=e565cc65c0882a95';
+import { genreChoices, nextByLetter, searchText, recentStore, noteSearch, withoutSearch, recentMatches, keepsRow } from './format.js?v=e565cc65c0882a95';
+import { keeper, sessionAnswers } from './format.js?v=e565cc65c0882a95';
+import { TURN_EVERY, slideIn, slotOf, reach, slideLabel, landing, TURN_OWN_MS, glideTime, turnTime } from './format.js?v=e565cc65c0882a95';
+import { heading, wandered } from './gestures.js?v=c2173468ef22c30e';
+import { SNIPPETS, snippet, revealLabel } from './format.js?v=e565cc65c0882a95';
+import { withEpisode, episodeCode, episodeSaid, neighbours, credits, airing } from './format.js?v=e565cc65c0882a95';
+import { withPerson, isoDay, yearsBetween, bornOn, diedOn, selfHeading, creditLines, knownFor } from './format.js?v=e565cc65c0882a95';
+import { merged, today, dayNumber, noteSeen, noteEngaged, noteRow, noteHero, watcher } from './fresh.js?v=afcc972f76479400';
+import { daySeed, startersQuery, mergeStarters, browserLanguage, MAX_ROUND, MAX_PICKED } from './starters.js?v=d559e3a61414a450';
+import { sheets, closing, reveal, crossfade, peeks, edgeBack, speed } from './gestures.js?v=c2173468ef22c30e';
+import { REST, LOOP_WAIT, goesRound, loopCopies, copiesOf, lapHome, restPlace, toCard } from './gestures.js?v=c2173468ef22c30e';
+import { KEY, DEFAULTS, REACH, VERSION, MAX_RATED, fresh, tidy, stored, FRESH_KEY, readMemory, remembered, opened,
+  newVisit, keepVisit, tasteOf, homeBody, packed, PAGE_KEY, take } from './start.js?v=5422435405754c9e';
 
 const boot = JSON.parse(document.getElementById('boot').textContent);
 // iOS zooms into a field it judges small and stays zoomed. maximum-scale=1 in the page's
@@ -31,18 +32,6 @@ if (!IOS) {
   if (viewport) viewport.content = viewport.content.replace(/,\s*maximum-scale=1/, '');
 }
 const $ = id => document.getElementById(id);
-const KEY = 'couchside-v1';
-const DEFAULTS = {
-  text: 40, themes: 35, genres: 25, closest: .3, dislike: .35, language: 'all', type: 'all',
-  status: 'all', year_min: 1900, runtime_min: 0, rating_min: 0, known_min: 60,
-};
-const REACH = [85, 60, 0];
-// Version 2 widened the default reach to fairly known shows of any year, once the ranking
-// learned which eras and how well known a list likes.
-const VERSION = 2;
-// Up to 3,000 ratings, as many as someone who watches a great deal has seen.
-const MAX_RATED = LIMITS.rated;
-const WEIGHTS = [1, .7, .35, 0, -1];
 const RATES = [
   { weight: -1, label: 'Not for me', icon: 'down', said: 'Got it. You will see less like this.' },
   { weight: .7, label: 'I like this', icon: 'up', said: 'Liked. Your rows will lean toward it.' },
@@ -80,65 +69,22 @@ const ICONS = {
 };
 
 /* ------------------------------------------------------------- storage */
-const fresh = () => ({ version: VERSION, profile: [], saved: [], settings: { ...DEFAULTS }, onboarded: false });
-const tidy = s => ({
-  id: s.id, name: typeof s.name === 'string' ? s.name : '', year: Number.isInteger(s.year) ? s.year : null,
-  poster: typeof s.poster === 'string' && s.poster.startsWith('https://static.tvmaze.com/') ? s.poster : null,
-});
-
-// A stored list is read defensively: anything malformed is dropped rather than trusted.
-function sanitize(raw) {
-  const valid = s => s && Number.isInteger(s.id) && s.id > 0;
-  const profile = [], saved = [], seen = new Set(), kept = new Set();
-  for (const p of Array.isArray(raw.profile) ? raw.profile : []) {
-    if (valid(p) && WEIGHTS.includes(p.weight) && !seen.has(p.id) && profile.length < MAX_RATED) {
-      seen.add(p.id);
-      profile.push({ ...tidy(p), weight: p.weight });
-    }
-  }
-  for (const s of Array.isArray(raw.saved) ? raw.saved : []) {
-    if (valid(s) && !kept.has(s.id) && saved.length < LIMITS.saved) {
-      kept.add(s.id);
-      saved.push(tidy(s));
-    }
-  }
-  // A list saved before version 2 reached only well known shows because that was the
-  // default, so it moves to the new one once.
-  let reach = raw.settings?.known_min;
-  if (!(raw.version >= 2) && reach === 85) reach = DEFAULTS.known_min;
-  return {
-    version: VERSION,
-    profile, saved, settings: { ...DEFAULTS, known_min: REACH.includes(reach) ? reach : DEFAULTS.known_min },
-    onboarded: raw.onboarded === true || profile.length > 0,
-  };
-}
-
-let state = fresh();
-try {
-  const raw = JSON.parse(localStorage.getItem(KEY));
-  if (raw && typeof raw === 'object') state = sanitize(raw);
-} catch { /* first visit, or storage is off */ }
+// The list, the memory and the visit as they stood when the page started (start.js, which
+// has asked for the home page with them already).
+let state = stored;
 
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* private mode */ }
 }
 
 // What this browser has shown and what you engaged with (fresh.js), so each visit's page
-// is fresh: kept under its own key, one salt per browser, pruned on every load. Writes
-// are batched, since a scroll can see dozens of titles.
-const FRESH_KEY = 'couchside-fresh';
-const readMemory = () => {
-  try {
-    const raw = JSON.parse(localStorage.getItem(FRESH_KEY));
-    return raw ? prune(freshStore(raw), today()) : null;
-  } catch { return null; }
-};
-let memory = readMemory() || prune(freshStore(null), today());
+// is fresh. Writes are batched, since a scroll can see dozens of titles.
+let memory = remembered;
 // What other tabs have written since joins this tab's memory, so that writing it never
 // loses their visits, heroes or titles seen to this tab's older copy (fresh.js's merged).
 function catchUp() {
-  const stored = readMemory();
-  if (stored) memory = merged(stored, memory);
+  const theirs = readMemory();
+  if (theirs) memory = merged(theirs, memory);
 }
 let memoryTimer = 0;
 function keepMemory(now = false) {
@@ -149,8 +95,6 @@ function keepMemory(now = false) {
   };
   if (now) write(); else memoryTimer = setTimeout(write, 1000);
 }
-// Written at once, so the welcome page's starters (starters.js) find this salt, not a second.
-keepMemory(true);
 // Engaging with a title (opening it, rating it, listing it, its trailer, a link out)
 // spares it from fatigue for two weeks; engaging with a card also wakes the row it is in.
 function engaged(id, row = '') {
@@ -159,38 +103,16 @@ function engaged(id, row = '') {
   if (row) noteRow(memory, row, day, true);
   keepMemory();
 }
-// A visit (format.js): the app opened in a tab, or come back to after half an hour away
-// or on a new day. It takes the day's next number in the memory, and what its requests
-// carry is worked out once as it begins and kept with it for the tab: the day and its
-// seed, the visit's own seed, and the memory's counts as they stood, what the day's
-// earlier visits showed among them. So a reload goes on with the same visit and gets the
-// same page, and nothing a visit shows changes what it asks for; the next visit counts it.
-const VISIT_KEY = 'couchside-visit';
-let visit = null, visitAsk = null;
-function keepVisit() {
-  try { sessionStorage.setItem(VISIT_KEY, JSON.stringify(visit)); } catch { /* storage is off */ }
-}
+// The visit the tab is on (start.js, which says what a visit is and begins the first when
+// the tab has none going on), and what its requests carry.
+let { visit, ask: visitAsk } = opened;
 function startVisit() {
-  const day = today();
   // Another tab may have begun a visit, shown a hero or seen titles since this one read
   // the memory, and the new visit counts them.
   catchUp();
-  const n = beginVisit(memory, day);
+  ({ visit, ask: visitAsk } = newVisit(memory));
   keepMemory(true);
-  const begun = visit = { day, n, at: Date.now(), ask: null };
-  // A browser without crypto.subtle (a page not served over https) sends no seeds, and
-  // gets the plain ranking.
-  visitAsk = freshness(memory, day, n).catch(() => ({})).then(ask => {
-    begun.ask = ask;
-    if (visit === begun) keepVisit();
-    return ask;
-  });
-  keepVisit();
 }
-try { visit = JSON.parse(sessionStorage.getItem(VISIT_KEY)); } catch { visit = null; }
-if (ongoing(visit, { day: today(), now: Date.now() }) && visit.ask && typeof visit.ask === 'object') {
-  visitAsk = Promise.resolve(visit.ask);
-} else startVisit();
 const freshFields = () => visitAsk;
 // The visit's number for what is seen on its own day; past 04:00 a title counts for the day alone.
 const visitToday = () => (visit.day === today() ? visit.n : 0);
@@ -198,7 +120,7 @@ const visitToday = () => (visit.day === today() ? visit.n : 0);
 // visit (comeBack), and the page gives way to that visit's own (renewHome).
 function leaveVisit() {
   visit.at = Date.now();
-  keepVisit();
+  keepVisit(visit);
 }
 function comeBack() {
   // A visit still working out what it asks for has only just begun.
@@ -206,9 +128,6 @@ function comeBack() {
   startVisit();
   renewHome();
 }
-const TAG = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8}){0,3}$/;
-const languages = () => (navigator.languages?.length ? [...navigator.languages] : [navigator.language || ''])
-  .filter(t => TAG.test(t)).slice(0, 8);
 
 // Titles opened lately, for Recently viewed.
 const VIEWED_KEY = 'couchside-viewed';
@@ -277,7 +196,10 @@ function redraw(holder, draw) {
 // A poster, over a tile in the show's own colour that names it until the image arrives.
 // `load` says when: true once the browser finds it near (lazy), false at once, 'first'
 // at once and ahead of everything else, and 'ahead' when its row's turn comes (see
-// startPosters), so a row's posters are in before it is seen.
+// startPosters), so a row's posters are in before it is seen. A full-size picture (the
+// featured show's, a title page's) shows the show's poster first, which is a twentieth of
+// its size and often held already, and fades in over it once it is here: on a slow
+// connection the poster is there in a moment and the full picture takes seconds.
 function artEl(c, src = c.poster, load = true) {
   const kept = src && spare?.get(src);
   if (kept) {
@@ -293,21 +215,37 @@ function artEl(c, src = c.poster, load = true) {
     img.addEventListener('load', () => box.classList.add('loaded'), { once: true });
     img.addEventListener('error', () => img.remove(), { once: true });
     box.append(img);
+    if (c.poster && c.poster !== src) {
+      // After the picture, so the picture is what loadPoster starts and startPosters counts.
+      const preview = picture(null, 'preview', () => box.classList.add('previewed'));
+      preview.addEventListener('error', () => preview.remove(), { once: true });
+      box.dataset.preview = c.poster;
+      box.append(preview);
+    }
     if (load === 'ahead' && rowsNear) return box;
     if (load === true || load === 'ahead') img.loading = 'lazy';
     loadPoster(box, load === 'first');
   }
   return box;
 }
-// Starts a poster's image, unless it has started already, and its copies' in a row that
-// goes round, from the same address, which the browser fetches once.
+// Starts a poster's image, unless it has started already, and its preview unless the
+// picture is held already; and its copies' in a row that goes round, from the same
+// address, which the browser fetches once.
 function loadPoster(box, urgent = false) {
   const img = box.querySelector('img');
   if (!img || img.getAttribute('src') !== null) return;
   if (urgent) img.fetchPriority = 'high';
   img.src = box.dataset.src;
+  const preview = box.querySelector('img.preview');
   // One this page already holds shows at once, without fading in again.
-  if (img.complete && img.naturalWidth) box.classList.add('loaded');
+  if (img.complete && img.naturalWidth) {
+    box.classList.add('loaded');
+    preview?.remove();
+  } else if (preview) {
+    preview.fetchPriority = img.fetchPriority;
+    preview.loading = img.loading;
+    preview.src = box.dataset.preview;
+  }
   for (const copy of copiedArt.get(box) || []) {
     const shown = copy.querySelector('img');
     if (shown && shown.getAttribute('src') === null) shown.src = box.dataset.src;
@@ -319,10 +257,47 @@ function fact(label, value) {
   p.append(el('span', `${label}: `, 'k'), document.createTextNode(value));
   return p;
 }
-function skelLines(n) {
-  const box = el('div');
-  for (let i = 0; i < n; i++) box.append(el('span', '', 'skel line'));
+// Skeletons stand in for what is on its way in its own shape, so nothing moves when it
+// lands. A line of text is a bar inside an element of the kind that will hold the text,
+// so it takes a line of that text's own height; a poster, a still, a face or a button is
+// a block of its size. They are hidden from screen readers, which hear the page once it is
+// here, and they shimmer except under reduced motion (style.css).
+function skelText(width = '') {
+  const bar = el('span', '', 'skel text');
+  if (width) bar.style.width = width;
+  return bar;
+}
+// A tag.cls holding a line for each width: a p.t-summary of four lines, say. The lines sit
+// in a block of their own, which keeps their height in a flex line (a meta line) too.
+function skelIn(tag, cls, ...widths) {
+  const box = el(tag, '', cls);
+  box.setAttribute('aria-hidden', 'true');
+  const lines = el('span', '', 'skel-lines');
+  lines.append(...widths.map(skelText));
+  box.append(lines);
   return box;
+}
+// n lines of text in tag.cls, the last one shorter.
+function skelLines(n, tag = 'div', cls = '') {
+  return skelIn(tag, cls, ...Array.from({ length: n }, (_, i) => (i === n - 1 && n > 1 ? '62%' : '100%')));
+}
+// A poster on its way, sized as a card is where it stands: in a row, a grid or the Top 10.
+function skelCard(soon = false) {
+  const card = el('div', '', 'card skel-card');
+  card.setAttribute('aria-hidden', 'true');
+  card.append(el('span', '', 'art skel'));
+  // Coming soon says when each premieres, under its poster.
+  if (soon) card.append(skelIn('span', 'soon-date', '6.5em'));
+  return card;
+}
+// A grid's n posters on their way, as fill lays them out.
+function skelGrid(n) {
+  return Array.from({ length: n }, () => {
+    const li = el('li', '', 'skel-item');
+    li.setAttribute('aria-hidden', 'true');
+    li.append(skelCard());
+    return li;
+  });
 }
 
 const POPOVER = 'showPopover' in HTMLElement.prototype;
@@ -344,10 +319,11 @@ function toast(text) {
 if (!POPOVER) $('toast').hidden = true;
 
 /* ----------------------------------------------------------------- api */
-async function request(path, options = {}) {
+// started is the same request's answer on its way already, as the home page's is from start.js.
+async function request(path, options = {}, started = null) {
   let res;
   try {
-    res = await fetch(path, options);
+    res = await (started || fetch(path, options));
   } catch (e) {
     if (e.name === 'AbortError') throw e;
     const error = new Error(navigator.onLine === false
@@ -407,17 +383,16 @@ const wait = ms => new Promise(done => setTimeout(done, ms));
 const patient = path => call(path).catch(e => (e.status === 503 ? wait(1500).then(() => call(path)) : Promise.reject(e)));
 // A title's page and a genre's rows follow your list, your settings and what is asked,
 // not what this browser has seen since, so they are kept by those alone. The list goes
-// packed as ids and a character a rating (transfer.js), a quarter of the bytes.
+// packed (start.js).
 function post(path, body, signal) {
-  const sent = Array.isArray(body.profile) ? { ...body, profile: packList(body.profile) } : body;
   const send = () => request(path, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sent), signal,
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: packed(body), signal,
   });
   if (!KEEP[path]) return send();
   const { profile, settings, id, genre } = body;
   return asked(`${path} ${JSON.stringify([profile, settings, id, genre])}`, KEEP[path] * MINUTE, send);
 }
-const taste = () => ({ profile: state.profile.map(({ id, weight }) => ({ id, weight })), settings: state.settings });
+const taste = () => tasteOf(state);
 
 // Live details, trailers and age ratings, shared by the hero and the title page. A
 // failure reads as none, and is asked again next time.
@@ -556,7 +531,8 @@ edgeBack(() => !!titleId || !!personId || (view !== 'home' && !document.querySel
 // rating or a My List change merges into it rather than laying it out again.
 // Impressions are only written down, never a reason to re-render.
 let home = null, homeKey = '', homeReq = 0, homeAbort = null, homeTimer = 0, moreBusy = false;
-const PAGE_KEY = 'couchside-home';
+// Why the page could not be had, if it could not, so the views drawn from it stop waiting.
+let homeFailed = '';
 const currentKey = () => pageKey(taste(), state.saved.map(s => s.id));
 
 function refresh(delay = 450) {
@@ -605,8 +581,9 @@ function rememberHome(data) {
   for (const list of [data.top10, data.fresh, data.soon, data.list, data.popular]) (list || []).forEach(remember);
 }
 
-// The views drawn from the home page's answer, drawn again once it is here: a view opened
-// first (a link to /new, a reload on My List) drew placeholders while it was on its way.
+// The views drawn from the home page's answer, drawn again once it is here, or once it
+// cannot be had: a view opened first (a link to /new, a reload on My List) drew
+// placeholders while it was on its way.
 function homeArrived() {
   if (view === 'new') renderNew();
   if (view === 'list') renderList();
@@ -628,15 +605,19 @@ async function loadHome() {
     homeArrived();
     return;
   }
-  if (!home) renderHomeLoading();
+  if (!home) {
+    homeFailed = '';
+    renderHomeLoading();
+  }
   try {
     // The page belongs to the visit it was asked for in, and keeps what that visit asked
     // with for asking for more (moreBody).
     const { day, n } = visit;
     const ask = await freshFields();
-    const data = await post('/api/home', {
-      ...taste(), list: state.saved.map(s => s.id), ...ask, lang: languages(),
-    }, homeAbort.signal);
+    const body = homeBody(state, ask);
+    // The same page asked for as the page started (start.js) is on its way already.
+    const started = await take(packed(body));
+    const data = await (started ? request('/api/home', {}, started) : post('/api/home', body, homeAbort.signal));
     if (id !== homeReq) return;
     home = { ...data, day, visit: n, ask, tasteKey: key };
     homeKey = key;
@@ -648,22 +629,24 @@ async function loadHome() {
     if (e.name === 'AbortError' || id !== homeReq) return;
     if (home) toast(e.message);
     else {
+      homeFailed = e.message;
+      $('hero').classList.remove('loading');
+      $('hero').replaceChildren();
       $('rows').replaceChildren(el('p', e.message, 'row-empty'));
       const again = button('btn ghost retry', 'Try again', () => loadHome());
       $('rows').append(again);
+      homeArrived();
     }
   }
 }
 
-// What asking for more rows carries: the list as it is now, what the page's visit asked
-// with, unchanged however much it has shown since, and the rows shown. So the request is
-// the page's own, and the server answers it from the page it keeps for it (library.Kept).
+// What asking for more rows carries: what asking for the page does (homeBody), with the
+// list as it is now and what the page's visit asked with, unchanged however much it has
+// shown since, and the rows shown. So the request is the page's own, and the server answers
+// it from the page it keeps for it (library.Kept).
 function moreBody(count) {
   const listIds = state.saved.slice().reverse().map(s => s.id);
-  return {
-    ...taste(), list: state.saved.map(s => s.id), ...home.ask, lang: languages(),
-    shown: shownRows(home.rows, listIds), count,
-  };
+  return { ...homeBody(state, home.ask), shown: shownRows(home.rows, listIds), count };
 }
 
 // The next rows, asked for while ROWS_AHEAD screens of rows are still to come below the
@@ -712,9 +695,14 @@ const sentinel = el('div', '', 'more-rows');
 const moreButton = button('btn ghost', 'More rows', () => loadMore());
 // Rows still to come stand in at the foot, so a reader who catches up with them sees the
 // page going on rather than ending. Not section.row, which the page counts as its rows.
-const moreLoading = el('div', '', 'more-loading');
+const moreLoading = el('div', '', 'more-loading unseen');
 moreLoading.setAttribute('aria-hidden', 'true');
-moreLoading.append(skelRow('div'), skelRow('div'));
+moreLoading.append(skelRow('div', { title: '11em' }), skelRow('div', { title: '8em' }));
+// They wait at the foot for as long as the page has more, and a shimmer repaints every
+// frame, so they shimmer only while they are on screen.
+if ('IntersectionObserver' in window) {
+  new IntersectionObserver(entries => moreLoading.classList.toggle('unseen', !entries.at(-1).isIntersecting)).observe(moreLoading);
+} else moreLoading.classList.remove('unseen');
 // The foot of the page, once the server has no more rows: a quiet note and a way back up.
 const pageEnd = el('div', '', 'page-end');
 pageEnd.append(el('p', 'That’s everything for today. Rate more shows to grow your rows.'),
@@ -740,23 +728,77 @@ function syncFoot() {
 const seenWatch = watcher(id => { noteSeen(memory, id, today(), visitToday()); keepMemory(); });
 const rowWatch = watcher(key => { noteRow(memory, key, today()); keepMemory(); });
 
-function skelRow(tag = 'section') {
-  const sec = el(tag, '', 'row');
-  sec.append(el('span', '', 'skel line row-skel'));
-  const track = el('ul', '', 'track');
-  for (let n = 0; n < 9; n++) {
+// A row on its way, laid out as rowEl lays one out: its title a bar of the title's height
+// over posters of the row's size. The Top 10's are numbered as it numbers them, and Coming
+// soon's leave room for their dates.
+function skelRow(tag = 'section', { kind = 'row', title = '10em' } = {}) {
+  const sec = el(tag, '', kind === 'soon' ? 'row soon' : 'row');
+  sec.setAttribute('aria-hidden', 'true');
+  const track = el('ul', '', kind === 'top10' ? 'track ranked' : 'track');
+  for (let n = 0; n < 12; n++) {
     const li = el('li');
-    li.append(el('span', '', 'skel card'));
+    if (kind === 'top10') li.append(el('span', String(n + 1), 'num'));
+    li.append(skelCard(kind === 'soon'));
     track.append(li);
   }
-  sec.append(track);
+  const slider = el('div', '', 'slider');
+  slider.append(track);
+  sec.append(skelIn('h2', 'row-title', title), slider);
   return sec;
 }
 
+// Before anything is liked, the page opens with an invitation to pick a few shows.
+function inviteEl() {
+  const invite = el('div', '', 'invite');
+  const go = el('a', 'Pick shows you like', 'btn primary');
+  go.href = '/welcome';
+  go.dataset.link = '';
+  invite.append(el('p', 'Rate a few shows and every row starts leaning your way.'), go);
+  return invite;
+}
+
+// The home page on its way, in the shape it lands in: the featured shows' whole footprint,
+// a slide in a track laid out by the rules a featured slide is (featuredSlide), with a
+// poster, why it is here, its facts and three buttons on a phone and a title, facts,
+// summary and buttons, with the poster beside them until the backdrop comes, on a wide
+// screen; then rows. On a wide screen the carousel is the hero's set height; on a phone it
+// is as tall as its tallest slide, which is most often one whose facts run to two lines,
+// with Trailer, More info and My List on two, and, on a personal page, why it is here on
+// one. Whether the page is personal is known already: it is once anything is liked, and
+// otherwise it opens with the invitation.
 function renderHomeLoading() {
-  $('hero').replaceChildren();
-  $('hero').classList.add('loading');
-  $('rows').replaceChildren(skelRow(), skelRow(), skelRow());
+  const personal = state.profile.some(p => p.weight > 0);
+  // A phone on its side holds the hero to the screen (style.css), which a title of a line
+  // and a summary of two fit.
+  const low = matchMedia('(min-width: 760px) and (max-height: 520px)').matches;
+  const copy = el('div', '', 'hero-copy');
+  copy.append(skelIn('h1', 'hero-title', ...(low ? ['70%'] : ['88%', '56%'])));
+  if (personal) copy.append(skelIn('p', 'hero-why', '15em'));
+  // Each line of the facts a flex line of its own, with the gap its lines have between them;
+  // a wide screen has room for them on one.
+  const meta = el('p', '', 'meta');
+  meta.setAttribute('aria-hidden', 'true');
+  for (const width of personal && !wide() ? ['17em', '11em'] : ['17em']) {
+    const line = el('span', '', 'skel-lines');
+    line.append(skelText(width));
+    meta.append(line);
+  }
+  copy.append(meta, skelIn('p', 'hero-summary', ...(low ? ['100%', '72%'] : ['100%', '100%', '72%'])));
+  const acts = el('div', '', 'hero-acts');
+  for (let n = 0; n < 3; n++) acts.append(el('span', '', 'btn skel'));
+  copy.append(acts);
+  const body = el('div', '', 'hero-body');
+  body.append(el('span', '', 'art hero-poster skel'), copy);
+  const slide = el('div', '', 'hero-slide');
+  slide.append(body);
+  const track = el('div', '', 'hero-track');
+  track.setAttribute('aria-hidden', 'true');
+  track.append(slide);
+  const hero = $('hero');
+  hero.classList.add('loading');
+  hero.replaceChildren(track);
+  $('rows').replaceChildren(...(personal ? [] : [inviteEl()]), skelRow('section', { title: '9em' }),
+    skelRow('section', { title: '13em' }), skelRow('section', { title: '8em' }));
 }
 
 function renderHome() {
@@ -768,14 +810,7 @@ function renderHome() {
   keepMemory();
   const holder = $('rows');
   holder.replaceChildren();
-  if (!home.personal) {
-    const invite = el('div', '', 'invite');
-    const go = el('a', 'Pick shows you like', 'btn primary');
-    go.href = '/welcome';
-    go.dataset.link = '';
-    invite.append(el('p', 'Rate a few shows and every row starts leaning your way.'), go);
-    holder.append(invite);
-  }
+  if (!home.personal) holder.append(inviteEl());
   if (home.message) holder.append(el('p', home.message, 'row-empty'));
   holder.append(sentinel);
   appendRows(home.rows);
@@ -910,12 +945,24 @@ function featuredSlide(s, i, n, fits) {
     if (s.tmdb?.backdrop) backdrop.src = s.tmdb.backdrop;
     else details(s.id).then(d => { if (d?.backdrop) backdrop.src = d.backdrop; });
   };
+  // Blurred this much the small poster looks the same as the full picture, and it is there
+  // in a moment, often held already as the poster's preview.
+  const glow = () => { if (blur && !blur.getAttribute('src')) blur.src = s.poster || s.art; };
   return {
     node: slide, show: s, poster, rel: null, drawn: null, widen,
+    // The small poster alone, for a slide beside the one shown that nothing has asked for
+    // yet: a swipe that brings it in has a picture, and the full one, often a megabyte or
+    // two, waits for ready.
+    glimpse() {
+      if (asked) return;
+      glow();
+      const preview = poster.querySelector('img.preview');
+      if (preview && preview.getAttribute('src') === null) preview.src = poster.dataset.preview;
+    },
     ready(urgent = false) {
       if (asked) return;
       asked = true;
-      if (blur) blur.src = s.art;
+      glow();
       loadPoster(poster, urgent);
       widen(urgent);
       if (!s.tmdb?.videos?.length) {
@@ -1247,13 +1294,17 @@ function carousel(box, shows) {
   crossfade(box, controls, prev, next, track, said);
   show(0);
   slides[0].ready(true);
-  // The slides either side follow the first slide's poster, or a moment, whichever is sooner.
+  // The slides either side show their small posters from the start. The next one's full
+  // picture, which its turn brings in, follows the first slide's, so the first has the
+  // connection to itself; the one before waits for the reader to reach for the carousel
+  // (neighbours).
+  for (const k of [-1, 1]) slides[slideIn(k, n)].glimpse();
+  const upNext = () => { if (!ended) slides[slideIn(current + 1, n)].ready(); };
   const first = slides[0].poster.querySelector('img');
-  if (!first || (first.complete && first.naturalWidth)) neighbours();
+  if (!first || (first.complete && first.naturalWidth)) upNext();
   else {
-    first.addEventListener('load', neighbours, { once: true, signal: ends.signal });
-    first.addEventListener('error', neighbours, { once: true, signal: ends.signal });
-    setTimeout(() => { if (!ended) neighbours(); }, 2500);
+    first.addEventListener('load', upNext, { once: true, signal: ends.signal });
+    first.addEventListener('error', upNext, { once: true, signal: ends.signal });
   }
   schedule();
   return { end };
@@ -1868,6 +1919,40 @@ function cardEl(c, { rank = 0, soon = false, note = '', row = '', ahead = false 
   return card;
 }
 
+// A title page is asked for as a poster is pressed rather than as the press lifts, so the
+// tap that follows finds its answer and live details on their way (titleOf and details keep
+// what they asked). A mouse press is a click on its way. A finger that lands on a poster
+// may be starting a scroll instead, and scrolling past posters must ask for nothing, so a
+// finger asks only once it has rested a moment where it landed.
+const PRESS_REST = 60;      // ms a finger stays put on a poster before its title is asked for
+const PRESS_SLOP = 6;       // px it may wander meanwhile
+let pressing = null;
+function pressed(id) {
+  titleOf(id).catch(() => {});
+  details(id);
+}
+document.addEventListener('pointerdown', e => {
+  clearTimeout(pressing?.timer);
+  pressing = null;
+  if (!e.isPrimary || e.button !== 0) return;
+  const id = Number(e.target.closest('.card-hit, .more-open')?.closest('[data-id]')?.dataset.id);
+  if (!id) return;
+  if (e.pointerType === 'mouse') { pressed(id); return; }
+  pressing = { x: e.clientX, y: e.clientY, timer: setTimeout(() => { pressing = null; pressed(id); }, PRESS_REST) };
+}, { passive: true });
+document.addEventListener('pointermove', e => {
+  if (pressing && Math.hypot(e.clientX - pressing.x, e.clientY - pressing.y) > PRESS_SLOP) {
+    clearTimeout(pressing.timer);
+    pressing = null;
+  }
+}, { passive: true });
+for (const type of ['pointerup', 'pointercancel']) {
+  document.addEventListener(type, () => {
+    clearTimeout(pressing?.timer);
+    pressing = null;
+  }, { passive: true });
+}
+
 // A long press on a poster, on a touch screen, lifts it into a peek (gestures.js) with the
 // quick buttons the hover shows: more info, My List, I like this and Love this. More info
 // and the poster do what a tap on the card does.
@@ -2073,7 +2158,8 @@ function showTitle(id, play = false, place = null) {
   const settle = returnTo(dialog, place, () => token === titleToken);
   T.close.focus({ preventScroll: true });
   document.title = `${T.card.name || 'Show'} · Couchside`;
-  const loaded = freshFields().then(fresh => post('/api/title', { ...taste(), ...fresh, id }));
+  paintTitle();
+  const loaded = titleOf(id);
   loaded.then(data => {
     if (token !== titleToken) return;
     remember(data.show);
@@ -2090,7 +2176,14 @@ function showTitle(id, play = false, place = null) {
     paintBackdrop();
   });
   details(id).then(live => {
-    if (token !== titleToken || !live) return;
+    if (token !== titleToken) return;
+    if (!live) {
+      // Without TVmaze's details there are no seasons to show, and no cast to wait for.
+      T.episodes.hidden = true;
+      T.liveFailed = true;
+      paintTitle();
+      return;
+    }
     T.live = live;
     paintTitle();
     paintBackdrop();
@@ -2128,13 +2221,19 @@ function buildTitle(c) {
   close.setAttribute('aria-label', 'Close');
   const hero = el('div', '', 't-hero');
   const art = c.art || c.poster;
-  if (art) hero.append(picture(art, 't-blur'));
+  // Blurred, the small poster looks as the full picture does, and it is here sooner.
+  if (art) hero.append(picture(c.poster || art, 't-blur'));
   const backdrop = picture(null, 't-backdrop', () => hero.classList.add('has-backdrop'));
   backdrop.loading = 'lazy';
-  const poster = artEl(c, art, false);
+  // The page's largest picture on a phone, asked for ahead of the rest.
+  const poster = artEl(c, art, 'first');
   poster.classList.add('t-poster');
+  // A title opened before the page knew it (a shared link) shows its poster and name on
+  // their way, until it loads (paintTitle).
+  if (!art) poster.classList.add('skel');
   const name = el('h2', c.name || '', 't-name');
   name.id = 't-name';
+  if (!c.name) name.append(skelIn('span', '', '9em'));
   const out = el('a', '', 'round');
   out.href = c.url || `https://www.tvmaze.com/shows/${c.id}`;
   out.target = '_blank';
@@ -2149,31 +2248,30 @@ function buildTitle(c) {
   // The round buttons keep to a line of their own on a phone, under Trailer and My List.
   const icons = el('div', '', 't-icons');
   icons.append(rateGroup(c), share, out);
-  acts.append(listed, icons);
+  // Trailer's place, until the title says whether it has one (paintTrailerButton).
+  const trailer = el('span', '', 'btn skel trailer');
+  trailer.setAttribute('aria-hidden', 'true');
+  acts.append(trailer, listed, icons);
   const head = el('div', '', 't-head');
   head.append(name, acts);
   hero.append(backdrop, poster, el('div', '', 't-fade'), head);
   const main = el('div', '', 't-main');
-  main.append(metaEl(c, null), skelLines(4));
   const side = el('div', '', 'facts');
   const body = el('div', '', 't-body');
   body.append(main, side);
+  // The sections below stand in as they land, and go if the title has none of theirs.
   const episodes = el('section', '', 't-section');
-  episodes.hidden = true;
   episodes.setAttribute('aria-label', 'Episodes');
+  episodes.append(...episodesSkeleton());
   const videos = el('section', '', 't-section');
-  videos.hidden = true;
   videos.setAttribute('aria-label', 'Trailers and more');
+  videos.append(...videosSkeleton());
   const more = el('section', '', 't-section');
   const moreH = el('h3', 'More like this');
   moreH.id = 't-more-h';
   more.setAttribute('aria-labelledby', moreH.id);
   const moreList = el('ul', '', 'more');
-  for (let n = 0; n < 6; n++) {
-    const li = el('li', '', 'more-card');
-    li.append(el('span', '', 'skel card-fill'));
-    moreList.append(li);
-  }
+  for (let n = 0; n < 6; n++) moreList.append(moreSkeleton());
   more.append(moreH, moreList);
   // Fans also like: what this title's readers also look up, which may be nothing like it.
   const fans = el('section', '', 't-section');
@@ -2187,12 +2285,13 @@ function buildTitle(c) {
   const fansList = el('ul', '', 'more');
   fans.append(fansH, fansSub, fansList);
   const about = el('section', '', 't-section about');
+  about.append(skelIn('h3', '', '10em'), ...['70%', '45%', '60%', '38%', '52%'].map(w => skelIn('p', '', w)));
   $('t-sheet').replaceChildren(close, hero, body, episodes, videos, more, fans, about);
   // Where to watch, the season's episodes and the trailers start short (unfold); each part
   // remembers whether it was opened, so a repaint or another season keeps it so. The season
   // shown is kept (season) for its episodes to step through, and picked from its menu (pick).
   const t = { id: c.id, card: c, hero, backdrop, name, out, acts, listed, main, side, episodes, clips: videos, moreList,
-              fans, fansSub, fansList, about, close, data: null, live: null, age: null, videos: null, error: '',
+              fans, fansSub, fansList, about, close, data: null, live: null, liveFailed: false, age: null, videos: null, error: '',
               eps: null, epsMore: null, clipList: null, clipsMore: null, pick: null, season: null, episodeSeason: null,
               open: { watch: false, episodes: false, clips: false } };
   paintOut(t, c);
@@ -2204,11 +2303,81 @@ function paintOut(t, s) {
   t.out.setAttribute('aria-label', `${s.name || 'This show'} on TVmaze, opens in a new tab`);
 }
 
+// A title's page for this list, asked for once however many ask: a finger landing on a
+// poster asks (prefetch), and opening it finds the answer on its way (post keeps it).
+const titleOf = id => freshFields().then(fresh => post('/api/title', { ...taste(), ...fresh, id }));
+
+// Where to watch on its way: its heading over a line of pills, as watchEl lays it out.
+function watchSkeleton() {
+  const box = el('div', '', 'watch');
+  box.setAttribute('aria-hidden', 'true');
+  const list = el('div', '', 'watch-list');
+  list.append(el('span', '', 'watch-link skel'), el('span', '', 'watch-link skel'));
+  const line = el('div', '', 'watch-line');
+  line.append(list);
+  box.append(skelIn('span', 'k', '7.5em'), line);
+  return box;
+}
+
+// An episode on its way, as episodeEl lays one out: its still beside its name, date and summary.
+function episodeSkeleton() {
+  const li = el('li', '', 'ep');
+  li.setAttribute('aria-hidden', 'true');
+  const text = el('div');
+  text.append(skelIn('h4', '', '58%'), skelIn('span', 'ep-date', '7em'), skelLines(3, 'p'));
+  li.append(el('span', '', 'ep-num'), el('span', '', 'ep-still skel'), text);
+  return li;
+}
+
+// A title's episodes on their way (paintEpisodes): the heading and season menu, the first
+// few episodes of the season and the button for the rest.
+function episodesSkeleton() {
+  const head = el('div', '', 't-section-head');
+  const pick = el('span', '', 'skel pick');
+  pick.setAttribute('aria-hidden', 'true');
+  head.append(el('h3', 'Episodes'), pick);
+  const list = el('ol', '', 'eps');
+  list.append(...Array.from({ length: SNIPPETS.episodes }, episodeSkeleton));
+  const bar = el('div', '', 'reveal-bar');
+  bar.setAttribute('aria-hidden', 'true');
+  bar.append(el('span', '', 'reveal skel'));
+  return [head, list, bar];
+}
+
+// Trailers on their way, as paintVideos lays them out folded: a row of thumbnails.
+function videosSkeleton() {
+  const list = el('ul', '', 'clips rail');
+  list.setAttribute('aria-hidden', 'true');
+  for (let n = 0; n < 4; n++) {
+    const li = el('li');
+    const clip = el('span', '', 'clip');
+    clip.append(el('span', '', 'clip-thumb skel'), skelIn('b', '', '80%'), skelIn('small', '', '45%'));
+    li.append(clip);
+    list.append(li);
+  }
+  return [el('h3', 'Trailers & more'), list];
+}
+
+// A show like this one on its way, in the shape of its card (moreCard): the poster over its
+// name, why it is here, its year beside My List, and a few lines of its summary.
+function moreSkeleton() {
+  const li = el('li', '', 'more-card skel-item');
+  li.setAttribute('aria-hidden', 'true');
+  const top = el('div', '', 'more-top');
+  top.append(skelIn('div', 'more-info', '2.6em'), el('span', '', 'round skel'));
+  const body = el('div', '', 'more-body');
+  body.append(skelIn('h4', '', '75%'), skelIn('div', 'more-why', '60%'), top, skelLines(4, 'p'));
+  li.append(el('span', '', 'art skel'), body);
+  return li;
+}
+
 function paintTitle() {
   if (!T) return;
   const s = { ...T.card, ...(T.data?.show || {}) };
   const live = T.live;
-  T.name.textContent = s.name;
+  // Until the title is here, what it will say stands in, in its own shape.
+  const waiting = !T.data && !T.error;
+  if (s.name || !waiting) T.name.textContent = s.name || '';
   // An episode open over the page names the tab, and its way back names the show; a title
   // painting beneath someone's page leaves the tab named after them.
   if (E) nameEpisode();
@@ -2218,42 +2387,56 @@ function paintTitle() {
   const art = s.art || s.poster;
   const poster = T.hero.querySelector('.t-poster');
   if (art && poster && !poster.dataset.src) {
-    const shown = artEl(s, art, false);
+    const shown = artEl(s, art, 'first');
     shown.classList.add('t-poster');
     poster.replaceWith(shown);
-    if (!T.hero.querySelector('.t-blur')) T.hero.prepend(picture(art, 't-blur'));
-  }
+    if (!T.hero.querySelector('.t-blur')) T.hero.prepend(picture(s.poster || art, 't-blur'));
+  } else if (!waiting) poster?.classList.remove('skel');
   T.acts.querySelector('.rates')?.setAttribute('aria-label', `Rate ${s.name}`);
   paintOut(T, s);
   syncList(s.id);
 
-  const main = [metaEl(s, live, false, T.age?.rating)];
+  const meta = metaEl(s, live, false, T.age?.rating);
+  if (waiting && !meta.childElementCount) meta.append(skelIn('span', '', '14em'));
+  const main = [meta];
   if (s.because) {
     const why = el('p', `Because you ${s.because.loved ? 'loved' : 'liked'} ${s.because.name}`, 't-why');
     if (s.because.ties?.length) why.append(el('span', ` · ${joinNames(s.because.ties.slice(0, 3).map(tieText))}`));
     else if (s.because.shared?.length) why.append(el('span', ` · shares ${s.because.shared.join(', ').toLowerCase()}`));
     main.push(why);
     if (s.because.fits?.length) main.push(el('p', `Fits your taste for ${joinNames(s.because.fits.map(leaning))}.`, 't-fits'));
+  } else if (waiting && state.profile.some(p => p.weight > 0) && rated(T.id) === undefined) {
+    // A title the list likes something near and has not rated says why it is here.
+    main.push(skelIn('p', 't-why', '17em'));
   }
   const airing = live?.status === 'Running' ? airs(live.days) : '';
   if (airing) main.push(el('p', airing, 't-airs'));
   // Once the title has loaded, so TVmaze's channels never stand in for TMDB's services.
-  const watch = T.data || T.error ? watchEl(s, live, T.age, T.data?.tmdb) : null;
+  const watch = waiting ? watchSkeleton() : watchEl(s, live, T.age, T.data?.tmdb);
   if (watch) main.push(watch);
   if (T.data) main.push(el('p', s.summary || 'TVmaze has no summary for this show yet.', 't-summary'));
   else if (T.error) main.push(el('p', T.error, 't-summary muted'));
-  else main.push(skelLines(4));
+  // A show's summary runs about six lines of a wide sheet and eight of a phone's.
+  else main.push(skelLines(wide() ? 6 : 8, 'p', 't-summary'));
   T.main.replaceChildren(...main);
-  if (watch) fitWatch(watch);
+  if (watch && !waiting) fitWatch(watch);
 
-  T.side.replaceChildren(...[
-    castFact(live?.cast || []),
+  // The cast comes with TVmaze's details, after the title, and has its line kept till then.
+  T.side.replaceChildren(...(waiting ? ['90%', '55%', '80%', '40%'].map(w => skelIn('p', '', w)) : [
+    live || T.liveFailed ? castFact(live?.cast || []) : skelIn('p', '', '90%'),
     fact('Genres', s.genres?.join(', ')),
     fact('This show is about', s.themes?.slice(0, 4).join(', ').toLowerCase()),
     fact('On', s.channel),
-  ].filter(Boolean));
+  ].filter(Boolean)));
 
-  if (!T.data) return;
+  if (!T.data) {
+    // A title that could not be had has no shows like it or facts about it to wait for.
+    if (T.error) {
+      T.moreList.closest('section').hidden = true;
+      T.about.replaceChildren();
+    }
+    return;
+  }
   const about = [el('h3', `About ${s.name}`)];
   if (live?.cast?.length) about.push(castEl(live.cast));
   const status = s.status === 'Ended' && s.ended ? `Ended in ${s.ended}` : s.status;
@@ -2466,7 +2649,10 @@ function paintTrailerButton() {
 // The trailers in one row that scrolls sideways, and a button that lays them all out, so
 // More like this is not far below.
 function paintVideos() {
-  if (!T.videos.length) return;
+  if (!T.videos.length) {
+    T.clips.hidden = true;
+    return;
+  }
   const list = el('ul', '', 'clips');
   list.id = 't-clips';
   list.addEventListener('scroll', () => edges(list), { passive: true });
@@ -2627,6 +2813,7 @@ function paintMore() {
 // to this title says nothing of how well it fits a list, so it reads "% similar".
 function moreCard(c) {
   const li = el('li', '', 'more-card');
+  li.dataset.id = c.id;
   const open = button('more-open', '', () => openTitle(c.id));
   const similar = c.similar ? `${c.similar}% similar` : '';
   open.setAttribute('aria-label', [c.name, c.year, similar, c.why].filter(Boolean).join(', '));
@@ -2651,7 +2838,10 @@ function moreCard(c) {
 
 function paintEpisodes(painted = () => {}) {
   const list = T.live.seasons;
-  if (!list.length) return;
+  if (!list.length) {
+    T.episodes.hidden = true;
+    return;
+  }
   const head = el('div', '', 't-section-head');
   head.append(el('h3', 'Episodes'));
   let pick = null;
@@ -2695,12 +2885,7 @@ function setEpisodes(open) {
 async function loadSeason(number) {
   const token = ++seasonToken, t = T;
   t.season = null;
-  const skeleton = () => {
-    const li = el('li', '', 'ep');
-    li.append(el('span', '', 'ep-num'), el('span', '', 'ep-still skel'), skelLines(2));
-    return li;
-  };
-  t.eps.replaceChildren(skeleton(), skeleton(), skeleton());
+  t.eps.replaceChildren(...Array.from({ length: SNIPPETS.episodes }, episodeSkeleton));
   setEpisodes(t.open.episodes);
   try {
     const { episodes } = await patient(`/api/episodes?id=${t.id}&season=${number}`);
@@ -2911,8 +3096,8 @@ function paintEpisode() {
     e.code.replaceChildren(code, el('span', episodeSaid(ep.season, ep.number), 'sr'));
     e.name.textContent = ep.name;
   } else if (waiting) {
-    e.code.replaceChildren(el('span', '', 'skel line'));
-    e.name.replaceChildren(el('span', '', 'skel line'));
+    e.code.replaceChildren(skelIn('span', '', '3.4em'));
+    e.name.replaceChildren(skelIn('span', '', '62%'));
   } else {
     e.code.replaceChildren();
     e.name.textContent = 'Episode';
@@ -2920,11 +3105,12 @@ function paintEpisode() {
   e.meta.replaceChildren(...[airing(ep.airdate, ep.airstamp), ep.runtime ? runtime(ep.runtime) : '']
     .filter(Boolean).map(fact => el('span', fact)));
   if (ep.rating) e.meta.append(ratingEl(ep.rating));
-  else if (waiting && !ep.name) e.meta.append(el('span', '', 'skel line'));
+  else if (waiting && !ep.name) e.meta.append(skelIn('span', '', '11em'));
   e.share.hidden = !ep.name;
 
+  // A summary is a few sentences: about three lines of a wide sheet and five of a phone's.
   const said = ep.summary ? el('p', ep.summary)
-    : waiting ? skelLines(4) : e.detail ? el('p', 'TVmaze has no summary for this episode yet.', 'muted') : null;
+    : waiting ? skelLines(wide() ? 3 : 5, 'p') : e.detail ? el('p', 'TVmaze has no summary for this episode yet.', 'muted') : null;
   e.summary.replaceChildren(...(said ? [said] : []));
   e.note.replaceChildren();
   if (e.error) {
@@ -2940,15 +3126,18 @@ function paintEpisode() {
   }
 
   const made = e.detail ? credits(e.detail.crew) : [];
-  e.crew.replaceChildren(...(waiting ? [skelLines(2)] : made.map(creditEl)));
+  // Who directed it and who wrote it, a line each, while they are on their way.
+  e.crew.replaceChildren(...(waiting ? [skelIn('p', '', '46%'), skelIn('p', '', '40%')] : made.map(creditEl)));
   e.crew.hidden = !waiting && !made.length;
 
   const guests = e.detail?.guests || [];
   e.guests.hidden = !waiting && !guests.length;
   if (waiting) {
+    // Faces, each over a name and a part.
     e.guestList.replaceChildren(...Array.from({ length: 6 }, () => {
-      const li = el('li');
-      li.append(el('span', '', 'face skel'), el('span', '', 'skel line'));
+      const li = el('li', '', 'skel-item');
+      li.setAttribute('aria-hidden', 'true');
+      li.append(el('span', '', 'face skel'), skelIn('b', '', '75%'), skelIn('span', '', '55%'));
       return li;
     }));
     e.guestsMore.parentElement.hidden = true;
@@ -3213,9 +3402,12 @@ function buildPerson(who) {
   const hero = el('div', '', 't-hero p-hero');
   const name = el('h2', who.name, 't-name');
   name.id = 'p-name';
-  // Wikipedia's few words on them, "American actor (born 1956)", once they come.
+  // Someone opened before the page knew them (a shared link) has their name on its way.
+  if (!who.name) name.append(skelIn('span', '', '8em'));
+  // Wikipedia's few words on them, "American actor (born 1956)", once they come, and their
+  // place kept until then.
   const said = el('p', '', 'p-said');
-  said.hidden = true;
+  said.append(skelIn('span', '', '12em'));
   const shared = button('round', '', sharePerson, 'share');
   shared.setAttribute('aria-label', 'Share');
   shared.title = 'Share';
@@ -3224,10 +3416,14 @@ function buildPerson(who) {
   const head = el('div', '', 't-head');
   head.append(name, said, acts);
   hero.append(el('div', '', 't-fade'), head);
-  paintPhoto(hero, who);
+  paintPhoto(hero, who, true);
   const main = el('div', '', 't-main');
-  main.append(skelLines(3));
+  main.append(...bioSkeleton());
+  // What is known of them: when and where they were born, their age, what they are known for
+  // and what they created, the longer ones two lines.
   const side = el('div', '', 'facts');
+  side.append(skelIn('p', '', '100%', '45%'), skelIn('p', '', '28%'), skelIn('p', '', '100%', '40%'),
+    skelIn('p', '', '100%', '30%'));
   const body = el('div', '', 't-body p-body');
   body.append(main, side);
   const parts = {};
@@ -3242,12 +3438,15 @@ function buildPerson(who) {
     box.hidden = part !== 'roles';
     parts[part] = { box, h, grid, more: null };
   }
-  // Their shows on the way: a line of posters' worth of shimmer.
-  for (let n = 0; n < 6; n++) {
-    const li = el('li');
-    li.append(el('span', '', 'skel card-fill'));
-    parts.roles.grid.append(li);
-  }
+  // Their shows on their way, each poster with whom they played and when beneath it.
+  parts.roles.grid.append(...Array.from({ length: 6 }, () => {
+    const li = el('li', '', 'skel-item');
+    li.setAttribute('aria-hidden', 'true');
+    const caption = el('span', '', 'grid-caption p-caption');
+    caption.append(skelIn('span', 'p-as', '70%'), skelIn('span', 'p-when', '50%'));
+    li.append(skelCard(), caption);
+    return li;
+  }));
   const links = el('p', '', 'links-row');
   const foot = el('section', '', 't-section about');
   foot.hidden = true;
@@ -3257,12 +3456,14 @@ function buildPerson(who) {
            error: null, fitBio: null, open: { roles: false, appearances: false, crew: false, bio: false } };
 }
 
-// Their photo, as a title's poster is shown, and the same blurred behind it.
-function paintPhoto(hero, who) {
+// Their photo, as a title's poster is shown, and the same blurred behind it; on its way while
+// they are (waiting) and the page does not know it yet.
+function paintPhoto(hero, who, waiting = false) {
   hero.querySelector('.p-photo')?.remove();
   hero.querySelector('.t-blur')?.remove();
   const photo = artEl({ id: who.id, name: who.name }, who.photo || null, false);
   photo.classList.add('t-poster', 'p-photo');
+  if (waiting && !who.photo) photo.classList.add('skel');
   hero.prepend(photo);
   if (who.photo) hero.prepend(picture(who.photo, 't-blur'));
 }
@@ -3274,6 +3475,9 @@ function paintPerson() {
     const again = P.error.status === 404 ? [] : [button('btn ghost', 'Try again', () => showPerson(P.id))];
     P.main.replaceChildren(el('p', P.error.message, 't-summary muted'), ...again);
     P.side.replaceChildren();
+    P.said.hidden = true;
+    P.name.textContent = P.who.name;
+    P.hero.querySelector('.p-photo')?.classList.remove('skel');
     for (const s of Object.values(P.parts)) s.box.hidden = true;
     return;
   }
@@ -3282,7 +3486,8 @@ function paintPerson() {
   P.name.textContent = who.name;
   document.title = `${who.name} · Couchside`;
   // A page opened before the page knew them (a shared link) gets their photo now.
-  if ((who.photo || undefined) !== P.hero.querySelector('.p-photo')?.dataset.src) paintPhoto(P.hero, who);
+  const shown = P.hero.querySelector('.p-photo');
+  if ((who.photo || undefined) !== shown?.dataset.src || shown?.classList.contains('skel')) paintPhoto(P.hero, who);
   paintAbout();
   paintCredits();
 }
@@ -3292,19 +3497,25 @@ function paintPerson() {
 // biography; and where else to read about them.
 function paintAbout() {
   const who = P.data.person, bio = P.bio;
-  P.said.textContent = bio?.description || '';
-  P.said.hidden = !bio?.description;
+  if (bio !== undefined) {
+    P.said.textContent = bio?.description || '';
+    P.said.hidden = !bio?.description;
+  }
   const age = who.deathday ? null : yearsBetween(who.birthday, isoDay());
   const created = P.data.crew.filter(c => /^(Co-)?Creator$/.test(c.jobs[0])).map(c => c.name);
+  const born = fact('Born', bornOn(who.birthday, bio?.birthplace));
+  // Where they were born comes with the biography, and keeps its place until then: most run
+  // onto a second line.
+  if (born && bio === undefined) born.append(' ', skelText('75%'));
   P.side.replaceChildren(...[
-    fact('Born', bornOn(who.birthday, bio?.birthplace)),
+    born,
     fact('Age', age === null ? '' : String(age)),
     fact('Died', diedOn(who.birthday, who.deathday)),
     fact('Known for', knownFor(P.data.roles, created)),
     fact('Created', joinNames(created.slice(0, 3))),
   ].filter(Boolean));
   P.fitBio = null;
-  if (bio === undefined) P.main.replaceChildren(skelLines(3));
+  if (bio === undefined) P.main.replaceChildren(...bioSkeleton());
   else if (bio?.text) P.main.replaceChildren(...bioEl(bio));
   else P.main.replaceChildren();
   P.fitBio?.();
@@ -3323,6 +3534,11 @@ function paintAbout() {
   if (bio?.wikipedia) links.push(out(bio.wikipedia, 'Wikipedia', `${who.name} on Wikipedia`));
   P.links.replaceChildren(el('span', 'Also on ', 'k'), ...links.flatMap((a, n) => (n ? [' · ', a] : [a])));
   P.foot.hidden = false;
+}
+
+// Their biography on its way, as bioEl lays it out: six lines, More and the credit.
+function bioSkeleton() {
+  return [skelLines(6, 'p', 't-summary p-text'), skelIn('span', 'p-more', '2.6em'), skelIn('p', 'p-credit', '13em')];
 }
 
 // Their biography, the opening of their Wikipedia article: six lines at first, and More for
@@ -3553,7 +3769,8 @@ function renderBrowse() {
 
 async function loadBrowse(genre) {
   const id = ++browseReq;
-  $('browse-body').replaceChildren(skelRow(), skelRow(), skelRow());
+  $('browse-body').replaceChildren(skelRow('section', { title: '12em' }), skelRow('section', { title: '10em' }),
+    skelRow('section', { title: '11em' }));
   try {
     const data = await post('/api/browse', { ...taste(), ...await freshFields(), genre });
     if (id !== browseReq) return;
@@ -3612,9 +3829,16 @@ window.addEventListener('resize', followGenres);
 window.addEventListener('scroll', followGenres, { passive: true });
 
 /* ----------------------------------------------------------- new & popular */
+// Until the home page is here, its rows stand in as they will land: the Top 10, new this
+// year, Coming soon with its dates and Popular right now.
 function renderNew() {
   const holder = $('new-body');
-  if (!home) { holder.replaceChildren(skelRow(), skelRow()); return; }
+  if (!home) {
+    holder.replaceChildren(...(homeFailed ? [el('p', homeFailed, 'row-empty')]
+      : [skelRow('section', { kind: 'top10', title: '9em' }), skelRow('section', { title: '12em' }),
+        skelRow('section', { kind: 'soon', title: '7em' }), skelRow('section', { title: '9em' })]));
+    return;
+  }
   const rows = [{ key: 'top10', title: 'Top 10 shows today', kind: 'top10', items: home.top10 }];
   if (home.fresh.length) {
     rows.push({ key: 'fresh', title: home.personal ? 'New this year, picked for you' : 'New this year', kind: 'row', items: home.fresh });
@@ -3711,12 +3935,19 @@ $('rated-find').addEventListener('input', () => {
 // searchShown is the search on screen or on its way, and resultsFor the one whose
 // results are showing ('' for the suggestions).
 let searchReq = 0, searchTimer = 0, searchShown = null, resultsFor = '';
+// Posters a search's grid shows while it is on its way: four lines of a phone's three, and
+// two of a wide screen's.
+const SEARCHING = 12;
 
+// What people are watching comes with the home page, so until it is here posters of its
+// shape stand in; the first-visit posters the page carries stand in for good if it cannot
+// be had.
 function suggestions() {
   resultsFor = '';
   $('search-note').textContent = 'Search by title. Until then, here is what people are watching.';
   const popular = home?.popular || [];
-  fill($('results'), home ? [...home.top10, ...popular] : boot.starters);
+  if (home || homeFailed) fill($('results'), home ? [...home.top10, ...popular] : boot.starters);
+  else $('results').replaceChildren(...skelGrid(SEARCHING));
   $('missing').hidden = true;
   showRelated(null);
 }
@@ -3739,7 +3970,12 @@ function search(q, typed = true) {
   // up the page keeps its suggestions.
   const quiet = query.length < 2;
   if (quiet) suggestions();
-  else $('search-note').textContent = 'Searching…';
+  else {
+    $('search-note').textContent = 'Searching…';
+    // With nothing on screen for the answer to replace, as when the page opens on a search,
+    // the grid shows its shape while it runs.
+    if (!$('results').childElementCount) $('results').replaceChildren(...skelGrid(SEARCHING));
+  }
   searchTimer = setTimeout(async () => {
     try {
       const { shows, missing = [], missing_first: first = false, related = null } =
@@ -3756,6 +3992,7 @@ function search(q, typed = true) {
       if (id !== searchReq) return;
       searchShown = null;
       if (!quiet) $('search-note').textContent = e.message;
+      if ($('results').querySelector('.skel-item')) $('results').replaceChildren();
     }
   }, typed ? 200 : 0);
 }
@@ -4383,6 +4620,15 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
 
 /* ---------------------------------------------------------------- start */
 if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+// A wide screen shows the featured show over its TMDB backdrop, so the connection to TMDB's
+// image server is made while the page is still being asked for. A phone shows the poster.
+if (wide()) {
+  const connect = el('link');
+  connect.rel = 'preconnect';
+  connect.href = 'https://image.tmdb.org';
+  connect.crossOrigin = 'anonymous';
+  document.head.append(connect);
+}
 for (const a of document.querySelectorAll('.dock [data-icon]')) a.prepend(icon(a.dataset.icon));
 // While the page scrolls the dock folds away and leaves one button, for the section you are
 // in; a pause brings the dock back, and so does that button. Not near the top, where there

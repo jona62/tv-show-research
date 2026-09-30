@@ -15,8 +15,8 @@
 // CORS so every copy is readable (Chrome counts an opaque one as about 7 MB of quota),
 // and the least recently used go once there are more than 1,000 small images or 40
 // large ones, about 30 MB in all. One long scroll down the home page shows 350 posters.
-const VERSION = '3805969f3d91';
-const FILES = {"/style.css": "1e18995741670de7", "/main.js": "72bb92ac702a450a", "/format.js": "e565cc65c0882a95", "/gestures.js": "c2173468ef22c30e", "/transfer.js": "aca34fe2830e9d29", "/qr.js": "d7f92f94bb8911ea", "/fresh.js": "afcc972f76479400", "/starters.js": "087555fc61715e00", "/offline.html": "050a8cc2465f0701", "/favicon.svg": "ec98a59b577360e9", "/icon-192.png": "badf05b3c8dbb5e7", "/tmdb.svg": "8e7b30f73a402069"};
+const VERSION = 'be5b4701f1a5';
+const FILES = {"/style.css": "63a2a55785832767", "/main.js": "7d92e67b1032afe7", "/format.js": "e565cc65c0882a95", "/gestures.js": "c2173468ef22c30e", "/start.js": "5422435405754c9e", "/transfer.js": "aca34fe2830e9d29", "/qr.js": "d7f92f94bb8911ea", "/fresh.js": "afcc972f76479400", "/starters.js": "d559e3a61414a450", "/offline.html": "d5d6864c81efdfff", "/favicon.svg": "ec98a59b577360e9", "/icon-192.png": "badf05b3c8dbb5e7", "/tmdb.svg": "8e7b30f73a402069"};
 const SHELL = `couchside-${VERSION}`;
 const IMAGES = 'couchside-images';
 // The app's own pages (PAGES in server.py): each is the one page, which routes itself.
@@ -30,10 +30,13 @@ self.addEventListener('install', event => event.waitUntil(keepBuild()));
 
 // Nothing is kept until all of it checks out: each file must hash to what build.py wrote,
 // and the page must say it is this build. A deploy landing midway fails the install, and
-// the worker before this one carries on.
+// the worker before this one carries on. Each file is asked for at the address that names
+// its hash, which the server lets the browser keep, so the files the page has just loaded
+// come from the browser's cache rather than over the network a second time; the page is
+// always checked.
 async function keepBuild() {
   const answers = await Promise.all(['/', ...Object.keys(FILES)].map(async path => {
-    const response = await fetch(path, { cache: 'no-cache' });
+    const response = await (path === '/' ? fetch(path, { cache: 'no-cache' }) : fetch(`${path}?v=${FILES[path]}`));
     const ours = response.ok && (path === '/' ? response.headers.get('X-Build') === VERSION
       : await digest(response.clone()) === FILES[path]);
     if (!ours) throw new Error(`${path} is not build ${VERSION}`);

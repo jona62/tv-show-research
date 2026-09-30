@@ -331,7 +331,8 @@ class Taste:
         still judged by the taste of the interest they belong to across the whole list."""
         scores = self.scores if scoring is None else self.e.rank(
             self.candidates, scoring, self.negatives, self.affinities, self.settings, self.positives)
-        return sorted((i for i in self.candidates if scores[i] > 0), key=lambda i: (-scores[i], self.e.shows[i]['id']))
+        ids = self.lib.ids
+        return sorted((i for i in self.candidates if scores[i] > 0), key=lambda i: (-scores[i], ids[i]))
 
     def score_others(self, indices):
         """Scores for shows outside the pool (rated, obscure, filtered out), worked out
@@ -1409,7 +1410,9 @@ class Page:
         usable = self.taste.scores
         found = [i for i in lib.popular_pool if usable[i] > 0 and i not in self.excluded]
         blend = {i: 0.5 * self.taste_of(i) + 0.5 * self.pop(i) for i in found}
-        found = sorted(blend, key=lambda i: (-blend[i], e.shows[i]['id']))[:3 * ROW]
+        # The best 3 * ROW of some thousands, without sorting the rest (the same as sorting all).
+        ids = lib.ids
+        found = heapq.nsmallest(3 * ROW, blend, key=lambda i: (-blend[i], ids[i]))
         items = sorted(found, key=lambda i: (-e.popularity[i], -(e.shows[i]['rating'] or 0), e.shows[i]['id']))
         return Shelf('popular', 'Popular right now', 'popular', items, personal=False, evidence=EVIDENCE['plain'],
                      callouts=False, diverse=False)
@@ -2624,6 +2627,8 @@ class Library:
             self.images.byteswap()
             self.ended.byteswap()
         self.year = int(e.date[:4])
+        # Each show's TVmaze id by catalog index, for the ties in sorts over thousands of shows.
+        self.ids = [s['id'] for s in e.shows]
 
         # Everything below is the same for everyone, so it is worked out once.
         rating = lambda i: e.shows[i]['rating'] or 0
@@ -3006,7 +3011,10 @@ class Library:
         positives = [p for p in profile if p['weight'] > 0]
         negatives = [p for p in profile if p['weight'] < 0]
         pool = self.pool_stats(settings)['pool']
-        candidates = [i for i in pool if self.e.shows[i]['id'] not in rated]
+        # By catalog index, which spares looking up the id of every show in the pool.
+        by_id = self.e.by_id
+        out = {by_id[show_id] for show_id in rated if show_id in by_id}
+        candidates = [i for i in pool if i not in out]
         return profile, settings, positives, negatives, rated, candidates, fresh
 
     def home(self, body):
