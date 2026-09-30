@@ -1,12 +1,17 @@
 # Couchside
 
 A streaming-style front end for the TV Taste recommender: a dark, poster-led
-browser with a hero, rows and title pages, over the same TVmaze catalogue,
+browser with featured shows, rows and title pages, over the same TVmaze catalogue,
 rebuilt every night. Nothing plays. It is for finding your next show.
 
 ## What is on it
 
-- **Home** is a hero and rows that go on as you scroll, eight at first and six
+- **Home** opens on six featured shows, the visit's hero first, in a carousel that
+  goes round: every seven seconds on its own, or by a swipe, the arrows, the arrow
+  keys or a dot, on from the last to the first as smoothly as between any two. It
+  stops for good once you use it (a button pauses and plays it), holds still while
+  a finger or pointer is on it or it is off screen, and never turns by itself with
+  reduced motion. Below it are rows that go on as you scroll, eight at first and six
   at a time after. Once you have rated a few shows the first twenty or thirty are
   *Top picks for you*, My List, *Because you loved* your favourites, micro-genres
   named from what each of your interests leans toward (*British panel games*,
@@ -14,8 +19,9 @@ rebuilt every night. Nothing plays. It is for finding your next show.
   shares, hidden gems, limited series, the *Top 10 shows today* and more, each
   interest given rows in proportion to its weight. Past them come more rows from
   your own list, each interest's own rows, rows to explore and rows to browse,
-  until the page says that is everything for today. The page changes a little
-  each day and holds still within a visit. A first visit picks three or more shows from 24 posters drawn
+  until the page says that is everything for today. Each time the app is opened
+  the page leads with another show and turns a little, and within a visit it holds
+  still. A first visit picks three or more shows from 24 posters drawn
   for it, or any show by search, or skips and gets rows by popularity.
 - **A title page** opens over any screen with the match, years, age rating,
   seasons, why it surfaced (the liked show it sits closest to and what they
@@ -336,41 +342,86 @@ Fans also like beside it the page holds 28.8%.
 
 ## What changes between visits
 
-The browser sends the day (rolling over at 04:00), a seed made from the day and a
-salt that never leaves it, and a memory of what it showed (fresh.js, shared with
-Next Watch and kept under `couchside-fresh`): each title half on screen for a
-second counts as seen once a day, as a count halving every week, and opening a
+A visit begins each time the app is opened: in a new tab, after half an hour or more
+away (the tab hidden or closed, the time analytics tools end a visit after), or on
+a new day, which rolls over at 04:00. The browser sends the day, a seed made from
+the day and a salt that never leaves it, a second seed for the visit, made from the
+salt, the day and how many visits the day has had, and a memory of what it showed
+(fresh.js, shared with Next Watch and kept under `couchside-fresh`): each title
+half on screen for a second counts as seen once a day, as a count halving every
+week, and each earlier visit the same day that showed it, among its cards or as its
+hero, adds half a day's showing, a whole day's at most, since by the next day that
+day counts as one. Opening a
 title, rating it, listing it, playing its trailer or following a link out spares
-it for two weeks. From that (fresh.py on the server):
+it for two weeks. All of this is worked out once, as the visit begins, and kept
+with it for the tab (`couchside-visit`), so nothing a visit shows changes its own
+page. A tab writes the memory joined with whatever other tabs wrote meanwhile, so
+with two tabs open neither loses the other's visits, heroes or titles seen. From
+that (fresh.py on the server):
 
-- The same list on the same day gives the same page. The next day My List, Top
-  picks and the first personal row keep their places while the rows below
-  reorder a little, and a different favourite may lead its *Because you loved*.
-  Past today's rows the day nudges each row's relevance, so they reorder a
-  little among themselves, always below today's.
-- In each row the first two cards stay put and the rest are the day's, drawn from
-  two to three times the row's length, with titles you keep passing over giving
-  way to others.
+- Each visit leads with a hero of its own, drawn from your ten best picks with
+  weight 1/rank, never one you rated, one on My List, one featured earlier the same
+  day or the first of each of the last week's days, and preferably not one the
+  first rows already open with.
+- Top picks lead the page on every visit, and their first six are drawn afresh for
+  each from your ten best, with weight 1/rank^2.5 and less for what the day's
+  earlier visits showed: the best leads three visits in four, the best three are
+  among the first six more than nine times in ten, and one or two of the six are
+  new each time.
+- My List and the first personal row keep their places while the rows below
+  reorder a little, and on a new day a different favourite may lead its *Because
+  you loved*. Past today's rows the same noise nudges each row's relevance, so
+  they reorder a little among themselves, always below today's. The noise is the
+  day's and the visit's together, 35% of its variance the visit's own, so the
+  visits of one day stay alike while each moves things a little.
+- In each row the first two cards stay put and the rest are the visit's, drawn from
+  two to three times the row's length by the same noise, with titles you keep
+  passing over giving way to others.
 - A row you pass over on five days in a fortnight without opening anything in it
   rests for a week: at the foot of today's rows, or, past them, until the rest of
   its tier is spent.
-- The hero is drawn once a day from your ten best picks, never one you rated, one
-  on My List or a hero of the last week, and preferably not one the first rows
-  already open with.
+- Five more featured shows follow the visit's hero in the carousel, drawn the same
+  way from your twenty best picks, each preferring one of a franchise and an
+  interest the others are not.
 - *Recently viewed*, after the third row, holds titles you opened in the last two
   weeks and neither rated nor listed; the browser builds it.
 
-Within a visit the page holds still: coming back within half an hour on the same
-day with the same list shows it again as it was, a rating or a My List change
-takes that card out of the rows and leaves every other card and row in place, and
-counting what was seen never redraws anything. A kept page is about 4KB a row; one
-that grows past a million characters (some two hundred rows) keeps its first rows
-and asks for the rest again, which come back the same.
+`scripts/bench/visit_bench.py` plays the bench personas opening the app five times a
+day for three days, each visit seeing the hero and the first six cards of the first
+eight rows and acting on nothing, and asks for each visit both ways: as before
+visits, when every visit of a day got the day's page, and as now:
+
+| | a new day, before | a new visit, now |
+|---|---:|---:|
+| another hero | 100% | 100% |
+| another first card in Top picks | 0% | 41% |
+| new cards among Top picks' first six | 1.4 | 1.4 |
+| of the first eight rows, new and moved | 2.6 and 5.7 | 0.8 and 3.5 |
+| of each row's first six, kept | 62% | 74% |
+
+A new visit moves the rows about half as far as a new day did, and leads with
+something new. It stays personal: the held-out loves among the first six cards of
+the first three rows are 59.2% over every visit, against 58.2% for the day's page
+before and 60.6% for the plain page without a seed, and of the first eight rows
+75.4%, 75.1% and 76.1%. The hero comes from further down as the day's heroes rest,
+at a median place of 9 among your picks against 8 before, and 15 at the 95th
+percentile against 11.
+
+Within a visit the page holds still: a reload shows it again as it was, asking for
+more rows carries what the visit asked with, so the server answers from the page it
+keeps, a rating or a My List change takes that card out of the rows and leaves every
+other card and row in place, and counting what was seen never redraws anything.
+Coming back after half an hour away begins the next visit, and its page takes the
+old one's place, from the top, as soon as nothing is open over it. A kept page is
+about 4KB a row; one that grows past a million characters (some two hundred rows)
+keeps its first rows and asks for the rest again, which come back the same.
 
 Before anything is rated the page is the Top 10, *Popular right now*, *All-time
 favourites* (before 2010, well known and well rated), *New this year* and six to
 eight of the best-known genres and formats, no show twice, with *Popular in* the
 browser's language when that is not English, under the invitation to pick shows.
+Its featured shows are drawn from the Top 10 and the best known after them, the
+hero from the Top 10 alone.
 
 ## How search finds a show
 
@@ -471,7 +522,7 @@ otherwise the copy here, which matches the repository's `model/`.
 When the model carries `tmdb.json.gz`, which the refresher fetches from TMDB
 with each new model, a title's US age rating, trailers, widescreen backdrop and
 where to watch come from it. They arrive with the title itself, as `tmdb` in the
-`/api/title` answer (and on the hero in `/api/home`), so the page makes no extra
+`/api/title` answer (and on each featured show in `/api/home`), so the page makes no extra
 calls for them. Where to watch then lists every US service TMDB has for the show,
 streaming first and renting or buying after, marked as such, each with its TMDB
 logo and linking to TMDB's watch page for the show, as TMDB requires for
@@ -588,8 +639,10 @@ hand-made TMDB data and a few other titles. It holds the home page to its rules
 for lists of several shapes (fixed rows, sizes, no row opening like another, no
 show three times, franchise, creator and network limits, every interest served,
 calibrated top picks), and checks paging, a day's page against the next day's,
-fatigue and engagement, the hero, resting rows, the first visit's rows and every
-new field. With stand-in rows for the tiers past today's (`scripts/bench/stub_tiers.py`)
+fatigue and engagement, the hero and featured shows, visits (the same visit's page
+whole or in parts, a hero from the best picks and none featured earlier the day, Top
+picks' first six turning a little with the best three kept), resting rows, the first
+visit's rows and every new field. With stand-in rows for the tiers past today's (`scripts/bench/stub_tiers.py`)
 it pages whole pages to their end: no row or title twice, *more* false only at the
 end, no row before its tier opens, a tier built only once the page reaches it, the
 same request giving the same rows, the page laid out at once matching the page
@@ -617,7 +670,7 @@ module copied here ever differs from Next Watch's. The
 second covers the page's small helpers, where to watch, how much of a title page's
 long parts shows before its button and what search says among them, a person's
 address beside the title's, their age and dates and what each of their credits
-says, what the home
+says, when a visit goes on and when the next begins, what the home
 page keeps for a visit, asks for more with, merges after an action and shows as
 recently viewed, how far ahead it loads rows and posters and how many at once, and
 what the page keeps of the server's answers; and it runs the service worker against
@@ -672,6 +725,18 @@ is answered from the page kept for it, in a few milliseconds; the slowest are ea
 page's first, which here lays the page out to its end (the bench turns off laying
 it out behind the first request, which the server does). `--stub-tiers` runs the
 same with stand-in rows for the tiers.
+
+These pages carry no day or seed. `scripts/bench/visit_bench.py` reads the pages a
+day's visits get instead, over the same personas and held-out loves: the hero, Top
+picks' first six and the first eight rows from one visit to the next and from one
+day to the next, and the held-out loves, each visit asked for as before visits and
+as now (the table under What changes between visits). `--visits` and `--days` set
+how often the app is opened, and `--set VISIT=0.5` tries another value of one of
+fresh.py's constants.
+
+```sh
+.venv/bin/python scripts/bench/visit_bench.py     # about four minutes
+```
 
 ## Deploy
 

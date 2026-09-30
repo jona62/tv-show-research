@@ -8,7 +8,7 @@ import statistics
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from fresh import Fresh, parse, dither, explore, pick_one, spread, shuffle_rows, DEPTH  # noqa: E402
+from fresh import Fresh, parse, dither, rotate, explore, pick_one, spread, shuffle_rows, DEPTH, LEAD_TOP  # noqa: E402
 
 failures = []
 
@@ -101,6 +101,77 @@ check('the first two rows stay, the rest reorder', reordered[:2] == rows[:2] and
 tired = shuffle_rows(rows, Fresh('2026-10-05', seed('2026-10-05'), tired=['r2']), key_of=lambda r: r)
 check('a row passed over for days goes last', tired[-1] == 'r2')
 check('rows keep their order without freshness', shuffle_rows(rows, Fresh(), key_of=lambda r: r) == rows)
+
+# 5. Visits: Couchside's app opened several times a day, each visit with a seed of its own.
+visit_seed = lambda day, k: hashlib.sha256(f'salt|{day}|{k}'.encode()).hexdigest()[:16]
+f = parse({'day': '2026-10-05', 'seed': 'ab' * 8, 'visit': 'cd' * 8})
+check('a visit parses beside its day and seed', f.visit == 'cd' * 8 and f.echo() == {'day': '2026-10-05', 'seed': 'ab' * 8,
+                                                                                      'visit': 'cd' * 8})
+check('a day without a visit is as it was', parse({'day': '2026-10-05', 'seed': 'ab' * 8}).visit is None
+      and one.echo() == {'day': '2026-10-05', 'seed': seed('2026-10-05')})
+rejects('a malformed visit is refused', {'day': '2026-10-05', 'seed': 'ab' * 8, 'visit': 'xyz'}, 'hexadecimal')
+rejects('a visit without its day and seed is refused', {'visit': 'cd' * 8}, 'with its day and seed')
+
+
+def visit(day, k, seen=None, resting=()):
+    return Fresh(day, seed(day), seen, (), resting, (), visit_seed(day, k))
+
+
+check('without a rotating head, a visit keeps the first places as the day does',
+      dither(ranked, visit('2026-10-05', 1), 'row-a', 20, pinned=2)[:2] == ranked[:2])
+check('the same visit gives the same list, rotating head and all',
+      dither(ranked, visit('2026-10-05', 3), 'row-top', 20, rotating=6)
+      == dither(ranked, visit('2026-10-05', 3), 'row-top', 20, rotating=6))
+check('without a visit a rotating head holds still, as the day\'s pinned places',
+      dither(ranked, one, 'row-top', 20, pinned=2, rotating=6) == dither(ranked, one, 'row-top', 20, pinned=2))
+check('and without a seed rotating draws nothing', rotate(ranked, Fresh(), 'row-top', 6) == ranked[:6])
+
+
+def overlap(a, b):
+    return len(set(a) & set(b)) / len(a)
+
+
+# The visits of a day stay nearer each other than two days do, past the first places.
+same_day = statistics.mean(overlap(dither(ranked, visit(d, 1), 'row-a', 20)[5:], dither(ranked, visit(d, 2), 'row-a', 20)[5:])
+                           for d in days[:30])
+next_day = statistics.mean(overlap(dither(ranked, visit(d, 1), 'row-a', 20)[5:], dither(ranked, visit(e, 1), 'row-a', 20)[5:])
+                           for d, e in zip(days[:30], days[1:31]))
+check('the visits of a day share more of a list than two days do', same_day > next_day + 0.05,
+      (round(same_day, 2), round(next_day, 2)))
+check('but still differ', same_day < 0.95, round(same_day, 2))
+
+# Five visits a day for thirty days, each seeing Top picks' first six: what earlier visits
+# the same day showed counts half a day each (a day at most), as fresh.js counts it.
+led, best3, fresh_faces, deepest = [], [], [], 0
+for n, day in enumerate(days[:30]):
+    today_seen, before = {}, None
+    for k in range(1, 6):
+        head = rotate(ranked, visit(day, k, {i: min(1.0, 0.5 * c) for i, c in today_seen.items()}), 'row-top', 6)
+        led.append(head[0] == ranked[0])
+        best3.append(set(ranked[:3]) <= set(head))
+        deepest = max(deepest, max(ranked.index(i) for i in head))
+        if before:
+            fresh_faces.append(len(set(head) - set(before)))
+        before = head
+        for i in head:
+            today_seen[i] = today_seen.get(i, 0) + 1
+check('the best leads Top picks about three visits in four', 0.6 <= statistics.mean(led) <= 0.9, statistics.mean(led))
+check('the best three are among the first six almost every visit', statistics.mean(best3) >= 0.85, statistics.mean(best3))
+check('one or two of the first six are new each visit', 1 <= statistics.mean(fresh_faces) <= 2.5,
+      statistics.mean(fresh_faces))
+check('and none comes from below the best ten by rank and fatigue, the best dozen by rank alone', deepest < LEAD_TOP + 2,
+      deepest)
+
+# The hero: a new one each visit, never one shown earlier the same day.
+shown_today, heroes = [], []
+for k in range(1, 6):
+    hero = pick_one(ranked, visit('2026-10-05', k, resting=shown_today), 'hero')
+    heroes.append(hero)
+    shown_today.append(hero)
+check('each visit draws its own hero, none shown earlier the same day', len(set(heroes)) == 5, heroes)
+check('from the best picks', all(ranked.index(h) < 10 + len(heroes) for h in heroes), [ranked.index(h) for h in heroes])
+check('and the same visit draws the same one', pick_one(ranked, visit('2026-10-05', 2), 'hero')
+      == pick_one(ranked, visit('2026-10-05', 2), 'hero'))
 
 print()
 if failures:
