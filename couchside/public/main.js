@@ -1785,8 +1785,8 @@ function uncopyLoop(loop) {
 // Whether a row rests where it started, on its first card in that card's own place.
 function atFirst(loop) {
   const { track } = loop;
-  if (!resting(loop) || !track.clientWidth) return false;
   const first = loop.cards[0];
+  if (!first || !resting(loop) || !track.clientWidth) return false;
   return loop.holder[loop.before] === first
     && Math.abs(first.getBoundingClientRect().left - track.getBoundingClientRect().left - loop.pad) < 1;
 }
@@ -1846,7 +1846,8 @@ const loopsNear = 'IntersectionObserver' in window
       else if (resting(loop)) coming.push(loop);
     }
     copyLoops(coming);
-    for (const loop of going.filter(atFirst)) {
+    // Only a row holding copies has any to let go.
+    for (const loop of going.filter(loop => loop.on && atFirst(loop))) {
       uncopyLoop(loop);
       putLoop(loop, 0);
       loop.sync();
