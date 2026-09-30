@@ -1,4 +1,5 @@
-"""Serve Couchside: the page, its rows, title pages and live details. Standard library only."""
+"""Serve Couchside: the page, its rows, title pages, people and live details. Standard library only."""
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as Unfinished
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -16,6 +17,7 @@ from fallback import Remote, answer
 from library import Library, DESCRIPTION, MAX_SAVED
 from live import (Live, LiveError, Icons, KINOCHECK, ITUNES, trim_videos, trim_seasons,
                   match_rating, itunes_search)
+from people import PERSON, GUESTS, WIKIDATA, WIKIPEDIA, Biographies, trim_person, trim_guests, credits, public
 from related import Related
 import follow
 import starters
@@ -39,6 +41,9 @@ MOST_BODY = 98304
 # saved show.
 MOST_IDS = MAX_LIST + MAX_SAVED
 LIVE_ROUTES = ('/api/extra', '/api/episodes', '/api/trailer', '/api/rating')
+# Someone in a cast, by TVmaze person id: who they are and what they are in, and apart from
+# that, since Wikidata can take seconds to answer, their biography.
+PEOPLE_ROUTES = ('/api/person', '/api/biography')
 # Posters come from TVmaze, trailer thumbnails from YouTube's image server, backdrops
 # and service logos from TMDB's, and a trailer plays in YouTube's no-cookie player only
 # once someone presses play.
@@ -129,6 +134,12 @@ LOST = (PUBLIC / '404.html').read_bytes() if (PUBLIC / '404.html').exists() else
 # KinoCheck allows 1,000 calls a day and iTunes about 20 a minute, so both cache for days.
 KINO = Live(base=KINOCHECK, ttl=3 * 86400, size=3000, calls=20, period=60)
 STORE = Live(base=ITUNES, ttl=7 * 86400, size=3000, calls=15, period=60)
+# Wikidata's query service and Wikipedia ask for a steady trickle, and what they say of a
+# person seldom changes, so their answers are kept a day.
+BIOGRAPHIES = Biographies(Live(base=WIKIDATA, ttl=86400, size=3000, calls=30, period=60),
+                          Live(base=WIKIPEDIA, ttl=86400, size=3000, calls=60, period=60))
+# A person's guest parts are asked for while TVmaze answers for the person, on these.
+AHEAD = ThreadPoolExecutor(max_workers=8, thread_name_prefix='people')
 ICONS = Icons()
 # The model's objects live as long as the server, so the garbage collector leaves them
 # alone from here: a full collection walking them cost a long list's request up to 150 ms.
@@ -164,6 +175,35 @@ def age(show_id):
         raise
     found = match_rating(seasons, show['name'], show['year'], LIBRARY.ended[i] or None)
     return {'rating': rating or found['rating'], 'apple': found['apple']}
+
+
+def someone(person_id):
+    """A TVmaze person as trimmed, with the shows they are a regular in and helped make. A
+    person TVmaze does not have is kept as such, like a show with no trailer."""
+    found = LIVE.get(PERSON.format(id=person_id), trim_person, missing=False)
+    if not found:
+        raise LiveError('TVmaze has no details for this person.', 404)
+    return found
+
+
+def person(person_id):
+    """A person's page: who they are and what they are in, each show the catalogue holds as
+    its card (people.credits). Their guest parts are asked for alongside, and their
+    biography is begun as soon as TVmaze has answered, for the page to ask for next. Guest
+    parts that cannot be had leave the rest."""
+    guests = AHEAD.submit(LIVE.get, GUESTS.format(id=person_id), trim_guests, [])
+    who = someone(person_id)
+    BIOGRAPHIES.start(who)
+    try:
+        appeared = guests.result(timeout=20)
+    except (LiveError, Unfinished):
+        appeared = []
+    return {'person': public(who), **credits(LIBRARY, who, appeared)}
+
+
+def biography(person_id):
+    """What Wikidata and Wikipedia say of a person, or None (people.Biographies)."""
+    return BIOGRAPHIES.get(someone(person_id))
 
 
 def search(q):
@@ -324,6 +364,9 @@ class Handler(SimpleHTTPRequestHandler):
         if path in LIVE_ROUTES:
             self.live(path, query)
             return
+        if path in PEOPLE_ROUTES:
+            self.people(path, query)
+            return
         if path == '/api/icon':
             self.icon(query.get('host', [''])[0])
             return
@@ -364,6 +407,29 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json({'videos': trailers(show_id)})
             else:
                 self.send_json(age(show_id))
+        except LiveError as exc:
+            self.send_json({'error': str(exc)}, exc.status)
+        except (BrokenPipeError, ConnectionResetError, TimeoutError):
+            pass
+        finally:
+            LIVE_SLOTS.release()
+
+    def people(self, path, query):
+        """A person's page or biography. People are not in the catalogue, so any TVmaze
+        person id will do, and TVmaze says whether there is one."""
+        try:
+            person_id = number(query, 'id', 'the person')
+        except ValueError as exc:
+            self.send_json({'error': str(exc)}, 400)
+            return
+        if not LIVE_SLOTS.acquire(blocking=False):
+            self.send_json({'error': 'Busy right now. Try again in a moment.'}, 503)
+            return
+        try:
+            if path == '/api/person':
+                self.send_json(person(person_id))
+            else:
+                self.send_json({'biography': biography(person_id)})
         except LiveError as exc:
             self.send_json({'error': str(exc)}, exc.status)
         except (BrokenPipeError, ConnectionResetError, TimeoutError):

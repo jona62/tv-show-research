@@ -2,6 +2,7 @@ import { tieText, leaning, leaningHeading } from './format.js';
 import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere, longDate, airs,
   hostOf, sameService, watchLinks, whereToWatch, trailerSearch, searchNote } from './format.js';
 import { SNIPPETS, snippet, revealLabel, fitsOnLine } from './format.js';
+import { withPerson, isoDay, yearsBetween, bornOn, diedOn, selfName, selfHeading, creditLines, knownFor } from './format.js';
 let fails = 0;
 const check = (name, ok, extra = '') => { console.log(`${ok ? 'pass' : 'FAIL'}  ${name}${ok ? '' : '  ' + extra}`); if (!ok) fails++; };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -29,16 +30,27 @@ check('one season is singular', seasons(1) === '1 Season');
 check('several seasons are plural', seasons(5) === '5 Seasons');
 check('names join in plain English', joinNames(['A']) === 'A' && joinNames(['A', 'B']) === 'A and B'
   && joinNames(['A', 'B', 'C']) === 'A, B and C' && joinNames([]) === '');
-check('home route', same(parseRoute('/', ''), { page: 'home', q: '', genre: '', show: null }));
-check('search route keeps its terms', same(parseRoute('/search', '?q=breaking%20bad'), { page: 'search', q: 'breaking bad', genre: '', show: null }));
-check('a title opens over any page', same(parseRoute('/list', '?show=169'), { page: 'list', q: '', genre: '', show: 169 }));
-check('browse keeps its genre', same(parseRoute('/browse', '?genre=Science-Fiction'), { page: 'browse', q: '', genre: 'Science-Fiction', show: null }));
+check('home route', same(parseRoute('/', ''), { page: 'home', q: '', genre: '', show: null, person: null }));
+check('search route keeps its terms', same(parseRoute('/search', '?q=breaking%20bad'), { page: 'search', q: 'breaking bad', genre: '', show: null, person: null }));
+check('a title opens over any page', same(parseRoute('/list', '?show=169'), { page: 'list', q: '', genre: '', show: 169, person: null }));
+check('browse keeps its genre', same(parseRoute('/browse', '?genre=Science-Fiction'), { page: 'browse', q: '', genre: 'Science-Fiction', show: null, person: null }));
+check('a person opens over the title they were opened from', same(parseRoute('/search', '?q=bad&show=169&person=14245'),
+  { page: 'search', q: 'bad', genre: '', show: 169, person: 14245 }));
+check('and over any page on their own', parseRoute('/', '?person=14245').person === 14245 && parseRoute('/', '?person=14245').show === null);
+check('a bad person id is ignored', ['abc', '0', '-3', '1.5', ''].every(id => parseRoute('/', `?person=${id}`).person === null));
 check('a bad title id is ignored', parseRoute('/', '?show=abc').show === null && parseRoute('/', '?show=-4').show === null
   && parseRoute('/', '?show=1.5').show === null);
 check('an unknown path falls back to home', parseRoute('/nope', '').page === 'home');
 check('opening a title keeps the search', withShow('/search', '?q=bad', 169) === '/search?q=bad&show=169');
 check('closing a title leaves a clean path', withShow('/', '?show=169', null) === '/'
   && withShow('/search', '?q=bad&show=169', null) === '/search?q=bad');
+check('opening a person keeps the page and the title beneath them',
+  withPerson('/search', '?q=bad&show=169', 14245) === '/search?q=bad&show=169&person=14245');
+check('closing them goes back to the title, or the page', withPerson('/', '?show=169&person=14245', null) === '/?show=169'
+  && withPerson('/', '?person=14245', null) === '/');
+check('a title opened from them leaves them out of its address',
+  withShow('/', withPerson('', '?show=169&person=14245', null), 568) === '/?show=568'
+  && withShow('/', withPerson('', '?person=14245', null), 568) === '/?show=568');
 check('hues stay on the wheel', [1, 169, 89594].every(id => hue(id) >= 0 && hue(id) < 360));
 check('premiere dates read short', premiere('2026-10-07') === 'Oct 7' && premiere('') === '' && premiere('2026-13-01') === '');
 check('full dates carry the year', longDate('2008-01-20') === 'Jan 20, 2008' && longDate(null) === '');
@@ -118,6 +130,43 @@ check('services that fit the line all show', fitsOnLine([90, 200, 300], 300, 40)
 check('past the line, those ending before its fade show', fitsOnLine([90, 200, 280, 400], 300, 40) === 2
   && fitsOnLine([90, 200, 260, 400], 300, 40) === 3);
 check('a first pill wider than the line still shows', fitsOnLine([420, 500], 300, 40) === 1);
+
+// A person's page: when they were born and died, and what each of their credits says.
+check('a person\'s roles start with whole lines of posters, three on a phone and six on a wide screen',
+  SNIPPETS.roles % 3 === 0 && SNIPPETS.roles % 6 === 0 && SNIPPETS.appearances === 6 && SNIPPETS.crew === 6);
+check('their parts open with the same button as a title\'s', revealLabel('roles', 44, false) === 'Show all (44)'
+  && revealLabel('roles', 44, true) === 'Show fewer');
+check('an age counts whole years, the birthday itself included', yearsBetween('1956-03-07', '2026-03-06') === 69
+  && yearsBetween('1956-03-07', '2026-03-07') === 70 && yearsBetween('1956-03-07', '2026-12-31') === 70
+  && yearsBetween('2000-02-29', '2026-02-28') === 25);
+check('there is no age without both days, or before being born', yearsBetween(null, '2026-01-01') === null
+  && yearsBetween('1956-03-07', '') === null && yearsBetween('soon', '2026-01-01') === null && yearsBetween('2030-01-01', '2026-01-01') === null);
+check('today is the reader\'s own day', isoDay(new Date(2026, 8, 29, 23, 59)) === '2026-09-29' && isoDay(new Date(2026, 0, 5)) === '2026-01-05');
+check('a birth reads with where it was, when both are known',
+  bornOn('1956-03-07', 'Hollywood, California, United States') === 'Mar 7, 1956 in Hollywood, California, United States'
+  && bornOn('1956-03-07', '') === 'Mar 7, 1956' && bornOn(null, 'Seoul, South Korea') === 'Seoul, South Korea' && bornOn(null, null) === '');
+check('a death reads with the age at it', diedOn('1969-08-19', '2023-10-28') === 'Oct 28, 2023 (aged 54)'
+  && diedOn(null, '2023-10-28') === 'Oct 28, 2023' && diedOn('1969-08-19', null) === '');
+check('someone as themselves reads by TVmaze\'s gender, or plainly', selfName('Male') === 'Himself' && selfName('Female') === 'Herself'
+  && selfName(null) === 'Self' && selfHeading('Female') === 'As herself' && selfHeading('Non-binary') === 'As themselves');
+const regular = creditLines({ as: 'Walter White', regular: true, episodes: null, years: [2008, 2013] }, 'Male');
+check('a regular part says whom they play and the show\'s years', regular.as === 'Walter White' && regular.when === '2008–2013'
+  && regular.said === 'as Walter White, 2008–2013');
+const guestPart = creditLines({ as: 'Tim Whatley', episodes: 5, years: [1994, 1997] }, 'Male');
+check('a guest part says how many episodes and when they aired', guestPart.when === '5 episodes · 1994–1997'
+  && guestPart.said === 'as Tim Whatley, 5 episodes, 1994–1997');
+check('one episode is one, and one year is one year', creditLines({ as: 'Ron', episodes: 1, years: [2012, 2012] }).when === '1 episode · 2012');
+const voiced = creditLines({ as: 'Bert', voice: true, episodes: 8, years: [2008, 2020] });
+check('a part by voice says so', voiced.as === 'Voice of Bert' && voiced.said === 'voice of Bert, 8 episodes, 2008–2020'
+  && creditLines({ voice: true, years: [] }).as === 'Voice');
+const themselves = creditLines({ self: true, as: '', episodes: 12, years: [2015, 2026] }, 'Female');
+check('an appearance as themselves says so', themselves.as === 'Herself' && themselves.said === 'as herself, 12 episodes, 2015–2026');
+check('a show they made says what they did', creditLines({ jobs: ['Creator', 'Executive Producer'], years: [2015, 2019] }).as
+  === 'Creator, Executive Producer');
+check('a show with no years says none', creditLines({ as: 'Someone', years: [] }).when === '' && creditLines({ as: 'Someone' }).when === '');
+check('no credit line carries a dash in place of words', [regular, guestPart, voiced, themselves].every(l => !/\u2014/.test(l.as + l.when + l.said)));
+check('someone is known for their first three roles, which come best known first',
+  knownFor([{ name: 'A' }, { name: 'B' }, { name: 'C' }, { name: 'D' }]) === 'A, B and C' && knownFor([{ name: 'A' }]) === 'A' && knownFor([]) === '');
 
 // Recent searches: the last ten committed, newest first, once whatever the case, never one letter.
 const { RECENT_SEARCHES, searchText, recentStore, noteSearch, withoutSearch, recentMatches } = await import('./format.js');

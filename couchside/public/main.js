@@ -9,6 +9,7 @@ import { POSTERS_AHEAD, POSTERS_AT_ONCE, FLUNG, FLUNG_AT_ONCE, STILL_FLUNG, SLOW
 import { genreChoices, nextByLetter, searchText, recentStore, noteSearch, withoutSearch, recentMatches, keepsRow } from './format.js';
 import { keeper, sessionAnswers } from './format.js';
 import { SNIPPETS, snippet, revealLabel, fitsOnLine } from './format.js';
+import { withPerson, isoDay, yearsBetween, bornOn, diedOn, selfHeading, creditLines, knownFor } from './format.js';
 import { freshStore, today, dayNumber, noteSeen, noteEngaged, noteRow, noteHero, prune, freshness, watcher }
   from './fresh.js';
 import { daySeed, startersQuery, mergeStarters, browserLanguage, MAX_ROUND, MAX_PICKED } from './starters.js';
@@ -299,16 +300,17 @@ async function request(path, options = {}) {
 }
 
 // What the page has been told is kept by what it asked (keeper in format.js): a title, a
-// genre's rows, a search and a show's live details come back without a request for a
-// while, and two asking at once share one. Live details, which the server fetches from
-// TVmaze, KinoCheck and iTunes, also outlast a reload of the tab in sessionStorage. The
-// home page keeps itself (keepPage).
+// genre's rows, a search, a show's live details and a person come back without a request
+// for a while, and two asking at once share one. Live details and people, which the server
+// fetches from TVmaze, KinoCheck, iTunes, Wikidata and Wikipedia, also outlast a reload of
+// the tab in sessionStorage. The home page keeps itself (keepPage).
 const MINUTE = 60_000;
 const KEEP = {
   '/api/extra': 30, '/api/trailer': 30, '/api/rating': 30, '/api/episodes': 30,
+  '/api/person': 30, '/api/biography': 30,
   '/api/search': 10, '/api/title': 10, '/api/browse': 10,
 };
-const LIVE = ['/api/extra', '/api/trailer', '/api/rating', '/api/episodes'];
+const LIVE = ['/api/extra', '/api/trailer', '/api/rating', '/api/episodes', '/api/person', '/api/biography'];
 const ANSWERS_KEY = 'couchside-answers';
 const asked = keeper();
 let answers = {};
@@ -374,15 +376,26 @@ function go(path) {
   route();
 }
 
+// A title and a person open over the page are sheets of their own, the person's above the
+// title's. Back to either one after a title opened from someone's page builds it again, and
+// it returns to where it was left (keepPlace).
 function route() {
-  const { page, q, show } = where();
+  const { page, q, show, person } = where();
   const name = page === 'home' && !state.profile.length && !state.onboarded ? 'welcome' : page;
   if (name !== view) showView(name);
   else if (name === 'browse') renderBrowse();
   if (name === 'search') search(q, false);
+  const place = history.state?.place || {};
   if (show) {
-    if (!$('title').open || titleId !== show) showTitle(show);
+    if (!$('title').open || titleId !== show) {
+      // A title opening beneath someone's page would open over it, so theirs goes and comes back.
+      if (person && personId && !$('title').open) hidePerson(true);
+      showTitle(show, false, place.title);
+    }
   } else if ($('title').open) hideTitle();
+  if (person) {
+    if (!$('person').open || personId !== person) showPerson(person, place.person);
+  } else if ($('person').open) hidePerson();
 }
 
 function showView(name) {
@@ -432,9 +445,10 @@ document.addEventListener('click', e => {
 });
 window.addEventListener('popstate', route);
 window.addEventListener('scroll', syncNav, { passive: true });
-// Installed, a swipe in from the left edge goes back from a title page or a view off home.
-edgeBack(() => !!titleId || (view !== 'home' && !document.querySelector('dialog[open]')),
-  () => (titleId ? closeTitle() : history.back()));
+// Installed, a swipe in from the left edge goes back from a person's page, a title page or
+// a view off home.
+edgeBack(() => !!titleId || !!personId || (view !== 'home' && !document.querySelector('dialog[open]')),
+  () => (personId ? closePerson() : titleId ? closeTitle() : history.back()));
 
 /* ---------------------------------------------------------------- home */
 // The page arrives a few rows at a time: the first answer brings the hero and the first
@@ -1123,14 +1137,23 @@ let T = null, titleId = null, titleToken = 0, seasonToken = 0;
 function openTitle(id, { play = false, row = '' } = {}) {
   engaged(id, row);
   noteOpened(info(id));
-  const url = withShow(location.pathname, location.search, id);
-  if ($('title').open) history.replaceState(history.state, '', url);
-  else history.pushState({ modal: true }, '', url);
+  // From someone's page a title is a step on from them, so Back comes back to them: their
+  // page makes way, and the title leaves them out of its address.
+  const fromPerson = !!personId;
+  const url = withShow(location.pathname, fromPerson ? withPerson('', location.search, null) : location.search, id);
+  if ($('title').open && !fromPerson) history.replaceState(history.state, '', url);
+  else {
+    if (fromPerson) keepPlace();
+    history.pushState({ modal: true }, '', url);
+  }
+  if (fromPerson) hidePerson(true);
   showTitle(id, play);
 }
 function closeTitle() {
-  if (history.state?.modal) history.back();
-  else {
+  if (history.state?.modal) {
+    keepPlace();
+    history.back();
+  } else {
     history.replaceState(null, '', withShow(location.pathname, location.search, null));
     hideTitle();
   }
@@ -1142,30 +1165,51 @@ function hideTitle() {
   // A trailer stops at once. The rest of the page goes once the sheet has slid away.
   $('t-sheet').querySelector('.t-player iframe')?.remove();
   if ($('title').open) $('title').close();
-  document.documentElement.classList.remove('modal-open');
+  modalOpen();
   document.title = TITLES[view] || 'Couchside';
   if (view === 'home') updateRecentRow();
 }
+// The page beneath holds still while a title or a person is open over it.
+const modalOpen = () => document.documentElement.classList.toggle('modal-open', !!titleId || !!personId);
 // The page is emptied once its sheet has closed, unless a title opened again meanwhile.
 $('title').addEventListener('close', () => { if (!titleId) $('t-sheet').replaceChildren(); });
 $('title').addEventListener('cancel', e => { e.preventDefault(); closeTitle(); });
 $('t-sheet').addEventListener('click', e => { if (titleId && e.target.closest('a[target="_blank"]')) engaged(titleId); });
 $('title').addEventListener('click', e => { if (e.target === $('title')) closeTitle(); });
 // Every dialog is a sheet (gestures.js): a swipe down closes it as its close button does,
-// and the title page through its history.
-sheets(d => (d === $('title') ? closeTitle() : d.close()));
+// and a title or a person through their history.
+sheets(d => (d === $('title') ? closeTitle() : d === $('person') ? closePerson() : d.close()));
 
-function showTitle(id, play = false) {
+// Where the open sheets are scrolled to and which of their long parts are open, kept in the
+// history entry being left, so a sheet Back builds again comes back to the same place.
+function keepPlace() {
+  const place = {};
+  if (T) place.title = { y: $('title').scrollTop, open: { ...T.open } };
+  if (P) place.person = { y: $('person').scrollTop, open: { ...P.open } };
+  history.replaceState({ ...history.state, place }, '');
+}
+// A sheet built again returns to `place`, each time more of what was above it paints, while
+// it still shows the same page (`same`) and until the reader moves it themselves.
+function returnTo(dialog, place, same) {
+  if (!place?.y) return () => {};
+  let moved = false;
+  for (const type of ['wheel', 'touchstart', 'keydown']) {
+    dialog.addEventListener(type, () => { moved = true; }, { once: true, passive: true });
+  }
+  return () => { if (!moved && same()) dialog.scrollTop = place.y; };
+}
+
+function showTitle(id, play = false, place = null) {
   const token = ++titleToken;
   titleId = id;
   T = buildTitle({ ...info(id), id });
+  if (place?.open) Object.assign(T.open, place.open);
   const dialog = $('title');
   // A title page still sliding away comes back up.
-  if (!dialog.open || closing(dialog)) {
-    dialog.showModal();
-    document.documentElement.classList.add('modal-open');
-  }
+  if (!dialog.open || closing(dialog)) dialog.showModal();
+  modalOpen();
   dialog.scrollTop = 0;
+  const settle = returnTo(dialog, place, () => token === titleToken);
   T.close.focus({ preventScroll: true });
   document.title = `${T.card.name || 'Show'} · Couchside`;
   const loaded = freshFields().then(fresh => post('/api/title', { ...taste(), ...fresh, id }));
@@ -1177,6 +1221,7 @@ function showTitle(id, play = false) {
     paintTitle();
     paintBackdrop();
     paintMore();
+    settle();
   }).catch(e => {
     if (token !== titleToken) return;
     T.error = e.message;
@@ -1188,7 +1233,8 @@ function showTitle(id, play = false) {
     T.live = live;
     paintTitle();
     paintBackdrop();
-    paintEpisodes();
+    paintEpisodes(settle);
+    settle();
   });
   // TMDB's trailers and rating arrive with the title; the live lookups fill in what it lacks.
   const tm = loaded.then(data => data.tmdb, () => null);
@@ -1197,12 +1243,14 @@ function showTitle(id, play = false) {
     T.videos = videos;
     paintTrailerButton();
     paintVideos();
+    settle();
     if (play && videos.length) playVideo(videos[0]);
   });
   tm.then(known => ratingOf(id, known, true)).then(age => {
     if (token !== titleToken) return;
     T.age = age;
     paintTitle();
+    settle();
   });
 }
 
@@ -1299,7 +1347,8 @@ function paintTitle() {
   const s = { ...T.card, ...(T.data?.show || {}) };
   const live = T.live;
   T.name.textContent = s.name;
-  document.title = `${s.name || 'Show'} · Couchside`;
+  // A title painting beneath someone's page leaves the tab named after them.
+  if (!personId) document.title = `${s.name || 'Show'} · Couchside`;
   // A title opened before the page knew the show (a shared link) gets its poster once the
   // show has loaded, instead of keeping the blank tile it opened with.
   const art = s.art || s.poster;
@@ -1333,9 +1382,8 @@ function paintTitle() {
   T.main.replaceChildren(...main);
   if (watch) fitWatch(watch);
 
-  const cast = live?.cast?.map(p => p.name) || [];
   T.side.replaceChildren(...[
-    fact('Cast', cast.length > 3 ? joinNames([...cast.slice(0, 3), 'more']) : joinNames(cast)),
+    castFact(live?.cast || []),
     fact('Genres', s.genres?.join(', ')),
     fact('This show is about', s.themes?.slice(0, 4).join(', ').toLowerCase()),
     fact('On', s.channel),
@@ -1450,18 +1498,18 @@ window.addEventListener('resize', () => requestAnimationFrame(() => {
   if (T?.clipList && !busy(T.clipList)) setClips(T.open.clips);
 }));
 
-// A long part of a title page opens with a button that closes it again (aria-expanded,
-// with a caret that turns). Opening runs the part's height up from what it was, so what
-// is below slides down; closing runs it back, and when the button sits below the part
-// the page moves with it, so the button stays under the finger. Quick, and at once under
-// reduced motion.
+// A long part of a title page or a person's page opens with a button that closes it again
+// (aria-expanded, with a caret that turns). Opening runs the part's height up from what it
+// was, so what is below slides down; closing runs it back, and when the button sits below
+// the part the page moves with it, so the button stays under the finger. Quick, and at
+// once under reduced motion.
 const REVEAL = 220;
 const easeOut = k => 1 - (1 - k) ** 3;
 const busy = box => box.classList.contains('sizing');
 function unfold(box, set, open, anchor = null) {
   // A hidden page runs no animations, so one begun there would hold the part half open.
   const still = !motion() || document.hidden;
-  const page = $('title');
+  const page = box.closest('dialog');
   const from = box.offsetHeight;
   // While a part runs, the page is not moved to keep what is below it in place.
   const done = () => {
@@ -1491,8 +1539,8 @@ function unfold(box, set, open, anchor = null) {
   box.classList.add('sizing');
   page.classList.add('unfolding');
   const step = now => {
-    // A title page closed meanwhile has nothing left to close.
-    if (!T || !box.isConnected) {
+    // A page closed or replaced meanwhile has nothing left to close.
+    if (!box.isConnected || !(page === $('person') ? P : T)) {
       done();
       return;
     }
@@ -1615,24 +1663,29 @@ function stopVideo() {
 }
 
 // A shared link opens straight to this title, and its preview shows the poster.
-async function shareTitle() {
+function shareTitle() {
   if (!T) return;
   const s = { ...T.card, ...(T.data?.show || {}) };
-  const url = `${location.origin}/?show=${s.id}`;
+  share(`${location.origin}/?show=${s.id}`, `${s.name} on Couchside`, `${s.name}${s.year ? ` (${s.year})` : ''}`,
+    'Link copied. It opens straight to this show.');
+}
+// The system's share sheet where there is one, and the clipboard where there is not.
+async function share(url, title, text, copied) {
   if (navigator.share) {
     try {
-      await navigator.share({ title: `${s.name} on Couchside`, text: `${s.name}${s.year ? ` (${s.year})` : ''}`, url });
+      await navigator.share({ title, text, url });
     } catch { /* closed without sharing */ }
     return;
   }
   try {
     await navigator.clipboard.writeText(url);
-    toast('Link copied. It opens straight to this show.');
+    toast(copied);
   } catch {
     toast(`Copy this link to share it: ${url}`);
   }
 }
 
+// The cast under About, each with their own page when TVmaze gives their id.
 function castEl(cast) {
   const list = el('ul', '', 'cast');
   for (const p of cast.slice(0, 12)) {
@@ -1644,10 +1697,39 @@ function castEl(cast) {
       img.src = p.photo;
       face.append(img);
     }
-    li.append(face, el('b', p.name), document.createTextNode(p.character ? `as ${p.character}` : ''));
+    const who = p.id ? personLink(p, 'who') : el('span', '', 'who');
+    // The space keeps the name and the part apart when the link is read out.
+    who.append(face, el('b', p.name), document.createTextNode(p.character ? ` as ${p.character}` : ''));
+    li.append(who);
     list.append(li);
   }
   return list;
+}
+
+// "Cast: A, B, C and more" near the top of a title page: each name opens their page, and
+// "more" goes down to the whole cast under About.
+function castFact(cast) {
+  if (!cast.length) return null;
+  const names = cast.slice(0, 3).map(c => {
+    if (!c.id) return document.createTextNode(c.name);
+    const a = personLink(c, 'name-link');
+    a.textContent = c.name;
+    return a;
+  });
+  if (cast.length > 3) {
+    const more = button('name-link', 'more', () => {
+      const list = T?.about.querySelector('.cast');
+      if (!list) return;
+      list.scrollIntoView({ behavior: motion() ? 'smooth' : 'auto', block: 'start' });
+      list.querySelector('a')?.focus({ preventScroll: true });
+    });
+    more.setAttribute('aria-label', 'More of the cast');
+    names.push(more);
+  }
+  const p = el('p');
+  p.append(el('span', 'Cast: ', 'k'));
+  names.forEach((name, n) => p.append(...(n ? [n === names.length - 1 ? ' and ' : ', '] : []), name));
+  return p;
 }
 
 function paintMore() {
@@ -1688,7 +1770,7 @@ function moreCard(c) {
   return li;
 }
 
-function paintEpisodes() {
+function paintEpisodes(painted = () => {}) {
   const list = T.live.seasons;
   if (!list.length) return;
   const head = el('div', '', 't-section-head');
@@ -1714,7 +1796,7 @@ function paintEpisodes() {
   });
   T.episodes.replaceChildren(head, T.eps, T.epsMore.parentElement);
   T.episodes.hidden = false;
-  loadSeason(list[0].number);
+  loadSeason(list[0].number).then(painted);
 }
 
 // A season shows its first few episodes until they are all asked for, and every season
@@ -1766,6 +1848,328 @@ function episodeEl(ep) {
   if (ep.summary) text.append(el('p', ep.summary));
   li.append(still, text);
   return li;
+}
+
+/* ------------------------------------------------------------ a person's page */
+// Anyone in a cast has a page of their own: who they are, from TVmaze, with a biography
+// from Wikipedia and a birthplace from Wikidata (people.py), and the shows they are in,
+// each one the catalogue holds opening its own title page. It is a sheet over the title
+// page it was opened from, which stays as it was beneath, and it lives in the address
+// beside that title (?show=169&person=14245), so it reloads and shares, Back goes to the
+// title, and Back from a title opened on it comes back to them. openPerson(id) opens
+// someone from anywhere, and personLink(p) makes a link that does.
+let P = null, personId = null, personToken = 0;
+// The name and photo of everyone a cast has shown, for their page to open with.
+const faces = new Map();
+const LICENSE = 'https://creativecommons.org/licenses/by-sa/4.0/';
+const personOf = id => patient(`/api/person?id=${id}`);
+// A biography that cannot be had reads as none, and is asked for again next time.
+const biographyOf = id => patient(`/api/biography?id=${id}`).then(r => r.biography).catch(() => null);
+
+function openPerson(id) {
+  const url = withPerson(location.pathname, location.search, id);
+  if (personId) history.replaceState(history.state, '', url);
+  else history.pushState({ modal: true }, '', url);
+  showPerson(id);
+}
+function closePerson() {
+  if (history.state?.modal) {
+    keepPlace();
+    history.back();
+  } else {
+    history.replaceState(null, '', withPerson(location.pathname, location.search, null));
+    hidePerson();
+  }
+}
+// `now` closes the sheet at once, for a title opened from it that is already in its place.
+function hidePerson(now = false) {
+  personToken++;
+  personId = null;
+  P = null;
+  const dialog = $('person');
+  if (dialog.open) {
+    if (now) HTMLDialogElement.prototype.close.call(dialog);
+    else dialog.close();
+  }
+  modalOpen();
+  document.title = T ? `${T.name.textContent || 'Show'} · Couchside` : TITLES[view] || 'Couchside';
+}
+$('person').addEventListener('close', () => { if (!personId) $('p-sheet').replaceChildren(); });
+$('person').addEventListener('cancel', e => { e.preventDefault(); closePerson(); });
+$('person').addEventListener('click', e => { if (e.target === $('person')) closePerson(); });
+
+// A link to someone's page. Its address keeps whatever is open, so a new tab shows the same
+// title with them over it; a plain click opens them here.
+function personLink(p, cls) {
+  const a = el('a', '', cls);
+  a.href = withPerson(location.pathname, location.search, p.id);
+  a.dataset.person = String(p.id);
+  faces.set(p.id, { id: p.id, name: p.name || '', photo: p.photo || null });
+  return a;
+}
+document.addEventListener('click', e => {
+  const a = e.target.closest('a[data-person]');
+  if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  e.preventDefault();
+  openPerson(Number(a.dataset.person));
+});
+
+function showPerson(id, place = null) {
+  const token = ++personToken;
+  personId = id;
+  P = buildPerson(faces.get(id) || { id, name: '', photo: null });
+  if (place?.open) Object.assign(P.open, place.open);
+  const dialog = $('person');
+  if (!dialog.open || closing(dialog)) dialog.showModal();
+  modalOpen();
+  dialog.scrollTop = 0;
+  const settle = returnTo(dialog, place, () => token === personToken);
+  P.close.focus({ preventScroll: true });
+  document.title = P.who.name ? `${P.who.name} · Couchside` : 'Couchside';
+  personOf(id).then(data => {
+    if (token !== personToken) return;
+    for (const c of [...data.roles, ...data.appearances, ...data.crew]) if (c.show) remember(c.show);
+    P.data = data;
+    paintPerson();
+    settle();
+    // The server began the lookup as it answered, so this is seldom long behind.
+    biographyOf(id).then(bio => {
+      if (token !== personToken) return;
+      P.bio = bio;
+      paintAbout();
+      settle();
+    });
+  }, e => {
+    if (token !== personToken) return;
+    P.error = e;
+    paintPerson();
+  });
+}
+
+function buildPerson(who) {
+  const close = button('icon-btn t-close', '', closePerson, 'close');
+  close.setAttribute('aria-label', 'Close');
+  const hero = el('div', '', 't-hero p-hero');
+  const name = el('h2', who.name, 't-name');
+  name.id = 'p-name';
+  // Wikipedia's few words on them, "American actor (born 1956)", once they come.
+  const said = el('p', '', 'p-said');
+  said.hidden = true;
+  const shared = button('round', '', sharePerson, 'share');
+  shared.setAttribute('aria-label', 'Share');
+  shared.title = 'Share';
+  const acts = el('div', '', 't-acts');
+  acts.append(shared);
+  const head = el('div', '', 't-head');
+  head.append(name, said, acts);
+  hero.append(el('div', '', 't-fade'), head);
+  paintPhoto(hero, who);
+  const main = el('div', '', 't-main');
+  main.append(skelLines(3));
+  const side = el('div', '', 'facts');
+  const body = el('div', '', 't-body p-body');
+  body.append(main, side);
+  const parts = {};
+  for (const [part, title] of [['roles', 'TV shows'], ['appearances', 'As themselves'], ['crew', 'Behind the camera']]) {
+    const box = el('section', '', 't-section');
+    const h = el('h3', title);
+    h.id = `p-${part}-h`;
+    box.setAttribute('aria-labelledby', h.id);
+    const grid = el('ul', '', 'grid p-grid');
+    grid.id = `p-${part}`;
+    box.append(h, grid);
+    box.hidden = part !== 'roles';
+    parts[part] = { box, h, grid, more: null };
+  }
+  // Their shows on the way: a line of posters' worth of shimmer.
+  for (let n = 0; n < 6; n++) {
+    const li = el('li');
+    li.append(el('span', '', 'skel card-fill'));
+    parts.roles.grid.append(li);
+  }
+  const links = el('p', '', 'links-row');
+  const foot = el('section', '', 't-section about');
+  foot.hidden = true;
+  foot.append(links);
+  $('p-sheet').replaceChildren(close, hero, body, parts.roles.box, parts.appearances.box, parts.crew.box, foot);
+  return { id: who.id, who, close, hero, name, said, main, side, body, parts, foot, links, data: null, bio: undefined,
+           error: null, fitBio: null, open: { roles: false, appearances: false, crew: false, bio: false } };
+}
+
+// Their photo, as a title's poster is shown, and the same blurred behind it.
+function paintPhoto(hero, who) {
+  hero.querySelector('.p-photo')?.remove();
+  hero.querySelector('.t-blur')?.remove();
+  const photo = artEl({ id: who.id, name: who.name }, who.photo || null, false);
+  photo.classList.add('t-poster', 'p-photo');
+  hero.prepend(photo);
+  if (who.photo) hero.prepend(picture(who.photo, 't-blur'));
+}
+
+function paintPerson() {
+  if (!P) return;
+  if (P.error) {
+    // TVmaze having no such person is final; anything else may pass.
+    const again = P.error.status === 404 ? [] : [button('btn ghost', 'Try again', () => showPerson(P.id))];
+    P.main.replaceChildren(el('p', P.error.message, 't-summary muted'), ...again);
+    P.side.replaceChildren();
+    for (const s of Object.values(P.parts)) s.box.hidden = true;
+    return;
+  }
+  const who = P.data.person;
+  P.who = { ...P.who, ...who };
+  P.name.textContent = who.name;
+  document.title = `${who.name} · Couchside`;
+  // A page opened before the page knew them (a shared link) gets their photo now.
+  if ((who.photo || undefined) !== P.hero.querySelector('.p-photo')?.dataset.src) paintPhoto(P.hero, who);
+  paintAbout();
+  paintCredits();
+}
+
+// What is known of them: Wikipedia's description under their name; when and where they were
+// born, their age or when they died, what they are known for and what they created; their
+// biography; and where else to read about them.
+function paintAbout() {
+  const who = P.data.person, bio = P.bio;
+  P.said.textContent = bio?.description || '';
+  P.said.hidden = !bio?.description;
+  const age = who.deathday ? null : yearsBetween(who.birthday, isoDay());
+  const created = P.data.crew.filter(c => /^(Co-)?Creator$/.test(c.jobs[0])).map(c => c.name);
+  P.side.replaceChildren(...[
+    fact('Born', bornOn(who.birthday, bio?.birthplace)),
+    fact('Age', age === null ? '' : String(age)),
+    fact('Died', diedOn(who.birthday, who.deathday)),
+    fact('Known for', knownFor(P.data.roles)),
+    fact('Created', joinNames(created.slice(0, 3))),
+  ].filter(Boolean));
+  P.fitBio = null;
+  if (bio === undefined) P.main.replaceChildren(skelLines(3));
+  else if (bio?.text) P.main.replaceChildren(...bioEl(bio));
+  else P.main.replaceChildren();
+  P.fitBio?.();
+  // With no biography, what is known of them takes the whole width.
+  P.body.classList.toggle('no-bio', bio !== undefined && !bio?.text);
+  const out = (href, text, label) => {
+    const a = el('a', text);
+    a.href = href;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.setAttribute('aria-label', `${label}, opens in a new tab`);
+    return a;
+  };
+  const links = [out(who.url, 'TVmaze', `${who.name} on TVmaze`)];
+  if (bio?.imdb) links.push(out(`https://www.imdb.com/name/${bio.imdb}/`, 'IMDb', `${who.name} on IMDb`));
+  if (bio?.wikipedia) links.push(out(bio.wikipedia, 'Wikipedia', `${who.name} on Wikipedia`));
+  P.links.replaceChildren(el('span', 'Also on ', 'k'), ...links.flatMap((a, n) => (n ? [' · ', a] : [a])));
+  P.foot.hidden = false;
+}
+
+// Their biography, the opening of their Wikipedia article: six lines at first, and More for
+// the rest when there is more, credited to Wikipedia under CC BY-SA as its licence asks.
+function bioEl(bio) {
+  const text = el('p', bio.text, 't-summary p-text');
+  text.id = 'p-text';
+  const more = el('button', '', 'p-more');
+  more.type = 'button';
+  more.setAttribute('aria-controls', text.id);
+  const set = open => {
+    P.open.bio = open;
+    text.classList.toggle('clamped', !open);
+    more.textContent = open ? 'Less' : 'More';
+    more.setAttribute('aria-expanded', String(open));
+  };
+  more.addEventListener('click', () => set(!P.open.bio));
+  set(P.open.bio);
+  // Whether six lines hold it all, measured once it is on the page and again on a resize.
+  P.fitBio = () => {
+    if (!text.isConnected) return;
+    const was = text.classList.contains('clamped');
+    text.classList.add('clamped');
+    const over = text.scrollHeight > text.clientHeight + 1;
+    text.classList.toggle('clamped', was);
+    more.hidden = !over;
+    if (!over && P.open.bio) set(false);
+  };
+  const credit = el('p', '', 'p-credit');
+  const link = (href, words) => {
+    const a = el('a', words);
+    a.href = href;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    return a;
+  };
+  credit.append('Biography from ', bio.wikipedia ? link(bio.wikipedia, 'Wikipedia') : 'Wikipedia', ', ',
+    link(LICENSE, 'CC BY-SA 4.0'));
+  return [text, more, credit];
+}
+window.addEventListener('resize', () => requestAnimationFrame(() => P?.fitBio?.()));
+
+// Their roles, their appearances as themselves and the shows they made, each best known
+// first (people.py). Each is a poster that opens its title page, or for a show the
+// catalogue does not hold yet its name on a tile, with whom they played and when beneath.
+function paintCredits() {
+  const { person: who } = P.data;
+  P.parts.appearances.h.textContent = selfHeading(who.gender);
+  for (const part of ['roles', 'appearances', 'crew']) {
+    const list = P.data[part], s = P.parts[part];
+    s.box.hidden = !list.length;
+    s.more?.parentElement.remove();
+    s.more = null;
+    s.grid.replaceChildren(...list.map(c => creditEl(c, who.gender)));
+    if (snippet(list.length, SNIPPETS[part]) < list.length) {
+      s.more = revealButton(s.grid, () => {
+        if (busy(s.grid)) return;
+        P.open[part] = !P.open[part];
+        unfold(s.grid, open => setCredits(part, open), P.open[part], s.more);
+      });
+      s.box.append(s.more.parentElement);
+    }
+    setCredits(part, P.open[part]);
+  }
+  if (!P.data.roles.length && !P.data.appearances.length && !P.data.crew.length) {
+    P.parts.roles.box.hidden = false;
+    P.parts.roles.grid.replaceChildren(el('li', 'TVmaze lists no shows for them yet.', 'muted p-none'));
+  }
+}
+function setCredits(part, open) {
+  const s = P.parts[part];
+  const items = [...s.grid.children];
+  const shown = snippet(items.length, SNIPPETS[part]);
+  items.forEach((li, n) => { li.hidden = !open && n >= shown; });
+  if (!s.more) return;
+  s.more.parentElement.hidden = shown === items.length;
+  paintReveal(s.more, revealLabel(part, items.length, open), open);
+}
+
+function creditEl(c, gender) {
+  const li = el('li');
+  const { as, when, said } = creditLines(c, gender);
+  if (c.show) li.append(cardEl(c.show, { note: said }));
+  else {
+    const tile = el('div', '', 'card p-off');
+    tile.append(artEl({ id: c.id, name: c.name }, null, false));
+    li.append(tile);
+  }
+  if (!as && !when) return li;
+  const caption = el('span', '', 'grid-caption p-caption');
+  if (as) caption.append(el('span', as, 'p-as'));
+  if (when) {
+    // "8 episodes" and "2008–2020" each stay whole on a narrow poster, the dot with the first.
+    const line = el('span', '', 'p-when');
+    when.split(' · ').forEach((part, n) => line.append(...(n ? ['\u00a0· '] : []), el('span', part, 'p-whole')));
+    caption.append(line);
+  }
+  // A card's own label says all of this already.
+  if (c.show) caption.setAttribute('aria-hidden', 'true');
+  li.append(caption);
+  return li;
+}
+
+// A shared link opens straight to their page, over the home page.
+function sharePerson() {
+  if (!P) return;
+  const name = P.name.textContent || 'Someone';
+  share(`${location.origin}/?person=${P.id}`, `${name} on Couchside`, name, 'Link copied. It opens straight to their page.');
 }
 
 /* --------------------------------------------------------------- browse */

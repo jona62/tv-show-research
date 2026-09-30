@@ -907,9 +907,11 @@ RAW = {
     '_embedded': {
         'seasons': [{'id': 753, 'number': 1, 'episodeOrder': 7, 'premiereDate': '2008-01-20'},
                     {'id': 754, 'number': 2, 'episodeOrder': 13, 'premiereDate': '2009-03-08'}, {'id': 'x'}],
-        'cast': [{'person': {'name': 'Bryan Cranston', 'image': {'medium': IMAGES + 'medium_portrait/1/2.jpg'}},
+        'cast': [{'person': {'id': 14245, 'name': 'Bryan Cranston', 'image': {'medium': IMAGES + 'medium_portrait/1/2.jpg'}},
                   'character': {'name': 'Walter White'}},
-                 {'person': {'name': 'Aaron Paul', 'image': {'medium': 'https://evil.example/x.jpg'}}, 'character': {}}],
+                 {'person': {'name': 'Aaron Paul', 'image': {'medium': 'https://evil.example/x.jpg'}}, 'character': {}},
+                 {'person': {'id': '12', 'name': 'Anna Gunn'}, 'character': {'name': 'Skyler White'}},
+                 {'person': {'id': -3, 'name': 'Dean Norris'}, 'character': {'name': 'Hank Schrader'}}],
         'images': [{'type': 'background', 'main': False, 'resolutions': {'original': {'url': IMAGES + 'o/1/9.jpg'}}},
                    {'type': 'background', 'main': True, 'resolutions': {'original': {'url': IMAGES + 'o/1/8.jpg'}}},
                    {'type': 'poster', 'main': True, 'resolutions': {'original': {'url': IMAGES + 'o/1/7.jpg'}}}],
@@ -917,7 +919,9 @@ RAW = {
 }
 shape = trim_show(RAW)
 check('live seasons keep what is valid', [(s['number'], s['episodes'], s['year']) for s in shape['seasons']] == [(1, 7, 2008), (2, 13, 2009)])
-check('live cast keeps names and characters', [(c['name'], c['character']) for c in shape['cast']] == [('Bryan Cranston', 'Walter White'), ('Aaron Paul', '')])
+check('live cast keeps names and characters', [(c['name'], c['character']) for c in shape['cast']][:2] == [('Bryan Cranston', 'Walter White'), ('Aaron Paul', '')])
+check('and each one\'s TVmaze id, which opens their page, or none when it is not one',
+      [c['id'] for c in shape['cast']] == [14245, None, None, None])
 check('images from anywhere but TVmaze are dropped', shape['cast'][1]['photo'] is None and shape['cast'][0]['photo'])
 check('the main backdrop wins', shape['backdrop'] == IMAGES + 'o/1/8.jpg')
 check('the IMDb id and site survive', shape['imdb'] == 'tt0903747' and shape['site'] == 'http://www.amc.com/x')
@@ -1039,6 +1043,254 @@ for bad in ('localhost', '127.0.0.1', 'netflix.com/x', 'a b.com', '', 'x' * 300 
     except ValueError:
         check(f'icon host {bad[:20]!r} is refused', True)
 
+# 6b. People: someone in a cast, trimmed from TVmaze, their shows in order with the
+# catalogue's cards, and a biography from Wikidata and Wikipedia only when it is surely theirs.
+from urllib.error import URLError                                # noqa: E402
+from urllib.parse import parse_qs, unquote, urlsplit             # noqa: E402
+from people import (Biographies, trim_person, trim_guests, credits, public, wikidata_path,  # noqa: E402
+                    trim_summary, birthplace, REST, MOST_TEXT)
+
+
+def link(show_id, name):
+    return {'href': f'https://api.tvmaze.com/shows/{show_id}', 'name': name}
+
+
+def appeared(show_id, name, airdate, character=None, as_self=False, voice=False):
+    """One of TVmaze's guest credits, with its episode embedded."""
+    return {'self': as_self, 'voice': voice, '_links': {'character': {'name': character}} if character else {},
+            '_embedded': {'episode': {'airdate': airdate, '_links': {'show': link(show_id, name)}}}}
+
+
+# A regular part in a show few know, to set against guest parts in shows everyone does.
+QUIET = next(s['id'] for i, s in enumerate(engine.shows) if engine.popularity[i] <= 20 and s['year'] and s['type'] == 'Scripted')
+PERSON_RAW = {
+    'id': 14245, 'name': ' Bryan  Cranston ', 'url': 'https://www.tvmaze.com/people/14245/bryan-cranston',
+    'birthday': '1956-03-07', 'deathday': None, 'gender': 'Male', 'country': {'name': 'United States'},
+    'image': {'medium': IMAGES + 'medium_portrait/195/488839.jpg'},
+    '_embedded': {
+        'castcredits': [
+            {'self': False, 'voice': False, '_links': {'show': link(64992, 'The Gentlemen'), 'character': {'name': 'Stanley'}}},
+            {'self': False, 'voice': False, '_links': {'show': link(1371, 'Westworld'), 'character': {'name': 'Caleb Nichols'}}},
+            {'self': False, 'voice': False, '_links': {'show': link(169, 'Breaking Bad'), 'character': {'name': 'Walter White'}}},
+            {'self': True, 'voice': True, '_links': {'show': link(27497, 'Alien Deep'), 'character': {'name': 'Narrator'}}},
+            {'self': False, 'voice': True, '_links': {'show': link(QUIET, 'A quiet one'), 'character': {'name': 'Titanium Rex'}}},
+            {'self': False, 'voice': False, '_links': {'show': link(999_999_999, 'Too New'), 'character': {'name': 'Someone'}}},
+            {'self': False, '_links': {'show': {'href': 'https://evil.example/shows/1', 'name': 'Elsewhere'}}},
+            {'_links': {'show': link(1, '')}}, 'junk'],
+        'crewcredits': [
+            {'type': 'Executive Producer', '_links': {'show': link(2686, 'Sneaky Pete')}},
+            {'type': 'Creator', '_links': {'show': link(2686, 'Sneaky Pete')}},
+            {'type': 'Producer', '_links': {'show': link(169, 'Breaking Bad')}},
+            {'_links': {'show': link(1, 'Under the Dome')}}]},
+}
+GUESTS_RAW = ([appeared(530, 'Seinfeld', f'{year}-02-01', 'Tim Whatley') for year in (1994, 1995, 1996, 1996, 1997)]
+              + [appeared(84, 'Family Guy', '2008-05-04', 'Bert', voice=True), appeared(84, 'Family Guy', '2020-01-05', 'Bert', voice=True),
+                 appeared(84, 'Family Guy', '2012-01-01', 'Doctor Jewish', voice=True)]
+              + [appeared(718, 'The Tonight Show', f'20{year}-03-01', 'Bryan Cranston', as_self=True) for year in (14, 18, 23)]
+              + [appeared(361, 'Saturday Night Live', '2010-05-01', 'Bryan Cranston', as_self=True),
+                 appeared(361, 'Saturday Night Live', '2016-05-01', 'Walter White'),
+                 appeared(169, 'Breaking Bad', '2019-10-11', 'Walter White'), appeared(430, 'The X-Files', '1998-01-01', 'Patrick Crump'),
+                 appeared(999_999_998, 'Not Here Yet', '2026-09-01', 'A Guest'), appeared(83, 'The Simpsons', 'someday', 'Cain'),
+                 'junk', {'_embedded': {'episode': {'_links': {}}}}])
+who = trim_person(PERSON_RAW)
+check('a person keeps their name, photo, dates, gender, country and TVmaze page',
+      (who['name'], who['photo'], who['birthday'], who['deathday'], who['gender'], who['country'], who['url'])
+      == ('Bryan Cranston', IMAGES + 'medium_portrait/195/488839.jpg', '1956-03-07', None, 'Male', 'United States', PERSON_RAW['url']))
+check('their regular parts keep the show, whom they play and whether as themselves or by voice',
+      [(c['id'], c['as'], c['self'], c['voice']) for c in who['cast']] == [
+          (64992, 'Stanley', False, False), (1371, 'Caleb Nichols', False, False), (169, 'Walter White', False, False),
+          (27497, 'Narrator', True, True), (QUIET, 'Titanium Rex', False, True), (999_999_999, 'Someone', False, False)])
+check('and the shows they made, by job', [(c['id'], c['job']) for c in who['crew']]
+      == [(2686, 'Executive Producer'), (2686, 'Creator'), (169, 'Producer')])
+odd = trim_person({**PERSON_RAW, 'url': 'javascript:alert(1)', 'image': {'medium': 'https://evil.example/x.jpg'},
+                   'birthday': 'soon', 'deathday': '2020-13', 'country': 'US', '_embedded': None})
+check('a page, photo or date that is not one is dropped', (odd['url'], odd['photo'], odd['birthday'], odd['deathday'], odd['country'])
+      == ('https://www.tvmaze.com/people/14245', None, None, None, None) and odd['cast'] == [] and odd['crew'] == [])
+rejects('a person without a name', lambda: trim_person({'id': 1, 'name': ' '}), 'not a person')
+rejects('a person without an id', lambda: trim_person({'name': 'Bryan Cranston'}), 'not a person')
+check('a page shows the person without the credits it sorts apart', set(public(who))
+      == {'id', 'name', 'photo', 'birthday', 'deathday', 'gender', 'country', 'url'})
+guests = {g['id']: g for g in trim_guests(GUESTS_RAW)}
+check('guest parts come by show, with the episodes counted and the years they aired',
+      (guests[530]['episodes'], guests[530]['years'], guests[530]['as']) == (5, [1994, 1997], 'Tim Whatley'))
+check('whom they played most comes first, two at most, and a part all by voice says so',
+      guests[84]['as'] == 'Bert, Doctor Jewish' and guests[84]['voice'] and not guests[530]['voice'])
+check('a show they were only ever themselves in is an appearance', guests[718]['self'] and guests[718]['as'] == ''
+      and guests[718]['years'] == [2014, 2023])
+check('once as someone else, and it is a part', not guests[361]['self'] and guests[361]['as'] == 'Walter White')
+check('an episode with no date still counts, without years', guests[83]['episodes'] == 1 and guests[83]['years'] == [])
+check('junk is dropped', set(guests) == {530, 84, 718, 361, 169, 430, 999_999_998, 83})
+rejects('guest credits that are not a list', lambda: trim_guests({}), 'not a list')
+
+page_of_him = credits(lib, who, list(guests.values()))
+roles = page_of_him['roles']
+named = [c['name'] for c in roles]
+i169 = engine.by_id[169]
+check('credits come as roles, appearances as themselves, and shows made', set(page_of_him) == {'roles', 'appearances', 'crew'})
+check('each show the catalogue holds carries the card rows use', all(
+    c['show'] == lib.card(engine.by_id[c['id']]) for part in page_of_him.values() for c in part if c['id'] in engine.by_id))
+out_of_it = {c['id']: c for c in roles if c['show'] is None}
+check('a show it does not hold keeps its name, and a guest part the years it aired', set(out_of_it) == {999_999_999, 999_999_998}
+      and out_of_it[999_999_998]['name'] == 'Not Here Yet' and out_of_it[999_999_998]['years'] == [2026, 2026]
+      and out_of_it[999_999_999]['years'] == [])
+check('a regular part is not listed again as a guest one', [c['id'] for c in roles].count(169) == 1
+      and next(c for c in roles if c['id'] == 169)['regular'])
+check('a regular part in a show everyone knows comes first, with the show\'s years',
+      roles[0]['id'] == 169 and roles[0]['years'] == [engine.shows[i169]['year'], lib.ended[i169] or None])
+check('between shows just as well known, the better rated comes first, the later one or not',
+      engine.popularity[i169] == engine.popularity[engine.by_id[1371]] and named.index('Breaking Bad') < named.index('Westworld'), named)
+check('and at the very top a point of popularity counts for nothing beside the rating',
+      engine.popularity[engine.by_id[64992]] > engine.popularity[i169] >= 98
+      and named.index('Breaking Bad') < named.index('The Gentlemen'), named)
+check('a recurring guest part in a show everyone knows comes before a regular part in one few know',
+      named.index('Seinfeld') < named.index(engine.shows[engine.by_id[QUIET]]['name']), named)
+check('and before a single episode of one as well known', named.index('Seinfeld') < named.index('The X-Files'), named)
+check('a show they are a regular in as themselves stays among their roles, as a host\'s does',
+      any(c['id'] == 27497 and c['self'] and c['as'] == '' for c in roles))
+check('appearances as themselves stand apart', [c['id'] for c in page_of_him['appearances']] == [718])
+check('the shows they made put what they created first', [(c['id'], c['jobs']) for c in page_of_him['crew']]
+      == [(2686, ['Creator', 'Executive Producer']), (169, ['Producer'])])
+
+# A biography: Wikidata by TVmaze id, or by name and birth date to the day, and then the
+# English Wikipedia article's summary, which must be about the same Wikidata item.
+wikidata_asked, wikipedia_asked = [], []
+
+
+def bindings(*rows):
+    return {'results': {'bindings': [{key: {'value': value} for key, value in row.items()} for row in rows]}}
+
+
+def item(q, by='id', **more):
+    return {'item': f'http://www.wikidata.org/entity/{q}', 'by': by, 'article': f'https://en.wikipedia.org/wiki/{q}_page',
+            'imdb': 'nm0000001', 'about': 'An actor', 'placeLabel': 'Norwich', 'regionLabel': 'England',
+            'countryLabel': 'United Kingdom', **more}
+
+
+CRANSTON = item('Q23547', 'name', article='https://en.wikipedia.org/wiki/Bryan_Cranston', imdb='nm0186505',
+                about='American actor', placeLabel='Hollywood', regionLabel='California', countryLabel='United States')
+FOUND = {
+    14245: [CRANSTON, {**CRANSTON, 'placeLabel': 'Q34006'}],     # by name and birth date; a label Wikidata lacks
+    12153: [item('Q198638'), item('Q198638', 'name')],            # linked to the TVmaze id
+    101: [item('Q1', 'name'), item('Q2', 'name')],                # two of the same name born the same day
+    102: [item('Q3'), item('Q4'), item('Q4', 'name')],            # linked twice, one with the name and date too
+    104: [item('Q5', article='https://en.wikipedia.org/wiki/Other_page')],      # an article about someone else
+    105: [item('Q6', article='https://en.wikipedia.org/wiki/Gone')],            # no such article
+    106: [item('Q7', article='https://en.wikipedia.org/wiki/Many')],            # a disambiguation page
+    107: [item('Q8', article='', about='British actress')],                     # no English article at all
+}
+SUMMARIES = {
+    'Bryan_Cranston': {'type': 'standard', 'extract': 'Bryan Lee Cranston is an American actor. ' * 3,
+                       'description': 'American actor (born 1956)', 'wikibase_item': 'Q23547',
+                       'content_urls': {'desktop': {'page': 'https://en.wikipedia.org/wiki/Bryan_Cranston'}}},
+    'Q198638_page': {'type': 'standard', 'extract': 'Jonathan Ray Banks is an American actor.', 'wikibase_item': 'Q198638',
+                     'content_urls': {'desktop': {'page': 'https://en.wikipedia.org/wiki/Jonathan_Banks'}}},
+    'Other_page': {'type': 'standard', 'extract': 'Someone else entirely.', 'wikibase_item': 'Q999'},
+    'Many': {'type': 'disambiguation', 'extract': 'Many may refer to:', 'wikibase_item': 'Q7'},
+}
+
+
+def query_of(path):
+    return parse_qs(urlsplit(path).query)['query'][0]
+
+
+def wikidata(path):
+    wikidata_asked.append(path)
+    person_id = int(re.search(r'wdt:P11449 "(\d+)"', query_of(path))[1])
+    if person_id == 109:
+        raise URLError('down')
+    return bindings(*FOUND.get(person_id, []))
+
+
+def wikipedia(path):
+    wikipedia_asked.append(path)
+    title = unquote(path.rsplit('/', 1)[1])
+    if title not in SUMMARIES:
+        raise HTTPError(path, 404, 'none', {}, None)
+    return SUMMARIES[title]
+
+
+def someone(person_id, name='Some One', birthday='1970-01-01'):
+    return {'id': person_id, 'name': name, 'birthday': birthday}
+
+
+bios = Biographies(Live(fetch=wikidata), Live(fetch=wikipedia))
+bio = bios.get(who)
+asked_of = query_of(wikidata_asked[-1])
+check('Wikidata is asked for the person by TVmaze id, and by name with the date of birth to the day',
+      'wdt:P11449 "14245"' in asked_of and '"Bryan Cranston"@en' in asked_of and '"Bryan Cranston"@mul' in asked_of
+      and '"1956-03-07T00:00:00Z"^^xsd:dateTime' in asked_of and 'wikibase:timePrecision 11' in asked_of)
+check('someone found so gets their Wikipedia summary and its short description, linked to the article',
+      bio['text'].startswith('Bryan Lee Cranston is an American actor.') and bio['description'] == 'American actor (born 1956)'
+      and bio['wikipedia'] == 'https://en.wikipedia.org/wiki/Bryan_Cranston', bio)
+check('and from Wikidata their IMDb id and where they were born, in its region and country',
+      (bio['imdb'], bio['birthplace'], bio['wikidata']) == ('nm0186505', 'Hollywood, California, United States', 'Q23547'))
+check('Wikipedia is asked for the article by its title', wikipedia_asked[-1] == '/api/rest_v1/page/summary/Bryan_Cranston')
+check('someone Wikidata links to their TVmaze id is theirs', bios.get(someone(12153))['wikidata'] == 'Q198638')
+check('two people of the same name born the same day are no answer', bios.get(someone(101)) is None)
+check('linked twice, the one that also has the name and date is taken', bios.get(someone(102))['wikidata'] == 'Q4')
+check('no one found is no biography', bios.get(someone(103)) is None)
+elsewhere = bios.get(someone(104))
+check('an article about someone else lends no text, but Wikidata\'s facts stay',
+      elsewhere['text'] == '' and elsewhere['wikipedia'] is None and elsewhere['imdb'] == 'nm0000001'
+      and elsewhere['description'] == 'An actor' and elsewhere['birthplace'] == 'Norwich, England, United Kingdom')
+check('nor does a missing article, or a disambiguation page', bios.get(someone(105))['text'] == ''
+      and bios.get(someone(106))['text'] == '')
+check('without an English article, Wikidata\'s description stands', bios.get(someone(107))['description'] == 'British actress')
+missing_again = len(wikipedia_asked)
+bios.get(someone(105))
+check('and a missing article is not asked about again', len(wikipedia_asked) == missing_again)
+check('without a date of birth nobody is looked for by name', 'UNION' not in query_of(wikidata_path(someone(5, 'No Date', None))))
+check('a name cannot break out of its quotes', '"Dwayne The Rock Johnson"@en' in query_of(
+    wikidata_path(someone(6, 'Dwayne "The Rock" Johnson\\', '1972-05-02'))))
+check('a birthplace names its region and country, each once', [
+    birthplace('Hollywood', 'California', 'United States'), birthplace('Santiago', 'Santiago Metropolitan Region', 'Chile'),
+    birthplace('Washington, D.C.', 'District of Columbia', 'United States'), birthplace('New York City', 'New York', 'United States'),
+    birthplace('Seoul', '', 'South Korea'), birthplace('Q42', 'Q43', 'United Kingdom'), birthplace('', '', ''),
+    birthplace('Hull', 'Hullshire', 'England')] == [
+    'Hollywood, California, United States', 'Santiago, Chile', 'Washington, D.C., United States',
+    'New York City, United States', 'Seoul, South Korea', 'United Kingdom', '', 'Hull, Hullshire, England'])
+long_one = trim_summary({'type': 'standard', 'extract': 'A sentence that runs on. ' * 100, 'wikibase_item': 'Q1',
+                         'content_urls': {'desktop': {'page': 'https://evil.example/wiki/A'}}})
+check('a long biography stops at the end of a sentence', len(long_one['text']) <= MOST_TEXT and long_one['text'].endswith('runs on.'))
+check('and a page link elsewhere is dropped', long_one['url'] is None)
+rejects('a summary that is not one', lambda: trim_summary([]), 'not a page summary')
+
+# Out of reach, a source rests rather than holding every page up, and then is asked again.
+rested = [0.0]
+resting = Biographies(Live(fetch=wikidata, clock=lambda: rested[0]), Live(fetch=wikipedia))
+try:
+    resting.get(someone(109))
+    check('Wikidata out of reach is an error, not a guess', False)
+except LiveError as exc:
+    check('Wikidata out of reach is an error, not a guess', exc.status == 502)
+asked_so_far = len(wikidata_asked)
+try:
+    resting.get(someone(12153))
+    check('and it rests rather than be asked again at once', False)
+except LiveError as exc:
+    check('and it rests rather than be asked again at once', exc.status == 503 and len(wikidata_asked) == asked_so_far)
+rested[0] += REST + 1
+check('after which it is asked again', resting.get(someone(12153))['wikidata'] == 'Q198638')
+unread = Biographies(Live(fetch=wikidata), Live(fetch=lambda path: (_ for _ in ()).throw(URLError('down'))))
+check('Wikipedia out of reach leaves what Wikidata says', unread.get(who)['text'] == '' and unread.get(who)['imdb'] == 'nm0186505')
+
+# Asked for while its lookup is under way, a biography waits for it rather than asking again.
+gate, lookups = threading.Event(), []
+
+
+def slowly(path):
+    lookups.append(path)
+    gate.wait(5)
+    return wikidata(path)
+
+
+joined = Biographies(Live(fetch=slowly), Live(fetch=wikipedia))
+first, second = joined.start(who), joined.start(who)
+gate.set()
+check('a biography asked for twice at once is looked up once', first is second and len(lookups) == 1
+      and first.result(5)['wikidata'] == 'Q23547')
+check('and asked for after, it comes from what was kept', joined.get(who) == first.result() and len(lookups) == 1)
+
 # 7. The server end to end, with every outside service faked.
 asked = {'kino': [], 'store': []}
 # iTunes seasons by a word of the name searched for. Game of Thrones's rating here differs
@@ -1078,7 +1330,27 @@ def tvmaze(path):
                       'url': 'https://www.tvmaze.com/shows/41469/demon-slayer'}}, {'show': NEW_SHOW}]
 
 
-server.LIVE = Live(fetch=fake)
+people_asked = []
+
+
+def people(path):
+    """TVmaze's people: Bryan Cranston under any id, with his guest parts, except one TVmaze
+    does not have, one it cannot be reached for, and one whose guest parts fail."""
+    people_asked.append(path)
+    person_id = int(re.match(r'/people/(\d+)', path)[1])
+    if person_id == 404404:
+        raise HTTPError(path, 404, 'gone', {}, None)
+    if person_id == 500500:
+        raise URLError('down')
+    if '/guestcastcredits' in path:
+        if person_id == 103:
+            raise HTTPError(path, 500, 'boom', {}, None)
+        return GUESTS_RAW
+    return {**PERSON_RAW, 'id': person_id}
+
+
+server.LIVE = Live(fetch=lambda path: people(path) if path.startswith('/people/') else fake(path))
+server.BIOGRAPHIES = Biographies(Live(fetch=wikidata), Live(fetch=wikipedia))
 server.KINO = Live(fetch=kinocheck)
 server.STORE = Live(fetch=itunes)
 server.ICONS = Icons(fetch=lambda host: ('image/png', b'\x89PNG fake'))
@@ -1299,6 +1571,7 @@ status, _headers, body = fetch('/api/shows', {'ids': [169, 999_999_999]})
 check('ids resolve to cards with posters', status == 200 and [c['id'] for c in json.loads(body)['shows']] == [169])
 status, _headers, body = fetch('/api/extra?id=169')
 check('live details come through', status == 200 and json.loads(body)['details']['cast'][0]['name'] == 'Bryan Cranston')
+check('with each of the cast\'s TVmaze ids, which open their pages', json.loads(body)['details']['cast'][0]['id'] == 14245)
 check('a non-numeric show id is a 400', fetch('/api/extra?id=abc')[0] == 400)
 check('a show outside the catalog is a 400', fetch('/api/extra?id=999999999')[0] == 400)
 check('episodes need a season', fetch('/api/episodes?id=169')[0] == 400)
@@ -1319,6 +1592,53 @@ status, _headers, body = fetch('/api/browse', {'profile': PROFILE, 'settings': {
 check('browse answers over HTTP', status == 200 and json.loads(body)['rows'])
 check('browsing nowhere is a 400', fetch('/api/browse', {'profile': [], 'genre': 'Nowhere'})[0] == 400)
 check('an unknown api path is a 404', fetch('/api/nope')[0] == 404)
+
+# A person's page and their biography over HTTP.
+def looked_up():
+    """How many times Wikidata has been asked about Bryan Cranston."""
+    return sum('P11449 "14245"' in query_of(p) for p in wikidata_asked)
+
+
+before_page = looked_up()
+status, headers, body = fetch('/api/person?id=14245&from=viewer-secret')
+person_page = json.loads(body)
+check('a person comes with their roles, their appearances as themselves and the shows they made',
+      status == 200 and person_page['person']['name'] == 'Bryan Cranston' and person_page['roles'][0]['id'] == 169
+      and [c['id'] for c in person_page['appearances']] == [718] and person_page['crew'][0]['jobs'] == ['Creator', 'Executive Producer'])
+check('each show in the catalogue carries the card that opens its title page, and the rest a name',
+      all(c['show'] == lib.card(engine.by_id[c['id']]) for c in person_page['roles'] if c['show'])
+      and {c['name'] for c in person_page['roles'] if not c['show']} == {'Too New', 'Not Here Yet'})
+check('the person comes without the lists their credits were sorted from', set(person_page['person'])
+      == {'id', 'name', 'photo', 'birthday', 'deathday', 'gender', 'country', 'url'})
+check('a person is not kept by browsers', headers.get('Cache-Control') == 'no-store')
+status, _headers, body = fetch('/api/biography?id=14245')
+check('their biography follows, from the one lookup begun when the person was asked for', status == 200
+      and json.loads(body)['biography']['imdb'] == 'nm0186505' and looked_up() == before_page + 1, (looked_up(), before_page))
+check('nothing about the viewer reaches TVmaze, Wikidata or Wikipedia',
+      not any('viewer-secret' in p for p in people_asked + wikidata_asked + wikipedia_asked))
+for query, what in [('id=abc', 'a person id that is not a number'), ('id=', 'no person id'), ('id=1234567890', 'a person id too long'),
+                    ('', 'nobody')]:
+    check(f'{what} is a 400 that says so', fetch('/api/person?' + query)[0] == 400 and fetch('/api/biography?' + query)[0] == 400
+          and 'Send the person as a whole number.' in fetch('/api/person?' + query)[2].decode())
+status, _headers, body = fetch('/api/person?id=404404')
+check('a person TVmaze does not have is a 404 that says so', status == 404
+      and json.loads(body) == {'error': 'TVmaze has no details for this person.'})
+check('and TVmaze is not asked about them again', fetch('/api/person?id=404404')[0] == 404
+      and sum(p.startswith('/people/404404?') for p in people_asked) == 1)
+check('nor is there a biography of them', fetch('/api/biography?id=404404')[0] == 404)
+status, _headers, body = fetch('/api/person?id=500500')
+check('TVmaze out of reach is a 502 that says so', status == 502 and json.loads(body)['error'] == 'That service could not be reached.')
+status, _headers, body = fetch('/api/person?id=103')
+check('guest parts that cannot be had leave the rest', status == 200 and json.loads(body)['roles'][0]['id'] == 169
+      and json.loads(body)['appearances'] == [])
+check('someone Wikidata cannot place has no biography rather than a guess',
+      json.loads(fetch('/api/biography?id=103')[2]) == {'biography': None})
+status, _headers, body = fetch('/api/biography?id=109')
+check('Wikidata out of reach is a 502 the page reads as no biography', status == 502 and json.loads(body)['error'])
+check('the page has a sheet for a person beside the title\'s',
+      b'<dialog id="person" class="modal" aria-labelledby="p-name"><div class="sheet" id="p-sheet"></div></dialog>' in page_root)
+check('How Couchside works says where a person\'s page comes from',
+      b'English Wikipedia article' in page_root and b'from Wikidata' in page_root)
 
 # 7a. First-visit starters: poster cards, drawn per visitor, adapting to picks.
 def starters(query, headers=None):

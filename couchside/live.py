@@ -74,7 +74,8 @@ def trim_show(raw):
         person = c.get('person') if isinstance(c, dict) and isinstance(c.get('person'), dict) else {}
         character = c.get('character') if isinstance(c, dict) and isinstance(c.get('character'), dict) else {}
         if isinstance(person.get('name'), str):
-            cast.append({'name': person['name'],
+            # The TVmaze id opens the person's own page (people.py); without one the name is text.
+            cast.append({'id': person['id'] if (whole(person.get('id')) or 0) > 0 else None, 'name': person['name'],
                          'character': character['name'] if isinstance(character.get('name'), str) else '',
                          'photo': picture(person.get('image')) or picture(character.get('image'))})
     backdrop = None
