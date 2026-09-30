@@ -2542,6 +2542,9 @@ function paintCredits() {
     P.parts.roles.box.hidden = false;
     P.parts.roles.grid.replaceChildren(el('li', 'TVmaze lists no shows for them yet.', 'muted p-none'));
   }
+  // Someone with no regular role who made shows is best known for those (knownFor), so the
+  // shows they made come first, ahead of the parts they guested in.
+  if (!P.data.roles.some(r => r.regular) && P.data.crew.length) P.parts.roles.box.before(P.parts.crew.box);
 }
 function setCredits(part, open) {
   const s = P.parts[part];
