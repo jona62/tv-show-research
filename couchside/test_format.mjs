@@ -390,6 +390,24 @@ check('swiped along, the two past wherever it has got to', postersToLoad(phoneRo
 check('a wide screen loads what it shows and two more',
   postersToLoad([58, 242, 426, 610, 794, 978, 1162, 1346, 1530, 1714, 1898, 2082], 1440) === 10);
 check('never more than a row holds', postersToLoad([16, 136, 256], 390) === 3 && postersToLoad([], 390) === 0);
+// A phone's row of 20 that goes round, with 10 copies of its last cards before it and 13 of
+// its first after, `x` px past its first card: each place [left, right, card], in order.
+const { loopPosters } = await import('./format.js');
+const roundRow = x => Array.from({ length: 43 }, (_, k) => {
+  const left = 16 + (k - 10) * 120 - x;
+  return [left, left + 112, (((k - 10) % 20) + 20) % 20];
+});
+check('a row that goes round wants what it shows, a sliver of its last card before its first included, and the next two',
+  same(loopPosters(roundRow(0), 0, 390), [[19, 0, 1, 2, 3], [4, 5]]));
+check('swiped back past its first card, what shows of its last ones, and the two beyond them the way it goes',
+  same(loopPosters(roundRow(-240), 0, 390, true), [[17, 18, 19, 0, 1], [16, 15]]));
+check('across the loop point, its last cards and, through copies, its first, then the two after',
+  same(loopPosters(roundRow(18 * 120), 0, 390), [[17, 18, 19, 0, 1], [2, 3]]));
+check('the places are read in the order they are laid out, whatever order they come in',
+  same(loopPosters(roundRow(0).reverse(), 0, 390), [[19, 0, 1, 2, 3], [4, 5]]));
+check('a card showing twice in a short row is wanted once, and one already shown is not wanted next',
+  same(loopPosters([[-104, 8, 1], [16, 128, 0], [136, 248, 1], [256, 368, 0], [376, 488, 1]], 0, 390), [[1, 0], []]));
+check('a row showing nothing wants nothing', same(loopPosters(roundRow(0), 5000, 5390), [[], []]));
 check('a reader with less than a screen of rows left is catching up', catchingUp(843, 844) && catchingUp(-10, 844)
   && !catchingUp(844, 844) && !catchingUp(2500, 844));
 check('a reader well above the end gets six rows, and one catching up the eight the server allows',

@@ -2,6 +2,7 @@
 // without a page: nothing in it touches one until main.js calls it.
 import { LONG_PRESS, SLOP, EDGE, FLICK, rubber, follow, speed, dismisses, glide, heading, wandered, fromEdge, goesBack,
   stagger, REST, easesIn } from './gestures.js';
+import { LOOP_SCREENS, LOOP_LEAST, LOOP_WAIT, goesRound, loopCopies, copiesOf, lapHome, restPlace, toCard } from './gestures.js';
 let fails = 0;
 const check = (name, ok, extra = '') => { console.log(`${ok ? 'pass' : 'FAIL'}  ${name}${ok ? '' : '  ' + extra}`); if (!ok) fails++; };
 
@@ -51,6 +52,44 @@ check('a row that lands on screen while the page is still eases in', easesIn(tru
 check('one that lands while the reader scrolls is simply there', !easesIn(true, REST - 1) && !easesIn(true, 0));
 check('and so is one that lands below the screen, however still', !easesIn(false, Infinity) && !easesIn(false, REST));
 check('a page is still once it has not moved for a moment', REST >= 100 && REST <= 250);
+
+// Rows that go round. A phone's row: 112px posters 8px apart, a lap of 20 is 2400px, and
+// the row is 390px wide with 16px inside either end.
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+check('a row goes round once its cards run past its width, and not while they all fit, to a pixel',
+  goesRound(2400, 8, 16, 390) && !goesRound(360, 8, 16, 390) && goesRound(368, 8, 16, 390) && !goesRound(367, 8, 16, 390));
+check('it carries four screens past either end: a drag of a screen, and the furthest Chrome flings a row after it',
+  LOOP_SCREENS === 4 && LOOP_LEAST >= 600);
+check('a phone row keeps enough copies before its cards to carry it four screens back, and after them four more past a screen',
+  same(loopCopies(390, 120), { before: 13, after: 17 }) && 13 * 120 >= 4 * 390 && 17 * 120 >= 5 * 390);
+check('a narrow row is still carried 800px', same(loopCopies(200, 120), { before: 7, after: 9 }) && 7 * 120 >= LOOP_LEAST);
+check('a wide screen keeps more, a desktop row of 176px posters four screens of them',
+  same(loopCopies(1280, 184), { before: 28, after: 35 }));
+check('the copies before a row are of its last cards, in order, and after it of its first',
+  same(copiesOf(20, 3, 4), { before: [17, 18, 19], after: [0, 1, 2, 3] }));
+check('a short row is copied round again as many times as it takes', same(copiesOf(3, 7, 5), { before: [2, 0, 1, 2, 0, 1, 2], after: [0, 1, 2, 0, 1] }));
+check('a row resting among its own cards stays there', lapHome(0, 2400) === 0 && lapHome(1200, 2400) === 0 && lapHome(2399, 2400) === 0);
+check('past its last card it moves back a lap, the same cards in the same places', lapHome(2400, 2400) === -2400 && lapHome(2520, 2400) === -2400);
+check('before its first it moves on a lap', lapHome(-120, 2400) === 2400 && lapHome(-2400, 2400) === 2400);
+check('a short row flung further moves back as many laps', lapHome(7300, 360) === -7200 && lapHome(-500, 360) === 720);
+check('half a pixel either side of its first card is on it', lapHome(-.4, 2400) === 0 && lapHome(2399.6, 2400) === -2400);
+const places = [[16, 128], [-2384, -2272], [2416, 2528]];   // a card's own place, then two copies'
+check('at rest a card shows in its own place when that shows', restPlace(places, 0, 390) === 0);
+check('and in a copy\'s place when only that shows, so no copy is ever what shows', restPlace([[2416, 2528], [16, 128]], 0, 390) === 1
+  && restPlace([[-500, -388], [-2900, -2788], [260, 372]], 0, 390) === 2);
+check('a sliver on screen counts, and the width of one edge does not', restPlace([[-500, -388], [-112, 8]], 0, 390) === 1
+  && restPlace([[-500, -388], [-112, .3]], 0, 390) === 0);
+check('with none of its places showing, a card stays in its own', restPlace([[900, 1012], [-600, -488]], 0, 390) === 0);
+const lefts = [-104, 16, 136, 256, 376];
+check('a row with a card on its edge rests on it', toCard(lefts, 16, 840, 3000) === 0 && toCard(lefts.map(l => l + .6), 16, 840, 3000) === 0);
+check('one short of a card has that far to go, on or back to the nearest',
+  toCard(lefts.map(l => l + 6), 16, 846, 3000) === 6 && toCard(lefts.map(l => l - 40), 16, 800, 3000) === -40
+  && toCard(lefts.map(l => l - 80), 16, 760, 3000) === 40);
+check('at the end of its scroll it goes back to a card, never on past the end', toCard([10, 130, 250], 16, 3000, 3000) === -6
+  && toCard([-98, 22, 142], 16, 3000, 3000) === -114);
+check('at its start it goes on to one', toCard([4, 124], 16, 0, 3000) === 108 && toCard([-6, 114], 16, 0, 3000) === 98);
+check('a row stopped short of a card waits a little over half a second for a browser to snap it', LOOP_WAIT >= 400 && LOOP_WAIT <= 1000
+  && LOOP_WAIT > REST);
 
 console.log(fails ? `\n${fails} failed` : '\nall gesture checks passed');
 process.exit(fails ? 1 : 0);

@@ -1,24 +1,25 @@
 import { encode, decode, LIMITS, codeFrom } from './transfer.js?v=aca34fe2830e9d29';
 import { matrix, svgPath } from './qr.js?v=d7f92f94bb8911ea';
-import { tieText, leaning, leaningHeading } from './format.js?v=d663df9002e164a1';
+import { tieText, leaning, leaningHeading } from './format.js?v=e565cc65c0882a95';
 import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere, longDate, airs,
-  whereToWatch, trailerSearch, searchNote } from './format.js?v=d663df9002e164a1';
+  whereToWatch, trailerSearch, searchNote } from './format.js?v=e565cc65c0882a95';
 import { pageKey, ongoing, resumable, keptText, shownRows, withoutCard, viewedStore, noteViewed, recentlyViewed }
-  from './format.js?v=d663df9002e164a1';
+  from './format.js?v=e565cc65c0882a95';
 import { POSTERS_AHEAD, POSTERS_AT_ONCE, FLUNG, FLUNG_AT_ONCE, STILL_FLUNG, SLOW_POSTER, ROWS_AHEAD, postersToLoad,
-  posterPace, catchingUp, rowsToAsk, retryAfter } from './format.js?v=d663df9002e164a1';
-import { genreChoices, nextByLetter, searchText, recentStore, noteSearch, withoutSearch, recentMatches, keepsRow } from './format.js?v=d663df9002e164a1';
-import { keeper, sessionAnswers } from './format.js?v=d663df9002e164a1';
-import { TURN_EVERY, slideIn, slotOf, reach, slideLabel, landing, TURN_OWN_MS, glideTime, turnTime } from './format.js?v=d663df9002e164a1';
-import { heading, wandered } from './gestures.js?v=99618de045f0089e';
-import { SNIPPETS, snippet, revealLabel } from './format.js?v=d663df9002e164a1';
-import { withEpisode, episodeCode, episodeSaid, neighbours, credits, airing } from './format.js?v=d663df9002e164a1';
-import { withPerson, isoDay, yearsBetween, bornOn, diedOn, selfHeading, creditLines, knownFor } from './format.js?v=d663df9002e164a1';
+  loopPosters, posterPace, catchingUp, rowsToAsk, retryAfter } from './format.js?v=e565cc65c0882a95';
+import { genreChoices, nextByLetter, searchText, recentStore, noteSearch, withoutSearch, recentMatches, keepsRow } from './format.js?v=e565cc65c0882a95';
+import { keeper, sessionAnswers } from './format.js?v=e565cc65c0882a95';
+import { TURN_EVERY, slideIn, slotOf, reach, slideLabel, landing, TURN_OWN_MS, glideTime, turnTime } from './format.js?v=e565cc65c0882a95';
+import { heading, wandered } from './gestures.js?v=c2173468ef22c30e';
+import { SNIPPETS, snippet, revealLabel } from './format.js?v=e565cc65c0882a95';
+import { withEpisode, episodeCode, episodeSaid, neighbours, credits, airing } from './format.js?v=e565cc65c0882a95';
+import { withPerson, isoDay, yearsBetween, bornOn, diedOn, selfHeading, creditLines, knownFor } from './format.js?v=e565cc65c0882a95';
 import { merged, today, dayNumber, noteSeen, noteEngaged, noteRow, noteHero, watcher } from './fresh.js?v=afcc972f76479400';
 import { daySeed, startersQuery, mergeStarters, browserLanguage, MAX_ROUND, MAX_PICKED } from './starters.js?v=d559e3a61414a450';
-import { sheets, closing, reveal, crossfade, peeks, edgeBack, speed } from './gestures.js?v=99618de045f0089e';
+import { sheets, closing, reveal, crossfade, peeks, edgeBack, speed } from './gestures.js?v=c2173468ef22c30e';
+import { REST, LOOP_WAIT, goesRound, loopCopies, copiesOf, lapHome, restPlace, toCard } from './gestures.js?v=c2173468ef22c30e';
 import { KEY, DEFAULTS, REACH, VERSION, MAX_RATED, fresh, tidy, stored, FRESH_KEY, readMemory, remembered, opened,
-  newVisit, keepVisit, tasteOf, homeBody, packed, PAGE_KEY, take } from './start.js?v=2e680b45e069e9f7';
+  newVisit, keepVisit, tasteOf, homeBody, packed, PAGE_KEY, take } from './start.js?v=5422435405754c9e';
 
 const boot = JSON.parse(document.getElementById('boot').textContent);
 // iOS zooms into a field it judges small and stays zoomed. maximum-scale=1 in the page's
@@ -228,7 +229,8 @@ function artEl(c, src = c.poster, load = true) {
   return box;
 }
 // Starts a poster's image, unless it has started already, and its preview unless the
-// picture is held already.
+// picture is held already; and its copies' in a row that goes round, from the same
+// address, which the browser fetches once.
 function loadPoster(box, urgent = false) {
   const img = box.querySelector('img');
   if (!img || img.getAttribute('src') !== null) return;
@@ -243,6 +245,10 @@ function loadPoster(box, urgent = false) {
     preview.fetchPriority = img.fetchPriority;
     preview.loading = img.loading;
     preview.src = box.dataset.preview;
+  }
+  for (const copy of copiedArt.get(box) || []) {
+    const shown = copy.querySelector('img');
+    if (shown && shown.getAttribute('src') === null) shown.src = box.dataset.src;
   }
 }
 function fact(label, value) {
@@ -840,8 +846,10 @@ function settleHome(id) {
   if (!home) return;
   if (!home.personal && state.profile.some(p => p.weight > 0)) { refresh(); return; }
   home.rows = withoutCard(home.rows, id);
+  // In a row that goes round its copies go with it (dropCard).
   for (const card of $('rows').querySelectorAll(`section.row[data-kind="row"] .card[data-id="${id}"]`)) {
-    card.closest('li')?.remove();
+    const li = card.closest('li');
+    if (li && !li.inert) dropCard(li);
   }
   homeKey = currentKey();
   updateRecentRow();
@@ -1357,16 +1365,38 @@ function waiting() {
   for (const [shows, next] of wanted.values()) if (shows.length || next.length) return true;
   return false;
 }
-// The posters a row within reach wants now and has not started: those it shows, and the next ones.
+// The posters a row within reach wants now and has not started: those it shows, and the
+// next ones. A row that goes round wants its cards' posters wherever they show, in their
+// own places or through copies, and the next ones the way it is going (loopPosters).
 function want(sec) {
-  const cards = [...sec.querySelectorAll('.track > li')];
-  const edge = sec.querySelector('.track')?.getBoundingClientRect().right ?? 0;
-  const lefts = cards.map(li => li.getBoundingClientRect().left);
+  const track = sec.querySelector('.track');
+  if (!track) return;
+  const box = track.getBoundingClientRect(), loop = loopOf.get(track);
   const shows = [], next = [];
-  cards.slice(0, postersToLoad(lefts, edge)).forEach((li, i) => {
-    const box = li.querySelector('.art');
-    if (box && !begun(box)) (lefts[i] < edge ? shows : next).push(box);
-  });
+  if (loop?.on) {
+    // Which way the reader is taking it: the row's own moves by a lap leave `seen` where
+    // they put it, so only the reader's count.
+    const left = track.scrollLeft;
+    if (Math.abs(left - loop.seen) > .5) loop.back = left < loop.seen;
+    loop.seen = left;
+    // The places keep their spacing as the row moves, so one of them says where all are.
+    const zero = loop.holder[0].getBoundingClientRect().left;
+    const places = loop.spans.map(([from, to], order) => [zero + from, zero + to, loop.cardAt[order]]);
+    const [shown, ahead] = loopPosters(places, box.left, box.right, loop.back);
+    for (const [cards, into] of [[shown, shows], [ahead, next]]) {
+      for (const n of cards) {
+        const art = loop.cards[n].querySelector('.art');
+        if (art && !begun(art)) into.push(art);
+      }
+    }
+  } else {
+    const cards = [...track.children];
+    const lefts = cards.map(li => li.getBoundingClientRect().left);
+    cards.slice(0, postersToLoad(lefts, box.right)).forEach((li, i) => {
+      const art = li.querySelector('.art');
+      if (art && !begun(art)) (lefts[i] < box.right ? shows : next).push(art);
+    });
+  }
   wanted.set(sec, [shows, next]);
 }
 function startPosters() {
@@ -1463,16 +1493,21 @@ function rowEl(r, { watch = false } = {}) {
     li.append(card);
     track.append(li);
   });
+  // A row that goes round pages on into its copies, which reach three pages past either
+  // end, and moves among its own cards once it rests (settleLoop): moved mid-page, from
+  // between two cards, it would jump to one.
   const page = dir => track.scrollBy({ left: dir * track.clientWidth * .86, behavior: motion() ? 'smooth' : 'auto' });
   const prev = button('nudge prev', '', () => page(-1), 'left');
   const next = button('nudge next', '', () => page(1), 'right');
   prev.setAttribute('aria-label', `Back through ${r.title}`);
   next.setAttribute('aria-label', `More of ${r.title}`);
-  // Swiped along, or resized, a row within reach wants the posters it now shows and the next two.
+  // Swiped along, or resized, a row within reach wants the posters it now shows and the
+  // next two. Both arrows stay on a row that goes round, which has no end to reach.
   const sync = () => {
     if (!track.isConnected) { syncers.delete(sync); return; }
-    prev.hidden = track.scrollLeft < 8;
-    next.hidden = track.scrollLeft + track.clientWidth >= track.scrollWidth - 8;
+    const round = loopOf.get(track)?.on;
+    prev.hidden = !round && track.scrollLeft < 8;
+    next.hidden = !round && track.scrollLeft + track.clientWidth >= track.scrollWidth - 8;
     if (wanted.has(sec)) {
       want(sec);
       startPosters();
@@ -1481,6 +1516,7 @@ function rowEl(r, { watch = false } = {}) {
   syncers.add(sync);
   track.addEventListener('scroll', () => requestAnimationFrame(sync), { passive: true });
   requestAnimationFrame(sync);
+  loopRow(track, sync);
   const slider = el('div', '', 'slider');
   slider.append(prev, track, next);
   sec.append(h);
@@ -1497,6 +1533,339 @@ function rowEl(r, { watch = false } = {}) {
   return sec;
 }
 window.addEventListener('resize', () => { for (const sync of [...syncers]) sync(); });
+
+/* ------------------------------------------------------------ rows that go round */
+// A row whose cards run past the screen goes round (the maths is in gestures.js): past
+// its last card it carries straight on into its first, and back past its first into its
+// last, with the same momentum and snapping, on a finger, a trackpad or the arrows. While
+// it is near the screen, copies of its last cards wait before its first and copies of its
+// first after its last. Once it comes to rest it moves by whole laps back among its own
+// cards, and a card that shows through a copy's place trades places with that copy. Every
+// place keeps a flex order, so the two trade without anything else in the row moving, and
+// what shows at rest is always the cards themselves, to tap, hold, hover and count as seen.
+//
+// A copy is its card less what only a hover shows, inert and hidden from assistive
+// technology, so Tab and a screen reader meet each card once, in its own order; it never
+// counts as seen, and its poster starts only with its card's, from the same address, which
+// the browser fetches once. A row well off the screen that rests where it started lets
+// its copies go, so a long page holds them only for the few rows near the reader.
+const loopOf = new WeakMap();         // a row's track: how it goes round
+const copiedArt = new WeakMap();      // a card's poster: its copies' posters
+const SCROLL_ENDS = 'onscrollend' in window;
+// The scroll a row's own move sets off arrives within a frame or two of it.
+const OWN_MOVE = 50;
+
+// Watches a row for the moments it may have come to rest: when its scroll ends, or, where
+// no event says so, once it has not moved for REST ms; and when a finger lifts from it, as
+// nothing moves under one. Its scroll events read nothing of the page, so they never make
+// it lay out early.
+function loopRow(track, sync) {
+  const loop = { track, sync, on: false, near: false, held: false, moved: -Infinity, put: -Infinity, seen: 0, back: false,
+    timer: 0, width: 0, pad: 0, before: 0, cards: [], ...unlooped() };
+  loopOf.set(track, loop);
+  track.addEventListener('scroll', () => {
+    const now = performance.now();
+    if (now - loop.put < OWN_MOVE) return;
+    loop.moved = now;
+    if (!SCROLL_ENDS) waitLoop(loop);
+  }, { passive: true });
+  track.addEventListener('scrollend', () => settleLoop(loop));
+  track.addEventListener('touchstart', () => { loop.held = true; }, { passive: true });
+  const lift = e => {
+    loop.held = e.touches.length > 0;
+    if (!loop.held) waitLoop(loop);
+  };
+  track.addEventListener('touchend', lift, { passive: true });
+  track.addEventListener('touchcancel', lift, { passive: true });
+  loopsNear?.observe(track);
+}
+
+// What a row that goes round knows of its places, each numbered by its flex order: what
+// holds it (holder), whose card it is (cardAt) and where it spans along the row from the
+// first (spans), and for each card its places, its own first (places), and what fills
+// them, the card and then its copies (items). A row without copies knows none of it.
+const unlooped = () => ({ all: [], holder: [], cardAt: [], spans: [], places: [], items: [], cardOf: new Map() });
+
+// Puts a row `left` px along, as its own move rather than the reader's.
+function putLoop(loop, left) {
+  loop.track.scrollLeft = left;
+  loop.put = performance.now();
+  loop.seen = loop.track.scrollLeft;
+}
+
+// Looks again in a moment, once the row has been still for REST ms.
+function waitLoop(loop) {
+  clearTimeout(loop.timer);
+  loop.timer = setTimeout(() => {
+    if (performance.now() - loop.moved < REST) waitLoop(loop);
+    else settleLoop(loop);
+  }, REST);
+}
+
+// How far a row is from resting on a card, as one that snaps does once its scroll is over.
+function offCard(loop) {
+  const { track } = loop;
+  const edge = track.getBoundingClientRect().left + (parseFloat(getComputedStyle(track).paddingLeft) || 0);
+  return toCard([...track.children].map(li => li.getBoundingClientRect().left), edge,
+    track.scrollLeft, track.scrollWidth - track.clientWidth);
+}
+const resting = loop => !loop.held && performance.now() - loop.moved >= REST;
+
+// A row at rest moves by whole laps back among its own cards (lapHome), and each card
+// takes whichever of its places shows (restPlace), so no copy shows. It rests only on a
+// card: a row short of one is on its way there, and has LOOP_WAIT ms to arrive before it
+// eases the rest of the way itself, for a lap from anywhere else would be snapped to a card
+// at once, a visible jump. A row near the screen without copies gets them, and one of
+// another width is copied anew for it.
+function settleLoop(loop) {
+  clearTimeout(loop.timer);
+  const { track } = loop;
+  if (loop.held || !track.isConnected || !track.clientWidth) return;
+  if (!loop.on) {
+    if (loop.near) copyLoops([loop]);
+    return;
+  }
+  if (track.clientWidth !== loop.width) {
+    holdPlace(track, () => {
+      uncopyLoop(loop);
+      copyLoops([loop]);
+    });
+    if (!loop.on) return;
+  }
+  // At either end of its scroll, where a fling past all its copies stops, no browser will
+  // snap it further, so it goes on to a card at once.
+  const off = offCard(loop), end = track.scrollLeft <= 1 || track.scrollLeft >= track.scrollWidth - track.clientWidth - 1;
+  if (off && !end && performance.now() - loop.moved < LOOP_WAIT) {
+    waitLoop(loop);
+    return;
+  }
+  // To the card itself, as a scroll by a distance snaps on to the next card beyond it.
+  if (off) {
+    track.scrollTo({ left: track.scrollLeft + off, behavior: motion() ? 'smooth' : 'auto' });
+    return;
+  }
+  const box = track.getBoundingClientRect();
+  const rects = loop.holder.map(li => li.getBoundingClientRect());
+  const start = rects[loop.before].left;
+  const move = lapHome(box.left + loop.pad - start, rects[loop.before + loop.cards.length].left - start);
+  // Where it goes is read before anything trades places: a browser that keeps a row on the
+  // card it snapped to may scroll the row as that card trades, so the row is put where it
+  // belongs, not moved by a distance.
+  const target = track.scrollLeft + move;
+  let traded = false;
+  loop.places.forEach((orders, n) => {
+    const t = restPlace(orders.map(o => [rects[o].left - move, rects[o].right - move]), box.left, box.right);
+    const [card, ...copies] = loop.items[n];
+    const others = orders.filter((_, k) => k !== t);
+    for (const [li, order] of [[card, orders[t]], ...copies.map((copy, k) => [copy, others[k]])]) {
+      if (loop.holder[order] === li) continue;
+      li.style.order = order;
+      loop.holder[order] = li;
+      traded = true;
+    }
+  });
+  if (move || traded) putLoop(loop, target);
+}
+
+// Copies go into rows as they come near the screen. However many arrive together, the
+// page is laid out twice for them: every row measured, then all of them copied, then each
+// scrolled on by the copies now before its first card, to show what it showed.
+function copyLoops(list) {
+  const plans = [];
+  for (const loop of list) {
+    const { track } = loop;
+    if (loop.on || loop.held || !track.isConnected || !track.clientWidth) continue;
+    const cards = [...track.children];
+    if (cards.length < 2) continue;
+    const style = getComputedStyle(track);
+    const pad = parseFloat(style.paddingLeft) || 0, gap = parseFloat(style.columnGap) || 0;
+    const box = track.getBoundingClientRect(), rects = cards.map(li => li.getBoundingClientRect());
+    const lap = rects.at(-1).right + gap - rects[0].left;
+    if (!goesRound(lap, gap, pad, track.clientWidth)) continue;
+    // A browser scrolls by whole pixels, and rounds a place a fraction along one way as a
+    // fling ends and another as the row moves by a lap, a pixel's jump. So every place is
+    // whole pixels wide, and every place a whole number of pixels along: the Top 10's cards,
+    // beside their numbers, are rounded up by what they lack, less than a pixel after each.
+    const whole = rects.some(r => Math.abs(r.width - Math.round(r.width)) > .01) ? rects.map(r => Math.ceil(r.width - .01)) : null;
+    plans.push({ loop, cards, pad, whole, scroll: track.scrollLeft, at: rects[0].left - box.left + track.scrollLeft,
+      ...loopCopies(track.clientWidth, lap / cards.length) });
+  }
+  for (const plan of plans) copyLoop(plan);
+  // Where each place spans, and where each first card is now along its row, however far a
+  // browser scrolled the row as the copies went in before it.
+  for (const plan of plans) {
+    const { loop } = plan, { track } = loop;
+    const rects = loop.holder.map(li => li.getBoundingClientRect());
+    loop.spans = rects.map(r => [r.left - rects[0].left, r.right - rects[0].left]);
+    plan.by = rects[plan.before].left - track.getBoundingClientRect().left + track.scrollLeft - plan.at;
+  }
+  for (const { loop, scroll, by } of plans) {
+    putLoop(loop, scroll + by);
+    loop.sync();
+  }
+}
+// A row's copies go in either side of its cards, and every place is numbered in the order
+// it is laid out: the copies before, the cards, then the copies after.
+function copyLoop({ loop, cards, pad, whole, before, after }) {
+  const { track } = loop;
+  if (whole) cards.forEach((li, n) => { li.style.width = `${whole[n]}px`; });
+  const which = copiesOf(cards.length, before, after);
+  for (const li of cards) {
+    const art = li.querySelector('.art');
+    if (art) copiedArt.delete(art);
+  }
+  loop.cardOf = new Map(cards.map((li, n) => [li, n]));
+  const copy = n => {
+    const li = copyOf(cards[n]);
+    loop.cardOf.set(li, n);
+    return li;
+  };
+  const befores = which.before.map(copy), afters = which.after.map(copy);
+  track.prepend(...befores);
+  track.append(...afters);
+  loop.all = [...befores, ...cards, ...afters];
+  loop.all.forEach((li, n) => { li.style.order = n; });
+  loop.holder = [...loop.all];
+  loop.cardAt = loop.all.map(li => loop.cardOf.get(li));
+  loop.items = cards.map(li => [li]);
+  loop.places = cards.map((_, n) => [before + n]);
+  which.before.forEach((n, k) => {
+    loop.items[n].push(befores[k]);
+    loop.places[n].push(k);
+  });
+  which.after.forEach((n, k) => {
+    loop.items[n].push(afters[k]);
+    loop.places[n].push(before + cards.length + k);
+  });
+  Object.assign(loop, { on: true, cards, pad, before, width: track.clientWidth });
+}
+
+// A card's copy: the card less the buttons and words only a hover shows, inert and
+// hidden from assistive technology. Its poster shows once its card's starts (loadPoster).
+function copyOf(li) {
+  const copy = li.cloneNode(false);
+  for (const part of li.children) {
+    if (!part.classList.contains('card')) {
+      copy.append(part.cloneNode(true));
+      continue;
+    }
+    const card = part.cloneNode(false);
+    for (const bit of part.children) if (!bit.classList.contains('card-meta')) card.append(bit.cloneNode(true));
+    copy.append(card);
+  }
+  copy.inert = true;
+  copy.setAttribute('aria-hidden', 'true');
+  const own = li.querySelector('.art'), art = copy.querySelector('.art'), img = art?.querySelector('img');
+  if (own && img) {
+    // Not a poster redraw may hand to a new card, which it finds by address.
+    art.removeAttribute('data-src');
+    img.addEventListener('load', () => art.classList.add('loaded'), { once: true });
+    img.addEventListener('error', () => img.remove(), { once: true });
+    if (img.complete && img.naturalWidth) art.classList.add('loaded');
+    copiedArt.set(own, [...(copiedArt.get(own) || []), art]);
+  }
+  return copy;
+}
+
+// A row's copies go, and its cards back to their own places and widths.
+function uncopyLoop(loop) {
+  if (!loop.on) return;
+  for (const li of loop.all) {
+    if (li.inert) li.remove();
+    else li.style.removeProperty('order');
+  }
+  for (const li of loop.cards) {
+    li.style.removeProperty('width');
+    const art = li.querySelector('.art');
+    if (art) copiedArt.delete(art);
+  }
+  Object.assign(loop, { on: false, ...unlooped() });
+}
+
+// Whether a row rests where it started, on its first card in that card's own place.
+function atFirst(loop) {
+  const { track } = loop;
+  if (!resting(loop) || !track.clientWidth) return false;
+  const first = loop.cards[0];
+  return loop.holder[loop.before] === first
+    && Math.abs(first.getBoundingClientRect().left - track.getBoundingClientRect().left - loop.pad) < 1;
+}
+
+// Runs `change` on a row and keeps it showing what it showed: the first card it shows
+// stays where it is on screen, or, when that card is `gone`, the next takes its place. In
+// a row that goes round the card comes back in its own place, which looks the same.
+function holdPlace(track, change, gone = null) {
+  const loop = loopOf.get(track);
+  const box = track.getBoundingClientRect();
+  const shown = [];
+  for (const li of track.children) {
+    const r = li.getBoundingClientRect();
+    if (r.right > box.left + .5 && r.left < box.right - .5) shown.push([r.left, loop?.on ? loop.cards[loop.cardOf.get(li)] : li]);
+  }
+  shown.sort((a, b) => a[0] - b[0]);
+  const [first, second] = shown;
+  const [at, card] = first?.[1] === gone ? [first[0], second?.[1]] : first || [];
+  change();
+  if (!card?.isConnected) return;
+  const left = card.getBoundingClientRect().left - track.getBoundingClientRect().left + track.scrollLeft - (at - box.left);
+  if (loop) putLoop(loop, left); else track.scrollLeft = left;
+}
+
+// A card leaves its row, and its copies with it, and the row keeps its place.
+function dropCard(li) {
+  const track = li.parentElement, loop = track && loopOf.get(track);
+  if (!loop) {
+    li.remove();
+    return;
+  }
+  const round = loop.on;
+  holdPlace(track, () => {
+    uncopyLoop(loop);
+    li.remove();
+    if (round) copyLoops([loop]);
+  }, li);
+  settleLoop(loop);
+  loop.sync();
+}
+
+// Rows get their copies within half a screen of it, those at rest at once and any on the
+// move once they rest; a row further off that rests where it started lets them go.
+const loopsNear = 'IntersectionObserver' in window
+  ? new IntersectionObserver(entries => {
+    const coming = [], going = [];
+    for (const { target, isIntersecting } of entries) {
+      const loop = loopOf.get(target);
+      if (!loop) continue;
+      if (!target.isConnected) {
+        loopsNear.unobserve(target);
+        continue;
+      }
+      loop.near = isIntersecting;
+      if (!isIntersecting) going.push(loop);
+      else if (resting(loop) && loop.on) settleLoop(loop);
+      else if (resting(loop)) coming.push(loop);
+    }
+    copyLoops(coming);
+    for (const loop of going.filter(atFirst)) {
+      uncopyLoop(loop);
+      putLoop(loop, 0);
+      loop.sync();
+    }
+  }, { rootMargin: '50% 0px' })
+  : null;
+
+// Resized, the rows near the screen settle again: copied anew for their width, or letting
+// their copies go once all their cards fit, while a row that no longer fits gets them.
+let loopsResized = 0;
+window.addEventListener('resize', () => {
+  clearTimeout(loopsResized);
+  loopsResized = setTimeout(() => {
+    for (const track of document.querySelectorAll('.track')) {
+      const loop = loopOf.get(track);
+      if (loop && (loop.near || loop.on) && resting(loop)) settleLoop(loop);
+    }
+  }, REST);
+});
 
 // A poster that opens the title page. On a mouse, hovering shows its match and quick
 // buttons for My List and a rating; those skip the tab order, since the title page

@@ -8,7 +8,7 @@
 // added anywhere else would have main.js ask again.
 import { LIMITS, packList } from './transfer.js?v=aca34fe2830e9d29';
 import { freshStore, today, prune, beginVisit, freshness } from './fresh.js?v=afcc972f76479400';
-import { pageKey, ongoing, resumable } from './format.js?v=d663df9002e164a1';
+import { pageKey, ongoing, resumable } from './format.js?v=e565cc65c0882a95';
 
 /* ------------------------------------------------------------- the list */
 export const KEY = 'couchside-v1';

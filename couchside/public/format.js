@@ -522,6 +522,21 @@ export function postersToLoad(lefts, edge, ahead = CARDS_AHEAD) {
   return Math.min(lefts.length, shown + ahead);
 }
 
+// The posters a row that goes round wants, as its cards' indices: those it shows between
+// `from` and `to`, and the next `ahead` past them the way it last moved, leftward when
+// `back`. Each of `places` is [left, right, card] for a place in the row, whether the card
+// or one of its copies holds it, so a copy on screen wants its card's poster, and a copy
+// off screen wants nothing.
+export function loopPosters(places, from, to, back = false, ahead = CARDS_AHEAD) {
+  const row = places.slice().sort((a, b) => a[0] - b[0]);
+  const shows = row.map(([left, right]) => right > from + .5 && left < to - .5);
+  const first = shows.indexOf(true), last = shows.lastIndexOf(true);
+  if (first < 0) return [[], []];
+  const shown = [...new Set(row.slice(first, last + 1).map(p => p[2]))];
+  const past = back ? row.slice(Math.max(first - ahead, 0), first).reverse() : row.slice(last + 1, last + 1 + ahead);
+  return [shown, [...new Set(past.map(p => p[2]))].filter(card => !shown.includes(card))];
+}
+
 // A reader with less than a screen of rows left below them is catching up with the page,
 // and waits for the next rows.
 export const catchingUp = (left, screen) => left < screen;
