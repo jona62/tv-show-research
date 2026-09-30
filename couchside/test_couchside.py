@@ -575,6 +575,49 @@ check('the hero changes from day to day', len(set(drawn)) >= 3, drawn)
 resting = lib.home({**body, **seeded('2026-10-05'), 'resting': drawn})['hero']['id']
 check('a hero shown in the last week is not drawn again', resting not in drawn)
 
+
+# 4f2. Visits: each time the app is opened it sends a seed of its own for the visit, what
+# the day's earlier visits showed (half a day's showing each, a day's at most, as fresh.js
+# counts it) and their heroes, resting. The same visit gives the same page, whole or asked
+# for in parts; each new one leads with another of the best picks, never one featured
+# earlier the same day, and turns Top picks' first cards a little while the best stay.
+def visited(day, k, seen=(), resting=()):
+    return {**seeded(day), 'visit': hashlib.sha256(f'test|{day}|{k}'.encode()).hexdigest()[:16],
+            'seen': {str(i): min(1.0, 0.5 * n) for i, n in dict(seen).items()}, 'resting': list(resting)}
+
+
+one_visit = {**body, **visited('2026-10-05', 1)}
+visit_rows = whole(one_visit)[0]
+check('the same visit gives the same page', whole(one_visit)[0] == visit_rows)
+page_v, laid_v = page_of(one_visit)
+check('and the same page asked for in parts as laid out at once, cards and all',
+      [page_v.row(shelf, items) for shelf, items in laid_v] == visit_rows)
+check('the page a visit asks for more from is kept under its own request, not the day\'s',
+      kept_under(one_visit) in lib.kept and kept_under(one_visit) != kept_under({**body, **seeded('2026-10-05')}))
+check('a visit\'s page is not the day\'s, though it leads with Top picks', visit_rows != monday
+      and visit_rows[0]['key'] == monday[0]['key'] == 'top')
+best_picks = [engine.shows[i]['id'] for i in page_v.usable if engine.shows[i]['id'] not in body['list']]
+plain_best = [c['id'] for c in lib.home({key: body[key] for key in ('profile', 'settings', 'list')})['rows'][0]['items'][:3]]
+featured, openings, keys_seen, seen_today = [], [], [], Counter()
+for k in range(1, 7):
+    answer = lib.home({**body, **visited('2026-10-05', k, seen_today, featured)})
+    hero = answer['hero']['id']
+    check(f'visit {k}: the hero is one of the ten best picks not featured earlier the same day',
+          hero not in featured and hero in [i for i in best_picks if i not in featured][:10])
+    featured.append(hero)
+    openings.append([c['id'] for c in answer['rows'][0]['items'][:GLANCE]])
+    keys_seen.append([r['key'] for r in answer['rows']])
+    for i in {hero} | {c['id'] for r in answer['rows'] for c in r['items'][:GLANCE]}:
+        seen_today[i] += 1
+new_faces = [len(set(b) - set(a)) for a, b in zip(openings, openings[1:])]
+check('Top picks\' first six change a little from visit to visit, not wholesale',
+      0 < statistics.mean(new_faces) <= 3 and max(new_faces) <= 4, new_faces)
+check('while the best three stay among them', statistics.mean(len(set(plain_best) & set(o)) for o in openings) >= 2.5
+      and min(len(set(plain_best) & set(o)) for o in openings) >= 2, [len(set(plain_best) & set(o)) for o in openings])
+check('every visit leads with Top picks and keeps most of the first page\'s rows, in an order of its own',
+      all(keys[0] == 'top' for keys in keys_seen) and len({tuple(keys) for keys in keys_seen}) > 1
+      and min(len(set(a) & set(b)) for a, b in zip(keys_seen, keys_seen[1:])) >= FIRST_PAGE - 3, keys_seen)
+
 # 4g. Rows passed over on five days in a fortnight rest at the foot of today's rows.
 tired_key = next(r['key'] for r in monday[4:] if r['kind'] == 'row' and r['key'] not in ('popular', 'different')
                  and 'tier' not in r)

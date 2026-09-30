@@ -16,8 +16,8 @@ interest in the list rows in proportion to its weight (Steck's calibration). Pas
 today's rows the page goes on without a set end, tier by tier: more from the list
 itself, each interest's own rows, exploring and browsing, until the last tier is spent.
 Pages arrive eight rows at a time and are rebuilt the same from the same request, so a
-browser asking for more says which rows it already shows. fresh.py turns the day and
-the browser's memory of what it showed into the day's order, cards and hero.
+browser asking for more says which rows it already shows. fresh.py turns the day, the
+visit and the browser's memory of what it showed into each visit's order, cards and hero.
 """
 from array import array
 from bisect import bisect_left
@@ -117,7 +117,7 @@ KEPT_FOR = 1800         # seconds a page is kept for, about a visit
 KEPT_WAIT = 30          # seconds a request waits for the page another is laying out, before laying it out itself
 RECENT = 12             # a deeper tier is judged by its own rows, or this many rows above while it has fewer
 WEAK = 0.5              # and is weak once its best row falls below this share of their median
-PINNED = 2              # cards at the front of a row that keep their places from day to day
+PINNED = 2              # cards at the front of a row that keep their places from visit to visit (Top picks' rotate)
 LIST_ROW = 20           # My List's row holds the most recently added
 CREATOR_SHORTEST = 6    # one creator seldom has eight shows, so their row may hold six
 TOP_POOL = 100          # Top picks are calibrated from this many of the plain ranking
@@ -1990,7 +1990,10 @@ class Page:
             pool.sort(key=lambda i: -score.get(i, 0.0) * REAPPEAR ** (count[i] + (i in heads)))
         elif heads.intersection(pool):
             pool.sort(key=lambda i: -score.get(i, 0.0) * (REAPPEAR if i in heads else 1.0))
-        order = self.lib.daily(pool, self.fresh, f'row-{shelf.key}', ROW, PINNED)
+        # Top picks greet each visit with their first six drawn afresh from the best ten,
+        # the best leading most often; every other row keeps its first two in place.
+        order = self.lib.daily(pool, self.fresh, f'row-{shelf.key}', ROW, PINNED,
+                               rotating=GLANCE if shelf.kind_of == 'top' else 0)
         groups = self.lib.groups
         if shelf.kind_of in PRECISE_KINDS:
             groups = lambda i: [g for g in self.lib.groups(i) if g[0] != 'network']
@@ -2167,8 +2170,9 @@ class Page:
         return self.settle(self.fill(order, pinned), len(pinned))
 
     def hero(self, rows):
-        """The day's hero: drawn from the ten best picks not on My List and not a hero in
-        the last week, preferring one the first rows do not already open with."""
+        """The visit's hero: drawn from the ten best picks not on My List and not resting as
+        a hero (earlier the same day, or the first of a day in the last week), preferring one
+        the first rows do not already open with."""
         e = self.e
         saved = set(self.saved)
         eligible = [e.shows[i]['id'] for i in self.usable if i not in saved]
@@ -2733,11 +2737,14 @@ class Library:
         return [{**self.card(slot.index), 'why': slot.why}
                 for slot in self.starting.choose(seed, rnd, picked, lang, count)]
 
-    def daily(self, items, fresh, surface, length, pinned):
-        """The day's order for a row of catalog indices (fresh.dither), which, like the
-        browser's counts of what it showed, speaks TVmaze's show ids."""
+    def daily(self, items, fresh, surface, length, pinned, rotating=0):
+        """The order a row of catalog indices shows in, the day's or the visit's
+        (fresh.dither), which, like the browser's counts of what it showed, speaks TVmaze's
+        show ids. A row that rotates its first cards draws them for each visit instead of
+        pinning them (fresh.rotate)."""
         shows, by_id = self.e.shows, self.e.by_id
-        return [by_id[i] for i in dither([shows[i]['id'] for i in items], fresh, surface, length, pinned=pinned)]
+        return [by_id[i] for i in dither([shows[i]['id'] for i in items], fresh, surface, length, pinned=pinned,
+                                         rotating=rotating)]
 
     # ------------------------------------------------------------ what shows share
 

@@ -373,21 +373,33 @@ export function pageKey({ profile, settings }, list) {
     Object.keys(settings).sort().map(k => [k, settings[k]]), list]);
 }
 
-export const RESUME_MINUTES = 30;
+// A visit is the app opened in a tab, or come back to after AWAY_MINUTES or more away, or
+// on a new day: half an hour is the web's usual measure, the time analytics tools end a
+// visit after. Each has its number for the day (fresh.js's beginVisit), which goes into
+// the seed its requests carry, and what they carry is worked out once, as it begins (ask),
+// so its page is its own and every request of the visit gets that same page.
+export const AWAY_MINUTES = 30;
 
-// Whether a kept page can be shown again as it was: made today for the same list and My
-// List, and in use within the last RESUME_MINUTES.
-export function resumable(kept, { key, day, now }) {
-  const idle = now - kept?.at;
-  return Boolean(kept && kept.v === 1 && kept.key === key && kept.day === day && idle >= 0
-    && idle <= RESUME_MINUTES * 60_000 && Array.isArray(kept.home?.rows));
+// Whether the visit kept for this tab goes on: begun on this day, and left (hidden or
+// closed, at) no more than AWAY_MINUTES ago.
+export function ongoing(visit, { day, now }) {
+  const away = now - visit?.at;
+  return Boolean(visit && visit.day === day && Number.isInteger(visit.n) && visit.n > 0 && away >= 0
+    && away <= AWAY_MINUTES * 60_000);
+}
+
+// Whether a kept page can be shown again as it was: made in this visit, for the same list
+// and My List. A page from the visit before is not: a new visit gets a page of its own.
+export function resumable(kept, { key, visit }) {
+  return Boolean(kept && kept.v === 2 && kept.key === key && visit && kept.day === visit.day
+    && kept.visit === visit.n && Array.isArray(kept.home?.rows));
 }
 
 // A kept page runs to this many characters at most, some two hundred rows.
 export const KEEP_CHARS = 1_000_000;
 
 // A kept page as stored: whole, or, past `most` characters, without its last rows and
-// asking for them again, since the same list on the same day gets the same rows back.
+// asking for them again, since the same list in the same visit gets the same rows back.
 export function keptText(kept, most = KEEP_CHARS) {
   const text = JSON.stringify(kept);
   if (text.length <= most) return text;

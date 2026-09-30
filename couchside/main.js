@@ -3,7 +3,8 @@ import { matrix, svgPath } from './qr.js';
 import { tieText, leaning, leaningHeading } from './format.js';
 import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere, longDate, airs,
   whereToWatch, trailerSearch, searchNote } from './format.js';
-import { pageKey, resumable, keptText, shownRows, withoutCard, viewedStore, noteViewed, recentlyViewed } from './format.js';
+import { pageKey, ongoing, resumable, keptText, shownRows, withoutCard, viewedStore, noteViewed, recentlyViewed }
+  from './format.js';
 import { POSTERS_AHEAD, POSTERS_AT_ONCE, FLUNG, FLUNG_AT_ONCE, STILL_FLUNG, SLOW_POSTER, ROWS_AHEAD, postersToLoad,
   posterPace, catchingUp, rowsToAsk, retryAfter } from './format.js';
 import { genreChoices, nextByLetter, searchText, recentStore, noteSearch, withoutSearch, recentMatches, keepsRow } from './format.js';
@@ -11,8 +12,8 @@ import { keeper, sessionAnswers } from './format.js';
 import { SNIPPETS, snippet, revealLabel } from './format.js';
 import { withEpisode, episodeCode, episodeSaid, neighbours, credits, airing } from './format.js';
 import { withPerson, isoDay, yearsBetween, bornOn, diedOn, selfHeading, creditLines, knownFor } from './format.js';
-import { freshStore, today, dayNumber, noteSeen, noteEngaged, noteRow, noteHero, prune, freshness, watcher }
-  from './fresh.js';
+import { freshStore, merged, today, dayNumber, beginVisit, noteSeen, noteEngaged, noteRow, noteHero, prune, freshness,
+  watcher } from './fresh.js';
 import { daySeed, startersQuery, mergeStarters, browserLanguage, MAX_ROUND, MAX_PICKED } from './starters.js';
 import { sheets, closing, reveal, crossfade, peeks, edgeBack, speed } from './gestures.js';
 
@@ -118,17 +119,30 @@ function save() {
   try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* private mode */ }
 }
 
-// What this browser has shown and what you engaged with (fresh.js), so each day's page
+// What this browser has shown and what you engaged with (fresh.js), so each visit's page
 // is fresh: kept under its own key, one salt per browser, pruned on every load. Writes
 // are batched, since a scroll can see dozens of titles.
 const FRESH_KEY = 'couchside-fresh';
-let memory;
-try { memory = freshStore(JSON.parse(localStorage.getItem(FRESH_KEY))); } catch { memory = freshStore(null); }
-prune(memory, today());
+const readMemory = () => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(FRESH_KEY));
+    return raw ? prune(freshStore(raw), today()) : null;
+  } catch { return null; }
+};
+let memory = readMemory() || prune(freshStore(null), today());
+// What other tabs have written since joins this tab's memory, so that writing it never
+// loses their visits, heroes or titles seen to this tab's older copy (fresh.js's merged).
+function catchUp() {
+  const stored = readMemory();
+  if (stored) memory = merged(stored, memory);
+}
 let memoryTimer = 0;
 function keepMemory(now = false) {
   clearTimeout(memoryTimer);
-  const write = () => { try { localStorage.setItem(FRESH_KEY, JSON.stringify(memory)); } catch { /* private mode */ } };
+  const write = () => {
+    catchUp();
+    try { localStorage.setItem(FRESH_KEY, JSON.stringify(memory)); } catch { /* private mode */ }
+  };
   if (now) write(); else memoryTimer = setTimeout(write, 1000);
 }
 // Written at once, so the welcome page's starters (starters.js) find this salt, not a second.
@@ -141,10 +155,52 @@ function engaged(id, row = '') {
   if (row) noteRow(memory, row, day, true);
   keepMemory();
 }
-// What a request carries about the day: its date, its seed and the memory's counts. A
-// browser without crypto.subtle (a page not served over https) sends none.
-async function freshFields() {
-  try { return await freshness(memory, today()); } catch { return {}; }
+// A visit (format.js): the app opened in a tab, or come back to after half an hour away
+// or on a new day. It takes the day's next number in the memory, and what its requests
+// carry is worked out once as it begins and kept with it for the tab: the day and its
+// seed, the visit's own seed, and the memory's counts as they stood, what the day's
+// earlier visits showed among them. So a reload goes on with the same visit and gets the
+// same page, and nothing a visit shows changes what it asks for; the next visit counts it.
+const VISIT_KEY = 'couchside-visit';
+let visit = null, visitAsk = null;
+function keepVisit() {
+  try { sessionStorage.setItem(VISIT_KEY, JSON.stringify(visit)); } catch { /* storage is off */ }
+}
+function startVisit() {
+  const day = today();
+  // Another tab may have begun a visit, shown a hero or seen titles since this one read
+  // the memory, and the new visit counts them.
+  catchUp();
+  const n = beginVisit(memory, day);
+  keepMemory(true);
+  const begun = visit = { day, n, at: Date.now(), ask: null };
+  // A browser without crypto.subtle (a page not served over https) sends no seeds, and
+  // gets the plain ranking.
+  visitAsk = freshness(memory, day, n).catch(() => ({})).then(ask => {
+    begun.ask = ask;
+    if (visit === begun) keepVisit();
+    return ask;
+  });
+  keepVisit();
+}
+try { visit = JSON.parse(sessionStorage.getItem(VISIT_KEY)); } catch { visit = null; }
+if (ongoing(visit, { day: today(), now: Date.now() }) && visit.ask && typeof visit.ask === 'object') {
+  visitAsk = Promise.resolve(visit.ask);
+} else startVisit();
+const freshFields = () => visitAsk;
+// The visit's number for what is seen on its own day; past 04:00 a title counts for the day alone.
+const visitToday = () => (visit.day === today() ? visit.n : 0);
+// Leaving the tab marks when, so that coming back after long enough away begins a new
+// visit (comeBack), and the page gives way to that visit's own (renewHome).
+function leaveVisit() {
+  visit.at = Date.now();
+  keepVisit();
+}
+function comeBack() {
+  // A visit still working out what it asks for has only just begun.
+  if (!visit.ask || ongoing(visit, { day: today(), now: Date.now() })) return;
+  startVisit();
+  renewHome();
 }
 const TAG = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8}){0,3}$/;
 const languages = () => (navigator.languages?.length ? [...navigator.languages] : [navigator.language || ''])
@@ -403,6 +459,7 @@ function route() {
   if (person) {
     if (!$('person').open || personId !== person) showPerson(person, place.person);
   } else if ($('person').open) hidePerson();
+  renewHome();
 }
 
 function showView(name) {
@@ -485,10 +542,10 @@ edgeBack(() => !!titleId || !!personId || (view !== 'home' && !document.querySel
 // The page arrives a few rows at a time: the first answer brings the hero and the first
 // eight, and the next six are asked for while three screens of rows are still to come
 // (loadMore), telling the server which rows are already shown so it builds the same
-// page. Within a visit the page holds still: a reload within half an hour on the same
-// day with the same list shows it again as it was, and a rating or a My List change
-// merges into it rather than laying it out again. Impressions are only written down,
-// never a reason to re-render.
+// page. Each visit gets a page of its own, and within one the page holds still: a reload
+// shows it again as it was, asking for more carries what the page was made with, and a
+// rating or a My List change merges into it rather than laying it out again.
+// Impressions are only written down, never a reason to re-render.
 let home = null, homeKey = '', homeReq = 0, homeAbort = null, homeTimer = 0, moreBusy = false;
 const PAGE_KEY = 'couchside-home';
 const currentKey = () => pageKey(taste(), state.saved.map(s => s.id));
@@ -498,24 +555,39 @@ function refresh(delay = 450) {
   homeTimer = setTimeout(loadHome, delay);
 }
 
-// The page kept for this tab: what was shown, for the day and list it was made for. A
+// The page kept for this tab: what was shown, for the visit and list it was made for. A
 // page grown past KEEP_CHARS keeps its first rows and asks for the rest again (keptText).
 function keepPage() {
   if (!home) return;
   try {
-    sessionStorage.setItem(PAGE_KEY, keptText({ v: 1, at: Date.now(), day: home.day, key: homeKey, home }));
+    sessionStorage.setItem(PAGE_KEY,
+      keptText({ v: 2, at: Date.now(), day: home.day, visit: home.visit, key: homeKey, home }));
   } catch { /* storage full or off: the page is simply asked for again next time */ }
 }
-function keptPage(key, day) {
+function keptPage(key) {
   try {
     const kept = JSON.parse(sessionStorage.getItem(PAGE_KEY));
-    return resumable(kept, { key, day, now: Date.now() }) ? kept.home : null;
+    return resumable(kept, { key, visit }) && kept.home.ask ? kept.home : null;
   } catch { return null; }
 }
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') { keepPage(); keepMemory(true); }
+  if (document.visibilityState === 'hidden') { keepPage(); keepMemory(true); leaveVisit(); } else comeBack();
 });
-window.addEventListener('pagehide', () => { keepPage(); keepMemory(true); });
+window.addEventListener('pagehide', () => { keepPage(); keepMemory(true); leaveVisit(); });
+
+// A page made for an earlier visit gives way to this visit's own once it is in view with
+// nothing open over it, from the top, as an app opened again starts at the top: on coming
+// back, or else once a sheet over it has closed or the home tab is chosen (route). Until
+// then it goes on as it was, asking for more with what it was made with.
+function renewHome() {
+  if (!home || (home.day === visit.day && home.visit === visit.n) || view !== 'home' || titleId || personId
+      || document.querySelector('dialog[open]')) return;
+  home = null;
+  homeKey = '';
+  window.scrollTo(0, 0);
+  loadHome();
+}
+for (const d of document.querySelectorAll('dialog')) d.addEventListener('close', renewHome);
 
 function rememberHome(data) {
   if (data.hero) remember(data.hero);
@@ -537,8 +609,7 @@ async function loadHome() {
   const id = ++homeReq;
   homeAbort?.abort();
   homeAbort = new AbortController();
-  const day = today();
-  const kept = keptPage(key, day);
+  const kept = keptPage(key);
   if (kept) {
     home = kept;
     homeKey = key;
@@ -549,11 +620,15 @@ async function loadHome() {
   }
   if (!home) renderHomeLoading();
   try {
+    // The page belongs to the visit it was asked for in, and keeps what that visit asked
+    // with for asking for more (moreBody).
+    const { day, n } = visit;
+    const ask = await freshFields();
     const data = await post('/api/home', {
-      ...taste(), list: state.saved.map(s => s.id), ...await freshFields(), lang: languages(),
+      ...taste(), list: state.saved.map(s => s.id), ...ask, lang: languages(),
     }, homeAbort.signal);
     if (id !== homeReq) return;
-    home = { ...data, day, tasteKey: key };
+    home = { ...data, day, visit: n, ask, tasteKey: key };
     homeKey = key;
     rememberHome(data);
     redraw($('rows'), renderHome);
@@ -570,11 +645,13 @@ async function loadHome() {
   }
 }
 
-// What asking for more rows carries: the list as it is now, the day, and the rows shown.
-async function moreBody(count) {
+// What asking for more rows carries: the list as it is now, what the page's visit asked
+// with, unchanged however much it has shown since, and the rows shown. So the request is
+// the page's own, and the server answers it from the page it keeps for it (library.Kept).
+function moreBody(count) {
   const listIds = state.saved.slice().reverse().map(s => s.id);
   return {
-    ...taste(), list: state.saved.map(s => s.id), ...await freshFields(), lang: languages(),
+    ...taste(), list: state.saved.map(s => s.id), ...home.ask, lang: languages(),
     shown: shownRows(home.rows, listIds), count,
   };
 }
@@ -647,9 +724,10 @@ function syncFoot() {
   pageEnd.hidden = !home || home.more || !home.rows.length;
 }
 
-// Impressions: a card half on screen for a second counts as seen once a day, and a row
-// seen that way counts as passed over for the day unless a card in it is engaged with.
-const seenWatch = watcher(id => { noteSeen(memory, id, today()); keepMemory(); });
+// Impressions: a card half on screen for a second counts as seen once a day, and once in
+// each visit for the day's later visits, and a row seen that way counts as passed over for
+// the day unless a card in it is engaged with.
+const seenWatch = watcher(id => { noteSeen(memory, id, today(), visitToday()); keepMemory(); });
 const rowWatch = watcher(key => { noteRow(memory, key, today()); keepMemory(); });
 
 function skelRow(tag = 'section') {
@@ -673,7 +751,8 @@ function renderHomeLoading() {
 
 function renderHome() {
   renderHero(home.hero);
-  // The hero rests for a week once shown, so the next days' are others.
+  // The hero rests for the rest of the day and, the day's first, for a week, so the next
+  // visits' are others (fresh.js).
   noteHero(memory, home.hero.id, today());
   keepMemory();
   const holder = $('rows');
