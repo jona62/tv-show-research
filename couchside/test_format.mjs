@@ -262,22 +262,35 @@ const letters = ['Action', 'Anime', 'Crime', 'Anthology'];
 check('a letter jumps to the next name it begins, going round', nextByLetter(letters, 0, 'a') === 1
   && nextByLetter(letters, 1, 'A') === 3 && nextByLetter(letters, 3, 'a') === 0 && nextByLetter(letters, 0, 'c') === 2);
 check('and nowhere when no name begins with it', nextByLetter(letters, 0, 'z') === -1);
-// The home page: what a page depends on, when a kept page is shown again, what asking for
-// more carries, merging an action, and Recently viewed.
-const { pageKey, resumable, keptText, shownRows, withoutCard, viewedStore, noteViewed, recentlyViewed, RESUME_MINUTES, VIEWED_DAYS }
-  = await import('./format.js');
+// The home page: what a page depends on, when a visit goes on, when a kept page is shown
+// again, what asking for more carries, merging an action, and Recently viewed.
+const { pageKey, ongoing, resumable, keptText, shownRows, withoutCard, viewedStore, noteViewed, recentlyViewed, AWAY_MINUTES,
+  VIEWED_DAYS } = await import('./format.js');
 const listA = { profile: [{ id: 1, weight: 1 }, { id: 2, weight: .7 }], settings: { known_min: 60, type: 'all' } };
 check('a page key ignores the order of settings', pageKey(listA, [5]) === pageKey({ ...listA, settings: { type: 'all', known_min: 60 } }, [5]));
 check('a page key changes with a rating or My List', pageKey(listA, [5]) !== pageKey(listA, [5, 6])
   && pageKey(listA, [5]) !== pageKey({ ...listA, profile: [{ id: 1, weight: .7 }, { id: 2, weight: .7 }] }, [5]));
-const kept = { v: 1, at: 1_000_000, day: '2026-10-05', key: 'k', home: { rows: [] } };
-const now = kept.at + (RESUME_MINUTES - 1) * 60_000;
-check('a kept page comes back within half an hour, the same day and list', resumable(kept, { key: 'k', day: '2026-10-05', now }));
-check('but not after', !resumable(kept, { key: 'k', day: '2026-10-05', now: kept.at + (RESUME_MINUTES + 1) * 60_000 }));
-check('nor on another day or for another list', !resumable(kept, { key: 'k', day: '2026-10-06', now })
-  && !resumable(kept, { key: 'other', day: '2026-10-05', now }));
-check('nor when it is not a page', !resumable(null, { key: 'k', day: '2026-10-05', now })
-  && !resumable({ ...kept, home: null }, { key: 'k', day: '2026-10-05', now }) && !resumable({ ...kept, v: 2 }, { key: 'k', day: '2026-10-05', now }));
+// A visit, and when the next begins: the tab left for half an hour, or a new day.
+const left = 1_000_000;
+const visitOn = { day: '2026-10-05', n: 2, at: left, ask: { day: '2026-10-05', seed: 'ab'.repeat(8), visit: 'cd'.repeat(8) } };
+check('a visit goes on through a reload, and a return within half an hour of leaving',
+  AWAY_MINUTES === 30 && ongoing(visitOn, { day: '2026-10-05', now: left + 1000 })
+  && ongoing(visitOn, { day: '2026-10-05', now: left + (AWAY_MINUTES - 1) * 60_000 }));
+check('the app opened again after half an hour away is a new visit',
+  !ongoing(visitOn, { day: '2026-10-05', now: left + (AWAY_MINUTES + 1) * 60_000 }));
+check('and so is the next day, however soon', !ongoing(visitOn, { day: '2026-10-06', now: left + 60_000 }));
+check('and a new tab, which keeps no visit, or one kept askew', !ongoing(null, { day: '2026-10-05', now: left })
+  && !ongoing({ ...visitOn, n: 0 }, { day: '2026-10-05', now: left }) && !ongoing({ ...visitOn, at: 'x' }, { day: '2026-10-05', now: left })
+  && !ongoing(visitOn, { day: '2026-10-05', now: left - 60_000 }));
+const kept = { v: 2, at: left, day: '2026-10-05', visit: 2, key: 'k', home: { rows: [], ask: visitOn.ask } };
+const thisVisit = { day: '2026-10-05', n: 2 };
+check('a kept page comes back in its own visit, for the same list', resumable(kept, { key: 'k', visit: thisVisit }));
+check('but never in the next visit, even the same day, nor on another day',
+  !resumable(kept, { key: 'k', visit: { day: '2026-10-05', n: 3 } }) && !resumable(kept, { key: 'k', visit: { day: '2026-10-06', n: 2 } }));
+check('nor for another list', !resumable(kept, { key: 'other', visit: thisVisit }));
+check('nor when it is not a page, or a page kept before visits', !resumable(null, { key: 'k', visit: thisVisit })
+  && !resumable({ ...kept, home: null }, { key: 'k', visit: thisVisit })
+  && !resumable({ v: 1, at: left, day: '2026-10-05', key: 'k', home: { rows: [] } }, { key: 'k', visit: thisVisit }));
 const rows = [
   { key: 'top', kind: 'row', items: [1, 2, 3, 4, 5, 6, 7, 8].map(id => ({ id })) },
   { key: 'list', kind: 'list', items: [{ id: 9 }] },
