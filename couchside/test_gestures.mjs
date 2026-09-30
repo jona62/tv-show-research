@@ -58,13 +58,13 @@ check('a page is still once it has not moved for a moment', REST >= 100 && REST 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 check('a row goes round once its cards run past its width, and not while they all fit, to a pixel',
   goesRound(2400, 8, 16, 390) && !goesRound(360, 8, 16, 390) && goesRound(368, 8, 16, 390) && !goesRound(367, 8, 16, 390));
-check('it carries three screens past either end, beyond the furthest Chrome flings a row',
-  LOOP_SCREENS === 3 && LOOP_LEAST >= 600);
-check('a phone row keeps enough copies before its cards to carry it three screens back, and after them three more past a screen',
-  same(loopCopies(390, 120), { before: 10, after: 13 }) && 10 * 120 >= 3 * 390 && 13 * 120 >= 4 * 390);
+check('it carries four screens past either end: a drag of a screen, and the furthest Chrome flings a row after it',
+  LOOP_SCREENS === 4 && LOOP_LEAST >= 600);
+check('a phone row keeps enough copies before its cards to carry it four screens back, and after them four more past a screen',
+  same(loopCopies(390, 120), { before: 13, after: 17 }) && 13 * 120 >= 4 * 390 && 17 * 120 >= 5 * 390);
 check('a narrow row is still carried 800px', same(loopCopies(200, 120), { before: 7, after: 9 }) && 7 * 120 >= LOOP_LEAST);
-check('a wide screen keeps more, a desktop row of 176px posters three screens of them',
-  same(loopCopies(1280, 184), { before: 21, after: 28 }));
+check('a wide screen keeps more, a desktop row of 176px posters four screens of them',
+  same(loopCopies(1280, 184), { before: 28, after: 35 }));
 check('the copies before a row are of its last cards, in order, and after it of its first',
   same(copiesOf(20, 3, 4), { before: [17, 18, 19], after: [0, 1, 2, 3] }));
 check('a short row is copied round again as many times as it takes', same(copiesOf(3, 7, 5), { before: [2, 0, 1, 2, 0, 1, 2], after: [0, 1, 2, 0, 1] }));

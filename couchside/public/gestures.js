@@ -82,10 +82,10 @@ export const easesIn = (onScreen, sinceScroll) => onScreen && sinceScroll >= RES
 // it shows at rest is always the cards themselves: a card that shows through a copy's
 // place trades places with that copy, which is the same size, so nothing else moves.
 
-// How far a looping row carries on past either end before it must rest: three screens,
-// and 800px at least. Chrome flings a row three times its screen at most, and Safari,
-// which slows a row that snaps to its cards sooner, less.
-export const LOOP_SCREENS = 3;
+// How far a looping row carries on past either end before it must rest: four screens,
+// and 800px at least. A finger drags a row a screen at most, and Chrome flings it on three
+// times its screen at most; Safari, which slows a row that snaps to its cards sooner, less.
+export const LOOP_SCREENS = 4;
 export const LOOP_LEAST = 800;
 
 // Whether a row goes round: whether its cards, a lap of `lap` px less the `gap` after the

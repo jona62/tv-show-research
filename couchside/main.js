@@ -1442,13 +1442,10 @@ function rowEl(r, { watch = false } = {}) {
     li.append(card);
     track.append(li);
   });
-  // A row that goes round first moves back among its own cards, however fast the arrows
-  // are pressed, so a page never runs past its copies.
-  const page = dir => {
-    const loop = loopOf.get(track);
-    if (loop?.on) settleLoop(loop, { shows: false });
-    track.scrollBy({ left: dir * track.clientWidth * .86, behavior: motion() ? 'smooth' : 'auto' });
-  };
+  // A row that goes round pages on into its copies, which reach three pages past either
+  // end, and moves among its own cards once it rests (settleLoop): moved mid-page, from
+  // between two cards, it would jump to one.
+  const page = dir => track.scrollBy({ left: dir * track.clientWidth * .86, behavior: motion() ? 'smooth' : 'auto' });
   const prev = button('nudge prev', '', () => page(-1), 'left');
   const next = button('nudge next', '', () => page(1), 'right');
   prev.setAttribute('aria-label', `Back through ${r.title}`);
@@ -1557,7 +1554,7 @@ function waitLoop(loop) {
 // How far a row is from resting on a card, as one that snaps does once its scroll is over.
 function offCard(loop) {
   const { track } = loop;
-  const edge = track.getBoundingClientRect().left + (loop.pad || parseFloat(getComputedStyle(track).paddingLeft) || 0);
+  const edge = track.getBoundingClientRect().left + (parseFloat(getComputedStyle(track).paddingLeft) || 0);
   return toCard([...track.children].map(li => li.getBoundingClientRect().left), edge,
     track.scrollLeft, track.scrollWidth - track.clientWidth);
 }
@@ -1568,23 +1565,13 @@ const resting = loop => !loop.held && performance.now() - loop.moved >= REST;
 // card: a row short of one is on its way there, and has LOOP_WAIT ms to arrive before it
 // eases the rest of the way itself, for a lap from anywhere else would be snapped to a card
 // at once, a visible jump. A row near the screen without copies gets them, and one of
-// another width is copied anew for it. Without `shows` it only moves, wherever it is, as
-// the arrows want before they page to a card.
-function settleLoop(loop, { shows = true } = {}) {
+// another width is copied anew for it.
+function settleLoop(loop) {
   clearTimeout(loop.timer);
   const { track } = loop;
   if (loop.held || !track.isConnected || !track.clientWidth) return;
   if (!loop.on) {
     if (loop.near) copyLoops([loop]);
-    return;
-  }
-  const off = shows ? offCard(loop) : 0;
-  if (off && performance.now() - loop.moved < LOOP_WAIT) {
-    waitLoop(loop);
-    return;
-  }
-  if (off) {
-    track.scrollBy({ left: off, behavior: motion() ? 'smooth' : 'auto' });
     return;
   }
   if (track.clientWidth !== loop.width) {
@@ -1593,6 +1580,18 @@ function settleLoop(loop, { shows = true } = {}) {
       copyLoops([loop]);
     });
     if (!loop.on) return;
+  }
+  // At either end of its scroll, where a fling past all its copies stops, no browser will
+  // snap it further, so it goes on to a card at once.
+  const off = offCard(loop), end = track.scrollLeft <= 1 || track.scrollLeft >= track.scrollWidth - track.clientWidth - 1;
+  if (off && !end && performance.now() - loop.moved < LOOP_WAIT) {
+    waitLoop(loop);
+    return;
+  }
+  // To the card itself, as a scroll by a distance snaps on to the next card beyond it.
+  if (off) {
+    track.scrollTo({ left: track.scrollLeft + off, behavior: motion() ? 'smooth' : 'auto' });
+    return;
   }
   const box = track.getBoundingClientRect();
   const rects = loop.holder.map(li => li.getBoundingClientRect());
@@ -1603,19 +1602,17 @@ function settleLoop(loop, { shows = true } = {}) {
   // belongs, not moved by a distance.
   const target = track.scrollLeft + move;
   let traded = false;
-  if (shows) {
-    loop.places.forEach((orders, n) => {
-      const t = restPlace(orders.map(o => [rects[o].left - move, rects[o].right - move]), box.left, box.right);
-      const [card, ...copies] = loop.items[n];
-      const others = orders.filter((_, k) => k !== t);
-      for (const [li, order] of [[card, orders[t]], ...copies.map((copy, k) => [copy, others[k]])]) {
-        if (loop.holder[order] === li) continue;
-        li.style.order = order;
-        loop.holder[order] = li;
-        traded = true;
-      }
-    });
-  }
+  loop.places.forEach((orders, n) => {
+    const t = restPlace(orders.map(o => [rects[o].left - move, rects[o].right - move]), box.left, box.right);
+    const [card, ...copies] = loop.items[n];
+    const others = orders.filter((_, k) => k !== t);
+    for (const [li, order] of [[card, orders[t]], ...copies.map((copy, k) => [copy, others[k]])]) {
+      if (loop.holder[order] === li) continue;
+      li.style.order = order;
+      loop.holder[order] = li;
+      traded = true;
+    }
+  });
   if (move || traded) putLoop(loop, target);
 }
 
