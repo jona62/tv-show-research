@@ -3,8 +3,10 @@
 // rows that land on screen ease in; views and the hero crossfade; a long press on a
 // poster lifts it into a peek with its quick buttons; and, installed with no browser back
 // button, a swipe in from the left edge goes back. Nothing moves under reduced motion,
-// and a mouse keeps the hover and pop-ups it has. The maths is pure and checked by
-// test_gestures.mjs; nothing here touches the page until main.js calls it.
+// and a mouse keeps the hover and pop-ups it has. Rows that run past the screen go round,
+// on any screen, with the maths for that here and the rows themselves in main.js. The
+// maths is pure and checked by test_gestures.mjs; nothing here touches the page until
+// main.js calls it.
 
 /* ------------------------------------------------------------------ maths */
 export const LONG_PRESS = 450;  // ms a finger rests on a poster before it peeks
@@ -70,6 +72,73 @@ export const REST = 150;
 // that arrives below the screen, or while the reader scrolls, is shown at once, since
 // fading it in as it comes into view would hold back what the reader came for.
 export const easesIn = (onScreen, sinceScroll) => onScreen && sinceScroll >= REST;
+
+/* ------------------------------------------------------------------ loops */
+// A row whose cards run past the screen goes round. Copies of its last cards wait before
+// its first, and copies of its first after its last, so a swipe or a page past either end
+// carries straight on with the same momentum. Once the row comes to rest it moves by whole
+// laps, a lap being its own cards and the gaps after them, back among its own cards,
+// where the same cards are in the same places and nothing looks any different. And what
+// it shows at rest is always the cards themselves: a card that shows through a copy's
+// place trades places with that copy, which is the same size, so nothing else moves.
+
+// How far a looping row carries on past either end before it must rest: three screens,
+// and 800px at least. Chrome flings a row three times its screen at most, and Safari,
+// which slows a row that snaps to its cards sooner, less.
+export const LOOP_SCREENS = 3;
+export const LOOP_LEAST = 800;
+
+// Whether a row goes round: whether its cards, a lap of `lap` px less the `gap` after the
+// last, run past its `width` with `pad` px inside either end.
+export const goesRound = (lap, gap, pad, width) => lap - gap + 2 * pad > width + 1;
+
+// How many copies a looping row `width` px wide, of cards `pitch` px apart, keeps before
+// its first card and after its last: enough to carry it `reach` px either way from
+// wherever it rests among its own cards, and after the last, to fill the row past that.
+export function loopCopies(width, pitch, reach = Math.max(width * LOOP_SCREENS, LOOP_LEAST)) {
+  return { before: Math.ceil(reach / pitch), after: Math.ceil((reach + width) / pitch) };
+}
+
+// Which of a row's `n` cards each copy is: `before` of its last cards, in order and round
+// again for a short row, then `after` of its first.
+export function copiesOf(n, before, after) {
+  return {
+    before: Array.from({ length: before }, (_, k) => (((k - before) % n) + n) % n),
+    after: Array.from({ length: after }, (_, k) => k % n),
+  };
+}
+
+// How far a row resting `x` px past its first card's own place scrolls to be among its
+// own cards again: whole laps, to rest within [0, lap). Half a pixel either way is there.
+export const lapHome = (x, lap) => -Math.floor((x + .5) / lap) * lap || 0;
+
+// Where a card shows at rest: the first of its `places`, each [left, right], its own place
+// first and then its copies', that shows between `from` and `to`, its own when that
+// shows, and its own when none does. Its copies fill the places it leaves.
+export function restPlace(places, from, to) {
+  const shows = ([left, right]) => right > from + .5 && left < to - .5;
+  return shows(places[0]) ? 0 : Math.max(places.findIndex(shows), 0);
+}
+
+// How far a row that snaps to its cards has to scroll to rest on one, from their left
+// edges `lefts` and its snapping `edge`: nothing when a card is on the edge to a pixel, or
+// else to the nearest card it can reach, being `scroll` px along the `most` it scrolls,
+// back when negative. A row at either end of its scroll, where a fling that ran out of
+// copies stops, reaches the cards back from it.
+export function toCard(lefts, edge, scroll, most) {
+  let near = 0;
+  for (const left of lefts) {
+    const by = left - edge;
+    if (Math.abs(by) < 1) return 0;
+    if (scroll + by >= -1 && scroll + by <= most + 1 && (!near || Math.abs(by) < Math.abs(near))) near = by;
+  }
+  return near;
+}
+
+// A row that stops short of a card, which it does when a finger stops it or while it
+// creeps the last pixels on, is given LOOP_WAIT ms from when it last moved to get there,
+// since a browser may snap it once its scroll has ended; then it eases there itself.
+export const LOOP_WAIT = 600;
 
 /* ----------------------------------------------------------------- motion */
 const OUT = 'cubic-bezier(.22,1,.36,1)';      // quick, then settling
@@ -366,8 +435,8 @@ function easeIn(row, delay) {
     { duration: 240, delay, easing: OUT, fill: 'backwards' })];
   // The cards rise into their slots, and the slots stay put: a slot is where the row snaps
   // when swiped, and sliding one in from the side made the row snap to it mid-slide, pulling
-  // the whole row left and then back.
-  [...row.querySelectorAll('.track > li')].slice(0, 6).forEach((li, i) => {
+  // the whole row left and then back. A looping row's copies, which wait off screen, stay still.
+  [...row.querySelectorAll('.track > li:not([inert])')].slice(0, 6).forEach((li, i) => {
     for (const part of li.children) eased.push(part.animate(
       [{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }],
       { duration: 220, delay: delay + 40 + stagger(i, 25, 100), easing: OUT, fill: 'backwards' }));
