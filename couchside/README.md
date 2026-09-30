@@ -1,12 +1,17 @@
 # Couchside
 
 A streaming-style front end for the TV Taste recommender: a dark, poster-led
-browser with a hero, rows and title pages, over the same TVmaze catalogue,
+browser with featured shows, rows and title pages, over the same TVmaze catalogue,
 rebuilt every night. Nothing plays. It is for finding your next show.
 
 ## What is on it
 
-- **Home** is a hero and rows that go on as you scroll, eight at first and six
+- **Home** opens on six featured shows, today's hero first, in a carousel that
+  goes round: every seven seconds on its own, or by a swipe, the arrows, the arrow
+  keys or a dot, on from the last to the first as smoothly as between any two. It
+  stops for good once you use it (a button pauses and plays it), holds still while
+  a finger or pointer is on it or it is off screen, and never turns by itself with
+  reduced motion. Below it are rows that go on as you scroll, eight at first and six
   at a time after. Once you have rated a few shows the first twenty or thirty are
   *Top picks for you*, My List, *Because you loved* your favourites, micro-genres
   named from what each of your interests leans toward (*British panel games*,
@@ -356,7 +361,9 @@ it for two weeks. From that (fresh.py on the server):
   its tier is spent.
 - The hero is drawn once a day from your ten best picks, never one you rated, one
   on My List or a hero of the last week, and preferably not one the first rows
-  already open with.
+  already open with. Five more featured shows follow it, drawn the same way from
+  your twenty best picks, each preferring one of a franchise and an interest the
+  others are not.
 - *Recently viewed*, after the third row, holds titles you opened in the last two
   weeks and neither rated nor listed; the browser builds it.
 
@@ -371,6 +378,8 @@ Before anything is rated the page is the Top 10, *Popular right now*, *All-time
 favourites* (before 2010, well known and well rated), *New this year* and six to
 eight of the best-known genres and formats, no show twice, with *Popular in* the
 browser's language when that is not English, under the invitation to pick shows.
+Its featured shows are drawn from the Top 10 and the best known after them, the
+hero from the Top 10 alone.
 
 ## How search finds a show
 
@@ -471,7 +480,7 @@ otherwise the copy here, which matches the repository's `model/`.
 When the model carries `tmdb.json.gz`, which the refresher fetches from TMDB
 with each new model, a title's US age rating, trailers, widescreen backdrop and
 where to watch come from it. They arrive with the title itself, as `tmdb` in the
-`/api/title` answer (and on the hero in `/api/home`), so the page makes no extra
+`/api/title` answer (and on each featured show in `/api/home`), so the page makes no extra
 calls for them. Where to watch then lists every US service TMDB has for the show,
 streaming first and renting or buying after, marked as such, each with its TMDB
 logo and linking to TMDB's watch page for the show, as TMDB requires for
@@ -588,7 +597,7 @@ hand-made TMDB data and a few other titles. It holds the home page to its rules
 for lists of several shapes (fixed rows, sizes, no row opening like another, no
 show three times, franchise, creator and network limits, every interest served,
 calibrated top picks), and checks paging, a day's page against the next day's,
-fatigue and engagement, the hero, resting rows, the first visit's rows and every
+fatigue and engagement, the hero and featured shows, resting rows, the first visit's rows and every
 new field. With stand-in rows for the tiers past today's (`scripts/bench/stub_tiers.py`)
 it pages whole pages to their end: no row or title twice, *more* false only at the
 end, no row before its tier opens, a tier built only once the page reaches it, the
