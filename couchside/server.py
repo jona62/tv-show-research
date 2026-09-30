@@ -38,7 +38,7 @@ MOST_BODY = 98304
 # A list brought in from another device is looked up in one go: every rating and every
 # saved show.
 MOST_IDS = MAX_LIST + MAX_SAVED
-LIVE_ROUTES = ('/api/extra', '/api/episodes', '/api/trailer', '/api/rating')
+LIVE_ROUTES = ('/api/extra', '/api/episodes', '/api/episode', '/api/trailer', '/api/rating')
 # Posters come from TVmaze, trailer thumbnails from YouTube's image server, backdrops
 # and service logos from TMDB's, and a trailer plays in YouTube's no-cookie player only
 # once someone presses play.
@@ -144,6 +144,15 @@ def trailers(show_id):
         return known['videos']
     imdb = LIVE.show(show_id)['imdb']
     return KINO.get(f'/shows?imdb_id={imdb}&language=en', trim_videos, missing=[]) if imdb else []
+
+
+def episode(episode_id):
+    """One episode in full, for a show in this catalog. TVmaze is asked by the episode's
+    own id, so which show it belongs to is known only from the answer."""
+    found = LIVE.episode(episode_id)
+    if found['show'] not in ENGINE.by_id:
+        raise LiveError('That episode is not in this catalog.', 404)
+    return found
 
 
 def age(show_id):
@@ -345,9 +354,13 @@ class Handler(SimpleHTTPRequestHandler):
 
     def live(self, path, query):
         try:
-            show_id = number(query, 'id', 'the show')
-            if show_id not in ENGINE.by_id:
-                raise ValueError('That show is not in this catalog.')
+            # An episode is asked for by its own TVmaze id; everything else by its show's.
+            if path == '/api/episode':
+                episode_id = number(query, 'id', 'the episode')
+            else:
+                show_id = number(query, 'id', 'the show')
+                if show_id not in ENGINE.by_id:
+                    raise ValueError('That show is not in this catalog.')
             season = number(query, 'season', 'the season') if path == '/api/episodes' else None
         except ValueError as exc:
             self.send_json({'error': str(exc)}, 400)
@@ -360,6 +373,8 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json({'details': LIVE.show(show_id)})
             elif path == '/api/episodes':
                 self.send_json({'episodes': LIVE.episodes(show_id, season)})
+            elif path == '/api/episode':
+                self.send_json({'episode': episode(episode_id)})
             elif path == '/api/trailer':
                 self.send_json({'videos': trailers(show_id)})
             else:

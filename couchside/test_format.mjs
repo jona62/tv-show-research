@@ -29,10 +29,10 @@ check('one season is singular', seasons(1) === '1 Season');
 check('several seasons are plural', seasons(5) === '5 Seasons');
 check('names join in plain English', joinNames(['A']) === 'A' && joinNames(['A', 'B']) === 'A and B'
   && joinNames(['A', 'B', 'C']) === 'A, B and C' && joinNames([]) === '');
-check('home route', same(parseRoute('/', ''), { page: 'home', q: '', genre: '', show: null }));
-check('search route keeps its terms', same(parseRoute('/search', '?q=breaking%20bad'), { page: 'search', q: 'breaking bad', genre: '', show: null }));
-check('a title opens over any page', same(parseRoute('/list', '?show=169'), { page: 'list', q: '', genre: '', show: 169 }));
-check('browse keeps its genre', same(parseRoute('/browse', '?genre=Science-Fiction'), { page: 'browse', q: '', genre: 'Science-Fiction', show: null }));
+check('home route', same(parseRoute('/', ''), { page: 'home', q: '', genre: '', show: null, episode: null }));
+check('search route keeps its terms', same(parseRoute('/search', '?q=breaking%20bad'), { page: 'search', q: 'breaking bad', genre: '', show: null, episode: null }));
+check('a title opens over any page', same(parseRoute('/list', '?show=169'), { page: 'list', q: '', genre: '', show: 169, episode: null }));
+check('browse keeps its genre', same(parseRoute('/browse', '?genre=Science-Fiction'), { page: 'browse', q: '', genre: 'Science-Fiction', show: null, episode: null }));
 check('a bad title id is ignored', parseRoute('/', '?show=abc').show === null && parseRoute('/', '?show=-4').show === null
   && parseRoute('/', '?show=1.5').show === null);
 check('an unknown path falls back to home', parseRoute('/nope', '').page === 'home');
@@ -118,6 +118,54 @@ check('services that fit the line all show', fitsOnLine([90, 200, 300], 300, 40)
 check('past the line, those ending before its fade show', fitsOnLine([90, 200, 280, 400], 300, 40) === 2
   && fitsOnLine([90, 200, 260, 400], 300, 40) === 3);
 check('a first pill wider than the line still shows', fitsOnLine([420, 500], 300, 40) === 1);
+
+// An episode: its address beside its title's, its numbering, its neighbours in the season,
+// its credits and when it airs.
+const { withEpisode, episodeCode, episodeSaid, neighbours, credits, airing } = await import('./format.js');
+check('an episode opens over its title, over any page', same(parseRoute('/search', '?q=bad&show=169&episode=12203'),
+  { page: 'search', q: 'bad', genre: '', show: 169, episode: 12203 }));
+check('a bad episode id is ignored, and so is one without a title', parseRoute('/', '?show=169&episode=abc').episode === null
+  && parseRoute('/', '?show=169&episode=-2').episode === null && parseRoute('/', '?show=169&episode=2.5').episode === null
+  && parseRoute('/', '?episode=12203').episode === null);
+check('opening an episode keeps the page and its title', withEpisode('/search', '?q=bad&show=169', 12203) === '/search?q=bad&show=169&episode=12203');
+check('stepping to another replaces it', withEpisode('/', '?show=169&episode=12203', 12204) === '/?show=169&episode=12204');
+check('closing it leaves the title open', withEpisode('/list', '?show=169&episode=12203', null) === '/list?show=169');
+check('closing the title, or opening another, closes its episode too', withShow('/', '?show=169&episode=12203', null) === '/'
+  && withShow('/search', '?q=bad&show=169&episode=12203', 82) === '/search?q=bad&show=82');
+check('an episode is numbered S2 E5, and read out in words', episodeCode(2, 5) === 'S2 E5' && episodeSaid(2, 5) === 'Season 2, episode 5');
+check('a special says so, with its season when it has one', episodeCode(2, null) === 'S2 Special' && episodeCode(null, null) === 'Special'
+  && episodeSaid(2, null) === 'Season 2, special' && episodeSaid(null, null) === 'Special' && episodeSaid(null, 4) === 'Episode 4'
+  && episodeCode(null, 4) === 'E4');
+const season = [{ id: 1, number: 1 }, { id: null, number: null }, { id: 3, number: 2 }, { id: 4, number: null }, { id: 5, number: 3 }];
+check('the episodes either side are the season\'s own, specials and all', same(neighbours(season, 4), { prev: season[2], next: season[4] }));
+check('an episode that cannot be opened is stepped over', same(neighbours(season, 3), { prev: season[0], next: season[3] }));
+check('the first has nothing before it and the last nothing after',
+  neighbours(season, 1).prev === null && neighbours(season, 1).next === season[2] && neighbours(season, 5).next === null);
+check('one not in the list, or no list, has neither', same(neighbours(season, 99), { prev: null, next: null })
+  && same(neighbours(null, 1), { prev: null, next: null }));
+const made = credits([{ id: 1, name: 'A', role: 'Writer' }, { id: 2, name: 'B', role: 'Creator' }, { id: 3, name: 'C', role: 'Director' },
+  { id: 4, name: 'D', role: 'Writer' }, { id: 5, name: 'E', role: 'Teleplay' }, { id: 6, name: 'F' }]);
+check('credits read directors first, then writers, then the rest, each job with everyone who did it',
+  same(made.map(c => [c.label, c.people.map(p => p.name)]),
+    [['Directed by', ['C']], ['Written by', ['A', 'D']], ['Teleplay by', ['E']], ['Creator:', ['B']]]));
+check('no crew is no credits', same(credits([]), []) && same(credits(null), []));
+check('a job named like something every object has is still just a job',
+  same(credits([{ id: 1, name: 'A', role: 'constructor' }]).map(c => c.label), ['constructor:']));
+const NOW = Date.parse('2026-09-29T12:00:00Z');
+check('an episode that aired shows the day it aired', airing('2009-04-05', '2009-04-06T02:00:00+00:00', NOW, 'UTC') === 'Apr 5, 2009'
+  && airing('2009-04-05', '', NOW) === 'Apr 5, 2009');
+check('one still to come says when it airs, in the reader\'s own time',
+  airing('2026-10-06', '2026-10-07T01:00:00+00:00', NOW, 'America/New_York') === 'Airs Tue, Oct 6, 9:00 PM'
+  && airing('2026-10-06', '2026-10-07T01:00:00+00:00', NOW, 'Europe/London') === 'Airs Wed, Oct 7, 2:00 AM');
+check('and the year, when it is not this one', airing('2027-01-05', '2027-01-06T02:00:00+00:00', NOW, 'America/New_York')
+  === 'Airs Tue, Jan 5, 2027, 9:00 PM');
+check('one to come without a time says only the day', airing('2026-10-06', '', NOW) === 'Airs Oct 6, 2026');
+check('nothing known is nothing said', airing('', '', NOW) === '' && airing('soon', 'later', NOW) === '');
+check('the guest stars start with twelve faces, and the button says how many it opens',
+  SNIPPETS.guests === 12 && revealLabel('guests', 21, false) === 'Show all 21 guest stars'
+  && revealLabel('guests', 21, true) === 'Show fewer guest stars');
+check('nothing an episode says carries a dash', ![episodeCode(2, 5), episodeSaid(2, null), revealLabel('guests', 13, false),
+  ...made.map(c => c.label), airing('2026-10-06', '2026-10-07T01:00:00+00:00', NOW, 'UTC')].some(t => /[\u2013\u2014]/.test(t)));
 
 // Recent searches: the last ten committed, newest first, once whatever the case, never one letter.
 const { RECENT_SEARCHES, searchText, recentStore, noteSearch, withoutSearch, recentMatches } = await import('./format.js');

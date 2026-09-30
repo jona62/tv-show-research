@@ -544,8 +544,9 @@ export function edgeBack(can, back) {
         return;
       }
       g.back = true;
-      // Over an open title page too, which sits above the rest of the page.
-      (document.querySelector('dialog[open]') || document.body).append(chip);
+      // Over an open title page too, which sits above the rest of the page, and over an
+      // episode open above that, which comes after it in the page.
+      ([...document.querySelectorAll('dialog[open]')].at(-1) || document.body).append(chip);
     }
     e.preventDefault();
     g.dx = Math.max(dx, 0);

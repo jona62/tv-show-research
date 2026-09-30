@@ -27,6 +27,12 @@ rebuilt every night. Nothing plays. It is for finding your next show.
   trailers to the first two (a row of three on a wide screen), and a button opens
   the rest and closes it again. *Trailer* plays it right there. Rate it *Not for
   me*, *I like this* or *Love this*, or add it to My List.
+- **An episode** opens from its season's list in a sheet of its own over the title
+  page: its largest still, *S2 E5*, the air date (or, still to come, when it airs in
+  your own time), runtime and TVmaze rating, the whole summary, who directed and
+  wrote it and its guest stars, with *Previous* and *Next* through the season.
+  Closing it, by its back button, Back, Escape or a swipe down, leaves the title
+  page as it was, scrolled where it was with its season chosen.
 - **Posters** wear *Top 10* and *New* badges. On a mouse, hovering one lifts it
   and shows its match with quick buttons for My List, *I like this*, *Love this*
   and more info. On a touch screen, a long press lifts it into a larger preview
@@ -48,8 +54,10 @@ rebuilt every night. Nothing plays. It is for finding your next show.
   and *Shows like Mad Max* for a film or film series, by the film's own genres and
   subjects.
 
-The page and any open title live in the URL (`/new`, `/list`, `/search?q=`,
-`?show=169`), so refresh, Back and shared links behave. Your ratings and My List
+The page and any open title or episode live in the URL (`/new`, `/list`,
+`/search?q=`, `?show=169`, `?show=169&episode=12203`), so refresh, Back and shared
+links behave; stepping through a season replaces the address, so Back from any
+episode returns to its title page. Your ratings and My List
 stay in the browser. *Move your list to another device* uses the same code as
 Next Watch, so a list moves between the two apps as well as between devices: a
 link, the code alone, a QR code while the list fits one (a few hundred ratings),
@@ -483,7 +491,10 @@ trims them, caches them for six hours, and stays inside TVmaze's rate limit of
 20 calls every 10 seconds, backing off after a 429 and serving a stale answer
 rather than none. That limit is per address, so title pages take 12 of the 20
 and leave 4 each to search here and on Next Watch. When TVmaze is unreachable a
-title page simply shows everything else.
+title page simply shows everything else. An episode opened in full is one more
+call, `/api/episode?id=` by its TVmaze id, with its guest cast and crew; it is
+kept the same way, an id TVmaze does not know included, and answered only for
+shows in the catalogue.
 
 - **Trailers** come from [KinoCheck](https://api.kinocheck.com/), a free API
   of official trailers, looked up by the IMDb id TVmaze keeps. It covers most
