@@ -346,6 +346,11 @@ main{min-height:100vh;padding-bottom:calc(var(--dock-space) + 24px);outline:none
   margin:0;padding:0 var(--gutter);list-style:none}
 .grid .card{width:100%}
 .grid-caption{display:block;margin-top:6px;font-size:13px;color:var(--ink-2);overflow-wrap:anywhere}
+/* A show's name under its poster, two lines at most, over a muted line such as its year. */
+.grid-caption.titled{display:grid;gap:2px}
+.cap-name,.cap-meta{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.cap-name{font-size:13px;font-weight:600;line-height:1.25;color:var(--ink)}
+.cap-meta{font-size:12px;line-height:1.25;color:var(--muted)}
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin:0 var(--gutter) 12px}
 .chip{border:1px solid #ffffff4d;border-radius:18px;background:none;padding:6px 14px;font-size:13.5px;cursor:pointer;color:var(--ink-2)}
 .chip:hover{border-color:#fff}
@@ -405,6 +410,7 @@ main{min-height:100vh;padding-bottom:calc(var(--dock-space) + 24px);outline:none
 @media(max-width:599px){
   #search .grid{grid-template-columns:repeat(3,minmax(0,1fr))}
   #search .grid-caption{font-size:12px}
+  #search .cap-name,.found .cap-name{font-size:12.5px}
 }
 
 /* welcome -------------------------------------------------------------- */

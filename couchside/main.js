@@ -290,12 +290,14 @@ function skelCard(soon = false) {
   if (soon) card.append(skelIn('span', 'soon-date', '6.5em'));
   return card;
 }
-// A grid's n posters on their way, as fill lays them out.
-function skelGrid(n) {
+// A grid's n posters on their way, as fill lays them out, with the name and year under
+// each where the grid will show them (titled).
+function skelGrid(n, titled = false) {
   return Array.from({ length: n }, () => {
     const li = el('li', '', 'skel-item');
     li.setAttribute('aria-hidden', 'true');
     li.append(skelCard());
+    if (titled) li.append(titledCaption(skelIn('span', 'cap-name', '82%'), skelIn('span', 'cap-meta', '2.6em')));
     return li;
   });
 }
@@ -3862,11 +3864,26 @@ const GROUPS = {
 };
 const NOTES = { 1: 'you loved it', '-1': 'not for you' };
 
+// The name under a poster, and under it in a muted line what else the grid says of the
+// show, such as its year; already read out as part of the card's own label.
+function titledCaption(name, meta) {
+  const caption = el('span', '', 'grid-caption titled');
+  caption.setAttribute('aria-hidden', 'true');
+  caption.append(name, ...(meta ? [meta] : []));
+  return caption;
+}
+const showCaption = (c, also = '') => titledCaption(el('span', c.name, 'cap-name'),
+  c.year || also ? el('span', [c.year, also].filter(Boolean).join(' · '), 'cap-meta') : null);
+
 function fill(grid, items, options = () => ({})) {
   redraw(grid, () => grid.replaceChildren(...items.map(c => {
     const li = el('li');
     const o = options(c);
     li.append(cardEl(c, o));
+    if (o.titled) {
+      li.append(showCaption(c, o.also));
+      return li;
+    }
     // A caption under the poster, already read out as part of the card's own label.
     if (o.caption) {
       const caption = el('span', o.caption, 'grid-caption');
@@ -3975,7 +3992,7 @@ function search(q, typed = true) {
     $('search-note').textContent = 'Searching…';
     // With nothing on screen for the answer to replace, as when the page opens on a search,
     // the grid shows its shape while it runs.
-    if (!$('results').childElementCount) $('results').replaceChildren(...skelGrid(SEARCHING));
+    if (!$('results').childElementCount) $('results').replaceChildren(...skelGrid(SEARCHING, true));
   }
   searchTimer = setTimeout(async () => {
     try {
@@ -3985,8 +4002,10 @@ function search(q, typed = true) {
       shows.forEach(remember);
       resultsFor = query;
       $('search-note').textContent = searchNote(query, shows.length, missing.length, related?.shows?.length || 0);
+      // Every match names its show under its poster, as a poster's art does not always
+      // say which show it is: Outer Banks' says OBX 5.
       fill($('results'), shows.map(s => ({ ...s, ...(known.get(s.id) || {}), aka: s.aka })),
-        c => (c.aka ? { note: `also known as ${c.aka}`, caption: `Also known as ${c.aka}` } : {}));
+        c => ({ titled: true, ...(c.aka ? { note: `also known as ${c.aka}`, also: `also known as ${c.aka}` } : {}) }));
       showMissing(missing, first);
       showRelated(related, query);
     } catch (e) {
@@ -4315,7 +4334,11 @@ $('q-welcome').addEventListener('input', () => {
     try {
       const { shows, missing = [] } = await call(`/api/search?q=${encodeURIComponent(q)}`);
       if (id !== foundReq) return;
-      $('found').replaceChildren(...shows.slice(0, 12).map(c => pickTile(remember(c), new Map())));
+      $('found').replaceChildren(...shows.slice(0, 12).map(c => {
+        const li = pickTile(remember(c), new Map());
+        li.append(showCaption(c));
+        return li;
+      }));
       $('found').hidden = !shows.length;
       $('found-note').textContent = searchNote(q, shows.length, missing.length);
     } catch (e) {
