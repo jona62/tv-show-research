@@ -12,7 +12,10 @@ rebuilt every night. Nothing plays. It is for finding your next show.
   stops for good once you use it (a button pauses and plays it), holds still while
   a finger or pointer is on it or it is off screen, and never turns by itself with
   reduced motion. Below it are rows that go on as you scroll, eight at first and six
-  at a time after. Once you have rated a few shows the first twenty or thirty are
+  at a time after, and every row whose posters run past the screen goes round too:
+  past its last poster a swipe, a trackpad or its arrows carry straight on into its
+  first, and back past its first into its last, with nothing jumping when it comes
+  to rest. Once you have rated a few shows the first twenty or thirty are
   *Top picks for you*, My List, *Because you loved* your favourites, micro-genres
   named from what each of your interests leans toward (*British panel games*,
   *Dark sci-fi dramas*), shows from the creators, franchises and stars your list
