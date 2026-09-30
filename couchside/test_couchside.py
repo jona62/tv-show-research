@@ -9,7 +9,7 @@ from datetime import date, timedelta
 from http.server import ThreadingHTTPServer
 from functools import partial
 from pathlib import Path
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 import atexit
 import contextlib
@@ -108,8 +108,8 @@ from library import SIMILAR_AT, similarity                       # noqa: E402
 from library import Kept, KEPT_PAGES, KEPT_FOR, asked as kept_under, read_shown  # noqa: E402
 from library import (Page, Deeper, FIRST_PAGE, NEXT_PAGE, MOST_ROWS, CREATOR_SHORTEST, NOT_FOR_ME,  # noqa: E402
                      INTEREST_CAP, HIDDEN, PINNED, LONGEST, TIERS)
-from live import (Live, LiveError, Icons, trim_show, trim_episodes, trim_videos,        # noqa: E402
-                  trim_seasons, match_rating, IMAGES)
+from live import (Live, LiveError, Icons, trim_show, trim_episodes, trim_episode, trim_videos,  # noqa: E402
+                  trim_seasons, match_rating, IMAGES, WHOLE_SUMMARY)
 
 engine, lib = server.ENGINE, server.LIBRARY
 # Here a page kept for the requests for more (library.Kept) is laid out in step with them,
@@ -922,11 +922,79 @@ check('images from anywhere but TVmaze are dropped', shape['cast'][1]['photo'] i
 check('the main backdrop wins', shape['backdrop'] == IMAGES + 'o/1/8.jpg')
 check('the IMDb id and site survive', shape['imdb'] == 'tt0903747' and shape['site'] == 'http://www.amc.com/x')
 check('a bad IMDb id is dropped', trim_show({**RAW, 'externals': {'imdb': 'javascript:x'}})['imdb'] is None)
-episodes = trim_episodes([{'number': 1, 'name': 'Pilot', 'runtime': 58, 'airdate': '2008-01-20',
+episodes = trim_episodes([{'id': 12192, 'number': 1, 'name': 'Pilot', 'runtime': 58, 'airdate': '2008-01-20',
                            'image': {'medium': IMAGES + 'medium_landscape/1/3.jpg'}, 'summary': '<p>A &amp; B <b>go</b>.</p>'},
-                          {'number': None, 'name': 'Special', 'runtime': None, 'summary': None}, 'junk'])
+                          {'id': '12193', 'number': None, 'name': 'Special', 'runtime': None, 'summary': None}, 'junk'])
 check('episode summaries lose their HTML', episodes[0]['summary'] == 'A & B go.')
 check('specials are kept and junk dropped', len(episodes) == 2 and episodes[1]['number'] is None)
+check('each episode in a season keeps the id that opens it, and only a whole number',
+      episodes[0]['id'] == 12192 and episodes[1]['id'] is None)
+
+# One episode in full, as TVmaze answers /episodes/{id} with its guest cast and crew.
+RAW_EPISODE = {
+    'id': 12203, 'name': 'Breakage', 'season': 2, 'number': 5, 'type': 'regular', 'airdate': '2009-04-05',
+    'airtime': '22:00', 'airstamp': '2009-04-06T02:00:00+00:00', 'runtime': 47, 'rating': {'average': 7.94},
+    'image': {'medium': IMAGES + 'medium_landscape/405/1012713.jpg', 'original': IMAGES + 'original_untouched/405/1012713.jpg'},
+    'summary': '<p>Walt &amp; Jesse <b>expand</b>.</p><p>\xa0</p><p>' + 'Hank recovers. ' * 30 + '</p>',
+    '_links': {'self': {'href': 'https://api.tvmaze.com/episodes/12203'},
+               'show': {'href': 'https://api.tvmaze.com/shows/169', 'name': 'Breaking Bad'}},
+    '_embedded': {
+        'guestcast': [
+            {'person': {'id': 17368, 'name': 'Max Arciniega', 'image': {'medium': IMAGES + 'medium_portrait/150/376075.jpg'}},
+             'character': {'name': 'Krazy-8', 'image': {'medium': IMAGES + 'medium_portrait/515/1289037.jpg'}}},
+            {'person': {'id': 31031, 'name': 'Steven Michael Quezada', 'image': {'medium': 'https://evil.example/x.jpg'}},
+             'character': {'name': 'Steven Gomez', 'image': {'medium': IMAGES + 'medium_portrait/0/2413.jpg'}}},
+            {'person': {'id': 31032, 'name': 'Carmen Serano', 'image': None}, 'character': None},
+            {'person': {'id': 17368, 'name': 'Max Arciniega'}, 'character': {'name': 'Krazy-8'}},
+            {'person': {'name': 'Nobody Listed'}, 'character': {'name': 'Extra'}}, 'junk', {'character': {'name': 'Ghost'}},
+        ],
+        'guestcrew': [
+            {'guestCrewType': 'Director', 'person': {'id': 31045, 'name': 'Johan Renck'}},
+            {'guestCrewType': 'Writer', 'person': {'id': 31046, 'name': 'Moira Walley-Beckett'}},
+            {'guestCrewType': 'Writer', 'person': {'id': 31046, 'name': 'Moira Walley-Beckett'}},
+            {'guestCrewType': ' Story ', 'person': {'id': 31045, 'name': 'Johan Renck'}},
+            {'guestCrewType': '', 'person': {'id': 1, 'name': 'No Job'}},
+            {'guestCrewType': 'Writer', 'person': {'name': 'No Id'}}, {'person': {'id': 2, 'name': 'No Type'}}, 'junk',
+        ],
+    },
+}
+breakage = trim_episode(RAW_EPISODE)
+check('an episode keeps where it falls, when it aired, its length and TVmaze\'s rating to a tenth',
+      {k: breakage[k] for k in ('id', 'show', 'season', 'number', 'name', 'airdate', 'airtime', 'airstamp', 'runtime', 'rating')}
+      == {'id': 12203, 'show': 169, 'season': 2, 'number': 5, 'name': 'Breakage', 'airdate': '2009-04-05', 'airtime': '22:00',
+          'airstamp': '2009-04-06T02:00:00+00:00', 'runtime': 47, 'rating': 7.9}, breakage)
+check('its image is the largest TVmaze keeps, beside the still its season list shows',
+      breakage['image'] == IMAGES + 'original_untouched/405/1012713.jpg' and breakage['still'] == IMAGES + 'medium_landscape/405/1012713.jpg')
+check('its summary is whole, as plain text', breakage['summary'].startswith('Walt & Jesse expand. Hank recovers.')
+      and len(breakage['summary']) > 360 and not breakage['summary'].endswith('…') and '<' not in breakage['summary'])
+check('guest stars keep their TVmaze person id, part and photo, each once, and junk goes',
+      [(g['id'], g['name'], g['character']) for g in breakage['guests']]
+      == [(17368, 'Max Arciniega', 'Krazy-8'), (31031, 'Steven Michael Quezada', 'Steven Gomez'), (31032, 'Carmen Serano', '')],
+      breakage['guests'])
+check('a guest\'s photo is TVmaze\'s own, or their character\'s, or none',
+      [g['photo'] for g in breakage['guests']] == [IMAGES + 'medium_portrait/150/376075.jpg', IMAGES + 'medium_portrait/0/2413.jpg', None])
+check('the crew keep their person id and job, each job once, and a person may have two',
+      [(c['id'], c['name'], c['role']) for c in breakage['crew']]
+      == [(31045, 'Johan Renck', 'Director'), (31046, 'Moira Walley-Beckett', 'Writer'), (31045, 'Johan Renck', 'Story')],
+      breakage['crew'])
+special = trim_episode({'id': 7, 'name': 'Christmas Special', 'season': 2, 'number': None, 'airdate': '2009-13', 'airtime': 'late',
+                     'airstamp': 'tomorrow', 'rating': {'average': None}, 'image': {'medium': 'https://evil.example/x.jpg'},
+                     'summary': None, '_embedded': {'guestcast': 'junk'}})
+check('a special with little known is still an episode, with nothing made up',
+      special['number'] is None and special['show'] is None and special['rating'] is None and special['image'] is None
+      and special['still'] is None and special['summary'] == '' and special['guests'] == [] and special['crew'] == []
+      and special['airdate'] == special['airtime'] == special['airstamp'] == '', special)
+check('a rating that is not one out of ten is none', all(trim_episode({'id': 1, 'name': 'x', 'rating': {'average': r}})['rating'] is None
+                                                         for r in ('8', True, 0, 11, -1, float('nan'), None)))
+check('a runaway summary is cut at a word', len(trim_episode({'id': 1, 'name': 'x', 'summary': 'word ' * 2000})['summary'])
+      <= WHOLE_SUMMARY + 1)
+for junk, what in [('junk', 'a string'), ({'id': '12203', 'name': 'x'}, 'an id that is not a number'),
+                   ({'id': 12203}, 'no name'), ([RAW_EPISODE], 'a list')]:
+    try:
+        trim_episode(junk)
+        check(f'an episode answer with {what} is refused', False)
+    except ValueError:
+        check(f'an episode answer with {what} is refused', True)
 
 check('where it streams and where it airs are both kept',
       trim_show({**RAW, 'webChannel': {'name': 'Netflix', 'officialSite': 'https://www.netflix.com/'},
@@ -967,12 +1035,19 @@ check('unknown rating codes are ignored',
 
 now = [0.0]
 calls = []
+# The episodes TVmaze has here: Breaking Bad's Breakage, and one of a show outside the catalog.
+ELSEWHERE = {**RAW_EPISODE, 'id': 5000001, '_links': {'show': {'href': 'https://api.tvmaze.com/shows/999999999'}}}
 
 
 def fake(path):
     calls.append(path)
     if path.startswith('/seasons/'):
-        return [{'number': 1, 'name': 'Pilot'}]
+        return [{'id': 12199, 'number': 1, 'name': 'Pilot'}]
+    if path.startswith('/episodes/'):
+        found = {'12203': RAW_EPISODE, '5000001': ELSEWHERE}.get(path.split('/')[2].split('?')[0])
+        if not found:
+            raise HTTPError(path, 404, 'gone', {}, None)
+        return found
     return RAW
 
 
@@ -1029,6 +1104,49 @@ kino = Live(fetch=nothing, clock=lambda: now[0])
 check('a 404 can be an answer', kino.get('/shows?imdb_id=tt1', trim_videos, missing=[]) == [])
 kino.get('/shows?imdb_id=tt1', trim_videos, missing=[])
 check('and is not asked about again', len(misses) == 1)
+
+# An episode is asked for by its own id, with its guests and crew, and kept like the rest:
+# one TVmaze lacks too, so a stale link is not asked about again and again.
+asked_for = []
+ticks = [0.0]
+
+
+def episodes_of_tvmaze(path):
+    asked_for.append(path)
+    if path.startswith('/episodes/12203?'):
+        return RAW_EPISODE
+    raise HTTPError(path, 404, 'gone', {}, None)
+
+
+one = Live(fetch=episodes_of_tvmaze, clock=lambda: ticks[0])
+check('an episode is asked for with its guest cast and crew', one.episode(12203)['name'] == 'Breakage'
+      and asked_for == ['/episodes/12203?embed%5B%5D=guestcast&embed%5B%5D=guestcrew'])
+one.episode(12203)
+check('and kept', len(asked_for) == 1)
+for attempt in range(2):
+    try:
+        one.episode(404404)
+        check('an episode TVmaze lacks is a 404 that says so', False)
+    except LiveError as exc:
+        if not attempt:
+            check('an episode TVmaze lacks is a 404 that says so',
+                  exc.status == 404 and str(exc) == 'TVmaze has no details for this episode.')
+check('and is not asked about again', len(asked_for) == 2)
+ticks[0] = 7 * 3600.0
+one.fetch = failing
+check('with TVmaze down, a stale episode beats none', one.episode(12203)['name'] == 'Breakage')
+try:
+    one.episode(12204)
+    check('an episode never fetched, with TVmaze down, is a 502', False)
+except LiveError as exc:
+    check('an episode never fetched, with TVmaze down, is a 502', exc.status == 502)
+one.fetch = lambda p: (_ for _ in ()).throw(HTTPError(p, 429, 'slow down', {}, None))
+try:
+    one.episode(12205)
+    check('an episode asked for while TVmaze says slow down is busy, and pauses the rest', False)
+except LiveError as exc:
+    check('an episode asked for while TVmaze says slow down is busy, and pauses the rest',
+          exc.status == 503 and one.pause > ticks[0])
 icon_calls = []
 icons = Icons(fetch=lambda host: icon_calls.append(host) or ('image/png', b'png'))
 check('icons are fetched once per host', icons.get('www.Netflix.com') == icons.get('netflix.com') and icon_calls == ['netflix.com'])
@@ -1304,6 +1422,32 @@ check('a show outside the catalog is a 400', fetch('/api/extra?id=999999999')[0]
 check('episodes need a season', fetch('/api/episodes?id=169')[0] == 400)
 status, _headers, body = fetch('/api/episodes?id=169&season=1')
 check('episodes come through', status == 200 and json.loads(body)['episodes'][0]['name'] == 'Pilot')
+check('each with the id that opens it', json.loads(body)['episodes'][0]['id'] == 12199)
+status, headers, body = fetch('/api/episode?id=12203')
+check('an episode comes through whole, guests and crew with their person ids',
+      status == 200 and json.loads(body) == {'episode': trim_episode(RAW_EPISODE)}
+      and json.loads(body)['episode']['guests'][0]['id'] == 17368 and json.loads(body)['episode']['crew'][0]['id'] == 31045)
+check('and is not kept by the browser, which keeps it itself', headers.get('Cache-Control') == 'no-store')
+for query, what in [('', 'no id'), ('?id=', 'an empty id'), ('?id=abc', 'a word'), ('?id=-5', 'a negative id'),
+                    ('?id=1.5', 'a fraction'), ('?id=1234567890', 'an id of ten digits'), ('?show=12203', 'a show for an id')]:
+    status, _headers, body = fetch('/api/episode' + query)
+    check(f'an episode asked for with {what} is a 400 that says why',
+          status == 400 and json.loads(body) == {'error': 'Send the episode as a whole number.'}, (status, body))
+status, _headers, body = fetch('/api/episode?id=404404')
+check('an episode TVmaze lacks is a 404 that says so',
+      status == 404 and json.loads(body) == {'error': 'TVmaze has no details for this episode.'})
+status, _headers, body = fetch('/api/episode?id=5000001')
+check('an episode of a show outside the catalog is a 404 too',
+      status == 404 and json.loads(body) == {'error': 'That episode is not in this catalog.'})
+held_live = server.LIVE
+server.LIVE = Live(fetch=lambda path: (_ for _ in ()).throw(URLError('connection refused')))
+status, _headers, body = fetch('/api/episode?id=12203')
+check('with TVmaze out of reach, an episode is a 502 that says so',
+      status == 502 and json.loads(body) == {'error': 'That service could not be reached.'})
+server.LIVE = Live(fetch=lambda path: (_ for _ in ()).throw(HTTPError(path, 429, 'slow down', {}, None)))
+status, _headers, body = fetch('/api/episode?id=12203')
+check('with TVmaze asking for a pause, a 503 the page asks again after', status == 503 and json.loads(body)['error'])
+server.LIVE = held_live
 status, _headers, body = fetch('/api/trailer?id=169')
 check('trailers come through', status == 200 and json.loads(body)['videos'][0]['youtube'] == 'CCCCCCCCCCC')
 status, _headers, body = fetch('/api/rating?id=169')

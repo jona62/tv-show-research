@@ -35,15 +35,21 @@ const HEADING = {
 };
 export const leaningHeading = f => (HEADING[f.family] || cap)(f.label);
 
-// Where the page is: which view, the search terms, and the title open over it.
+// Where the page is: which view, the search terms, the title open over it, and one of its
+// episodes open over that.
 export function parseRoute(pathname, search) {
   const params = new URLSearchParams(search);
-  const show = Number(params.get('show'));
+  const whole = key => {
+    const n = Number(params.get(key));
+    return Number.isInteger(n) && n > 0 ? n : null;
+  };
+  const show = whole('show');
   return {
     page: PAGES[pathname] || 'home',
     q: params.get('q') || '',
     genre: params.get('genre') || '',
-    show: Number.isInteger(show) && show > 0 ? show : null,
+    show,
+    episode: show && whole('episode'),
   };
 }
 
@@ -128,14 +134,16 @@ export function whereToWatch(show, tmdb, site, channels, apple) {
 
 /* ------------------------------------------------------------ a title page's long parts */
 // A season starts with its first three episodes and the trailers with the first two, or a
-// wide screen's row of three; a button opens the rest. Hiding just one is not worth a
-// button, so a part only one longer than its snippet shows whole.
-export const SNIPPETS = { episodes: 3, clips: 2, clipsWide: 3 };
+// wide screen's row of three; a button opens the rest. An episode's guest stars start with
+// twelve, four rows of faces on a phone and two on a wide screen. Hiding just one is not
+// worth a button, so a part only one longer than its snippet shows whole.
+export const SNIPPETS = { episodes: 3, clips: 2, clipsWide: 3, guests: 12 };
 export const snippet = (count, most) => (count > most + 1 ? most : count);
 
 // What that button says, opening the part or closing it again.
 export function revealLabel(part, count, open) {
   if (part === 'episodes') return open ? 'Show fewer episodes' : `Show all ${count} episodes`;
+  if (part === 'guests') return open ? 'Show fewer guest stars' : `Show all ${count} guest stars`;
   return open ? 'Show fewer' : `Show all (${count})`;
 }
 
@@ -205,12 +213,74 @@ export function recentMatches(list, typed) {
 export const trailerSearch = (name, year) =>
   `https://www.youtube.com/results?search_query=${encodeURIComponent(`${name}${year ? ` ${year}` : ''} official trailer`)}`;
 
-// The same place with a title opened over it, or closed.
+// The same place with a title opened over it, or closed; either way no episode stays
+// open, since an episode belongs to the title it was opened from.
 export function withShow(pathname, search, id) {
   const params = new URLSearchParams(search);
   if (id) params.set('show', String(id)); else params.delete('show');
+  params.delete('episode');
   const query = params.toString();
   return pathname + (query ? `?${query}` : '');
+}
+
+// The same title with one of its episodes opened over it, or closed again.
+export function withEpisode(pathname, search, id) {
+  const params = new URLSearchParams(search);
+  if (id) params.set('episode', String(id)); else params.delete('episode');
+  const query = params.toString();
+  return pathname + (query ? `?${query}` : '');
+}
+
+/* ------------------------------------------------------------------- an episode */
+// "S2 E5", or "S2 Special" for a special, which TVmaze leaves unnumbered.
+export const episodeCode = (season, number) =>
+  [season ? `S${season}` : '', number ? `E${number}` : 'Special'].filter(Boolean).join(' ');
+
+// The same as it is read out: "Season 2, episode 5".
+export function episodeSaid(season, number) {
+  const which = number ? `episode ${number}` : 'special';
+  return season ? `Season ${season}, ${which}` : which[0].toUpperCase() + which.slice(1);
+}
+
+// The episodes either side of one in its season's list, for reading through a season.
+// Only those with an id can be opened, so only those are stepped to.
+export function neighbours(episodes, id) {
+  const open = (Array.isArray(episodes) ? episodes : []).filter(e => Number.isInteger(e?.id));
+  const at = open.findIndex(e => e.id === id);
+  return at < 0 ? { prev: null, next: null } : { prev: open[at - 1] || null, next: open[at + 1] || null };
+}
+
+// Who made an episode, as credits read: directors, then writers, then story and teleplay
+// where the writing was split, then any other job, each with everyone who did it.
+const CREDITS = { Director: 'Directed by', Writer: 'Written by', Story: 'Story by', Teleplay: 'Teleplay by' };
+export function credits(crew) {
+  const jobs = new Map();
+  for (const c of Array.isArray(crew) ? crew : []) {
+    if (!c?.role) continue;
+    if (!jobs.has(c.role)) jobs.set(c.role, []);
+    jobs.get(c.role).push(c);
+  }
+  const order = Object.keys(CREDITS);
+  const rank = role => (order.includes(role) ? order.indexOf(role) : order.length);
+  return [...jobs].sort((a, b) => rank(a[0]) - rank(b[0]))
+    .map(([role, people]) => ({ role, label: Object.hasOwn(CREDITS, role) ? CREDITS[role] : `${role}:`, people }));
+}
+
+// When an episode aired, "Apr 5, 2009"; or, still to come, when it airs in this browser's
+// own time, "Airs Tue, Oct 7, 9:00 PM", from TVmaze's timestamp, since its air time is the
+// network's and says nothing of where the reader is. `now` and `timeZone` are for tests.
+export function airing(airdate, airstamp, now = Date.now(), timeZone = undefined) {
+  const at = airstamp ? Date.parse(airstamp) : NaN;
+  if (at > now) {
+    const said = options => new Intl.DateTimeFormat('en-US', { timeZone, ...options }).format(at);
+    const year = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric' });
+    const soon = year.format(at) === year.format(now);
+    return `Airs ${said({ weekday: 'short', month: 'short', day: 'numeric', ...(soon ? {} : { year: 'numeric' }),
+      hour: 'numeric', minute: '2-digit' })}`;
+  }
+  const day = longDate(airdate);
+  if (!day) return '';
+  return !Number.isFinite(at) && airdate > new Date(now).toISOString().slice(0, 10) ? `Airs ${day}` : day;
 }
 
 // A stable colour for a show without a poster, so the fallback tile is not grey.

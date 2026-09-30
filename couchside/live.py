@@ -1,6 +1,7 @@
 """Live details for a title page, fetched by this server and cached.
 
-TVmaze gives cast, seasons, episodes, a widescreen backdrop and where a show airs.
+TVmaze gives cast, seasons, episodes, a widescreen backdrop and where a show airs, and
+each episode in full: its whole summary, rating, guest stars and who made it.
 KinoCheck gives official trailers, found by the IMDb id TVmaze supplies. iTunes
 gives the US age rating and an Apple TV link for shows sold there. DuckDuckGo's
 icon service gives each streaming service's small icon.
@@ -31,6 +32,13 @@ IMAGES = 'https://static.tvmaze.com/uploads/images/'
 AGENT = 'Couchside/1.0 (+https://github.com/jona62/tv-show-research)'
 SHOW = '/shows/{id}?embed%5B%5D=cast&embed%5B%5D=seasons&embed%5B%5D=images'
 EPISODES = '/seasons/{id}/episodes'
+EPISODE = '/episodes/{id}?embed%5B%5D=guestcast&embed%5B%5D=guestcrew'
+# An episode's page reads its summary whole, and some run past two thousand characters;
+# this only stops a runaway one.
+WHOLE_SUMMARY = 4000
+DAY = re.compile(r'\d{4}-\d\d-\d\d')
+CLOCK = re.compile(r'\d\d:\d\d')
+STAMP = re.compile(r'\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d+)?)?(?:Z|[+-]\d\d:?\d\d)')
 
 
 class LiveError(Exception):
@@ -176,16 +184,71 @@ def itunes_search(name):
 
 
 def trim_episodes(raw):
+    """A season's episodes as its list shows them, each with the id that opens it in full."""
     if not isinstance(raw, list):
         raise ValueError('not an episode list')
     out = []
     for e in raw[:150]:
         if not isinstance(e, dict) or not isinstance(e.get('name'), str):
             continue
-        out.append({'number': whole(e.get('number')), 'name': e['name'], 'runtime': whole(e.get('runtime')),
+        out.append({'id': whole(e.get('id')), 'number': whole(e.get('number')), 'name': e['name'],
+                    'runtime': whole(e.get('runtime')),
                     'airdate': e.get('airdate') if isinstance(e.get('airdate'), str) else '',
                     'still': picture(e.get('image')), 'summary': plain(e.get('summary'), 360)})
     return out
+
+
+def score(value):
+    """TVmaze's average rating out of 10, once enough people have rated."""
+    average = value.get('average') if isinstance(value, dict) else None
+    return round(float(average), 1) if type(average) in (int, float) and 0 < average <= 10 else None
+
+
+def shaped(raw, key, pattern):
+    """A date or time TVmaze gives, only when it is in the form it should be."""
+    value = raw.get(key)
+    return value if isinstance(value, str) and pattern.fullmatch(value) else ''
+
+
+def trim_episode(raw):
+    """One episode in full: where it falls in its show, when it aired, TVmaze's rating, its
+    largest image, its whole summary, and who guested in it, directed it and wrote it. The
+    show it belongs to comes from TVmaze's link to it, since it is asked for by its own id."""
+    if not isinstance(raw, dict) or not whole(raw.get('id')) or not isinstance(raw.get('name'), str):
+        raise ValueError('not an episode')
+    links = raw.get('_links') if isinstance(raw.get('_links'), dict) else {}
+    owner = links.get('show') if isinstance(links.get('show'), dict) else {}
+    show = re.search(r'/shows/(\d{1,9})$', owner['href']) if isinstance(owner.get('href'), str) else None
+    embedded = raw.get('_embedded') if isinstance(raw.get('_embedded'), dict) else {}
+    # A person listed twice for the same part, or the same job, is kept once.
+    guests, cast = [], set()
+    for g in embedded.get('guestcast') or []:
+        person = g.get('person') if isinstance(g, dict) and isinstance(g.get('person'), dict) else {}
+        character = g.get('character') if isinstance(g, dict) and isinstance(g.get('character'), dict) else {}
+        part = character['name'] if isinstance(character.get('name'), str) else ''
+        if whole(person.get('id')) and isinstance(person.get('name'), str) and (person['id'], part) not in cast:
+            cast.add((person['id'], part))
+            guests.append({'id': person['id'], 'name': person['name'], 'character': part,
+                           'photo': picture(person.get('image')) or picture(character.get('image'))})
+    # Directors and writers, with Story and Teleplay where the writing was split.
+    crew, jobs = [], set()
+    for c in embedded.get('guestcrew') or []:
+        person = c.get('person') if isinstance(c, dict) and isinstance(c.get('person'), dict) else {}
+        role = c['guestCrewType'].strip() if isinstance(c, dict) and isinstance(c.get('guestCrewType'), str) else ''
+        if whole(person.get('id')) and isinstance(person.get('name'), str) and role and (person['id'], role) not in jobs:
+            jobs.add((person['id'], role))
+            crew.append({'id': person['id'], 'name': person['name'], 'role': role})
+    image = raw.get('image')
+    return {
+        'id': raw['id'], 'show': int(show[1]) if show else None,
+        'season': whole(raw.get('season')), 'number': whole(raw.get('number')), 'name': raw['name'],
+        'airdate': shaped(raw, 'airdate', DAY), 'airtime': shaped(raw, 'airtime', CLOCK),
+        'airstamp': shaped(raw, 'airstamp', STAMP),
+        'runtime': whole(raw.get('runtime')), 'rating': score(raw.get('rating')),
+        # The largest TVmaze keeps, and the list's own still, which the page already holds.
+        'image': picture(image, 'original') or picture(image), 'still': picture(image),
+        'summary': plain(raw.get('summary'), WHOLE_SUMMARY), 'guests': guests[:40], 'crew': crew[:12],
+    }
 
 
 class Live:
@@ -255,6 +318,14 @@ class Live:
         if not season:
             raise LiveError('That season is not listed for this show.', 404)
         return self.get(EPISODES.format(id=season['id']), trim_episodes)
+
+    def episode(self, episode_id):
+        """One episode in full. An id TVmaze does not know is an answer too, kept like any
+        other, so a stale link to it is not asked about again and again."""
+        found = self.get(EPISODE.format(id=episode_id), trim_episode, missing={})
+        if not found:
+            raise LiveError('TVmaze has no details for this episode.', 404)
+        return found
 
 
 class Icons:

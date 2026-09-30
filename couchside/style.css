@@ -555,6 +555,18 @@ dialog.unfolding{overflow-anchor:none}
 .ep h4 span{flex:none;font-weight:400;color:var(--ink-2)}
 .ep p{margin:0;font-size:14px;line-height:1.45;color:var(--muted)}
 .ep-date{display:block;margin-bottom:4px;font-size:12.5px;color:var(--dim)}
+/* An episode that opens is one link, its name stretched over the whole row, with the row's
+   own outline for a keyboard. */
+.ep.opens{position:relative;cursor:pointer}
+.ep-open{color:inherit;text-decoration:none}
+.ep-open::after{content:'';position:absolute;inset:0;border-radius:4px}
+.ep-open:focus-visible{outline:none}
+.ep-open:focus-visible::after{outline:2px solid var(--brand);outline-offset:-2px}
+@media(hover:hover) and (pointer:fine){
+  .ep.opens{transition:background-color .15s}
+  .ep.opens:hover{background:#2c2c2c}
+  .ep.opens:hover .ep-open{text-decoration:underline;text-underline-offset:3px}
+}
 @media(max-width:600px){
   .ep{grid-template-columns:118px minmax(0,1fr);gap:12px;padding:14px 4px}
   .ep-num{display:none}
@@ -603,6 +615,104 @@ dialog.unfolding{overflow-anchor:none}
     box-shadow:inset 0 1px 0 #ffffff29,0 4px 14px #00000066}
 }
 
+/* an episode ------------------------------------------------------------ */
+/* An episode opens in a sheet of its own over its title page. On a phone it is a card that
+   leaves a strip of the title page showing above it, so what closing it uncovers is in
+   sight; wider, a card a little narrower and lower than the title page, floating over it.
+   Either way the card clears the status bar itself, so what is inside needs no inset. */
+dialog.episode{--edge-t:0px}
+dialog.episode::backdrop{background:#000000a3}
+dialog.episode .sheet{overflow:hidden}
+@media(max-width:759px){
+  dialog.episode{padding-top:calc(var(--safe-t) + 10px)}
+  dialog.episode .sheet{border-radius:12px 12px 0 0}
+}
+@media(min-width:760px){
+  dialog.episode{padding-top:calc(58px + var(--safe-t))}
+  dialog.episode .sheet{max-width:760px}
+}
+/* The way back names the show it goes back to. On a phone it stays put as the sheet scrolls,
+   as the title page's close button does, and sits low enough that a long name passes under
+   the grab handle rather than into it. */
+.e-back{position:absolute;top:calc(12px + var(--edge-t));left:calc(12px + var(--edge-l));z-index:6;display:inline-flex;
+  align-items:center;gap:2px;max-width:min(64%,340px);min-height:44px;padding:0 16px 0 8px;border:0;border-radius:22px;
+  background:#181818e6;color:#fff;font-size:15px;font-weight:700;cursor:pointer}
+.e-back:hover{background:#2a2a2a}
+.e-back .i svg{width:24px;height:24px}
+.e-back-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:759px){
+  .e-back{position:fixed;top:calc(var(--safe-t) + 30px);left:calc(12px + var(--safe-l));background:#2e2e2ebf;
+    -webkit-backdrop-filter:blur(14px) saturate(1.6);backdrop-filter:blur(14px) saturate(1.6);
+    box-shadow:inset 0 1px 0 #ffffff29,0 4px 14px #00000066}
+}
+/* The still, in the show's own colour until it arrives: the list's at once, and the largest
+   over it once loaded. */
+.e-hero{position:relative;aspect-ratio:16/9;max-height:min(62vh,480px);overflow:hidden;
+  background:linear-gradient(160deg,hsl(var(--h,220) 42% 30%),hsl(var(--h,220) 36% 12%))}
+.e-hero img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .35s}
+.e-hero.has-still .e-still,.e-hero.has-image .e-image{opacity:1}
+.e-fade{position:absolute;inset:0;background:linear-gradient(to top,var(--bg-2) 0,#18181800 40%)}
+.e-head{position:relative;display:flex;align-items:flex-end;gap:14px;margin-top:-28px;padding:0 5%}
+.e-words{flex:1;min-width:0}
+.e-code{margin:0 0 4px;font-size:13.5px;font-weight:800;letter-spacing:.06em;color:var(--brand);text-shadow:0 1px 6px #000c}
+.e-name{margin:0;font:800 clamp(24px,3.4vw,34px)/1.12 -apple-system,BlinkMacSystemFont,sans-serif;overflow-wrap:anywhere;
+  text-shadow:0 2px 12px #000b;outline:none}
+.e-meta{margin:10px 0 0;font-size:15px}
+.e-rating{display:inline-flex;align-items:center;gap:4px;font-weight:700;color:var(--ink)}
+.e-rating .i{color:var(--brand)}
+.e-rating .i svg{width:15px;height:15px}
+.e-head .round{margin-bottom:2px}
+.e-body{padding:18px 5% 34px}
+.e-summary p{margin:0;font-size:15.5px;line-height:1.6;color:var(--ink-2)}
+.e-note{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.e-note:not(:empty){margin-top:14px}
+.e-note p{margin:0;font-size:14.5px}
+.e-crew{margin-top:18px}
+.e-crew p{margin:0 0 6px;font-size:14.5px;line-height:1.6;color:var(--ink-2)}
+.e-crew .k{color:var(--dim)}
+.e-guests{margin-top:28px}
+.e-guests h3{margin:0 0 14px;font:700 clamp(19px,2vw,24px)/1.3 -apple-system,BlinkMacSystemFont,sans-serif}
+.e-guests .cast{margin:0}
+/* Guest stars and crew look as tappable as the rest of the page, for a person's own page. */
+.e-person{padding:0;border:0;background:none;color:inherit;font:inherit;text-align:inherit;cursor:pointer}
+.e-guest{display:block;width:100%}
+.e-guest .face{transition:box-shadow .15s}
+.e-credit{font-weight:700;color:var(--ink);text-decoration:underline;text-decoration-color:#ffffff4d;
+  text-underline-offset:3px}
+@media(hover:hover) and (pointer:fine){
+  .e-guest:hover .face{box-shadow:0 0 0 2px #ffffffb3}
+  .e-guest:hover b{text-decoration:underline;text-underline-offset:2px}
+  .e-credit:hover{text-decoration-color:#fff}
+}
+/* A name in a line of credits takes a finger 44px tall without moving the line. */
+@media(any-pointer:coarse){.e-credit{padding:9px 0;margin:-9px 0}}
+/* Previous and Next: the episodes either side, each with its still, a column each. */
+.e-steps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 14px;margin-top:30px;padding-top:22px;
+  border-top:1px solid var(--line)}
+.e-step{display:flex;flex-direction:column;gap:8px;min-width:0;color:inherit;text-decoration:none;border-radius:6px}
+.e-step.next{grid-column:2}
+.e-step-still{position:relative;display:block;aspect-ratio:16/9;border-radius:6px;overflow:hidden;background:#2b2b2b}
+.e-step-still img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.e-step-words{display:flex;flex-direction:column;gap:3px;min-width:0}
+.e-step.next .e-step-words{align-items:flex-end;text-align:right}
+.e-step small{display:inline-flex;align-items:center;gap:2px;font-size:12px;font-weight:800;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--muted)}
+.e-step small .i svg{width:16px;height:16px}
+.e-step b{font-size:14.5px;line-height:1.3;overflow-wrap:anywhere}
+@media(hover:hover) and (pointer:fine){
+  .e-step:hover b{text-decoration:underline;text-underline-offset:3px}
+  .e-step:hover .e-step-still img{filter:brightness(1.12)}
+}
+@media(hover:none) and (prefers-reduced-motion:no-preference){
+  .ep.opens,.e-step,.e-person,.e-back{-webkit-tap-highlight-color:transparent}
+  .ep.opens{transition:background-color .2s ease}
+  .ep.opens:active{background:#ffffff12;transition:background-color .12s ease .06s}
+  .e-step,.e-guest{transition:filter .2s ease}
+  .e-step:active,.e-guest:active{filter:brightness(.75);transition:filter .12s ease .06s}
+  .e-back{transition:transform .2s ease}
+  .e-back:active{transform:scale(.95);transition:transform .1s ease .04s}
+}
+
 /* skeletons ------------------------------------------------------------ */
 .skel{display:block;border-radius:4px;background:linear-gradient(90deg,#232323 0,#303030 40%,#232323 80%);
   background-size:220% 100%;animation:shimmer 1.3s linear infinite}
@@ -611,6 +721,15 @@ dialog.unfolding{overflow-anchor:none}
 .skel.card{width:var(--card);aspect-ratio:2/3}
 .skel.card-fill{width:100%;aspect-ratio:2/3;border-radius:0}
 @keyframes shimmer{to{background-position:-220% 0}}
+/* An episode's parts on their way, each in its own shape: its still, its number and name, a
+   line of credits and the guest stars' faces. */
+.e-hero.loading,.cast .skel.face{background:linear-gradient(90deg,#232323 0,#303030 40%,#232323 80%);background-size:220% 100%;
+  animation:shimmer 1.3s linear infinite}
+.e-code .skel.line{width:64px;height:12px;margin:0 0 8px}
+.e-name .skel.line{width:62%;height:28px;margin:0}
+.e-meta .skel.line{width:170px;margin:4px 0}
+.e-crew .skel.line{width:46%}
+.cast li>.skel.line{width:70%;height:12px;margin:8px auto 0}
 
 /* menus and small dialogs --------------------------------------------- */
 /* The profile menu drops from the nav on a wide screen and rises from the foot on a phone;

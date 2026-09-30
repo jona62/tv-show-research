@@ -9,6 +9,7 @@ import { POSTERS_AHEAD, POSTERS_AT_ONCE, FLUNG, FLUNG_AT_ONCE, STILL_FLUNG, SLOW
 import { genreChoices, nextByLetter, searchText, recentStore, noteSearch, withoutSearch, recentMatches, keepsRow } from './format.js';
 import { keeper, sessionAnswers } from './format.js';
 import { SNIPPETS, snippet, revealLabel } from './format.js';
+import { withEpisode, episodeCode, episodeSaid, neighbours, credits, airing } from './format.js';
 import { freshStore, today, dayNumber, noteSeen, noteEngaged, noteRow, noteHero, prune, freshness, watcher }
   from './fresh.js';
 import { daySeed, startersQuery, mergeStarters, browserLanguage, MAX_ROUND, MAX_PICKED } from './starters.js';
@@ -47,7 +48,7 @@ const TITLES = {
   home: 'Couchside', welcome: 'Welcome · Couchside', new: 'New & Popular · Couchside',
   list: 'My List · Couchside', search: 'Search · Couchside', browse: 'Browse · Couchside',
 };
-// Thumb, heart, search and navigation shapes follow Feather icons (MIT, Cole Bemis).
+// Thumb, heart, star, search and navigation shapes follow Feather icons (MIT, Cole Bemis).
 const ICONS = {
   search: '<circle cx="11" cy="11" r="7"/><path d="M20.5 20.5l-4.3-4.3"/>',
   clock: '<circle cx="12" cy="12" r="9.5"/><path d="M12 6.5V12l3.5 2"/>',
@@ -69,6 +70,7 @@ const ICONS = {
   more: '<path d="M6 9l6 6 6-6"/>',
   share: '<path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"/>',
   grid: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>',
+  star: '<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z" fill="currentColor"/>',
 };
 
 /* ------------------------------------------------------------- storage */
@@ -305,10 +307,10 @@ async function request(path, options = {}) {
 // home page keeps itself (keepPage).
 const MINUTE = 60_000;
 const KEEP = {
-  '/api/extra': 30, '/api/trailer': 30, '/api/rating': 30, '/api/episodes': 30,
+  '/api/extra': 30, '/api/trailer': 30, '/api/rating': 30, '/api/episodes': 30, '/api/episode': 30,
   '/api/search': 10, '/api/title': 10, '/api/browse': 10,
 };
-const LIVE = ['/api/extra', '/api/trailer', '/api/rating', '/api/episodes'];
+const LIVE = ['/api/extra', '/api/trailer', '/api/rating', '/api/episodes', '/api/episode'];
 const ANSWERS_KEY = 'couchside-answers';
 const asked = keeper();
 let answers = {};
@@ -375,13 +377,15 @@ function go(path) {
 }
 
 function route() {
-  const { page, q, show } = where();
+  const { page, q, show, episode } = where();
   const name = page === 'home' && !state.profile.length && !state.onboarded ? 'welcome' : page;
   if (name !== view) showView(name);
   else if (name === 'browse') renderBrowse();
   if (name === 'search') search(q, false);
   if (show) {
     if (!$('title').open || titleId !== show) showTitle(show);
+    if (episode && episodeId !== episode) showEpisode(episode);
+    else if (!episode && episodeId) hideEpisode();
   } else if ($('title').open) hideTitle();
 }
 
@@ -422,9 +426,11 @@ function syncNav() {
   $('nav').classList.toggle('solid', view !== 'home' || window.scrollY > 40);
 }
 
+// A link the app opens itself: a plain click, not one asking for a new tab or window.
+const plainClick = e => e.button === 0 && !e.defaultPrevented && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
 document.addEventListener('click', e => {
   const a = e.target.closest('a[data-link]');
-  if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  if (!a || !plainClick(e)) return;
   e.preventDefault();
   const dialog = a.closest('dialog');
   if (dialog?.open) dialog.close();
@@ -432,9 +438,10 @@ document.addEventListener('click', e => {
 });
 window.addEventListener('popstate', route);
 window.addEventListener('scroll', syncNav, { passive: true });
-// Installed, a swipe in from the left edge goes back from a title page or a view off home.
+// Installed, a swipe in from the left edge goes back from an episode to its title page,
+// from a title page, or from a view off home.
 edgeBack(() => !!titleId || (view !== 'home' && !document.querySelector('dialog[open]')),
-  () => (titleId ? closeTitle() : history.back()));
+  () => (episodeId ? closeEpisode() : titleId ? closeTitle() : history.back()));
 
 /* ---------------------------------------------------------------- home */
 // The page arrives a few rows at a time: the first answer brings the hero and the first
@@ -1136,6 +1143,7 @@ function closeTitle() {
   }
 }
 function hideTitle() {
+  if (episodeId) hideEpisode();
   titleToken++;
   titleId = null;
   T = null;
@@ -1152,10 +1160,11 @@ $('title').addEventListener('cancel', e => { e.preventDefault(); closeTitle(); }
 $('t-sheet').addEventListener('click', e => { if (titleId && e.target.closest('a[target="_blank"]')) engaged(titleId); });
 $('title').addEventListener('click', e => { if (e.target === $('title')) closeTitle(); });
 // Every dialog is a sheet (gestures.js): a swipe down closes it as its close button does,
-// and the title page through its history.
-sheets(d => (d === $('title') ? closeTitle() : d.close()));
+// and the title page and an episode over it through their history.
+sheets(d => (d === $('title') ? closeTitle() : d === $('episode') ? closeEpisode() : d.close()));
 
 function showTitle(id, play = false) {
+  if (E && E.show !== id) hideEpisode();
   const token = ++titleToken;
   titleId = id;
   T = buildTitle({ ...info(id), id });
@@ -1280,10 +1289,11 @@ function buildTitle(c) {
   const about = el('section', '', 't-section about');
   $('t-sheet').replaceChildren(close, hero, body, episodes, videos, more, fans, about);
   // Where to watch, the season's episodes and the trailers start short (unfold); each part
-  // remembers whether it was opened, so a repaint or another season keeps it so.
+  // remembers whether it was opened, so a repaint or another season keeps it so. The season
+  // shown is kept (season) for its episodes to step through, and picked from its menu (pick).
   const t = { id: c.id, card: c, hero, backdrop, name, out, acts, listed, main, side, episodes, clips: videos, moreList,
               fans, fansSub, fansList, about, close, data: null, live: null, age: null, videos: null, error: '',
-              eps: null, epsMore: null, clipList: null, clipsMore: null,
+              eps: null, epsMore: null, clipList: null, clipsMore: null, pick: null, season: null, episodeSeason: null,
               open: { watch: false, episodes: false, clips: false } };
   paintOut(t, c);
   return t;
@@ -1299,7 +1309,8 @@ function paintTitle() {
   const s = { ...T.card, ...(T.data?.show || {}) };
   const live = T.live;
   T.name.textContent = s.name;
-  document.title = `${s.name || 'Show'} · Couchside`;
+  // An episode open over the page names the tab, and its way back names the show.
+  if (E) nameEpisode(); else document.title = `${s.name || 'Show'} · Couchside`;
   // A title opened before the page knew the show (a shared link) gets its poster once the
   // show has loaded, instead of keeping the blank tile it opened with.
   const art = s.art || s.poster;
@@ -1457,18 +1468,18 @@ window.addEventListener('resize', () => requestAnimationFrame(() => {
   if (T?.clipList && !busy(T.clipList)) setClips(T.open.clips);
 }));
 
-// A long part of a title page opens with a button that closes it again (aria-expanded,
-// with a caret that turns). Opening runs the part's height up from what it was, so what
-// is below slides down; closing runs it back, and when the button sits below the part
-// the page moves with it, so the button stays under the finger. Quick, and at once under
-// reduced motion.
+// A long part of a title page, or of an episode, opens with a button that closes it again
+// (aria-expanded, with a caret that turns). Opening runs the part's height up from what it
+// was, so what is below slides down; closing runs it back, and when the button sits below
+// the part the sheet moves with it, so the button stays under the finger. Quick, and at
+// once under reduced motion.
 const REVEAL = 220;
 const easeOut = k => 1 - (1 - k) ** 3;
 const busy = box => box.classList.contains('sizing');
 function unfold(box, set, open, anchor = null) {
   // A hidden page runs no animations, so one begun there would hold the part half open.
   const still = !motion() || document.hidden;
-  const page = $('title');
+  const page = box.closest('dialog');
   const from = box.offsetHeight;
   // While a part runs, the page is not moved to keep what is below it in place.
   const done = () => {
@@ -1498,8 +1509,8 @@ function unfold(box, set, open, anchor = null) {
   box.classList.add('sizing');
   page.classList.add('unfolding');
   const step = now => {
-    // A title page closed meanwhile has nothing left to close.
-    if (!T || !box.isConnected) {
+    // A sheet closed meanwhile, or drawn again, has nothing left to close.
+    if (!box.isConnected || !page.open || closing(page)) {
       done();
       return;
     }
@@ -1633,16 +1644,20 @@ function stopVideo() {
 async function shareTitle() {
   if (!T) return;
   const s = { ...T.card, ...(T.data?.show || {}) };
-  const url = `${location.origin}/?show=${s.id}`;
+  await shareLink(`${location.origin}/?show=${s.id}`, `${s.name} on Couchside`, `${s.name}${s.year ? ` (${s.year})` : ''}`,
+    'Link copied. It opens straight to this show.');
+}
+// The phone's own share sheet where there is one, and the clipboard elsewhere.
+async function shareLink(url, title, text, copied) {
   if (navigator.share) {
     try {
-      await navigator.share({ title: `${s.name} on Couchside`, text: `${s.name}${s.year ? ` (${s.year})` : ''}`, url });
+      await navigator.share({ title, text, url });
     } catch { /* closed without sharing */ }
     return;
   }
   try {
     await navigator.clipboard.writeText(url);
-    toast('Link copied. It opens straight to this show.');
+    toast(copied);
   } catch {
     toast(`Copy this link to share it: ${url}`);
   }
@@ -1720,6 +1735,10 @@ function paintEpisodes() {
     pick.addEventListener('change', () => loadSeason(Number(pick.value)));
     head.append(pick);
   } else head.append(el('span', `Season ${list[0].number}`, 'muted'));
+  // A page opened under one of its episodes starts at that episode's season (syncSeason).
+  const first = list.find(s => s.number === T.episodeSeason) || list[0];
+  if (pick) pick.value = String(first.number);
+  T.pick = pick;
   T.eps = el('ol', '', 'eps');
   T.eps.id = 't-eps';
   T.epsMore = revealButton(T.eps, () => {
@@ -1729,7 +1748,7 @@ function paintEpisodes() {
   });
   T.episodes.replaceChildren(head, T.eps, T.epsMore.parentElement);
   T.episodes.hidden = false;
-  loadSeason(list[0].number);
+  loadSeason(first.number);
 }
 
 // A season shows its first few episodes until they are all asked for, and every season
@@ -1744,6 +1763,7 @@ function setEpisodes(open) {
 
 async function loadSeason(number) {
   const token = ++seasonToken, t = T;
+  t.season = null;
   const skeleton = () => {
     const li = el('li', '', 'ep');
     li.append(el('span', '', 'ep-num'), el('span', '', 'ep-still skel'), skelLines(2));
@@ -1754,7 +1774,9 @@ async function loadSeason(number) {
   try {
     const { episodes } = await patient(`/api/episodes?id=${t.id}&season=${number}`);
     if (token !== seasonToken || T !== t) return;
-    t.eps.replaceChildren(...(episodes.length ? episodes.map(episodeEl)
+    // Kept with its show, for an episode opened from it to step through the season.
+    t.season = { show: t.id, number, episodes };
+    t.eps.replaceChildren(...(episodes.length ? episodes.map(ep => episodeEl(ep, t.season))
       : [el('li', 'No episodes are listed for this season yet.', 'muted')]));
   } catch (e) {
     if (token !== seasonToken || T !== t) return;
@@ -1763,9 +1785,13 @@ async function loadSeason(number) {
   setEpisodes(t.open.episodes);
 }
 
-function episodeEl(ep) {
+// An episode in its season's list. One with an id opens in full (openEpisode): its name is
+// a link to the episode's own address, stretched over the whole row, so the row is one
+// tap or click, the link reads out as the episode, and a new tab or a copied link works.
+function episodeEl(ep, season) {
   const li = el('li', '', 'ep');
-  li.append(el('span', ep.number ?? '', 'ep-num'));
+  const num = el('span', ep.number ?? '', 'ep-num');
+  li.append(num);
   const still = el('span', '', 'ep-still');
   if (ep.still) {
     const img = picture(null);
@@ -1774,13 +1800,384 @@ function episodeEl(ep) {
     still.append(img);
   }
   const text = el('div');
-  const h = el('h4', ep.number ? ep.name : `Special: ${ep.name}`);
+  const name = ep.number ? ep.name : `Special: ${ep.name}`;
+  const h = el('h4');
+  if (Number.isInteger(ep.id)) {
+    const a = el('a', name, 'ep-open');
+    a.href = `/?show=${season.show}&episode=${ep.id}`;
+    // The number is read out with the name rather than before it.
+    a.setAttribute('aria-label', ep.number ? `Episode ${ep.number}: ${ep.name}` : name);
+    num.setAttribute('aria-hidden', 'true');
+    a.addEventListener('click', e => {
+      if (!plainClick(e)) return;
+      e.preventDefault();
+      openEpisode(ep, season, a);
+    });
+    h.append(a);
+    li.classList.add('opens');
+  } else h.append(name);
   if (ep.runtime) h.append(el('span', runtime(ep.runtime)));
   text.append(h);
   if (ep.airdate) text.append(el('span', longDate(ep.airdate), 'ep-date'));
   if (ep.summary) text.append(el('p', ep.summary));
   li.append(still, text);
   return li;
+}
+
+/* ------------------------------------------------------------- an episode */
+// An episode opens in a sheet of its own over its title page, which waits beneath it just
+// as it was left, scrolled where it was with its season chosen; closing the sheet, by its
+// back button, Back, Escape or a swipe down, uncovers it again. The sheet shows at once
+// what the season's list knew (the still, name, date and runtime) and fills in the rest
+// from TVmaze: the largest still, the whole summary, the rating, who directed and wrote
+// it, and the guest stars. Previous and Next step through the season in the same sheet,
+// replacing the address, so Back still returns to the title page. The address carries
+// the episode beside its show (?show=169&episode=12203), so a reload or a shared link
+// opens it again over its title page.
+let E = null, episodeId = null, episodeToken = 0, episodeFrom = null;
+const showName = () => (T ? { ...T.card, ...(T.data?.show || {}) }.name || '' : '');
+
+function openEpisode(ep, season, from) {
+  if (!T) return;
+  engaged(T.id);
+  history.pushState({ modal: true, episode: true }, '', withEpisode(location.pathname, location.search, ep.id));
+  showEpisode(ep.id, { card: { ...ep, season: season.number }, season, from });
+}
+function stepEpisode(ep, way) {
+  if (!E?.season) return;
+  history.replaceState(history.state, '', withEpisode(location.pathname, location.search, ep.id));
+  showEpisode(ep.id, { card: { ...ep, season: E.season.number }, season: E.season, from: E.from, way });
+}
+function closeEpisode() {
+  if (history.state?.episode) history.back();
+  else {
+    history.replaceState(history.state, '', withEpisode(location.pathname, location.search, null));
+    hideEpisode();
+  }
+}
+function hideEpisode() {
+  episodeToken++;
+  episodeId = null;
+  episodeFrom = E?.from || null;
+  E = null;
+  // Escape can close the sheet before Back gets here, since a browser stops a page holding
+  // a sheet open with Escape; then it is settled now rather than once it closes.
+  if ($('episode').open) $('episode').close(); else settleEpisode();
+  if (T) document.title = `${showName() || 'Show'} · Couchside`;
+}
+// The sheet is emptied once it has closed, unless an episode opened again meanwhile, and
+// the focus goes back to the episode in the list it was opened from.
+function settleEpisode() {
+  $('e-sheet').replaceChildren();
+  $('e-sheet').removeAttribute('aria-busy');
+  if (titleId && episodeFrom?.isConnected && !episodeFrom.closest('[hidden]')) episodeFrom.focus({ preventScroll: true });
+  episodeFrom = null;
+}
+$('episode').addEventListener('close', () => { if (!episodeId) settleEpisode(); });
+$('episode').addEventListener('cancel', e => { e.preventDefault(); closeEpisode(); });
+$('episode').addEventListener('click', e => { if (e.target === $('episode')) closeEpisode(); });
+// The left and right arrows step through the season, as Previous and Next do.
+$('episode').addEventListener('keydown', e => {
+  if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || !E) return;
+  const way = { ArrowLeft: 'prev', ArrowRight: 'next' }[e.key];
+  const step = way && E.steps.querySelector(`[data-step="${way}"]`);
+  if (!step) return;
+  e.preventDefault();
+  step.click();
+});
+
+function showEpisode(id, { card = null, season = null, from = null, way = '' } = {}) {
+  if (!titleId) return;
+  const token = ++episodeToken;
+  // Every guest star shows for each episode after, once asked for, until they are closed.
+  const open = E?.open || { guests: false };
+  episodeId = id;
+  E = buildEpisode({ id, show: titleId, card, season, from, open });
+  const dialog = $('episode');
+  const opening = !dialog.open || closing(dialog);
+  if (opening) dialog.showModal();
+  dialog.scrollTop = 0;
+  paintEpisode();
+  if (opening) E.back.focus({ preventScroll: true });
+  else {
+    // A step lands on the new episode's name, read out as the page it now is, and the
+    // page slides in from the side it was stepped to.
+    E.name.focus({ preventScroll: true });
+    if (way && motion()) {
+      E.page.animate([{ opacity: 0, transform: `translateX(${way === 'next' ? 28 : -28}px)` }, { opacity: 1, transform: 'none' }],
+        { duration: 240, easing: 'cubic-bezier(.22,1,.36,1)' });
+    }
+  }
+  loadEpisode(token);
+}
+
+function buildEpisode(e) {
+  const back = button('e-back', '', closeEpisode, 'left');
+  const backName = el('span', '', 'e-back-name');
+  back.append(backName);
+  const hero = el('div', '', 'e-hero');
+  hero.style.setProperty('--h', String(hue(e.show)));
+  // The still the season's list showed comes at once, and the largest TVmaze keeps fades
+  // in over it.
+  const still = picture(null, 'e-still', () => hero.classList.add('has-still'));
+  const image = picture(null, 'e-image', () => hero.classList.add('has-image'));
+  hero.append(still, image, el('div', '', 'e-fade'));
+  const code = el('p', '', 'e-code');
+  const name = el('h2', '', 'e-name');
+  name.id = 'e-name';
+  name.tabIndex = -1;
+  const meta = el('p', '', 'e-meta dot-list');
+  const share = button('round small', '', shareEpisode, 'share');
+  share.setAttribute('aria-label', 'Share this episode');
+  share.title = 'Share';
+  const words = el('div', '', 'e-words');
+  words.append(code, name, meta);
+  const head = el('div', '', 'e-head');
+  head.append(words, share);
+  const summary = el('div', '', 'e-summary');
+  const note = el('div', '', 'e-note');
+  const crew = el('div', '', 'e-crew');
+  const guests = el('section', '', 'e-guests');
+  const guestsH = el('h3', 'Guest stars');
+  guestsH.id = 'e-guests-h';
+  guests.setAttribute('aria-labelledby', guestsH.id);
+  const guestList = el('ul', '', 'cast');
+  guestList.id = 'e-guest-list';
+  const guestsMore = revealButton(guestList, () => {
+    if (!E || busy(guestList)) return;
+    E.open.guests = !E.open.guests;
+    unfold(guestList, setGuests, E.open.guests, E.guestsMore);
+  });
+  guests.append(guestsH, guestList, guestsMore.parentElement);
+  const steps = el('nav', '', 'e-steps');
+  const body = el('div', '', 'e-body');
+  body.append(summary, note, crew, guests, steps);
+  const page = el('div', '', 'e-page');
+  page.append(hero, head, body);
+  $('e-sheet').replaceChildren(back, page);
+  return { ...e, back, backName, page, hero, still, image, code, name, meta, share, summary, note, crew, guests, guestList,
+           guestsMore, steps, detail: null, error: '', retry: false };
+}
+
+// What is known so far: the list's own line for the episode at first, then TVmaze's whole
+// answer, with skeletons standing in for what is still on its way.
+function paintEpisode() {
+  const e = E;
+  if (!e) return;
+  const ep = { ...e.card, ...e.detail };
+  const waiting = !e.detail && !e.error;
+  if (waiting) $('e-sheet').setAttribute('aria-busy', 'true'); else $('e-sheet').removeAttribute('aria-busy');
+  nameEpisode();
+  if (ep.still && !e.still.getAttribute('src')) e.still.src = ep.still;
+  // Without a still of its own, the show's backdrop stands in.
+  const art = ep.image || (e.detail ? T?.data?.tmdb?.backdrop || T?.live?.backdrop : null);
+  if (art && art !== ep.still && !e.image.getAttribute('src')) e.image.src = art;
+  e.hero.classList.toggle('loading', waiting && !ep.still);
+
+  if (ep.name) {
+    const code = el('span', episodeCode(ep.season, ep.number));
+    code.setAttribute('aria-hidden', 'true');
+    e.code.replaceChildren(code, el('span', episodeSaid(ep.season, ep.number), 'sr'));
+    e.name.textContent = ep.name;
+  } else if (waiting) {
+    e.code.replaceChildren(el('span', '', 'skel line'));
+    e.name.replaceChildren(el('span', '', 'skel line'));
+  } else {
+    e.code.replaceChildren();
+    e.name.textContent = 'Episode';
+  }
+  e.meta.replaceChildren(...[airing(ep.airdate, ep.airstamp), ep.runtime ? runtime(ep.runtime) : '']
+    .filter(Boolean).map(fact => el('span', fact)));
+  if (ep.rating) e.meta.append(ratingEl(ep.rating));
+  else if (waiting && !ep.name) e.meta.append(el('span', '', 'skel line'));
+  e.share.hidden = !ep.name;
+
+  const said = ep.summary ? el('p', ep.summary)
+    : waiting ? skelLines(4) : e.detail ? el('p', 'TVmaze has no summary for this episode yet.', 'muted') : null;
+  e.summary.replaceChildren(...(said ? [said] : []));
+  e.note.replaceChildren();
+  if (e.error) {
+    e.note.append(el('p', e.error, 'muted'));
+    if (e.retry) {
+      e.note.append(button('btn ghost', 'Try again', () => {
+        if (!E) return;
+        E.error = '';
+        paintEpisode();
+        loadEpisode(episodeToken);
+      }));
+    }
+  }
+
+  const made = e.detail ? credits(e.detail.crew) : [];
+  e.crew.replaceChildren(...(waiting ? [skelLines(2)] : made.map(creditEl)));
+  e.crew.hidden = !waiting && !made.length;
+
+  const guests = e.detail?.guests || [];
+  e.guests.hidden = !waiting && !guests.length;
+  if (waiting) {
+    e.guestList.replaceChildren(...Array.from({ length: 6 }, () => {
+      const li = el('li');
+      li.append(el('span', '', 'face skel'), el('span', '', 'skel line'));
+      return li;
+    }));
+    e.guestsMore.parentElement.hidden = true;
+  } else {
+    e.guestList.replaceChildren(...guests.map(guestEl));
+    setGuests(e.open.guests);
+  }
+  paintSteps();
+}
+
+// The tab and the way back name the episode and its show, once they are known.
+function nameEpisode() {
+  if (!E) return;
+  const show = showName();
+  const ep = { ...E.card, ...E.detail };
+  E.backName.textContent = show || 'Back';
+  E.back.setAttribute('aria-label', show ? `Back to ${show}` : 'Back');
+  document.title = [ep.name, show || 'Show', 'Couchside'].filter(Boolean).join(' · ');
+}
+
+// TVmaze's rating in the meta line, where the dots between facts fall only between spans.
+function ratingEl(rating) {
+  const span = el('span', '', 'e-rating');
+  span.title = 'Rating on TVmaze';
+  span.append(icon('star'), el('b', rating.toFixed(1)), el('span', ' out of 10 on TVmaze', 'sr'));
+  return span;
+}
+
+// Guest stars and crew each carry their TVmaze person id (data-person), for a person's own
+// page to open from.
+function personEl(p, cls) {
+  const b = button(`e-person ${cls}`, '', null);
+  b.dataset.person = p.id;
+  return b;
+}
+function creditEl({ label, people }) {
+  const line = el('p');
+  line.append(el('span', `${label} `, 'k'));
+  people.forEach((p, n) => {
+    if (n) line.append(n === people.length - 1 ? ' and ' : ', ');
+    const name = personEl(p, 'e-credit');
+    name.textContent = p.name;
+    line.append(name);
+  });
+  return line;
+}
+// A guest star's face, name and part, as the title page's cast shows them.
+function guestEl(p) {
+  const li = el('li');
+  const b = personEl(p, 'e-guest');
+  const face = el('span', '', 'face');
+  if (p.photo) {
+    const img = picture(null);
+    img.loading = 'lazy';
+    img.src = p.photo;
+    face.append(img);
+  }
+  b.append(face, el('b', p.name));
+  if (p.character) b.append(el('span', `as ${p.character}`));
+  li.append(b);
+  return li;
+}
+// An episode's guest stars start with the first twelve until they are all asked for.
+function setGuests(open) {
+  const items = [...E.guestList.children];
+  const shown = snippet(items.length, SNIPPETS.guests);
+  items.forEach((li, n) => { li.hidden = !open && n >= shown; });
+  E.guestsMore.parentElement.hidden = shown === items.length;
+  paintReveal(E.guestsMore, revealLabel('guests', items.length, open), open);
+}
+
+// Previous and Next, for reading through the season: each with its still and name.
+function paintSteps() {
+  const e = E;
+  const { prev, next } = neighbours(e.season?.episodes, e.id);
+  e.steps.hidden = !prev && !next;
+  if (e.season) e.steps.setAttribute('aria-label', `Season ${e.season.number}`);
+  e.steps.replaceChildren(...[prev && stepEl(prev, 'prev'), next && stepEl(next, 'next')].filter(Boolean));
+}
+function stepEl(ep, way) {
+  const said = way === 'prev' ? 'Previous' : 'Next';
+  const a = el('a', '', `e-step ${way}`);
+  a.href = `/?show=${E.show}&episode=${ep.id}`;
+  a.dataset.step = way;
+  a.setAttribute('aria-label', `${said}, ${episodeSaid(null, ep.number).toLowerCase()}: ${ep.name}`);
+  const thumb = el('span', '', 'e-step-still');
+  if (ep.still) {
+    const img = picture(null);
+    img.loading = 'lazy';
+    img.src = ep.still;
+    thumb.append(img);
+  }
+  const small = el('small');
+  small.append(...(way === 'prev' ? [icon('left'), said] : [said, icon('right')]));
+  const words = el('span', '', 'e-step-words');
+  words.append(small, el('b', `${episodeCode(null, ep.number)} · ${ep.name}`));
+  a.append(thumb, words);
+  a.addEventListener('click', e => {
+    if (!plainClick(e)) return;
+    e.preventDefault();
+    stepEpisode(ep, way);
+  });
+  return a;
+}
+
+async function loadEpisode(token) {
+  const e = E;
+  try {
+    const { episode } = await patient(`/api/episode?id=${e.id}`);
+    if (token !== episodeToken) return;
+    // An address can pair an episode with another show; the episode is shown only over its own.
+    if (episode.show !== e.show) e.error = 'That episode belongs to another show.';
+    else {
+      e.detail = episode;
+      syncSeason(episode.season);
+      if (e.season?.number !== episode.season) loadSteps(token, episode.season);
+    }
+  } catch (err) {
+    if (token !== episodeToken) return;
+    e.error = err.message;
+    e.retry = err.status !== 404;
+  }
+  paintEpisode();
+}
+
+// The season an episode opened from its address steps through: the title page's own list
+// when it shows that season, else the same list asked for here.
+async function loadSteps(token, number) {
+  if (!Number.isInteger(number)) return;
+  const e = E;
+  if (T?.season?.show === e.show && T.season.number === number) {
+    e.season = T.season;
+    paintSteps();
+    return;
+  }
+  try {
+    const { episodes } = await patient(`/api/episodes?id=${e.show}&season=${number}`);
+    if (token !== episodeToken) return;
+    e.season = { show: e.show, number, episodes };
+    paintSteps();
+  } catch { /* no steps, and the episode itself is still there */ }
+}
+
+// A title page opened under one of its episodes, as the episode's address opens it, shows
+// that episode's season, so closing the episode uncovers the season it belongs to.
+function syncSeason(number) {
+  if (!T || !Number.isInteger(number)) return;
+  T.episodeSeason = number;
+  const pick = T.pick;
+  if (!pick || pick.value === String(number) || ![...pick.options].some(o => o.value === String(number))) return;
+  pick.value = String(number);
+  loadSeason(number);
+}
+
+async function shareEpisode() {
+  if (!E) return;
+  const ep = { ...E.card, ...E.detail };
+  const show = showName();
+  await shareLink(`${location.origin}/?show=${E.show}&episode=${E.id}`, `${ep.name} · ${show} on Couchside`,
+    `${show} ${episodeCode(ep.season, ep.number)}: ${ep.name}`, 'Link copied. It opens straight to this episode.');
 }
 
 /* --------------------------------------------------------------- browse */
