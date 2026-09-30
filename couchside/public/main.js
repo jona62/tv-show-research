@@ -937,12 +937,24 @@ function featuredSlide(s, i, n, fits) {
     if (s.tmdb?.backdrop) backdrop.src = s.tmdb.backdrop;
     else details(s.id).then(d => { if (d?.backdrop) backdrop.src = d.backdrop; });
   };
+  // Blurred this much the small poster looks the same as the full picture, and it is there
+  // in a moment, often held already as the poster's preview.
+  const glow = () => { if (blur && !blur.getAttribute('src')) blur.src = s.poster || s.art; };
   return {
     node: slide, show: s, poster, rel: null, drawn: null, widen,
+    // The small poster alone, for a slide beside the one shown that nothing has asked for
+    // yet: a swipe that brings it in has a picture, and the full one, often a megabyte or
+    // two, waits for ready.
+    glimpse() {
+      if (asked) return;
+      glow();
+      const preview = poster.querySelector('img.preview');
+      if (preview && preview.getAttribute('src') === null) preview.src = poster.dataset.preview;
+    },
     ready(urgent = false) {
       if (asked) return;
       asked = true;
-      if (blur) blur.src = s.art;
+      glow();
       loadPoster(poster, urgent);
       widen(urgent);
       if (!s.tmdb?.videos?.length) {
@@ -1274,13 +1286,17 @@ function carousel(box, shows) {
   crossfade(box, controls, prev, next, track, said);
   show(0);
   slides[0].ready(true);
-  // The slides either side follow the first slide's poster, or a moment, whichever is sooner.
+  // The slides either side show their small posters from the start. The next one's full
+  // picture, which its turn brings in, follows the first slide's, so the first has the
+  // connection to itself; the one before waits for the reader to reach for the carousel
+  // (neighbours).
+  for (const k of [-1, 1]) slides[slideIn(k, n)].glimpse();
+  const upNext = () => { if (!ended) slides[slideIn(current + 1, n)].ready(); };
   const first = slides[0].poster.querySelector('img');
-  if (!first || (first.complete && first.naturalWidth)) neighbours();
+  if (!first || (first.complete && first.naturalWidth)) upNext();
   else {
-    first.addEventListener('load', neighbours, { once: true, signal: ends.signal });
-    first.addEventListener('error', neighbours, { once: true, signal: ends.signal });
-    setTimeout(() => { if (!ended) neighbours(); }, 2500);
+    first.addEventListener('load', upNext, { once: true, signal: ends.signal });
+    first.addEventListener('error', upNext, { once: true, signal: ends.signal });
   }
   schedule();
   return { end };
