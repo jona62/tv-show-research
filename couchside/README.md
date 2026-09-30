@@ -33,6 +33,13 @@ rebuilt every night. Nothing plays. It is for finding your next show.
   wrote it and its guest stars, with *Previous* and *Next* through the season.
   Closing it, by its back button, Back, Escape or a swipe down, leaves the title
   page as it was, scrolled where it was with its season chosen.
+- **A person's page** opens from anyone in a title's cast, its About section or
+  the *Cast* line near the top, and from an episode's guest stars and crew: their photo, what they are known for, when and
+  where they were born (and died), a short biography from Wikipedia, and every
+  show TVmaze has them in as posters, best known first, each saying whom they
+  played and when. Their roles come first, then their appearances as themselves
+  (talk shows, award nights) and the shows they made; every show in the catalogue
+  opens its own title page. TVmaze, IMDb and Wikipedia are small links at the foot.
 - **Posters** wear *Top 10* and *New* badges. On a mouse, hovering one lifts it
   and shows its match with quick buttons for My List, *I like this*, *Love this*
   and more info. On a touch screen, a long press lifts it into a larger preview
@@ -54,10 +61,13 @@ rebuilt every night. Nothing plays. It is for finding your next show.
   and *Shows like Mad Max* for a film or film series, by the film's own genres and
   subjects.
 
-The page and any open title or episode live in the URL (`/new`, `/list`,
-`/search?q=`, `?show=169`, `?show=169&episode=12203`), so refresh, Back and shared
-links behave; stepping through a season replaces the address, so Back from any
-episode returns to its title page. Your ratings and My List
+The page and any open title, episode or person live in the URL (`/new`, `/list`,
+`/search?q=`, `?show=169`, `?show=169&episode=12203`, `?show=169&person=14245`), so
+refresh, Back and shared links behave. Stepping through a season replaces the address,
+so Back from any episode returns to its title page. A person's page is a sheet over the
+title or episode it came from, so Back finds that as it was left, and a title opened
+from their page leaves them out of its address and comes back to them, where they were
+left, on Back. Your ratings and My List
 stay in the browser. *Move your list to another device* uses the same code as
 Next Watch, so a list moves between the two apps as well as between devices: a
 link, the code alone, a QR code while the list fits one (a few hundred ratings),
@@ -513,6 +523,42 @@ shows in the catalogue.
 KinoCheck allows 1,000 calls a day and iTunes about 20 a minute, so answers are
 cached for days and a show with nothing is cached as nothing.
 
+### People
+
+A title's cast carries each person's TVmaze id, and `GET /api/person?id=` answers
+with who they are and what they are in (`people.py`): two TVmaze calls through the
+same client, cache and rate limit as a title's, one for the person with the shows
+they are a regular in and the shows they made, and one for every episode they were
+a guest in, grouped by show. Their roles are the shows they are a regular in (as
+themselves too, since a host's own show is what they are known for) and those they
+were a guest in as someone else; their appearances are the guest spots as
+themselves; the shows they made say how (*Creator* first). Each list comes best
+known first: the show's popularity, 35 more for a regular part and 3 more for each
+guest episode up to ten, so a recurring part in a show everybody knows comes before
+a lead in one few do. Popularity from 98 up counts as one, since a point means
+nothing among the best-known 1,200 shows, and between shows equally well known the
+better rated comes first, then the latest: Giancarlo Esposito's page opens with
+Breaking Bad and Better Call Saul, not The Gentlemen, which is 100 to their 99.
+Every show in the catalogue carries its card, as rows have them, so it
+opens its title page; a show newer than the catalogue keeps its name and years.
+
+TVmaze keeps no biographies. `GET /api/biography?id=` asks Wikidata's query service
+for the person by the TVmaze id it keeps for some of them (P11449, about 17,000
+people), and by their name, in English or in every language, with a date of birth
+that is TVmaze's to the day; a person with no birthday on TVmaze is looked for by id
+alone, and two people of one name born the same day are no answer at all. The same
+query brings their English Wikipedia article, IMDb id and short description, and
+where they were born with its region and country. The biography is the opening
+paragraph of that article's summary from Wikipedia's REST API, taken only when the
+article is about the same Wikidata item, and credited to Wikipedia under CC BY-SA
+where it shows. Only the person's TVmaze id, name and birthday go to either service.
+Wikidata answers in anything from a fraction of a second to several, so the page
+asks for the biography apart from the person, and the server begins the lookup as
+soon as TVmaze has answered for the person: asked for meanwhile, it waits on that
+lookup rather than starting another. Both are cached a day; one that cannot be
+reached rests a minute and the page shows no biography, and Wikipedia out of reach
+leaves Wikidata's facts. Photos stay TVmaze's, so the image policy is unchanged.
+
 ## Run it
 
 ```sh
@@ -554,7 +600,12 @@ title pages and validation; that the catalog, posters and TMDB data come from
 `MODEL_DIR`; TMDB's trimming, and that a bad or missing file means no TMDB data;
 TMDB first and every fallback, over HTTP; the live sources against fakes
 (trimming, trailer and rating matching, caching, stale answers, 404s as answers,
-429s, the rate window, icon host checks); search over HTTP, by another title and
+429s, the rate window, icon host checks); people against fakes (trimming a person
+and their guest parts, the order of their credits and the cards on them, finding
+them on Wikidata by id or by name and birth date and never by a guess, Wikipedia's
+summary only for the same item, a source out of reach resting, one lookup however
+often it is asked for) and over HTTP (bad ids, a person TVmaze lacks, TVmaze or
+Wikidata out of reach, nothing about the viewer sent on); search over HTTP, by another title and
 through a fake TVmaze, with a show too new for the catalogue; the HTTP server end
 to end: pages and their previews, the loaded model's date and count on the page,
 TMDB's credit only with TMDB data, the policy, the 404 page, the manifest, icon
@@ -564,7 +615,9 @@ pick and follow a browser's language; and the follower's decisions. It also fail
 `engine.py`, `titles.py`, `fallback.py`, `follow.py`, `starters.py` or any other
 module copied here ever differs from Next Watch's. The
 second covers the page's small helpers, where to watch, how much of a title page's
-long parts shows before its button and what search says among them, what the home
+long parts shows before its button and what search says among them, a person's
+address beside the title's, their age and dates and what each of their credits
+says, what the home
 page keeps for a visit, asks for more with, merges after an action and shows as
 recently viewed, how far ahead it loads rows and posters and how many at once, and
 what the page keeps of the server's answers; and it runs the service worker against
@@ -635,7 +688,9 @@ restart it on the new model. An incomplete or missing target is never a reason
 to leave, and `MODEL_POLL_SECONDS=0` turns following off.
 
 Data and images from [TVmaze](https://www.tvmaze.com/),
-[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). With TMDB data,
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Biographies from
+[Wikipedia](https://en.wikipedia.org/), CC BY-SA 4.0, and birthplaces and IMDb ids
+from [Wikidata](https://www.wikidata.org/), CC0. With TMDB data,
 ratings, trailers, backdrops and where to watch from [TMDB](https://www.themoviedb.org),
 with streaming data from JustWatch. This website uses TMDB and the TMDB APIs but is
 not endorsed, certified, or otherwise approved by TMDB.

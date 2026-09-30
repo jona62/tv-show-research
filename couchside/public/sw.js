@@ -15,8 +15,8 @@
 // CORS so every copy is readable (Chrome counts an opaque one as about 7 MB of quota),
 // and the least recently used go once there are more than 1,000 small images or 40
 // large ones, about 30 MB in all. One long scroll down the home page shows 350 posters.
-const VERSION = 'a4d1527d27e3';
-const FILES = {"/style.css": "05db861ee209dc2d", "/main.js": "484eb23b90e0a0a8", "/format.js": "3905b6b4fae08d57", "/gestures.js": "99618de045f0089e", "/transfer.js": "aca34fe2830e9d29", "/qr.js": "d7f92f94bb8911ea", "/fresh.js": "4fb048095fde4af8", "/starters.js": "087555fc61715e00", "/offline.html": "050a8cc2465f0701", "/favicon.svg": "ec98a59b577360e9", "/icon-192.png": "badf05b3c8dbb5e7", "/tmdb.svg": "8e7b30f73a402069"};
+const VERSION = '6fe4ffe859d4';
+const FILES = {"/style.css": "ac434ee966652893", "/main.js": "cdd31c81f59e58a4", "/format.js": "23dc0e9fdded4d75", "/gestures.js": "99618de045f0089e", "/transfer.js": "aca34fe2830e9d29", "/qr.js": "d7f92f94bb8911ea", "/fresh.js": "4fb048095fde4af8", "/starters.js": "087555fc61715e00", "/offline.html": "050a8cc2465f0701", "/favicon.svg": "ec98a59b577360e9", "/icon-192.png": "badf05b3c8dbb5e7", "/tmdb.svg": "8e7b30f73a402069"};
 const SHELL = `couchside-${VERSION}`;
 const IMAGES = 'couchside-images';
 // The app's own pages (PAGES in server.py): each is the one page, which routes itself.

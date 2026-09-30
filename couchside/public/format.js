@@ -35,21 +35,22 @@ const HEADING = {
 };
 export const leaningHeading = f => (HEADING[f.family] || cap)(f.label);
 
-// Where the page is: which view, the search terms, the title open over it, and one of its
-// episodes open over that.
+// Where the page is: which view, the search terms, the title open over it, one of its
+// episodes open over that, and a person open over either.
 export function parseRoute(pathname, search) {
   const params = new URLSearchParams(search);
-  const whole = key => {
+  const id = key => {
     const n = Number(params.get(key));
     return Number.isInteger(n) && n > 0 ? n : null;
   };
-  const show = whole('show');
+  const show = id('show');
   return {
     page: PAGES[pathname] || 'home',
     q: params.get('q') || '',
     genre: params.get('genre') || '',
     show,
-    episode: show && whole('episode'),
+    episode: show && id('episode'),
+    person: id('person'),
   };
 }
 
@@ -135,9 +136,11 @@ export function whereToWatch(show, tmdb, site, channels, apple) {
 /* ------------------------------------------------------------ a title page's long parts */
 // A season starts with its first three episodes and the trailers with the first two, or a
 // wide screen's row of three; a button opens the rest. An episode's guest stars start with
-// twelve, four rows of faces on a phone and two on a wide screen. Hiding just one is not
-// worth a button, so a part only one longer than its snippet shows whole.
-export const SNIPPETS = { episodes: 3, clips: 2, clipsWide: 3, guests: 12 };
+// twelve, four rows of faces on a phone and two on a wide screen. On a person's page, their
+// roles start with twelve posters, whole lines of three on a phone and of six on a wide
+// screen, and their appearances as themselves and the shows they made with six. Hiding just
+// one is not worth a button, so a part only one longer than its snippet shows whole.
+export const SNIPPETS = { episodes: 3, clips: 2, clipsWide: 3, guests: 12, roles: 12, appearances: 6, crew: 6 };
 export const snippet = (count, most) => (count > most + 1 ? most : count);
 
 // What that button says, opening the part or closing it again.
@@ -213,23 +216,22 @@ export function recentMatches(list, typed) {
 export const trailerSearch = (name, year) =>
   `https://www.youtube.com/results?search_query=${encodeURIComponent(`${name}${year ? ` ${year}` : ''} official trailer`)}`;
 
-// The same place with a title opened over it, or closed; either way no episode stays
-// open, since an episode belongs to the title it was opened from.
-export function withShow(pathname, search, id) {
+// The same place with something opened over it by its id, or closed, and whatever depends
+// on what changed closed with it.
+function withId(pathname, search, key, id, closes = []) {
   const params = new URLSearchParams(search);
-  if (id) params.set('show', String(id)); else params.delete('show');
-  params.delete('episode');
+  if (id) params.set(key, String(id)); else params.delete(key);
+  for (const other of closes) params.delete(other);
   const query = params.toString();
   return pathname + (query ? `?${query}` : '');
 }
-
+// A title opened over the page, or closed; either way no episode stays open, since an
+// episode belongs to the title it was opened from.
+export const withShow = (pathname, search, id) => withId(pathname, search, 'show', id, ['episode']);
 // The same title with one of its episodes opened over it, or closed again.
-export function withEpisode(pathname, search, id) {
-  const params = new URLSearchParams(search);
-  if (id) params.set('episode', String(id)); else params.delete('episode');
-  const query = params.toString();
-  return pathname + (query ? `?${query}` : '');
-}
+export const withEpisode = (pathname, search, id) => withId(pathname, search, 'episode', id);
+// A person opened over the page, beside the title or episode they were opened from, or closed.
+export const withPerson = (pathname, search, id) => withId(pathname, search, 'person', id);
 
 /* ------------------------------------------------------------------- an episode */
 // "S2 E5", or "S2 Special" for a special, which TVmaze leaves unnumbered.
@@ -304,6 +306,63 @@ export function airs(days) {
   if (days.length === 7) return 'New episodes daily';
   if (days.length === 5 && !days.includes('Saturday') && !days.includes('Sunday')) return 'New episodes weekdays';
   return `New episodes ${joinNames(days.map(d => `${d}s`))}`;
+}
+
+/* ------------------------------------------------------------- a person's page */
+// A day as "2026-09-29", in the reader's own time.
+export function isoDay(on = new Date()) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${on.getFullYear()}-${pad(on.getMonth() + 1)}-${pad(on.getDate())}`;
+}
+
+// Whole years from one day to another, as an age is counted, or null without both.
+export function yearsBetween(from, to) {
+  const [a, b] = [from, to].map(day => (/^\d{4}-\d{2}-\d{2}$/.test(day || '') ? day.split('-').map(Number) : null));
+  if (!a || !b) return null;
+  const years = b[0] - a[0] - (b[1] < a[1] || (b[1] === a[1] && b[2] < a[2]) ? 1 : 0);
+  return years >= 0 ? years : null;
+}
+
+// When and where someone was born: "Mar 7, 1956 in Hollywood, California, United States",
+// or whichever of the two is known.
+export function bornOn(birthday, place) {
+  const on = longDate(birthday);
+  return on && place ? `${on} in ${place}` : on || place || '';
+}
+
+// When someone died, and how old they were: "Oct 28, 2023 (aged 54)".
+export function diedOn(birthday, deathday) {
+  const on = longDate(deathday);
+  const age = yearsBetween(birthday, deathday);
+  return on && age !== null ? `${on} (aged ${age})` : on;
+}
+
+// Someone as themselves, in the words TVmaze's gender gives: "Himself", or else "Self".
+export const selfName = gender => ({ Male: 'Himself', Female: 'Herself' }[gender] || 'Self');
+// The heading over the shows they were in as themselves.
+export const selfHeading = gender => ({ Male: 'As himself', Female: 'As herself' }[gender] || 'As themselves');
+
+// What a credit's poster says under it: whom they played, or what they did, and then how
+// many episodes and when, "Walter White" or "Voice of Bert" over "5 episodes · 1994–1997";
+// and the same as its card reads it out, "as Walter White, 5 episodes, 1994–1997".
+export function creditLines(c, gender) {
+  const as = c.jobs?.length ? c.jobs.join(', ')
+    : c.self ? selfName(gender) : c.as ? (c.voice ? `Voice of ${c.as}` : c.as) : c.voice ? 'Voice' : '';
+  const role = c.jobs?.length ? as
+    : c.self ? selfHeading(gender).toLowerCase()
+      : c.as ? (c.voice ? `voice of ${c.as}` : `as ${c.as}`) : c.voice ? 'voice' : '';
+  const count = c.episodes ? `${c.episodes} episode${c.episodes === 1 ? '' : 's'}` : '';
+  const span = years(c.years?.[0], c.years?.[1]);
+  return { as, when: [count, span].filter(Boolean).join(' · '), said: [role, count, span].filter(Boolean).join(', ') };
+}
+
+// What someone is known for: their regular roles, which come best known first. Someone with
+// none who made shows is known for those, which their page names as created instead, and
+// someone with neither for the parts they guested in.
+export function knownFor(roles, created = [], most = 3) {
+  const regular = roles.filter(r => r.regular);
+  const shown = regular.length ? regular : created.length ? [] : roles;
+  return joinNames(shown.slice(0, most).map(r => r.name));
 }
 
 /* ---------------------------------------------------------------- the home page */
