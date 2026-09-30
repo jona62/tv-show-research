@@ -1,13 +1,14 @@
-// Where a visit starts: the list and what the browser remembers, read from storage as they
-// stand, and the home page asked for at once. The page loads this beside main.js, and it
-// runs as soon as it and its few small imports are here, so on a slow connection the home
-// page is on its way while main.js and its modules still arrive; main.js reads the same
-// list and memory from here, and takes the answer when it asks for the very same page
-// (take). homeBody is the one place that says what a request for the home page carries, so
-// the two never differ; a field added anywhere else would have main.js ask again.
+// Where a page starts: the list and what the browser remembers, read from storage as they
+// stand, the visit the tab is on (begun here when it is a new one), and the home page asked
+// for at once. The page loads this beside main.js, and it runs as soon as it and its few
+// small imports are here, so on a slow connection the home page is on its way while main.js
+// and its modules still arrive; main.js starts from the same list, memory and visit, and
+// takes the answer when it asks for the very same page (take). homeBody is the one place
+// that says what a request for the home page carries, so the two never differ; a field
+// added anywhere else would have main.js ask again.
 import { LIMITS, packList } from './transfer.js';
-import { freshStore, today, prune, freshness } from './fresh.js';
-import { pageKey, resumable } from './format.js';
+import { freshStore, today, prune, beginVisit, freshness } from './fresh.js';
+import { pageKey, ongoing, resumable } from './format.js';
 
 /* ------------------------------------------------------------- the list */
 export const KEY = 'couchside-v1';
@@ -66,53 +67,93 @@ export const stored = (() => {
 })();
 
 /* ------------------------------------------------------------ the memory */
-// What this browser has shown and what you engaged with (fresh.js), so each day's page
-// is fresh: kept under its own key, one salt per browser, pruned on every load, and
-// written at once, so the welcome page's starters (starters.js) and main.js find this
-// salt, not a second.
+// What this browser has shown and what you engaged with (fresh.js), so each visit's page
+// is fresh: kept under its own key, one salt per browser, and pruned on every load.
 export const FRESH_KEY = 'couchside-fresh';
-export const remembered = (() => {
-  let memory;
-  try { memory = freshStore(JSON.parse(localStorage.getItem(FRESH_KEY))); } catch { memory = freshStore(null); }
-  prune(memory, today());
+// The memory as stored, or null when there is none.
+export const readMemory = () => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(FRESH_KEY));
+    return raw ? prune(freshStore(raw), today()) : null;
+  } catch { return null; }
+};
+export const writeMemory = memory => {
   try { localStorage.setItem(FRESH_KEY, JSON.stringify(memory)); } catch { /* private mode, or no storage here */ }
-  return memory;
-})();
+};
+// The memory as the page starts, written at once (below), so the welcome page's starters
+// (starters.js) find this salt, not a second.
+export const remembered = readMemory() || prune(freshStore(null), today());
 
-// What a request carries about the day: its date, its seed and the memory's counts. A
-// browser without crypto.subtle (a page not served over https) sends none.
-export async function freshFields(memory) {
-  try { return await freshness(memory, today()); } catch { return {}; }
+/* -------------------------------------------------------------- the visit */
+// A visit (format.js): the app opened in a tab, or come back to after half an hour away
+// or on a new day. It takes the day's next number in the memory, and what its requests
+// carry is worked out once as it begins and kept with it for the tab: the day and its
+// seed, the visit's own seed, and the memory's counts as they stood, what the day's
+// earlier visits showed among them. So a reload goes on with the same visit and gets the
+// same page, and nothing a visit shows changes what it asks for; the next visit counts it.
+export const VISIT_KEY = 'couchside-visit';
+export const keepVisit = visit => {
+  try { sessionStorage.setItem(VISIT_KEY, JSON.stringify(visit)); } catch { /* storage is off */ }
+};
+// Whether the tab still keeps this visit as its own.
+const kept = visit => {
+  try {
+    const own = JSON.parse(sessionStorage.getItem(VISIT_KEY));
+    return own?.day === visit.day && own?.n === visit.n;
+  } catch { return false; }
+};
+// A new visit, numbered in the memory (which the caller writes): { visit, ask }, where ask
+// is what its requests carry, kept with the visit once worked out, if the tab has not begun
+// another meanwhile. A browser without crypto.subtle (a page not served over https) sends
+// no seeds, and gets the plain ranking.
+export function newVisit(memory) {
+  const day = today();
+  const visit = { day, n: beginVisit(memory, day), at: Date.now(), ask: null };
+  const ask = freshness(memory, day, visit.n).catch(() => ({})).then(found => {
+    const own = kept(visit);
+    visit.ask = found;
+    if (own) keepVisit(visit);
+    return found;
+  });
+  keepVisit(visit);
+  return { visit, ask };
 }
-const TAG = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8}){0,3}$/;
-export const languages = () => (globalThis.navigator?.languages?.length ? [...navigator.languages]
-  : [globalThis.navigator?.language || '']).filter(t => TAG.test(t)).slice(0, 8);
+// The visit this page starts on: the tab's own while it goes on, else a new one.
+export const opened = (() => {
+  let visit = null;
+  try { visit = JSON.parse(sessionStorage.getItem(VISIT_KEY)); } catch { visit = null; }
+  const begun = ongoing(visit, { day: today(), now: Date.now() }) && visit.ask && typeof visit.ask === 'object'
+    ? { visit, ask: Promise.resolve(visit.ask) } : newVisit(remembered);
+  writeMemory(remembered);
+  return begun;
+})();
 
 /* ------------------------------------------------------- the home page */
 export const tasteOf = state => ({ profile: state.profile.map(({ id, weight }) => ({ id, weight })), settings: state.settings });
-// What asking for the home page carries: the list, My List, the day and memory, and the
-// browser's languages. Asking for more rows adds which rows are shown (main.js).
-export async function homeBody(state, memory) {
-  return { ...tasteOf(state), list: state.saved.map(s => s.id), ...await freshFields(memory), lang: languages() };
-}
+const TAG = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8}){0,3}$/;
+export const languages = () => (globalThis.navigator?.languages?.length ? [...navigator.languages]
+  : [globalThis.navigator?.language || '']).filter(t => TAG.test(t)).slice(0, 8);
+// What asking for the home page carries: the list, My List, what the visit asks with
+// (ask) and the browser's languages. Asking for more rows adds which rows are shown (main.js).
+export const homeBody = (state, ask) => ({ ...tasteOf(state), list: state.saved.map(s => s.id), ...ask, lang: languages() });
 // A request's body as sent: the list packed as ids and a character a rating (transfer.js),
 // a quarter of the bytes.
 export const packed = body => JSON.stringify(Array.isArray(body.profile) ? { ...body, profile: packList(body.profile) } : body);
 
 // The page kept for this tab, which main.js shows again rather than asking (keepPage).
 export const PAGE_KEY = 'couchside-home';
-function kept(state) {
+function keptPage(state, visit) {
   try {
     const page = JSON.parse(sessionStorage.getItem(PAGE_KEY));
-    return resumable(page, { key: pageKey(tasteOf(state), state.saved.map(s => s.id)), day: today(), now: Date.now() });
+    return resumable(page, { key: pageKey(tasteOf(state), state.saved.map(s => s.id)), visit }) && page.home.ask;
   } catch { return false; }
 }
 
-// The home page asked for as the page starts, unless the page kept for this tab stands in.
+// The home page asked for as the page starts, unless the page kept for this visit stands in.
 let early = null;
-if (globalThis.document && !kept(stored)) {
-  early = homeBody(stored, remembered).then(body => {
-    const text = packed(body);
+if (globalThis.document && !keptPage(stored, opened.visit)) {
+  early = opened.ask.then(ask => {
+    const text = packed(homeBody(stored, ask));
     return { text, answer: fetch('/api/home', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: text, priority: 'high' }) };
   });
   // A failure is main.js's to report, once it takes the answer.

@@ -262,22 +262,35 @@ const letters = ['Action', 'Anime', 'Crime', 'Anthology'];
 check('a letter jumps to the next name it begins, going round', nextByLetter(letters, 0, 'a') === 1
   && nextByLetter(letters, 1, 'A') === 3 && nextByLetter(letters, 3, 'a') === 0 && nextByLetter(letters, 0, 'c') === 2);
 check('and nowhere when no name begins with it', nextByLetter(letters, 0, 'z') === -1);
-// The home page: what a page depends on, when a kept page is shown again, what asking for
-// more carries, merging an action, and Recently viewed.
-const { pageKey, resumable, keptText, shownRows, withoutCard, viewedStore, noteViewed, recentlyViewed, RESUME_MINUTES, VIEWED_DAYS }
-  = await import('./format.js');
+// The home page: what a page depends on, when a visit goes on, when a kept page is shown
+// again, what asking for more carries, merging an action, and Recently viewed.
+const { pageKey, ongoing, resumable, keptText, shownRows, withoutCard, viewedStore, noteViewed, recentlyViewed, AWAY_MINUTES,
+  VIEWED_DAYS } = await import('./format.js');
 const listA = { profile: [{ id: 1, weight: 1 }, { id: 2, weight: .7 }], settings: { known_min: 60, type: 'all' } };
 check('a page key ignores the order of settings', pageKey(listA, [5]) === pageKey({ ...listA, settings: { type: 'all', known_min: 60 } }, [5]));
 check('a page key changes with a rating or My List', pageKey(listA, [5]) !== pageKey(listA, [5, 6])
   && pageKey(listA, [5]) !== pageKey({ ...listA, profile: [{ id: 1, weight: .7 }, { id: 2, weight: .7 }] }, [5]));
-const kept = { v: 1, at: 1_000_000, day: '2026-10-05', key: 'k', home: { rows: [] } };
-const now = kept.at + (RESUME_MINUTES - 1) * 60_000;
-check('a kept page comes back within half an hour, the same day and list', resumable(kept, { key: 'k', day: '2026-10-05', now }));
-check('but not after', !resumable(kept, { key: 'k', day: '2026-10-05', now: kept.at + (RESUME_MINUTES + 1) * 60_000 }));
-check('nor on another day or for another list', !resumable(kept, { key: 'k', day: '2026-10-06', now })
-  && !resumable(kept, { key: 'other', day: '2026-10-05', now }));
-check('nor when it is not a page', !resumable(null, { key: 'k', day: '2026-10-05', now })
-  && !resumable({ ...kept, home: null }, { key: 'k', day: '2026-10-05', now }) && !resumable({ ...kept, v: 2 }, { key: 'k', day: '2026-10-05', now }));
+// A visit, and when the next begins: the tab left for half an hour, or a new day.
+const left = 1_000_000;
+const visitOn = { day: '2026-10-05', n: 2, at: left, ask: { day: '2026-10-05', seed: 'ab'.repeat(8), visit: 'cd'.repeat(8) } };
+check('a visit goes on through a reload, and a return within half an hour of leaving',
+  AWAY_MINUTES === 30 && ongoing(visitOn, { day: '2026-10-05', now: left + 1000 })
+  && ongoing(visitOn, { day: '2026-10-05', now: left + (AWAY_MINUTES - 1) * 60_000 }));
+check('the app opened again after half an hour away is a new visit',
+  !ongoing(visitOn, { day: '2026-10-05', now: left + (AWAY_MINUTES + 1) * 60_000 }));
+check('and so is the next day, however soon', !ongoing(visitOn, { day: '2026-10-06', now: left + 60_000 }));
+check('and a new tab, which keeps no visit, or one kept askew', !ongoing(null, { day: '2026-10-05', now: left })
+  && !ongoing({ ...visitOn, n: 0 }, { day: '2026-10-05', now: left }) && !ongoing({ ...visitOn, at: 'x' }, { day: '2026-10-05', now: left })
+  && !ongoing(visitOn, { day: '2026-10-05', now: left - 60_000 }));
+const kept = { v: 2, at: left, day: '2026-10-05', visit: 2, key: 'k', home: { rows: [], ask: visitOn.ask } };
+const thisVisit = { day: '2026-10-05', n: 2 };
+check('a kept page comes back in its own visit, for the same list', resumable(kept, { key: 'k', visit: thisVisit }));
+check('but never in the next visit, even the same day, nor on another day',
+  !resumable(kept, { key: 'k', visit: { day: '2026-10-05', n: 3 } }) && !resumable(kept, { key: 'k', visit: { day: '2026-10-06', n: 2 } }));
+check('nor for another list', !resumable(kept, { key: 'other', visit: thisVisit }));
+check('nor when it is not a page, or a page kept before visits', !resumable(null, { key: 'k', visit: thisVisit })
+  && !resumable({ ...kept, home: null }, { key: 'k', visit: thisVisit })
+  && !resumable({ v: 1, at: left, day: '2026-10-05', key: 'k', home: { rows: [] } }, { key: 'k', visit: thisVisit }));
 const rows = [
   { key: 'top', kind: 'row', items: [1, 2, 3, 4, 5, 6, 7, 8].map(id => ({ id })) },
   { key: 'list', kind: 'list', items: [{ id: 9 }] },
@@ -310,6 +323,43 @@ check('a title opened again moves to the end, once', same(viewed.map(v => v.id),
 check('recently viewed is the last fortnight, newest first', same(recentlyViewed(viewed, day).map(v => v.id), [2, 3])
   && VIEWED_DAYS === 14);
 check('rated and listed titles leave it', same(recentlyViewed(viewed, day, { rated: new Set([2]), saved: new Set([3]) }), []));
+
+// The featured shows go round: each slide is drawn in its slot nearest the strip, so after
+// the last comes the first, from the right, and before the first the last, from the left.
+// A swipe turns the slide a fifth of the way on, or flicked, and no move wants a slide in
+// two slots at once.
+const { TURN_EVERY, slideIn, slotOf, slotsShown, reach, slideLabel, TURN, landing, TURN_MS, TURN_OWN_MS, glideTime,
+  turnTime } = await import('./format.js');
+check('a featured show turns to the next every seven seconds or so', TURN_EVERY >= 6000 && TURN_EVERY <= 8000);
+check('slots go round the slides both ways', same([-7, -6, -1, 0, 5, 6, 13].map(k => slideIn(k, 6)), [5, 0, 5, 0, 5, 0, 1]));
+check('after the last of six comes the first, from the right', slotOf(0, 5, 6) === 6 && slotOf(4, 5, 6) === 4
+  && slotOf(5, 5, 6) === 5);
+check('and before the first comes the last, from the left', slotOf(5, 0, 6) === -1 && slotOf(1, 0, 6) === 1);
+check('however far round the strip has gone', slotOf(0, 29, 6) === 30 && slotOf(5, -12, 6) === -13);
+const onScreen = at => [0, 1, 2, 3, 4, 5].map(i => slotOf(i, at, 6)).filter(k => Math.abs(k - at) < 1).sort((a, b) => a - b);
+check('while it moves, the two slides on screen are neighbours', same(onScreen(5.4), [5, 6]) && same(onScreen(-.3), [-1, 0]));
+check('of two slides, the other waits ahead, and moves to whichever side the strip heads',
+  slotOf(1, 0, 2) === 1 && slotOf(1, .2, 2) === 1 && slotOf(1, -.2, 2) === -1 && slotOf(0, 1, 2) === 2 && slotOf(0, .8, 2) === 0);
+check('a move shows every slot within one of its way', slotsShown(0, 1) === 2 && slotsShown(.4, 2) === 3
+  && slotsShown(3, 3) === 1 && slotsShown(2.5, 0) === 4);
+check('a move goes as far as it is sent while there are slides enough', reach(0, 3, 6) === 3 && reach(.4, 2, 3) === 2
+  && reach(0, -1, 2) === -1);
+check('two slides caught on their way go on no further than the next', reach(.4, 2, 2) === 1 && reach(-.4, -2, 2) === -1);
+check('a slide is called by its place and name', slideLabel(1, 6, 'Luther') === '2 of 6: Luther');
+check('a swipe a fifth of the way on turns the slide', TURN === .2 && landing(.2, 0, 390, 0) === 1
+  && landing(-.25, 0, 390, 0) === -1);
+check('a shorter one comes back', landing(.1, 0, 390, 0) === 0 && landing(-.15, 0, 390, 0) === 0);
+check('its speed counts as distance still to come', landing(.1, -.5, 390, 0) === 1 && landing(-.1, .5, 390, 0) === -1);
+check('a flick turns it however little it came', landing(.03, -.35, 1280, 0) === 1);
+check('flicked back the other way, it stays', landing(.6, .4, 390, 0) === 0 && landing(-.6, -.4, 390, 0) === 0);
+check('caught on its way, it settles where its speed carries it', landing(.6, 0, 390) === 1 && landing(.4, 0, 390) === 0
+  && landing(.4, -1, 390) === 1);
+check('it comes to rest in a slot on screen, however hard it was thrown', landing(.9, -5, 390, 0) === 1
+  && landing(.2, 5, 390) === 0);
+check('a swipe comes to rest at the speed it was let go', glideTime(300, -2) === 180 && glideTime(300, 1) === 300
+  && glideTime(300, 0) === 375 && glideTime(1000, 0) === 420);
+check('a button turns it steadily, a little longer for each slot further', turnTime(1) === TURN_MS
+  && turnTime(-3) === TURN_MS + 240 && turnTime(9) === 840 && TURN_OWN_MS > TURN_MS);
 
 // Loading ahead of the reader: a row's posters two screens before it is seen, those it
 // shows and the next two, and more rows while three screens of them are still to come.
@@ -515,10 +565,11 @@ const realFetch = globalThis.fetch;
 const storedList = { version: 2, profile: [{ id: 169, weight: 1, name: 'Breaking Bad' }, { id: 82, weight: 0.7 }, { id: 82, weight: 1 },
   { id: -3, weight: 1 }, { id: 526, weight: 0.5 }], saved: [{ id: 2993, poster: 'https://elsewhere.test/x.jpg' }], settings: { known_min: 85 },
 onboarded: true };
-const starting = async (tag, { kept = null, list = storedList } = {}) => {
+const starting = async (tag, { session = {}, list = storedList, remembered = null } = {}) => {
   const asked = [];
   Object.assign(globalThis, {
-    document: {}, localStorage: storage({ 'couchside-v1': JSON.stringify(list) }), sessionStorage: storage(kept ? { 'couchside-home': kept } : {}),
+    document: {}, sessionStorage: storage(session),
+    localStorage: storage({ 'couchside-v1': JSON.stringify(list), ...(remembered ? { 'couchside-fresh': remembered } : {}) }),
     fetch: async (path, init) => { asked.push({ path, ...init }); return { ok: true, json: async () => ({ asked: asked.length }) }; },
   });
   const start = await import(new URL(`./public/start.js?${tag}`, import.meta.url).href);
@@ -529,12 +580,17 @@ const { start, asked: askedEarly } = await starting('early');
 check('the list is read as main.js keeps it: malformed and repeated ratings dropped, and posters from TVmaze only', same(
   start.stored.profile.map(p => [p.id, p.weight]), [[169, 1], [82, 0.7]]) && start.stored.saved[0].poster === null
   && start.stored.settings.known_min === 85 && start.stored.onboarded === true);
-check('the memory gets its salt and is written back at once, for main.js and the starters to find',
-  /^[0-9a-f]{32}$/.test(start.remembered.salt) && JSON.parse(localStorage.getItem('couchside-fresh')).salt === start.remembered.salt);
-const homeAsked = await start.homeBody(start.stored, start.remembered);
-check('asking for the home page carries the list, My List, the day and its seed, and the languages', same(
+const firstVisit = JSON.parse(sessionStorage.getItem('couchside-visit'));
+const memoryAfter = localStorage.getItem('couchside-fresh');
+check('a tab with no visit going on begins one, the day\'s first, and writes the memory at once for main.js and the starters',
+  start.opened.visit.n === 1 && /^[0-9a-f]{32}$/.test(start.remembered.salt)
+  && JSON.parse(localStorage.getItem('couchside-fresh')).salt === start.remembered.salt
+  && JSON.parse(localStorage.getItem('couchside-fresh')).visits.n === 1
+  && firstVisit.n === 1 && typeof firstVisit.ask === 'object' && firstVisit.ask.day === firstVisit.day);
+const homeAsked = start.homeBody(start.stored, await start.opened.ask);
+check('asking for the home page carries the list, My List, the visit\'s day and seeds, and the languages', same(
   Object.keys(homeAsked).slice(0, 4), ['profile', 'settings', 'list', 'day']) && same(homeAsked.list, [2993])
-  && /^[0-9a-f]{16}$/.test(homeAsked.seed) && Array.isArray(homeAsked.lang));
+  && /^[0-9a-f]{16}$/.test(homeAsked.seed) && /^[0-9a-f]{16}$/.test(homeAsked.visit) && Array.isArray(homeAsked.lang));
 check('the home page is asked for as the page starts, packed as main.js packs it', askedEarly.length === 1
   && askedEarly[0].path === '/api/home' && askedEarly[0].method === 'POST' && askedEarly[0].body === start.packed(homeAsked)
   && typeof JSON.parse(askedEarly[0].body).profile.ids === 'object');
@@ -544,13 +600,22 @@ check('and its answer goes to the first to ask for that very page, once', (await
 const other = await starting('other');
 check('a request for any other page asks again itself', (await other.start.take(other.start.packed({ ...homeAsked, lang: ['xx'] }))) === null
   && other.asked.length === 1);
-const startDay = (await import(new URL('./public/fresh.js', import.meta.url).href)).today();
-const keptPage = JSON.stringify({ v: 1, at: Date.now(), day: startDay, key: pageKey(start.tasteOf(start.stored), [2993]), home: { rows: [] } });
-const reloaded = await starting('kept', { kept: keptPage });
-check('a tab that keeps its page for this list and day asks for nothing', reloaded.asked.length === 0
+const going = { ...firstVisit, at: Date.now() };
+const reload = await starting('reload', { session: { 'couchside-visit': JSON.stringify(going) }, remembered: memoryAfter });
+check('a reload goes on with the tab\'s visit and asks for its very page', reload.start.opened.visit.n === 1
+  && reload.asked.length === 1 && reload.asked[0].body === start.packed(homeAsked)
+  && JSON.parse(localStorage.getItem('couchside-fresh')).visits.n === 1);
+const keptPage = JSON.stringify({ v: 2, at: Date.now(), day: going.day, visit: going.n, key: pageKey(start.tasteOf(start.stored), [2993]),
+  home: { rows: [], ask: going.ask } });
+const reloaded = await starting('kept', { session: { 'couchside-visit': JSON.stringify(going), 'couchside-home': keptPage },
+  remembered: memoryAfter });
+check('a tab that keeps its page for this visit and list asks for nothing', reloaded.asked.length === 0
   && (await reloaded.start.take(reloaded.start.packed(homeAsked))) === null);
-const stale = await starting('stale', { kept: keptPage.replace(`"day":"${startDay}"`, '"day":"2001-01-01"') });
-check('but one kept from another day does', stale.asked.length === 1);
+const later = await starting('later', { session: { 'couchside-visit': JSON.stringify({ ...going, at: Date.now() - 31 * 60_000 }),
+  'couchside-home': keptPage }, remembered: memoryAfter });
+check('but a tab come back to after half an hour away begins the day\'s next visit, and asks for its page',
+  later.start.opened.visit.n === 2 && later.asked.length === 1 && JSON.parse(later.asked[0].body).visit !== homeAsked.visit
+  && JSON.parse(later.asked[0].body).seed === homeAsked.seed);
 check('a list saved before version 2 moves to the wider reach once', start.sanitize({ version: 1, settings: { known_min: 85 } }).settings.known_min === 60
   && start.sanitize({ version: 2, settings: { known_min: 85 } }).settings.known_min === 85);
 for (const name of ['document', 'localStorage', 'sessionStorage']) delete globalThis[name];

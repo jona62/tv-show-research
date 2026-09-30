@@ -105,6 +105,7 @@ from engine import DEFAULT_SETTINGS, QUICK_PICKS, Engine         # noqa: E402
 from fallback import Remote                                      # noqa: E402
 from library import ROW, MORE, GLANCE, SHORTEST, GENRE_ROWS, NEW_DAYS, FALLBACK, UNRELATED, Library, lower_first  # noqa: E402
 from library import SIMILAR_AT, similarity                       # noqa: E402
+from library import FEATURED, FEATURED_POOL                      # noqa: E402
 from library import Kept, KEPT_PAGES, KEPT_FOR, asked as kept_under, read_shown  # noqa: E402
 from library import (Page, Deeper, FIRST_PAGE, NEXT_PAGE, MOST_ROWS, CREATOR_SHORTEST, NOT_FOR_ME,  # noqa: E402
                      INTEREST_CAP, HIDDEN, PINNED, LONGEST, TIERS)
@@ -311,6 +312,27 @@ check('with a day the hero is drawn from the Top 10, and changes', set(heroes) <
       heroes)
 rest = lib.home({'profile': [], **seeded('2026-10-01'), 'resting': top10_ids[:9]})['hero']['id']
 check('a hero of the last week rests', rest == top10_ids[9], rest)
+# A first visit's featured shows: the hero, then more of the best known, drawn the same way.
+known_best = top10_ids + [engine.shows[i]['id'] for i in lib.popular_pool[:FEATURED_POOL - 10]]
+cold_featured = [s['id'] for s in cold['featured']]
+check('a first visit features six of the best known, the hero first', len(cold_featured) == FEATURED
+      and cold['featured'][0] == cold['hero'] and set(cold_featured) <= set(known_best)
+      and len(set(cold_featured)) == FEATURED, cold_featured)
+world = lambda show_id: lib.facet_sets(engine.by_id[show_id])[0]
+in_order = []
+for i in known_best:
+    if len(in_order) < FEATURED and not any(world(i) & world(j) for j in in_order):
+        in_order.append(i)
+check('without a day they are the best known in order, one to a franchise', cold_featured == in_order, cold_featured)
+first_visits = [[s['id'] for s in lib.home({'profile': [], **seeded(f'2026-10-{d:02d}')})['featured']] for d in range(1, 8)]
+check('with a day they are drawn from the best known, and change', all(set(f) <= set(known_best) for f in first_visits)
+      and len({tuple(f) for f in first_visits}) == len(first_visits), first_visits)
+held = lib.home({'profile': [{'id': top10_ids[1], 'weight': -1}], 'list': [top10_ids[0]], 'settings': {}})['featured']
+check('a first visit features nothing on My List or rated', not {s['id'] for s in held} & set(top10_ids[:2])
+      and held[0]['id'] == top10_ids[2], [s['id'] for s in held])
+cold_rested = [s['id'] for s in lib.home({'profile': [], **seeded('2026-10-01'), 'resting': top10_ids[:9]})['featured']]
+check('nor a hero of the last week, even past the Top 10', cold_rested[0] == top10_ids[9]
+      and not set(cold_rested) & set(top10_ids[:9]) and len(cold_rested) == FEATURED, cold_rested)
 
 # 4. A rated list gets rows built from it.
 home = lib.home({'profile': PROFILE, 'settings': {}, 'list': [526, 999_999_999, 431]})
@@ -524,7 +546,8 @@ check('the same first request gives the same answer', lib.home(body) == first)
 shown = [{'key': r['key'], 'ids': [c['id'] for c in r['items'][:GLANCE]]} for r in first['rows']]
 second = lib.home({**body, 'shown': shown})
 check('asking again for the next rows gives the same rows', lib.home({**body, 'shown': shown}) == second)
-check('the next rows carry no hero, and the list\'s taste', 'hero' not in second and second['taste'] and second['rows'])
+check('the next rows carry no hero, and the list\'s taste', 'hero' not in second and 'featured' not in second
+      and second['taste'] and second['rows'])
 check('asking for no rows gives the taste alone', lib.home({**body, 'shown': shown, 'count': 0})['rows'] == []
       and lib.home({**body, 'shown': shown, 'count': 0})['taste'] == second['taste'])
 liked_now = next(c['id'] for c in first['rows'][0]['items'] if c['id'] not in {p['id'] for p in body['profile']})
@@ -574,6 +597,73 @@ for d in range(1, 15):
 check('the hero changes from day to day', len(set(drawn)) >= 3, drawn)
 resting = lib.home({**body, **seeded('2026-10-05'), 'resting': drawn})['hero']['id']
 check('a hero shown in the last week is not drawn again', resting not in drawn)
+# The featured shows: today's hero, then five more of the best picks drawn the same way,
+# none rated, listed or a recent hero, and one to a franchise and to an interest while the
+# best picks hold more.
+featured_answer = lib.home({**body, **seeded('2026-10-05')})
+featured = featured_answer['featured']
+featured_ids = [s['id'] for s in featured]
+pool = [engine.shows[i]['id'] for i in page.usable if engine.shows[i]['id'] not in body['list']][:FEATURED_POOL]
+interest = lambda show_id: page.ranking.group.get(engine.by_id[show_id])
+check('the home page features six shows, today\'s hero first', len(featured) == FEATURED
+      and featured[0] == featured_answer['hero'], featured_ids)
+check('each carries what the hero does: its match and why', all(s['name'] and s['art'] and s['match'] and s['because']
+                                                                for s in featured))
+check('none twice, none rated and none on My List', len(set(featured_ids)) == FEATURED
+      and not set(featured_ids) & (profile_ids | set(body['list'])), featured_ids)
+check('all of them among the best picks', set(featured_ids) <= set(pool), featured_ids)
+check('no two of one franchise', not any(world(i) & world(j) for n, i in enumerate(featured_ids) for j in featured_ids[:n]))
+check('as many interests as the best picks hold, up to six', len({interest(i) for i in featured_ids})
+      == min(FEATURED, len({interest(i) for i in pool})), [interest(i) for i in featured_ids])
+check('the same request features the same shows', lib.home({**body, **seeded('2026-10-05')})['featured'] == featured)
+reseeded = [s['id'] for s in lib.home({**body, 'day': '2026-10-05', 'seed': 'fedcba9876543210'})['featured']]
+check('another seed features others', reseeded != featured_ids and set(reseeded) <= set(pool), reseeded)
+unrested = [s['id'] for s in lib.home({**body, **seeded('2026-10-05'), 'resting': featured_ids})['featured']]
+check('a show featured as a hero in the last week is not featured again', len(unrested) == FEATURED
+      and not set(unrested) & set(featured_ids), unrested)
+
+
+# 4f2. Visits: each time the app is opened it sends a seed of its own for the visit, what
+# the day's earlier visits showed (half a day's showing each, a day's at most, as fresh.js
+# counts it) and their heroes, resting. The same visit gives the same page, whole or asked
+# for in parts; each new one leads with another of the best picks, never one featured
+# earlier the same day, and turns Top picks' first cards a little while the best stay.
+def visited(day, k, seen=(), resting=()):
+    return {**seeded(day), 'visit': hashlib.sha256(f'test|{day}|{k}'.encode()).hexdigest()[:16],
+            'seen': {str(i): min(1.0, 0.5 * n) for i, n in dict(seen).items()}, 'resting': list(resting)}
+
+
+one_visit = {**body, **visited('2026-10-05', 1)}
+visit_rows = whole(one_visit)[0]
+check('the same visit gives the same page', whole(one_visit)[0] == visit_rows)
+page_v, laid_v = page_of(one_visit)
+check('and the same page asked for in parts as laid out at once, cards and all',
+      [page_v.row(shelf, items) for shelf, items in laid_v] == visit_rows)
+check('the page a visit asks for more from is kept under its own request, not the day\'s',
+      kept_under(one_visit) in lib.kept and kept_under(one_visit) != kept_under({**body, **seeded('2026-10-05')}))
+check('a visit\'s page is not the day\'s, though it leads with Top picks', visit_rows != monday
+      and visit_rows[0]['key'] == monday[0]['key'] == 'top')
+best_picks = [engine.shows[i]['id'] for i in page_v.usable if engine.shows[i]['id'] not in body['list']]
+plain_best = [c['id'] for c in lib.home({key: body[key] for key in ('profile', 'settings', 'list')})['rows'][0]['items'][:3]]
+featured, openings, keys_seen, seen_today = [], [], [], Counter()
+for k in range(1, 7):
+    answer = lib.home({**body, **visited('2026-10-05', k, seen_today, featured)})
+    hero = answer['hero']['id']
+    check(f'visit {k}: the hero is one of the ten best picks not featured earlier the same day',
+          hero not in featured and hero in [i for i in best_picks if i not in featured][:10])
+    featured.append(hero)
+    openings.append([c['id'] for c in answer['rows'][0]['items'][:GLANCE]])
+    keys_seen.append([r['key'] for r in answer['rows']])
+    for i in {hero} | {c['id'] for r in answer['rows'] for c in r['items'][:GLANCE]}:
+        seen_today[i] += 1
+new_faces = [len(set(b) - set(a)) for a, b in zip(openings, openings[1:])]
+check('Top picks\' first six change a little from visit to visit, not wholesale',
+      0 < statistics.mean(new_faces) <= 3 and max(new_faces) <= 4, new_faces)
+check('while the best three stay among them', statistics.mean(len(set(plain_best) & set(o)) for o in openings) >= 2.5
+      and min(len(set(plain_best) & set(o)) for o in openings) >= 2, [len(set(plain_best) & set(o)) for o in openings])
+check('every visit leads with Top picks and keeps most of the first page\'s rows, in an order of its own',
+      all(keys[0] == 'top' for keys in keys_seen) and len({tuple(keys) for keys in keys_seen}) > 1
+      and min(len(set(a) & set(b)) for a, b in zip(keys_seen, keys_seen[1:])) >= FIRST_PAGE - 3, keys_seen)
 
 # 4g. Rows passed over on five days in a fortnight rest at the foot of today's rows.
 tired_key = next(r['key'] for r in monday[4:] if r['kind'] == 'row' and r['key'] not in ('popular', 'different')
@@ -1927,6 +2017,11 @@ check('a title TMDB lacks carries none', status == 200 and json.loads(body)['tmd
 status, _headers, body = fetch('/api/home', {'profile': PROFILE, 'settings': {}})
 hero = json.loads(body)['hero']
 check('the hero carries TMDB\'s data too', status == 200 and 'tmdb' in hero and hero['tmdb'] == known.get(hero['id']))
+check('and so does every featured show', json.loads(body)['featured'][0] == hero
+      and all('tmdb' in s and s['tmdb'] == known.get(s['id']) for s in json.loads(body)['featured']))
+status, _headers, body = fetch('/api/home', {'profile': [], 'settings': {}, **seeded('2026-10-05')})
+check('a first visit\'s featured shows carry it too', status == 200 and all(
+    'tmdb' in s and s['tmdb'] == known.get(s['id']) for s in json.loads(body)['featured']))
 
 # 7c. The page states the model the server loaded, not the one it was built beside.
 built = (ROOT / 'couchside' / 'public' / 'index.html').read_text()

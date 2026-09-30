@@ -241,7 +241,8 @@ checks that damaged, truncated and wrong-version codes are refused rather than
 half-applied. The sixth holds the QR
 encoder to its recorded matrices, its version boundaries, and the structure a
 scanner depends on. The last three cover freshness: `fresh.py` over sixty simulated
-days, `fresh.js`'s memory and its one-second rule with a stand-in observer, and
+days and a month of Couchside's visits, `fresh.js`'s memory, those visits in it and
+its one-second rule with a stand-in observer, and
 `visits.js`, which merges an answer into the cards on screen, decides when a kept
 visit can be shown again, and keeps the days of picks to find one again.
 `test_engine.py` checks fresh answers too: the same day and seed give the same

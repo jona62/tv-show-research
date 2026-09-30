@@ -365,6 +365,67 @@ export function knownFor(roles, created = [], most = 3) {
   return joinNames(shown.slice(0, most).map(r => r.name));
 }
 
+/* ------------------------------------------------------------ the featured shows */
+// The featured shows go round. Their slides sit along a strip, slot k holding slide k mod
+// n, and the strip slides under the screen: on from the last slide is the slot after it,
+// which holds the first, so the first comes in from the right, and back from the first is
+// the slot before, which holds the last. Nothing runs back across the rest and nothing
+// jumps, since each slide is drawn in whichever of its slots is nearest where the strip
+// is, which is wherever it is next to come. Places on the strip are counted in slots.
+
+// A featured show turns to the next every this many ms, while nothing holds it.
+export const TURN_EVERY = 7000;
+
+// Slide k of n, for any whole k.
+export const slideIn = (k, n) => ((k % n) + n) % n;
+
+// The slot of slide i nearest the strip's place `at`; halfway round, the one ahead.
+export const slotOf = (i, at, n) => i + n * Math.round((at - i) / n);
+
+// The slots a move from `from` to `to` shows on its way: each within a slot of it.
+export const slotsShown = (from, to) => Math.ceil(Math.max(from, to)) - Math.floor(Math.min(from, to)) + 1;
+
+// How far toward slot `to` a move from `from` can go with n slides: no further than shows
+// each slide once, so none is ever wanted in two slots at once. Only two slides limit it.
+export function reach(from, to, n) {
+  while (to !== Math.round(from) && slotsShown(from, to) > n) to -= Math.sign(to - from);
+  return to;
+}
+
+// "2 of 6: Luther", what each slide and its dot are called.
+export const slideLabel = (i, n, name) => `${i + 1} of ${n}: ${name}`;
+
+export const TURN = .2;       // the share of the way a swipe comes before it turns the slide
+const CARRY = 180;            // ms of a finger's speed counted as distance still to come
+const FLICKED = .3;           // px a ms: a flick turns the slide however little it came
+const FLICKED_BACK = .2;      // px a ms back the other way keeps it
+
+// The slot a swipe let go at `at` comes to rest in, the finger moving `v` px a ms (to the
+// left, toward the slots ahead, is negative) across a strip `width` px wide. One that set
+// off from rest in slot `from` goes on to the next slot its way once it has come TURN of
+// the way, counting where its speed carries it, or was flicked that way; flicked back, it
+// stays. One that caught the strip moving (from null) settles where its speed carries it.
+// Either way it rests in a slot now on screen.
+export function landing(at, v, width, from = null) {
+  const lo = Math.floor(at), hi = Math.ceil(at);
+  let to;
+  if (from === null || at === from) to = Math.round(at - v * CARRY / width);
+  else {
+    const way = Math.sign(at - from), along = -v * way;
+    const came = Math.abs(at - from) + along * CARRY / width;
+    to = along > -FLICKED_BACK && (came >= TURN || along >= FLICKED) ? from + way : from;
+  }
+  return Math.min(hi, Math.max(lo, to));
+}
+
+// How long the strip takes to come to rest: a swipe's last `distance` px at the speed it
+// was let go, 180 to 420ms; a turn by a button, a key or a dot TURN_MS, a little longer for
+// each slot past the first; and one of its own, unhurried, TURN_OWN_MS.
+export const TURN_MS = 480;
+export const TURN_OWN_MS = 760;
+export const glideTime = (distance, v) => Math.round(Math.min(Math.max(distance / Math.max(Math.abs(v), .8), 180), 420));
+export const turnTime = slots => Math.min(TURN_MS + 120 * (Math.abs(slots) - 1), 840);
+
 /* ---------------------------------------------------------------- the home page */
 // What a home page depends on, the same however the settings happen to be ordered: the
 // ratings, the settings and My List.
@@ -373,21 +434,33 @@ export function pageKey({ profile, settings }, list) {
     Object.keys(settings).sort().map(k => [k, settings[k]]), list]);
 }
 
-export const RESUME_MINUTES = 30;
+// A visit is the app opened in a tab, or come back to after AWAY_MINUTES or more away, or
+// on a new day: half an hour is the web's usual measure, the time analytics tools end a
+// visit after. Each has its number for the day (fresh.js's beginVisit), which goes into
+// the seed its requests carry, and what they carry is worked out once, as it begins (ask),
+// so its page is its own and every request of the visit gets that same page.
+export const AWAY_MINUTES = 30;
 
-// Whether a kept page can be shown again as it was: made today for the same list and My
-// List, and in use within the last RESUME_MINUTES.
-export function resumable(kept, { key, day, now }) {
-  const idle = now - kept?.at;
-  return Boolean(kept && kept.v === 1 && kept.key === key && kept.day === day && idle >= 0
-    && idle <= RESUME_MINUTES * 60_000 && Array.isArray(kept.home?.rows));
+// Whether the visit kept for this tab goes on: begun on this day, and left (hidden or
+// closed, at) no more than AWAY_MINUTES ago.
+export function ongoing(visit, { day, now }) {
+  const away = now - visit?.at;
+  return Boolean(visit && visit.day === day && Number.isInteger(visit.n) && visit.n > 0 && away >= 0
+    && away <= AWAY_MINUTES * 60_000);
+}
+
+// Whether a kept page can be shown again as it was: made in this visit, for the same list
+// and My List. A page from the visit before is not: a new visit gets a page of its own.
+export function resumable(kept, { key, visit }) {
+  return Boolean(kept && kept.v === 2 && kept.key === key && visit && kept.day === visit.day
+    && kept.visit === visit.n && Array.isArray(kept.home?.rows));
 }
 
 // A kept page runs to this many characters at most, some two hundred rows.
 export const KEEP_CHARS = 1_000_000;
 
 // A kept page as stored: whole, or, past `most` characters, without its last rows and
-// asking for them again, since the same list on the same day gets the same rows back.
+// asking for them again, since the same list in the same visit gets the same rows back.
 export function keptText(kept, most = KEEP_CHARS) {
   const text = JSON.stringify(kept);
   if (text.length <= most) return text;

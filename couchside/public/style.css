@@ -150,7 +150,7 @@ main{min-height:100vh;padding-bottom:calc(var(--dock-space) + 24px);outline:none
   filter:blur(34px) saturate(1.25) brightness(.5)}
 .hero-backdrop{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 22%;
   opacity:0;transition:opacity .9s ease}
-.hero.has-backdrop .hero-backdrop{opacity:1}
+.hero-slide.has-backdrop .hero-backdrop{opacity:1}
 .hero-shade{background:linear-gradient(to top,var(--bg) 0,#141414d9 14%,#14141400 48%),
   linear-gradient(77deg,#141414f0 0,#14141480 38%,#14141400 70%)}
 .hero-body{width:100%;padding:0 var(--gutter) clamp(90px,14vw,190px)}
@@ -165,7 +165,7 @@ main{min-height:100vh;padding-bottom:calc(var(--dock-space) + 24px);outline:none
 .hero-acts{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap}
 .hero .meta{text-shadow:0 1px 6px #000c}
 @media(min-width:760px){
-  .hero:not(.has-backdrop) .hero-poster{display:block;position:absolute;right:calc(var(--gutter) + 2vw);
+  .hero-slide:not(.has-backdrop) .hero-poster{display:block;position:absolute;right:calc(var(--gutter) + 2vw);
     bottom:clamp(90px,12vw,170px);width:clamp(180px,17vw,270px);border-radius:8px;box-shadow:0 24px 60px #000c}
 }
 @media(max-width:759px){
@@ -184,7 +184,63 @@ main{min-height:100vh;padding-bottom:calc(var(--dock-space) + 24px);outline:none
   .hero{min-height:100vh;min-height:100svh;padding-top:calc(var(--nav) + var(--safe-t))}
   .hero-body{padding-bottom:96px}
   .hero-summary{-webkit-line-clamp:2;line-clamp:2}
-  .hero:not(.has-backdrop) .hero-poster{bottom:96px;width:calc((100svh - var(--nav) - var(--safe-t) - 120px) * 2 / 3)}
+  .hero-slide:not(.has-backdrop) .hero-poster{bottom:96px;width:calc((100svh - var(--nav) - var(--safe-t) - 120px) * 2 / 3)}
+}
+/* The featured shows (main.js): a track holding a slide for each show, all in one place and
+   each set in its slot by a transform, so the carousel is as tall as its tallest slide and
+   slides along with no layout. Each slide is laid out as the hero always was, and on a phone
+   carries the room the hero kept for the nav, so its picture runs up behind it; there the
+   slides line up at the top, posters level, whatever their words below. */
+.hero:has(>.hero-track){padding-top:0}
+.hero-track{display:grid;grid-template-columns:minmax(0,1fr);flex:1 1 auto;align-self:stretch;min-width:0;
+  touch-action:pan-y;will-change:transform}
+.hero-slide{grid-area:1/1;position:relative;display:flex;align-items:flex-end;overflow:hidden;isolation:isolate;
+  will-change:transform}
+.hero.dragging{-webkit-user-select:none;user-select:none;cursor:grabbing}
+/* Its controls: pause and a dot for each show in a pill, over the foot of the poster on a
+   phone and midway between the words and the rows on a wide screen, and for a mouse, arrows
+   at either edge, shown on hover and focus. */
+.hero-controls{--dot:24px;position:absolute;z-index:3;left:50%;
+  bottom:calc((clamp(60px,9vw,150px) + clamp(90px,14vw,190px)) / 2 - 16px);display:flex;align-items:center;
+  padding:0 5px 0 2px;border-radius:16px;background:#000000a6;transform:translateX(-50%)}
+.hero-play,.hero-dot{display:grid;place-items:center;height:32px;padding:0;border:0;background:none;color:#fff;cursor:pointer}
+.hero-play{width:32px;border-radius:50%}
+.hero-play .i svg{width:15px;height:15px}
+/* The show shown is a bar over its dot that slides from dot to dot (--at, from main.js), a
+   transform, so a turn lays nothing out. */
+.hero-dots{position:relative;display:flex}
+.hero-dots::after{content:'';position:absolute;top:50%;left:calc((var(--dot) - 18px) / 2);width:18px;height:7px;margin-top:-3.5px;
+  border-radius:4px;background:#fff;pointer-events:none;transform:translateX(calc(var(--at,0) * var(--dot)));
+  transition:transform .35s cubic-bezier(.22,1,.36,1)}
+.hero-dot{width:var(--dot)}
+.hero-dot::before{content:'';width:7px;height:7px;border-radius:50%;background:#ffffff73}
+.hero-dot:hover::before{background:#ffffffb3}
+.hero-arrow{position:absolute;z-index:3;top:calc(var(--nav) + var(--safe-t));bottom:clamp(60px,9vw,150px);display:none;
+  width:max(var(--gutter),48px);padding:0;border:0;color:#fff;cursor:pointer;opacity:0;transition:opacity .2s}
+.hero-arrow.prev{left:0;background:linear-gradient(90deg,#14141480,#14141400)}
+.hero-arrow.next{right:0;background:linear-gradient(270deg,#14141480,#14141400)}
+.hero-arrow .i svg{width:40px;height:40px;filter:drop-shadow(0 1px 3px #000b);transition:transform .2s}
+.hero-arrow:hover .i svg{transform:scale(1.2)}
+@media(hover:hover) and (pointer:fine){
+  .hero-arrow{display:grid;place-items:center}
+  .hero:hover .hero-arrow,.hero:focus-within .hero-arrow{opacity:1}
+}
+@media(max-width:759px){
+  .hero-slide{align-items:flex-start;padding-top:calc(var(--nav) + var(--safe-t) + 8px)}
+  .hero-controls{top:calc(var(--nav) + var(--safe-t) + 8px + min(70vw,330px) * 1.5 - 42px);bottom:auto}
+}
+/* A phone on its side has no room under the buttons, so the pill sits level with them on the
+   foot of the poster, where that shows, as it does on a phone held upright. */
+@media(min-width:760px) and (max-height:520px){
+  .hero-slide{padding-top:calc(var(--nav) + var(--safe-t))}
+  .hero-controls{left:auto;right:calc(var(--gutter) + 2vw + (100svh - var(--nav) - var(--safe-t) - 120px) / 3);bottom:106px;
+    transform:translateX(50%)}
+}
+@media(prefers-reduced-motion:reduce){.hero-play{display:none}.hero-controls{padding-left:5px}}
+@media(forced-colors:active){
+  .hero-controls{border:1px solid CanvasText}
+  .hero-dot::before,.hero-dots::after{forced-color-adjust:none;background:GrayText}
+  .hero-dots::after{background:Highlight}
 }
 
 /* rows ----------------------------------------------------------------- */
@@ -757,6 +813,8 @@ dialog.episode .sheet{overflow:hidden}
   background-size:220% 100%;animation:shimmer 1.3s linear infinite}
 @keyframes shimmer{to{background-position:-220% 0}}
 .skel{display:block;border-color:transparent;pointer-events:none}
+/* Held still where they wait out of sight (main.js): a shimmer repaints every frame. */
+.unseen .skel{animation-play-state:paused}
 .skel-card,.skel-item{pointer-events:none}
 /* Lines stay a block of their own, which holds a line's height in a flex line too. */
 .skel-lines{display:block;flex:1 1 100%;min-width:0}

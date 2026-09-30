@@ -1,21 +1,24 @@
 import { encode, decode, LIMITS, codeFrom } from './transfer.js?v=aca34fe2830e9d29';
 import { matrix, svgPath } from './qr.js?v=d7f92f94bb8911ea';
-import { tieText, leaning, leaningHeading } from './format.js?v=23dc0e9fdded4d75';
+import { tieText, leaning, leaningHeading } from './format.js?v=d663df9002e164a1';
 import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere, longDate, airs,
-  whereToWatch, trailerSearch, searchNote } from './format.js?v=23dc0e9fdded4d75';
-import { pageKey, resumable, keptText, shownRows, withoutCard, viewedStore, noteViewed, recentlyViewed } from './format.js?v=23dc0e9fdded4d75';
+  whereToWatch, trailerSearch, searchNote } from './format.js?v=d663df9002e164a1';
+import { pageKey, ongoing, resumable, keptText, shownRows, withoutCard, viewedStore, noteViewed, recentlyViewed }
+  from './format.js?v=d663df9002e164a1';
 import { POSTERS_AHEAD, POSTERS_AT_ONCE, FLUNG, FLUNG_AT_ONCE, STILL_FLUNG, SLOW_POSTER, ROWS_AHEAD, postersToLoad,
-  posterPace, catchingUp, rowsToAsk, retryAfter } from './format.js?v=23dc0e9fdded4d75';
-import { genreChoices, nextByLetter, searchText, recentStore, noteSearch, withoutSearch, recentMatches, keepsRow } from './format.js?v=23dc0e9fdded4d75';
-import { keeper, sessionAnswers } from './format.js?v=23dc0e9fdded4d75';
-import { SNIPPETS, snippet, revealLabel } from './format.js?v=23dc0e9fdded4d75';
-import { withEpisode, episodeCode, episodeSaid, neighbours, credits, airing } from './format.js?v=23dc0e9fdded4d75';
-import { withPerson, isoDay, yearsBetween, bornOn, diedOn, selfHeading, creditLines, knownFor } from './format.js?v=23dc0e9fdded4d75';
-import { today, dayNumber, noteSeen, noteEngaged, noteRow, noteHero, watcher } from './fresh.js?v=4fb048095fde4af8';
-import { daySeed, startersQuery, mergeStarters, browserLanguage, MAX_ROUND, MAX_PICKED } from './starters.js?v=8f178d4770659a33';
+  posterPace, catchingUp, rowsToAsk, retryAfter } from './format.js?v=d663df9002e164a1';
+import { genreChoices, nextByLetter, searchText, recentStore, noteSearch, withoutSearch, recentMatches, keepsRow } from './format.js?v=d663df9002e164a1';
+import { keeper, sessionAnswers } from './format.js?v=d663df9002e164a1';
+import { TURN_EVERY, slideIn, slotOf, reach, slideLabel, landing, TURN_OWN_MS, glideTime, turnTime } from './format.js?v=d663df9002e164a1';
+import { heading, wandered } from './gestures.js?v=99618de045f0089e';
+import { SNIPPETS, snippet, revealLabel } from './format.js?v=d663df9002e164a1';
+import { withEpisode, episodeCode, episodeSaid, neighbours, credits, airing } from './format.js?v=d663df9002e164a1';
+import { withPerson, isoDay, yearsBetween, bornOn, diedOn, selfHeading, creditLines, knownFor } from './format.js?v=d663df9002e164a1';
+import { merged, today, dayNumber, noteSeen, noteEngaged, noteRow, noteHero, watcher } from './fresh.js?v=afcc972f76479400';
+import { daySeed, startersQuery, mergeStarters, browserLanguage, MAX_ROUND, MAX_PICKED } from './starters.js?v=d559e3a61414a450';
 import { sheets, closing, reveal, crossfade, peeks, edgeBack, speed } from './gestures.js?v=99618de045f0089e';
-import { KEY, DEFAULTS, REACH, VERSION, MAX_RATED, fresh, tidy, stored, FRESH_KEY, remembered,
-  freshFields as freshOf, tasteOf, homeBody, packed, PAGE_KEY, take } from './start.js?v=8cfc1d5bde1f642c';
+import { KEY, DEFAULTS, REACH, VERSION, MAX_RATED, fresh, tidy, stored, FRESH_KEY, readMemory, remembered, opened,
+  newVisit, keepVisit, tasteOf, homeBody, packed, PAGE_KEY, take } from './start.js?v=2e680b45e069e9f7';
 
 const boot = JSON.parse(document.getElementById('boot').textContent);
 // iOS zooms into a field it judges small and stays zoomed. maximum-scale=1 in the page's
@@ -57,6 +60,7 @@ const ICONS = {
   saved: '<path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/>',
   smile: '<circle cx="12" cy="12" r="9.5"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/>',
   play: '<path d="M7 4.5v15l12.5-7.5z" fill="currentColor"/>',
+  pause: '<path d="M8 5v14M16 5v14" stroke-width="3.4"/>',
   more: '<path d="M6 9l6 6 6-6"/>',
   share: '<path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"/>',
   grid: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>',
@@ -64,21 +68,30 @@ const ICONS = {
 };
 
 /* ------------------------------------------------------------- storage */
-// The list and the memory as they stood when the page started (start.js, which has asked
-// for the home page with them already).
+// The list, the memory and the visit as they stood when the page started (start.js, which
+// has asked for the home page with them already).
 let state = stored;
 
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* private mode */ }
 }
 
-// What this browser has shown and what you engaged with (fresh.js), so each day's page
+// What this browser has shown and what you engaged with (fresh.js), so each visit's page
 // is fresh. Writes are batched, since a scroll can see dozens of titles.
-const memory = remembered;
+let memory = remembered;
+// What other tabs have written since joins this tab's memory, so that writing it never
+// loses their visits, heroes or titles seen to this tab's older copy (fresh.js's merged).
+function catchUp() {
+  const theirs = readMemory();
+  if (theirs) memory = merged(theirs, memory);
+}
 let memoryTimer = 0;
 function keepMemory(now = false) {
   clearTimeout(memoryTimer);
-  const write = () => { try { localStorage.setItem(FRESH_KEY, JSON.stringify(memory)); } catch { /* private mode */ } };
+  const write = () => {
+    catchUp();
+    try { localStorage.setItem(FRESH_KEY, JSON.stringify(memory)); } catch { /* private mode */ }
+  };
   if (now) write(); else memoryTimer = setTimeout(write, 1000);
 }
 // Engaging with a title (opening it, rating it, listing it, its trailer, a link out)
@@ -89,8 +102,31 @@ function engaged(id, row = '') {
   if (row) noteRow(memory, row, day, true);
   keepMemory();
 }
-// What a request carries about the day: its date, its seed and the memory's counts.
-const freshFields = () => freshOf(memory);
+// The visit the tab is on (start.js, which says what a visit is and begins the first when
+// the tab has none going on), and what its requests carry.
+let { visit, ask: visitAsk } = opened;
+function startVisit() {
+  // Another tab may have begun a visit, shown a hero or seen titles since this one read
+  // the memory, and the new visit counts them.
+  catchUp();
+  ({ visit, ask: visitAsk } = newVisit(memory));
+  keepMemory(true);
+}
+const freshFields = () => visitAsk;
+// The visit's number for what is seen on its own day; past 04:00 a title counts for the day alone.
+const visitToday = () => (visit.day === today() ? visit.n : 0);
+// Leaving the tab marks when, so that coming back after long enough away begins a new
+// visit (comeBack), and the page gives way to that visit's own (renewHome).
+function leaveVisit() {
+  visit.at = Date.now();
+  keepVisit(visit);
+}
+function comeBack() {
+  // A visit still working out what it asks for has only just begun.
+  if (!visit.ask || ongoing(visit, { day: today(), now: Date.now() })) return;
+  startVisit();
+  renewHome();
+}
 
 // Titles opened lately, for Recently viewed.
 const VIEWED_KEY = 'couchside-viewed';
@@ -401,6 +437,7 @@ function route() {
   if (person) {
     if (!$('person').open || personId !== person) showPerson(person, place.person);
   } else if ($('person').open) hidePerson();
+  renewHome();
 }
 
 function showView(name) {
@@ -483,10 +520,10 @@ edgeBack(() => !!titleId || !!personId || (view !== 'home' && !document.querySel
 // The page arrives a few rows at a time: the first answer brings the hero and the first
 // eight, and the next six are asked for while three screens of rows are still to come
 // (loadMore), telling the server which rows are already shown so it builds the same
-// page. Within a visit the page holds still: a reload within half an hour on the same
-// day with the same list shows it again as it was, and a rating or a My List change
-// merges into it rather than laying it out again. Impressions are only written down,
-// never a reason to re-render.
+// page. Each visit gets a page of its own, and within one the page holds still: a reload
+// shows it again as it was, asking for more carries what the page was made with, and a
+// rating or a My List change merges into it rather than laying it out again.
+// Impressions are only written down, never a reason to re-render.
 let home = null, homeKey = '', homeReq = 0, homeAbort = null, homeTimer = 0, moreBusy = false;
 // Why the page could not be had, if it could not, so the views drawn from it stop waiting.
 let homeFailed = '';
@@ -497,27 +534,43 @@ function refresh(delay = 450) {
   homeTimer = setTimeout(loadHome, delay);
 }
 
-// The page kept for this tab: what was shown, for the day and list it was made for. A
+// The page kept for this tab: what was shown, for the visit and list it was made for. A
 // page grown past KEEP_CHARS keeps its first rows and asks for the rest again (keptText).
 function keepPage() {
   if (!home) return;
   try {
-    sessionStorage.setItem(PAGE_KEY, keptText({ v: 1, at: Date.now(), day: home.day, key: homeKey, home }));
+    sessionStorage.setItem(PAGE_KEY,
+      keptText({ v: 2, at: Date.now(), day: home.day, visit: home.visit, key: homeKey, home }));
   } catch { /* storage full or off: the page is simply asked for again next time */ }
 }
-function keptPage(key, day) {
+function keptPage(key) {
   try {
     const kept = JSON.parse(sessionStorage.getItem(PAGE_KEY));
-    return resumable(kept, { key, day, now: Date.now() }) ? kept.home : null;
+    return resumable(kept, { key, visit }) && kept.home.ask ? kept.home : null;
   } catch { return null; }
 }
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') { keepPage(); keepMemory(true); }
+  if (document.visibilityState === 'hidden') { keepPage(); keepMemory(true); leaveVisit(); } else comeBack();
 });
-window.addEventListener('pagehide', () => { keepPage(); keepMemory(true); });
+window.addEventListener('pagehide', () => { keepPage(); keepMemory(true); leaveVisit(); });
+
+// A page made for an earlier visit gives way to this visit's own once it is in view with
+// nothing open over it, from the top, as an app opened again starts at the top: on coming
+// back, or else once a sheet over it has closed or the home tab is chosen (route). Until
+// then it goes on as it was, asking for more with what it was made with.
+function renewHome() {
+  if (!home || (home.day === visit.day && home.visit === visit.n) || view !== 'home' || titleId || personId
+      || document.querySelector('dialog[open]')) return;
+  home = null;
+  homeKey = '';
+  window.scrollTo(0, 0);
+  loadHome();
+}
+for (const d of document.querySelectorAll('dialog')) d.addEventListener('close', renewHome);
 
 function rememberHome(data) {
   if (data.hero) remember(data.hero);
+  (data.featured || []).forEach(remember);
   for (const r of data.rows) r.items.forEach(remember);
   for (const list of [data.top10, data.fresh, data.soon, data.list, data.popular]) (list || []).forEach(remember);
 }
@@ -537,8 +590,7 @@ async function loadHome() {
   const id = ++homeReq;
   homeAbort?.abort();
   homeAbort = new AbortController();
-  const day = today();
-  const kept = keptPage(key, day);
+  const kept = keptPage(key);
   if (kept) {
     home = kept;
     homeKey = key;
@@ -552,12 +604,16 @@ async function loadHome() {
     renderHomeLoading();
   }
   try {
-    const body = await homeBody(state, memory);
+    // The page belongs to the visit it was asked for in, and keeps what that visit asked
+    // with for asking for more (moreBody).
+    const { day, n } = visit;
+    const ask = await freshFields();
+    const body = homeBody(state, ask);
     // The same page asked for as the page started (start.js) is on its way already.
     const started = await take(packed(body));
     const data = await (started ? request('/api/home', {}, started) : post('/api/home', body, homeAbort.signal));
     if (id !== homeReq) return;
-    home = { ...data, day, tasteKey: key };
+    home = { ...data, day, visit: n, ask, tasteKey: key };
     homeKey = key;
     rememberHome(data);
     redraw($('rows'), renderHome);
@@ -578,11 +634,13 @@ async function loadHome() {
   }
 }
 
-// What asking for more rows carries: what asking for the page does (start.js), with the
-// list as it is now, and the rows shown.
-async function moreBody(count) {
+// What asking for more rows carries: what asking for the page does (homeBody), with the
+// list as it is now and what the page's visit asked with, unchanged however much it has
+// shown since, and the rows shown. So the request is the page's own, and the server answers
+// it from the page it keeps for it (library.Kept).
+function moreBody(count) {
   const listIds = state.saved.slice().reverse().map(s => s.id);
-  return { ...await homeBody(state, memory), shown: shownRows(home.rows, listIds), count };
+  return { ...homeBody(state, home.ask), shown: shownRows(home.rows, listIds), count };
 }
 
 // The next rows, asked for while ROWS_AHEAD screens of rows are still to come below the
@@ -631,9 +689,14 @@ const sentinel = el('div', '', 'more-rows');
 const moreButton = button('btn ghost', 'More rows', () => loadMore());
 // Rows still to come stand in at the foot, so a reader who catches up with them sees the
 // page going on rather than ending. Not section.row, which the page counts as its rows.
-const moreLoading = el('div', '', 'more-loading');
+const moreLoading = el('div', '', 'more-loading unseen');
 moreLoading.setAttribute('aria-hidden', 'true');
 moreLoading.append(skelRow('div', { title: '11em' }), skelRow('div', { title: '8em' }));
+// They wait at the foot for as long as the page has more, and a shimmer repaints every
+// frame, so they shimmer only while they are on screen.
+if ('IntersectionObserver' in window) {
+  new IntersectionObserver(entries => moreLoading.classList.toggle('unseen', !entries.at(-1).isIntersecting)).observe(moreLoading);
+} else moreLoading.classList.remove('unseen');
 // The foot of the page, once the server has no more rows: a quiet note and a way back up.
 const pageEnd = el('div', '', 'page-end');
 pageEnd.append(el('p', 'That’s everything for today. Rate more shows to grow your rows.'),
@@ -653,9 +716,10 @@ function syncFoot() {
   pageEnd.hidden = !home || home.more || !home.rows.length;
 }
 
-// Impressions: a card half on screen for a second counts as seen once a day, and a row
-// seen that way counts as passed over for the day unless a card in it is engaged with.
-const seenWatch = watcher(id => { noteSeen(memory, id, today()); keepMemory(); });
+// Impressions: a card half on screen for a second counts as seen once a day, and once in
+// each visit for the day's later visits, and a row seen that way counts as passed over for
+// the day unless a card in it is engaged with.
+const seenWatch = watcher(id => { noteSeen(memory, id, today(), visitToday()); keepMemory(); });
 const rowWatch = watcher(key => { noteRow(memory, key, today()); keepMemory(); });
 
 // A row on its way, laid out as rowEl lays one out: its title a bar of the title's height
@@ -687,35 +751,55 @@ function inviteEl() {
   return invite;
 }
 
-// The home page on its way, in the shape it lands in: the featured show in the hero's whole
-// footprint, laid out by the hero's own rules (renderHero), with its poster, why it is here,
-// its facts and three buttons on a phone and its title, facts, summary and buttons, with the
-// poster beside them until the backdrop comes, on a wide screen; then rows. Whether the page
-// is personal is known already: it is once anything is liked, and then it says why the show
-// is here, and otherwise it opens with the invitation.
+// The home page on its way, in the shape it lands in: the featured shows' whole footprint,
+// a slide in a track laid out by the rules a featured slide is (featuredSlide), with a
+// poster, why it is here, its facts and three buttons on a phone and a title, facts,
+// summary and buttons, with the poster beside them until the backdrop comes, on a wide
+// screen; then rows. On a wide screen the carousel is the hero's set height; on a phone it
+// is as tall as its tallest slide, which is most often one whose facts run to two lines,
+// with Trailer, More info and My List on two, and, on a personal page, why it is here on
+// one. Whether the page is personal is known already: it is once anything is liked, and
+// otherwise it opens with the invitation.
 function renderHomeLoading() {
   const personal = state.profile.some(p => p.weight > 0);
+  // A phone on its side holds the hero to the screen (style.css), which a title of a line
+  // and a summary of two fit.
+  const low = matchMedia('(min-width: 760px) and (max-height: 520px)').matches;
   const copy = el('div', '', 'hero-copy');
-  copy.append(skelIn('h1', 'hero-title', '88%', '56%'));
+  copy.append(skelIn('h1', 'hero-title', ...(low ? ['70%'] : ['88%', '56%'])));
   if (personal) copy.append(skelIn('p', 'hero-why', '15em'));
-  copy.append(skelIn('p', 'meta', '17em'), skelIn('p', 'hero-summary', '100%', '100%', '72%'));
+  // Each line of the facts a flex line of its own, with the gap its lines have between them;
+  // a wide screen has room for them on one.
+  const meta = el('p', '', 'meta');
+  meta.setAttribute('aria-hidden', 'true');
+  for (const width of personal && !wide() ? ['17em', '11em'] : ['17em']) {
+    const line = el('span', '', 'skel-lines');
+    line.append(skelText(width));
+    meta.append(line);
+  }
+  copy.append(meta, skelIn('p', 'hero-summary', ...(low ? ['100%', '72%'] : ['100%', '100%', '72%'])));
   const acts = el('div', '', 'hero-acts');
   for (let n = 0; n < 3; n++) acts.append(el('span', '', 'btn skel'));
   copy.append(acts);
   const body = el('div', '', 'hero-body');
-  body.setAttribute('aria-hidden', 'true');
   body.append(el('span', '', 'art hero-poster skel'), copy);
+  const slide = el('div', '', 'hero-slide');
+  slide.append(body);
+  const track = el('div', '', 'hero-track');
+  track.setAttribute('aria-hidden', 'true');
+  track.append(slide);
   const hero = $('hero');
-  hero.classList.remove('has-backdrop');
   hero.classList.add('loading');
-  hero.replaceChildren(body);
+  hero.replaceChildren(track);
   $('rows').replaceChildren(...(personal ? [] : [inviteEl()]), skelRow('section', { title: '9em' }),
     skelRow('section', { title: '13em' }), skelRow('section', { title: '8em' }));
 }
 
 function renderHome() {
-  renderHero(home.hero);
-  // The hero rests for a week once shown, so the next days' are others.
+  // The featured shows, the visit's hero first; a page kept from before them has its hero alone.
+  renderFeatured(home.featured?.length ? home.featured : [home.hero]);
+  // The hero rests for the rest of the day and, the day's first, for a week, so the next
+  // visits' are others (fresh.js).
   noteHero(memory, home.hero.id, today());
   keepMemory();
   const holder = $('rows');
@@ -779,17 +863,45 @@ function updateRecentRow() {
   if (row) redraw(row, () => row.replaceWith(recentRow()));
 }
 
-function renderHero(s) {
-  const hero = $('hero');
-  hero.classList.remove('has-backdrop', 'loading');
+/* ------------------------------------------------------------ featured */
+// The featured shows, in the hero's place: a carousel that goes round (slotOf in format.js).
+// Each slide is laid out as the hero always was, all of them in one place, so the carousel
+// is as tall as its tallest and the page below never moves, and each is set in its slot
+// beside the others by a transform. A swipe, a button, a key, a dot or the carousel's own
+// turn moves the track they sit in, so the compositor slides them with no layout on the
+// way; once it rests, every slide is set again beside the one shown, which moves nothing on
+// screen. Only the slide shown and its neighbours are drawn, and only they have asked for
+// their images and details: the rest wait unseen until they are next to come.
+const wideScreen = matchMedia('(min-width: 760px)');
+const EASE_OUT = 'cubic-bezier(.22,1,.36,1)';     // quick, then settling, for a button or a key
+const EASE_THROWN = 'cubic-bezier(.3,.6,.6,1)';   // going on at the speed a swipe let go
+const EASE_TURN = 'cubic-bezier(.45,0,.2,1)';     // unhurried, for a turn of its own
+let featured = null;    // the carousel on the page: { end }
+
+function renderFeatured(shows) {
+  featured?.end();
+  featured = carousel($('hero'), shows);
+}
+
+// One featured show, laid out as the hero always was. What TMDB's data says is drawn at
+// once, so the carousel has its height from the start; its images, and the trailer and
+// age rating TMDB lacks, wait for ready(), which the carousel calls once it is shown or
+// next to come, the first slide first of all. What comes late goes in only where it
+// fits (fits(add, undo)), since the carousel growing would move the page below.
+function featuredSlide(s, i, n, fits) {
+  const slide = el('div', '', 'hero-slide');
+  if (n > 1) {
+    slide.setAttribute('role', 'group');
+    slide.setAttribute('aria-roledescription', 'slide');
+    slide.setAttribute('aria-label', slideLabel(i, n, s.name));
+  }
   const bg = el('div', '', 'hero-bg');
-  if (s.art) bg.append(picture(s.art, 'hero-blur'));
-  const backdrop = picture(null, 'hero-backdrop', () => hero.classList.add('has-backdrop'));
-  // Phones hide the backdrop, and a lazy image that is hidden is never fetched.
-  backdrop.loading = 'lazy';
+  const blur = s.art ? picture(null, 'hero-blur') : null;
+  const backdrop = picture(null, 'hero-backdrop', () => slide.classList.add('has-backdrop'));
+  if (blur) bg.append(blur);
   bg.append(backdrop);
-  // On a phone the hero's poster is the first screen's largest picture.
-  const poster = artEl(s, s.art, 'first');
+  // On a phone the poster is the first screen's largest picture.
+  const poster = artEl(s, s.art, 'ahead');
   poster.classList.add('hero-poster');
   const copy = el('div', '', 'hero-copy');
   copy.append(el('h1', s.name, 'hero-title'));
@@ -800,32 +912,378 @@ function renderHero(s) {
     if (tie) why.append(document.createTextNode(` · ${tieText(tie)}`));
     copy.append(why);
   }
-  const meta = metaEl(s, null, true);
+  const meta = metaEl(s, null, true, s.tmdb?.rating || null);
   copy.append(meta);
   if (s.summary) copy.append(el('p', s.summary, 'hero-summary'));
   const acts = el('div', '', 'hero-acts');
   const more = button('btn primary', 'More info', () => openTitle(s.id), 'info');
   acts.append(more, listButton(s, 'btn'));
   copy.append(acts);
-  videosOf(s.id, s.tmdb).then(videos => {
-    if (!videos.length || !hero.contains(acts)) return;
+  const clip = button('btn primary', 'Trailer', () => openTitle(s.id, { play: true }), 'play');
+  const trailer = () => {
     more.className = 'btn';
-    acts.prepend(button('btn primary', 'Trailer', () => openTitle(s.id, { play: true }), 'play'));
-  });
-  ratingOf(s.id, s.tmdb).then(age => {
-    if (age.rating && hero.contains(meta)) meta.insertBefore(el('span', age.rating, 'badge age'), meta.querySelector('.dot-list'));
-  });
+    acts.prepend(clip);
+  };
+  if (s.tmdb?.videos?.length) trailer();
   const body = el('div', '', 'hero-body');
   body.append(poster, copy);
-  // On phones a new hero crossfades over the one before (gestures.js).
-  crossfade(hero, bg, el('div', '', 'hero-shade'), body);
-  // TMDB's backdrop when it has one, else TVmaze's.
-  if (s.tmdb?.backdrop) backdrop.src = s.tmdb.backdrop;
-  else {
-    details(s.id).then(d => {
-      if (d?.backdrop && hero.contains(backdrop)) backdrop.src = d.backdrop;
+  slide.append(bg, el('div', '', 'hero-shade'), body);
+  let asked = false, backdropAsked = false;
+  // Only a wide screen shows the backdrop: TMDB's when it has one, else TVmaze's.
+  const widen = (urgent = false) => {
+    if (!asked || backdropAsked || !wideScreen.matches) return;
+    backdropAsked = true;
+    if (urgent) backdrop.fetchPriority = 'high';
+    if (s.tmdb?.backdrop) backdrop.src = s.tmdb.backdrop;
+    else details(s.id).then(d => { if (d?.backdrop) backdrop.src = d.backdrop; });
+  };
+  return {
+    node: slide, show: s, poster, rel: null, drawn: null, widen,
+    ready(urgent = false) {
+      if (asked) return;
+      asked = true;
+      if (blur) blur.src = s.art;
+      loadPoster(poster, urgent);
+      widen(urgent);
+      if (!s.tmdb?.videos?.length) {
+        videosOf(s.id, s.tmdb).then(videos => {
+          if (videos.length) fits(trailer, () => { clip.remove(); more.className = 'btn primary'; });
+        });
+      }
+      if (!s.tmdb?.rating) {
+        ratingOf(s.id, s.tmdb).then(age => {
+          if (!age.rating) return;
+          const badge = el('span', age.rating, 'badge age');
+          fits(() => meta.insertBefore(badge, meta.querySelector('.dot-list')), () => badge.remove());
+        });
+      }
+    },
+  };
+}
+
+// The featured shows in `box`, going round. It turns on its own every TURN_EVERY ms while
+// it plays and nothing holds it: not while a pointer or a finger is on it, less than half
+// of it is on screen, the page is hidden or a title is open over it, and never under
+// reduced motion. Anything the reader does to it (a swipe, an arrow, a key, a dot, a
+// button in a slide, keyboard focus coming in) stops those turns until play is pressed.
+function carousel(box, shows) {
+  const n = shows.length;
+  // What a slide adds late stays only if the carousel is no taller for it; one show alone
+  // is the hero as it always was, and takes it.
+  const fits = (add, undo) => {
+    const before = track.offsetHeight;
+    add();
+    if (n > 1 && track.offsetHeight > before) undo();
+  };
+  const slides = shows.map((s, i) => featuredSlide(s, i, n, fits));
+  const track = el('div', '', 'hero-track');
+  track.append(...slides.map(x => x.node));
+  box.classList.remove('has-backdrop', 'loading');
+  // A slide the reader looks at for a second counts as seen, as a card does.
+  for (const x of slides) seenWatch.observe(x.node, x.show.id);
+  const ends = new AbortController();
+  const on = (target, type, fn, options = {}) => target.addEventListener(type, fn, { ...options, signal: ends.signal });
+  on(wideScreen, 'change', () => { for (const x of slides) x.widen(); });
+  // Nothing in it is scrolled into view, whatever asks: its slides stay where they are set.
+  on(box, 'scroll', () => { box.scrollLeft = 0; box.scrollTop = 0; });
+  if (n < 2) {
+    for (const name of ['role', 'aria-roledescription', 'aria-label']) box.removeAttribute(name);
+    // On phones a new hero crossfades over the one before (gestures.js).
+    crossfade(box, track);
+    slides[0]?.ready(true);
+    return { end: () => ends.abort() };
+  }
+  box.setAttribute('role', 'region');
+  box.setAttribute('aria-roledescription', 'carousel');
+  box.setAttribute('aria-label', 'Featured shows');
+
+  const play = button('hero-play', '', () => (playing ? pause() : resume()));
+  const dots = el('div', '', 'hero-dots');
+  dots.setAttribute('role', 'group');
+  dots.setAttribute('aria-label', 'Choose a featured show');
+  const dotFor = shows.map((s, i) => {
+    const dot = button('hero-dot', '', () => goTo(i));
+    dot.setAttribute('aria-label', slideLabel(i, n, s.name));
+    // A dot about to be pressed readies its slide.
+    for (const type of ['pointerenter', 'focus']) on(dot, type, () => slides[i].ready());
+    dots.append(dot);
+    return dot;
+  });
+  const controls = el('div', '', 'hero-controls');
+  controls.append(play, dots);
+  const prev = button('hero-arrow prev', '', () => step(-1), 'left');
+  const next = button('hero-arrow next', '', () => step(1), 'right');
+  prev.setAttribute('aria-label', 'Previous featured show');
+  next.setAttribute('aria-label', 'Next featured show');
+  // Where a move the reader made lands is said; the carousel's own turns go unsaid.
+  const said = el('p', '', 'sr');
+  said.setAttribute('aria-live', 'polite');
+
+  let current = 0;        // the slide at rest, which places on the strip are counted from
+  let offset = 0;         // where the strip is, in slots past the current slide's
+  let bound = null;       // the slot a move under way is bound for
+  let moving = null;      // its animation
+  let grab = null;        // a pointer or finger on the strip
+  let dragged = false;    // a drag has just ended, so the click it leaves is not a press
+  let playing = motion();
+  let timer = 0;
+  let ended = false;
+  let sight = null;       // whether half of it is on screen
+  const held = new Set(['screen']);   // what holds its own turns for now; it is off screen until seen
+
+  const shift = value => `translate3d(${-value * 100}%,0,0)`;
+  const slide = value => {
+    offset = value;
+    track.style.transform = shift(value);
+  };
+  // Each slide in its slot nearest the strip while it goes from lo to hi, drawn if it is on
+  // screen on the way or next to it.
+  function place(lo, hi = lo) {
+    const middle = current + (lo + hi) / 2;
+    slides.forEach((x, i) => {
+      const rel = slotOf(i, middle, n) - current;
+      const drawn = rel > lo - 2 && rel < hi + 2;
+      if (rel !== x.rel) {
+        x.rel = rel;
+        x.node.style.transform = `translate3d(${rel * 100}%,0,0)`;
+      }
+      if (drawn !== x.drawn) {
+        x.drawn = drawn;
+        x.node.style.visibility = drawn ? '' : 'hidden';
+      }
     });
   }
+  // The slide a keyboard, a screen reader and the dots have: the one a move is bound for,
+  // from the moment it sets off. Focus in the slide it leaves goes to the same button in it.
+  function show(i) {
+    const to = slides[i].node;
+    to.inert = false;
+    const active = document.activeElement;
+    const from = active?.closest?.('.hero-slide');
+    if (from && from !== to && track.contains(from)) {
+      const buttons = [...to.querySelectorAll('button')];
+      (buttons.find(b => b.textContent === active.textContent) || buttons[0])?.focus({ preventScroll: true });
+    }
+    slides.forEach((x, k) => { x.node.inert = k !== i; });
+    dots.style.setProperty('--at', String(i));
+    dotFor.forEach((dot, k) => {
+      if (k === i) dot.setAttribute('aria-current', 'true');
+      else dot.removeAttribute('aria-current');
+      dot.tabIndex = k === i ? 0 : -1;
+    });
+    if (dots.contains(document.activeElement)) dotFor[i].focus({ preventScroll: true });
+  }
+  const neighbours = () => { for (const k of [-1, 1]) slides[slideIn(current + k, n)].ready(); };
+
+  // Where the strip is: while a move is under way, where it has got to on screen, and it
+  // stops there.
+  function halt() {
+    if (moving) {
+      const t = getComputedStyle(track).transform;
+      const x = t && t !== 'none' ? new DOMMatrixReadOnly(t).m41 : 0;
+      moving.cancel();
+      moving = null;
+      slide(-x / (track.offsetWidth || innerWidth));
+    }
+    return offset;
+  }
+  // Sends the strip from wherever it is to slot `to`: after a swipe let go at `v` px a ms,
+  // on at its speed, and for a turn of its own, unhurried and unsaid.
+  function move(to, { v = null, width = 0, own = false } = {}) {
+    if (ended) return;
+    const from = halt();
+    to = reach(from, to, n);
+    const i = slideIn(current + to, n);
+    clearTimeout(timer);
+    bound = to;
+    place(Math.min(from, to), Math.max(from, to));
+    show(i);
+    slides[i].ready();
+    if (!own) said.textContent = slideLabel(i, n, shows[i].name);
+    if (from === to || !motion()) {
+      slide(to);
+      land();
+      return;
+    }
+    const time = v !== null ? glideTime(Math.abs(to - from) * width, v) : own ? TURN_OWN_MS : turnTime(to - from);
+    slide(to);
+    const a = track.animate([{ transform: shift(from) }, { transform: shift(to) }],
+      { duration: time, easing: v !== null ? EASE_THROWN : own ? EASE_TURN : EASE_OUT });
+    moving = a;
+    const done = () => { if (moving === a) land(); };
+    a.finished.then(done, () => {});
+    // A hidden page animates nothing, so there the move counts as done once it would be.
+    setTimeout(() => { if (document.visibilityState === 'hidden' || a.playState !== 'running') done(); }, time + 250);
+  }
+  // At rest in slot `offset`: the slide there is the current one, and every slide is set
+  // beside it again, so the strip is back at its start with nothing moved on screen.
+  function land() {
+    moving?.cancel();
+    moving = null;
+    bound = null;
+    current = slideIn(current + Math.round(offset), n);
+    slide(0);
+    place(0);
+    neighbours();
+    schedule();
+  }
+  // The next slide or the one before, from where a move under way is bound.
+  function step(way) {
+    pause();
+    move((bound ?? Math.round(halt())) + way);
+  }
+  // Slide i, the shorter way round.
+  function goTo(i) {
+    pause();
+    move(slotOf(i, current + halt(), n) - current);
+  }
+
+  function schedule() {
+    clearTimeout(timer);
+    timer = 0;
+    if (playing && !held.size && !moving && !grab?.on && !ended && motion()) timer = setTimeout(turn, TURN_EVERY);
+  }
+  function turn() {
+    timer = 0;
+    if (!track.isConnected) { end(); return; }
+    // Behind a title page the page stays as it was left.
+    if (document.querySelector('dialog[open]')) schedule();
+    else move(1, { own: true });
+  }
+  function paintPlay() {
+    play.replaceChildren(icon(playing ? 'pause' : 'play'));
+    play.setAttribute('aria-label', playing ? 'Pause the featured shows' : 'Play the featured shows');
+  }
+  function pause() {
+    if (!playing) return;
+    playing = false;
+    paintPlay();
+    schedule();
+  }
+  function resume() {
+    playing = true;
+    paintPlay();
+    schedule();
+  }
+  const hold = (why, on) => {
+    if (on) held.add(why);
+    else held.delete(why);
+    schedule();
+  };
+  // Replaced by another, it stops: a move under way finishes where it was going, unsettled.
+  function end() {
+    ended = true;
+    moving = null;
+    ends.abort();
+    sight?.disconnect();
+    clearTimeout(timer);
+  }
+
+  // A swipe or a drag across the strip moves it under the finger, and a scroll up or down
+  // is left to the page (touch-action: pan-y).
+  on(track, 'pointerdown', e => {
+    if (!e.isPrimary || e.button > 0 || grab?.on) return;
+    grab = { id: e.pointerId, x: e.clientX, y: e.clientY, on: false, from: 0, home: null, width: 1, samples: [] };
+  });
+  on(track, 'pointermove', e => {
+    const g = grab;
+    if (!g || e.pointerId !== g.id) return;
+    const dx = e.clientX - g.x, dy = e.clientY - g.y;
+    if (!g.on) {
+      if (!wandered(dx, dy)) return;
+      if (heading(dx, dy) !== 'x') {
+        grab = null;
+        return;
+      }
+      g.on = true;
+      pause();
+      g.width = track.offsetWidth || innerWidth;
+      // Caught on its way, the strip stops under the finger; from rest, the slide shown is
+      // where the swipe sets off.
+      g.home = moving ? null : Math.round(offset);
+      g.from = halt();
+      bound = null;
+      clearTimeout(timer);
+      try { track.setPointerCapture(e.pointerId); } catch { /* the pointer has gone */ }
+      box.classList.add('dragging');
+      getSelection()?.removeAllRanges();
+      neighbours();
+    }
+    const value = g.from - dx / g.width;
+    // Past a whole slide, the next one on is where the swipe now sets off.
+    if (g.home !== null && Math.abs(value - g.home) >= 1) g.home += Math.sign(value - g.home);
+    slide(value);
+    place(value);
+    g.samples.push([performance.now(), e.clientX]);
+    if (g.samples.length > 8) g.samples.shift();
+  });
+  const letGo = e => {
+    const g = grab;
+    if (!g || e.pointerId !== g.id) return;
+    grab = null;
+    if (!g.on) return;
+    box.classList.remove('dragging');
+    dragged = true;
+    setTimeout(() => { dragged = false; });
+    const v = e.type === 'pointerup' ? speed(g.samples, performance.now()) : 0;
+    move(landing(offset, v, g.width, g.home), { v, width: g.width });
+  };
+  on(track, 'pointerup', letGo);
+  on(track, 'pointercancel', letGo);
+  // The strip losing the pointer ends the drag; the slide the finger first touched giving
+  // it up to the strip, which bubbles here too, does not.
+  on(track, 'lostpointercapture', e => { if (e.target === track) letGo(e); });
+  // The click a drag leaves where it ends is not a press.
+  on(box, 'click', e => {
+    if (!dragged) return;
+    dragged = false;
+    e.preventDefault();
+    e.stopPropagation();
+  }, { capture: true });
+  on(box, 'dragstart', e => e.preventDefault());
+  on(track, 'click', e => { if (e.target.closest('button, a')) pause(); });
+  on(box, 'keydown', e => {
+    if ((e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    e.preventDefault();
+    step(e.key === 'ArrowRight' ? 1 : -1);
+  });
+  on(box, 'focusin', e => {
+    neighbours();
+    if (box.contains(e.relatedTarget)) return;
+    let keyboard = false;
+    try { keyboard = e.target.matches(':focus-visible'); } catch { /* a browser without :focus-visible */ }
+    if (keyboard) pause();
+  });
+  // A mouse over it, or a finger on it, holds it, and readies the slides either side.
+  on(box, 'pointerenter', () => {
+    neighbours();
+    hold('pointer', true);
+  });
+  on(box, 'pointerleave', () => hold('pointer', false));
+  on(document, 'visibilitychange', () => hold('page', document.visibilityState === 'hidden'));
+  on(matchMedia('(prefers-reduced-motion: reduce)'), 'change', e => { if (e.matches) pause(); });
+  if ('IntersectionObserver' in window) {
+    sight = new IntersectionObserver(entries => hold('screen', entries.at(-1).intersectionRatio < .5), { threshold: [0, .5] });
+    sight.observe(box);
+  } else held.delete('screen');
+  if (document.visibilityState === 'hidden') held.add('page');
+
+  paintPlay();
+  place(0);
+  slide(0);
+  crossfade(box, controls, prev, next, track, said);
+  show(0);
+  slides[0].ready(true);
+  // The slides either side follow the first slide's poster, or a moment, whichever is sooner.
+  const first = slides[0].poster.querySelector('img');
+  if (!first || (first.complete && first.naturalWidth)) neighbours();
+  else {
+    first.addEventListener('load', neighbours, { once: true, signal: ends.signal });
+    first.addEventListener('error', neighbours, { once: true, signal: ends.signal });
+    setTimeout(() => { if (!ended) neighbours(); }, 2500);
+  }
+  schedule();
+  return { end };
 }
 
 // "98% match · 2008–2013 · 5 Seasons", with genres instead of length over the hero.
