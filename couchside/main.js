@@ -9,6 +9,8 @@ import { POSTERS_AHEAD, POSTERS_AT_ONCE, FLUNG, FLUNG_AT_ONCE, STILL_FLUNG, SLOW
   posterPace, catchingUp, rowsToAsk, retryAfter } from './format.js';
 import { genreChoices, nextByLetter, searchText, recentStore, noteSearch, withoutSearch, recentMatches, keepsRow } from './format.js';
 import { keeper, sessionAnswers } from './format.js';
+import { TURN_EVERY, slideIn, slotOf, reach, slideLabel, landing, TURN_OWN_MS, glideTime, turnTime } from './format.js';
+import { heading, wandered } from './gestures.js';
 import { SNIPPETS, snippet, revealLabel } from './format.js';
 import { withEpisode, episodeCode, episodeSaid, neighbours, credits, airing } from './format.js';
 import { withPerson, isoDay, yearsBetween, bornOn, diedOn, selfHeading, creditLines, knownFor } from './format.js';
@@ -69,6 +71,7 @@ const ICONS = {
   saved: '<path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/>',
   smile: '<circle cx="12" cy="12" r="9.5"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/>',
   play: '<path d="M7 4.5v15l12.5-7.5z" fill="currentColor"/>',
+  pause: '<path d="M8 5v14M16 5v14" stroke-width="3.4"/>',
   more: '<path d="M6 9l6 6 6-6"/>',
   share: '<path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"/>',
   grid: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>',
@@ -591,6 +594,7 @@ for (const d of document.querySelectorAll('dialog')) d.addEventListener('close',
 
 function rememberHome(data) {
   if (data.hero) remember(data.hero);
+  (data.featured || []).forEach(remember);
   for (const r of data.rows) r.items.forEach(remember);
   for (const list of [data.top10, data.fresh, data.soon, data.list, data.popular]) (list || []).forEach(remember);
 }
@@ -750,7 +754,8 @@ function renderHomeLoading() {
 }
 
 function renderHome() {
-  renderHero(home.hero);
+  // The featured shows, the visit's hero first; a page kept from before them has its hero alone.
+  renderFeatured(home.featured?.length ? home.featured : [home.hero]);
   // The hero rests for the rest of the day and, the day's first, for a week, so the next
   // visits' are others (fresh.js).
   noteHero(memory, home.hero.id, today());
@@ -823,17 +828,45 @@ function updateRecentRow() {
   if (row) redraw(row, () => row.replaceWith(recentRow()));
 }
 
-function renderHero(s) {
-  const hero = $('hero');
-  hero.classList.remove('has-backdrop', 'loading');
+/* ------------------------------------------------------------ featured */
+// The featured shows, in the hero's place: a carousel that goes round (slotOf in format.js).
+// Each slide is laid out as the hero always was, all of them in one place, so the carousel
+// is as tall as its tallest and the page below never moves, and each is set in its slot
+// beside the others by a transform. A swipe, a button, a key, a dot or the carousel's own
+// turn moves the track they sit in, so the compositor slides them with no layout on the
+// way; once it rests, every slide is set again beside the one shown, which moves nothing on
+// screen. Only the slide shown and its neighbours are drawn, and only they have asked for
+// their images and details: the rest wait unseen until they are next to come.
+const wideScreen = matchMedia('(min-width: 760px)');
+const EASE_OUT = 'cubic-bezier(.22,1,.36,1)';     // quick, then settling, for a button or a key
+const EASE_THROWN = 'cubic-bezier(.3,.6,.6,1)';   // going on at the speed a swipe let go
+const EASE_TURN = 'cubic-bezier(.45,0,.2,1)';     // unhurried, for a turn of its own
+let featured = null;    // the carousel on the page: { end }
+
+function renderFeatured(shows) {
+  featured?.end();
+  featured = carousel($('hero'), shows);
+}
+
+// One featured show, laid out as the hero always was. What TMDB's data says is drawn at
+// once, so the carousel has its height from the start; its images, and the trailer and
+// age rating TMDB lacks, wait for ready(), which the carousel calls once it is shown or
+// next to come, the first slide first of all. What comes late goes in only where it
+// fits (fits(add, undo)), since the carousel growing would move the page below.
+function featuredSlide(s, i, n, fits) {
+  const slide = el('div', '', 'hero-slide');
+  if (n > 1) {
+    slide.setAttribute('role', 'group');
+    slide.setAttribute('aria-roledescription', 'slide');
+    slide.setAttribute('aria-label', slideLabel(i, n, s.name));
+  }
   const bg = el('div', '', 'hero-bg');
-  if (s.art) bg.append(picture(s.art, 'hero-blur'));
-  const backdrop = picture(null, 'hero-backdrop', () => hero.classList.add('has-backdrop'));
-  // Phones hide the backdrop, and a lazy image that is hidden is never fetched.
-  backdrop.loading = 'lazy';
+  const blur = s.art ? picture(null, 'hero-blur') : null;
+  const backdrop = picture(null, 'hero-backdrop', () => slide.classList.add('has-backdrop'));
+  if (blur) bg.append(blur);
   bg.append(backdrop);
-  // On a phone the hero's poster is the first screen's largest picture.
-  const poster = artEl(s, s.art, 'first');
+  // On a phone the poster is the first screen's largest picture.
+  const poster = artEl(s, s.art, 'ahead');
   poster.classList.add('hero-poster');
   const copy = el('div', '', 'hero-copy');
   copy.append(el('h1', s.name, 'hero-title'));
@@ -844,32 +877,378 @@ function renderHero(s) {
     if (tie) why.append(document.createTextNode(` · ${tieText(tie)}`));
     copy.append(why);
   }
-  const meta = metaEl(s, null, true);
+  const meta = metaEl(s, null, true, s.tmdb?.rating || null);
   copy.append(meta);
   if (s.summary) copy.append(el('p', s.summary, 'hero-summary'));
   const acts = el('div', '', 'hero-acts');
   const more = button('btn primary', 'More info', () => openTitle(s.id), 'info');
   acts.append(more, listButton(s, 'btn'));
   copy.append(acts);
-  videosOf(s.id, s.tmdb).then(videos => {
-    if (!videos.length || !hero.contains(acts)) return;
+  const clip = button('btn primary', 'Trailer', () => openTitle(s.id, { play: true }), 'play');
+  const trailer = () => {
     more.className = 'btn';
-    acts.prepend(button('btn primary', 'Trailer', () => openTitle(s.id, { play: true }), 'play'));
-  });
-  ratingOf(s.id, s.tmdb).then(age => {
-    if (age.rating && hero.contains(meta)) meta.insertBefore(el('span', age.rating, 'badge age'), meta.querySelector('.dot-list'));
-  });
+    acts.prepend(clip);
+  };
+  if (s.tmdb?.videos?.length) trailer();
   const body = el('div', '', 'hero-body');
   body.append(poster, copy);
-  // On phones a new hero crossfades over the one before (gestures.js).
-  crossfade(hero, bg, el('div', '', 'hero-shade'), body);
-  // TMDB's backdrop when it has one, else TVmaze's.
-  if (s.tmdb?.backdrop) backdrop.src = s.tmdb.backdrop;
-  else {
-    details(s.id).then(d => {
-      if (d?.backdrop && hero.contains(backdrop)) backdrop.src = d.backdrop;
+  slide.append(bg, el('div', '', 'hero-shade'), body);
+  let asked = false, backdropAsked = false;
+  // Only a wide screen shows the backdrop: TMDB's when it has one, else TVmaze's.
+  const widen = (urgent = false) => {
+    if (!asked || backdropAsked || !wideScreen.matches) return;
+    backdropAsked = true;
+    if (urgent) backdrop.fetchPriority = 'high';
+    if (s.tmdb?.backdrop) backdrop.src = s.tmdb.backdrop;
+    else details(s.id).then(d => { if (d?.backdrop) backdrop.src = d.backdrop; });
+  };
+  return {
+    node: slide, show: s, poster, rel: null, drawn: null, widen,
+    ready(urgent = false) {
+      if (asked) return;
+      asked = true;
+      if (blur) blur.src = s.art;
+      loadPoster(poster, urgent);
+      widen(urgent);
+      if (!s.tmdb?.videos?.length) {
+        videosOf(s.id, s.tmdb).then(videos => {
+          if (videos.length) fits(trailer, () => { clip.remove(); more.className = 'btn primary'; });
+        });
+      }
+      if (!s.tmdb?.rating) {
+        ratingOf(s.id, s.tmdb).then(age => {
+          if (!age.rating) return;
+          const badge = el('span', age.rating, 'badge age');
+          fits(() => meta.insertBefore(badge, meta.querySelector('.dot-list')), () => badge.remove());
+        });
+      }
+    },
+  };
+}
+
+// The featured shows in `box`, going round. It turns on its own every TURN_EVERY ms while
+// it plays and nothing holds it: not while a pointer or a finger is on it, less than half
+// of it is on screen, the page is hidden or a title is open over it, and never under
+// reduced motion. Anything the reader does to it (a swipe, an arrow, a key, a dot, a
+// button in a slide, keyboard focus coming in) stops those turns until play is pressed.
+function carousel(box, shows) {
+  const n = shows.length;
+  // What a slide adds late stays only if the carousel is no taller for it; one show alone
+  // is the hero as it always was, and takes it.
+  const fits = (add, undo) => {
+    const before = track.offsetHeight;
+    add();
+    if (n > 1 && track.offsetHeight > before) undo();
+  };
+  const slides = shows.map((s, i) => featuredSlide(s, i, n, fits));
+  const track = el('div', '', 'hero-track');
+  track.append(...slides.map(x => x.node));
+  box.classList.remove('has-backdrop', 'loading');
+  // A slide the reader looks at for a second counts as seen, as a card does.
+  for (const x of slides) seenWatch.observe(x.node, x.show.id);
+  const ends = new AbortController();
+  const on = (target, type, fn, options = {}) => target.addEventListener(type, fn, { ...options, signal: ends.signal });
+  on(wideScreen, 'change', () => { for (const x of slides) x.widen(); });
+  // Nothing in it is scrolled into view, whatever asks: its slides stay where they are set.
+  on(box, 'scroll', () => { box.scrollLeft = 0; box.scrollTop = 0; });
+  if (n < 2) {
+    for (const name of ['role', 'aria-roledescription', 'aria-label']) box.removeAttribute(name);
+    // On phones a new hero crossfades over the one before (gestures.js).
+    crossfade(box, track);
+    slides[0]?.ready(true);
+    return { end: () => ends.abort() };
+  }
+  box.setAttribute('role', 'region');
+  box.setAttribute('aria-roledescription', 'carousel');
+  box.setAttribute('aria-label', 'Featured shows');
+
+  const play = button('hero-play', '', () => (playing ? pause() : resume()));
+  const dots = el('div', '', 'hero-dots');
+  dots.setAttribute('role', 'group');
+  dots.setAttribute('aria-label', 'Choose a featured show');
+  const dotFor = shows.map((s, i) => {
+    const dot = button('hero-dot', '', () => goTo(i));
+    dot.setAttribute('aria-label', slideLabel(i, n, s.name));
+    // A dot about to be pressed readies its slide.
+    for (const type of ['pointerenter', 'focus']) on(dot, type, () => slides[i].ready());
+    dots.append(dot);
+    return dot;
+  });
+  const controls = el('div', '', 'hero-controls');
+  controls.append(play, dots);
+  const prev = button('hero-arrow prev', '', () => step(-1), 'left');
+  const next = button('hero-arrow next', '', () => step(1), 'right');
+  prev.setAttribute('aria-label', 'Previous featured show');
+  next.setAttribute('aria-label', 'Next featured show');
+  // Where a move the reader made lands is said; the carousel's own turns go unsaid.
+  const said = el('p', '', 'sr');
+  said.setAttribute('aria-live', 'polite');
+
+  let current = 0;        // the slide at rest, which places on the strip are counted from
+  let offset = 0;         // where the strip is, in slots past the current slide's
+  let bound = null;       // the slot a move under way is bound for
+  let moving = null;      // its animation
+  let grab = null;        // a pointer or finger on the strip
+  let dragged = false;    // a drag has just ended, so the click it leaves is not a press
+  let playing = motion();
+  let timer = 0;
+  let ended = false;
+  let sight = null;       // whether half of it is on screen
+  const held = new Set(['screen']);   // what holds its own turns for now; it is off screen until seen
+
+  const shift = value => `translate3d(${-value * 100}%,0,0)`;
+  const slide = value => {
+    offset = value;
+    track.style.transform = shift(value);
+  };
+  // Each slide in its slot nearest the strip while it goes from lo to hi, drawn if it is on
+  // screen on the way or next to it.
+  function place(lo, hi = lo) {
+    const middle = current + (lo + hi) / 2;
+    slides.forEach((x, i) => {
+      const rel = slotOf(i, middle, n) - current;
+      const drawn = rel > lo - 2 && rel < hi + 2;
+      if (rel !== x.rel) {
+        x.rel = rel;
+        x.node.style.transform = `translate3d(${rel * 100}%,0,0)`;
+      }
+      if (drawn !== x.drawn) {
+        x.drawn = drawn;
+        x.node.style.visibility = drawn ? '' : 'hidden';
+      }
     });
   }
+  // The slide a keyboard, a screen reader and the dots have: the one a move is bound for,
+  // from the moment it sets off. Focus in the slide it leaves goes to the same button in it.
+  function show(i) {
+    const to = slides[i].node;
+    to.inert = false;
+    const active = document.activeElement;
+    const from = active?.closest?.('.hero-slide');
+    if (from && from !== to && track.contains(from)) {
+      const buttons = [...to.querySelectorAll('button')];
+      (buttons.find(b => b.textContent === active.textContent) || buttons[0])?.focus({ preventScroll: true });
+    }
+    slides.forEach((x, k) => { x.node.inert = k !== i; });
+    dots.style.setProperty('--at', String(i));
+    dotFor.forEach((dot, k) => {
+      if (k === i) dot.setAttribute('aria-current', 'true');
+      else dot.removeAttribute('aria-current');
+      dot.tabIndex = k === i ? 0 : -1;
+    });
+    if (dots.contains(document.activeElement)) dotFor[i].focus({ preventScroll: true });
+  }
+  const neighbours = () => { for (const k of [-1, 1]) slides[slideIn(current + k, n)].ready(); };
+
+  // Where the strip is: while a move is under way, where it has got to on screen, and it
+  // stops there.
+  function halt() {
+    if (moving) {
+      const t = getComputedStyle(track).transform;
+      const x = t && t !== 'none' ? new DOMMatrixReadOnly(t).m41 : 0;
+      moving.cancel();
+      moving = null;
+      slide(-x / (track.offsetWidth || innerWidth));
+    }
+    return offset;
+  }
+  // Sends the strip from wherever it is to slot `to`: after a swipe let go at `v` px a ms,
+  // on at its speed, and for a turn of its own, unhurried and unsaid.
+  function move(to, { v = null, width = 0, own = false } = {}) {
+    if (ended) return;
+    const from = halt();
+    to = reach(from, to, n);
+    const i = slideIn(current + to, n);
+    clearTimeout(timer);
+    bound = to;
+    place(Math.min(from, to), Math.max(from, to));
+    show(i);
+    slides[i].ready();
+    if (!own) said.textContent = slideLabel(i, n, shows[i].name);
+    if (from === to || !motion()) {
+      slide(to);
+      land();
+      return;
+    }
+    const time = v !== null ? glideTime(Math.abs(to - from) * width, v) : own ? TURN_OWN_MS : turnTime(to - from);
+    slide(to);
+    const a = track.animate([{ transform: shift(from) }, { transform: shift(to) }],
+      { duration: time, easing: v !== null ? EASE_THROWN : own ? EASE_TURN : EASE_OUT });
+    moving = a;
+    const done = () => { if (moving === a) land(); };
+    a.finished.then(done, () => {});
+    // A hidden page animates nothing, so there the move counts as done once it would be.
+    setTimeout(() => { if (document.visibilityState === 'hidden' || a.playState !== 'running') done(); }, time + 250);
+  }
+  // At rest in slot `offset`: the slide there is the current one, and every slide is set
+  // beside it again, so the strip is back at its start with nothing moved on screen.
+  function land() {
+    moving?.cancel();
+    moving = null;
+    bound = null;
+    current = slideIn(current + Math.round(offset), n);
+    slide(0);
+    place(0);
+    neighbours();
+    schedule();
+  }
+  // The next slide or the one before, from where a move under way is bound.
+  function step(way) {
+    pause();
+    move((bound ?? Math.round(halt())) + way);
+  }
+  // Slide i, the shorter way round.
+  function goTo(i) {
+    pause();
+    move(slotOf(i, current + halt(), n) - current);
+  }
+
+  function schedule() {
+    clearTimeout(timer);
+    timer = 0;
+    if (playing && !held.size && !moving && !grab?.on && !ended && motion()) timer = setTimeout(turn, TURN_EVERY);
+  }
+  function turn() {
+    timer = 0;
+    if (!track.isConnected) { end(); return; }
+    // Behind a title page the page stays as it was left.
+    if (document.querySelector('dialog[open]')) schedule();
+    else move(1, { own: true });
+  }
+  function paintPlay() {
+    play.replaceChildren(icon(playing ? 'pause' : 'play'));
+    play.setAttribute('aria-label', playing ? 'Pause the featured shows' : 'Play the featured shows');
+  }
+  function pause() {
+    if (!playing) return;
+    playing = false;
+    paintPlay();
+    schedule();
+  }
+  function resume() {
+    playing = true;
+    paintPlay();
+    schedule();
+  }
+  const hold = (why, on) => {
+    if (on) held.add(why);
+    else held.delete(why);
+    schedule();
+  };
+  // Replaced by another, it stops: a move under way finishes where it was going, unsettled.
+  function end() {
+    ended = true;
+    moving = null;
+    ends.abort();
+    sight?.disconnect();
+    clearTimeout(timer);
+  }
+
+  // A swipe or a drag across the strip moves it under the finger, and a scroll up or down
+  // is left to the page (touch-action: pan-y).
+  on(track, 'pointerdown', e => {
+    if (!e.isPrimary || e.button > 0 || grab?.on) return;
+    grab = { id: e.pointerId, x: e.clientX, y: e.clientY, on: false, from: 0, home: null, width: 1, samples: [] };
+  });
+  on(track, 'pointermove', e => {
+    const g = grab;
+    if (!g || e.pointerId !== g.id) return;
+    const dx = e.clientX - g.x, dy = e.clientY - g.y;
+    if (!g.on) {
+      if (!wandered(dx, dy)) return;
+      if (heading(dx, dy) !== 'x') {
+        grab = null;
+        return;
+      }
+      g.on = true;
+      pause();
+      g.width = track.offsetWidth || innerWidth;
+      // Caught on its way, the strip stops under the finger; from rest, the slide shown is
+      // where the swipe sets off.
+      g.home = moving ? null : Math.round(offset);
+      g.from = halt();
+      bound = null;
+      clearTimeout(timer);
+      try { track.setPointerCapture(e.pointerId); } catch { /* the pointer has gone */ }
+      box.classList.add('dragging');
+      getSelection()?.removeAllRanges();
+      neighbours();
+    }
+    const value = g.from - dx / g.width;
+    // Past a whole slide, the next one on is where the swipe now sets off.
+    if (g.home !== null && Math.abs(value - g.home) >= 1) g.home += Math.sign(value - g.home);
+    slide(value);
+    place(value);
+    g.samples.push([performance.now(), e.clientX]);
+    if (g.samples.length > 8) g.samples.shift();
+  });
+  const letGo = e => {
+    const g = grab;
+    if (!g || e.pointerId !== g.id) return;
+    grab = null;
+    if (!g.on) return;
+    box.classList.remove('dragging');
+    dragged = true;
+    setTimeout(() => { dragged = false; });
+    const v = e.type === 'pointerup' ? speed(g.samples, performance.now()) : 0;
+    move(landing(offset, v, g.width, g.home), { v, width: g.width });
+  };
+  on(track, 'pointerup', letGo);
+  on(track, 'pointercancel', letGo);
+  // The strip losing the pointer ends the drag; the slide the finger first touched giving
+  // it up to the strip, which bubbles here too, does not.
+  on(track, 'lostpointercapture', e => { if (e.target === track) letGo(e); });
+  // The click a drag leaves where it ends is not a press.
+  on(box, 'click', e => {
+    if (!dragged) return;
+    dragged = false;
+    e.preventDefault();
+    e.stopPropagation();
+  }, { capture: true });
+  on(box, 'dragstart', e => e.preventDefault());
+  on(track, 'click', e => { if (e.target.closest('button, a')) pause(); });
+  on(box, 'keydown', e => {
+    if ((e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    e.preventDefault();
+    step(e.key === 'ArrowRight' ? 1 : -1);
+  });
+  on(box, 'focusin', e => {
+    neighbours();
+    if (box.contains(e.relatedTarget)) return;
+    let keyboard = false;
+    try { keyboard = e.target.matches(':focus-visible'); } catch { /* a browser without :focus-visible */ }
+    if (keyboard) pause();
+  });
+  // A mouse over it, or a finger on it, holds it, and readies the slides either side.
+  on(box, 'pointerenter', () => {
+    neighbours();
+    hold('pointer', true);
+  });
+  on(box, 'pointerleave', () => hold('pointer', false));
+  on(document, 'visibilitychange', () => hold('page', document.visibilityState === 'hidden'));
+  on(matchMedia('(prefers-reduced-motion: reduce)'), 'change', e => { if (e.matches) pause(); });
+  if ('IntersectionObserver' in window) {
+    sight = new IntersectionObserver(entries => hold('screen', entries.at(-1).intersectionRatio < .5), { threshold: [0, .5] });
+    sight.observe(box);
+  } else held.delete('screen');
+  if (document.visibilityState === 'hidden') held.add('page');
+
+  paintPlay();
+  place(0);
+  slide(0);
+  crossfade(box, controls, prev, next, track, said);
+  show(0);
+  slides[0].ready(true);
+  // The slides either side follow the first slide's poster, or a moment, whichever is sooner.
+  const first = slides[0].poster.querySelector('img');
+  if (!first || (first.complete && first.naturalWidth)) neighbours();
+  else {
+    first.addEventListener('load', neighbours, { once: true, signal: ends.signal });
+    first.addEventListener('error', neighbours, { once: true, signal: ends.signal });
+    setTimeout(() => { if (!ended) neighbours(); }, 2500);
+  }
+  schedule();
+  return { end };
 }
 
 // "98% match · 2008–2013 · 5 Seasons", with genres instead of length over the hero.

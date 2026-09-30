@@ -503,11 +503,13 @@ class Handler(SimpleHTTPRequestHandler):
             elif not isinstance(payload, dict):
                 raise ValueError('Send your list and settings as an object.')
             elif route == '/api/home':
-                # The first eight rows and the hero, or, for a request that says which rows
-                # it already shows, the next ones (library.Library.home).
+                # The first eight rows and the featured shows, the visit's hero first, or, for a
+                # request that says which rows it already shows, the next ones
+                # (library.Library.home). Each featured show carries TMDB's data, as a title does.
                 home = LIBRARY.home(payload)
                 if home.get('hero'):
-                    home['hero']['tmdb'] = TMDB.get(home['hero']['id'])
+                    for show in (home['hero'], *home.get('featured', ())):
+                        show['tmdb'] = TMDB.get(show['id'])
                 self.send_json(home)
             elif route == '/api/browse':
                 self.send_json(LIBRARY.browse(payload))

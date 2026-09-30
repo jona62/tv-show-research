@@ -324,6 +324,43 @@ check('recently viewed is the last fortnight, newest first', same(recentlyViewed
   && VIEWED_DAYS === 14);
 check('rated and listed titles leave it', same(recentlyViewed(viewed, day, { rated: new Set([2]), saved: new Set([3]) }), []));
 
+// The featured shows go round: each slide is drawn in its slot nearest the strip, so after
+// the last comes the first, from the right, and before the first the last, from the left.
+// A swipe turns the slide a fifth of the way on, or flicked, and no move wants a slide in
+// two slots at once.
+const { TURN_EVERY, slideIn, slotOf, slotsShown, reach, slideLabel, TURN, landing, TURN_MS, TURN_OWN_MS, glideTime,
+  turnTime } = await import('./format.js');
+check('a featured show turns to the next every seven seconds or so', TURN_EVERY >= 6000 && TURN_EVERY <= 8000);
+check('slots go round the slides both ways', same([-7, -6, -1, 0, 5, 6, 13].map(k => slideIn(k, 6)), [5, 0, 5, 0, 5, 0, 1]));
+check('after the last of six comes the first, from the right', slotOf(0, 5, 6) === 6 && slotOf(4, 5, 6) === 4
+  && slotOf(5, 5, 6) === 5);
+check('and before the first comes the last, from the left', slotOf(5, 0, 6) === -1 && slotOf(1, 0, 6) === 1);
+check('however far round the strip has gone', slotOf(0, 29, 6) === 30 && slotOf(5, -12, 6) === -13);
+const onScreen = at => [0, 1, 2, 3, 4, 5].map(i => slotOf(i, at, 6)).filter(k => Math.abs(k - at) < 1).sort((a, b) => a - b);
+check('while it moves, the two slides on screen are neighbours', same(onScreen(5.4), [5, 6]) && same(onScreen(-.3), [-1, 0]));
+check('of two slides, the other waits ahead, and moves to whichever side the strip heads',
+  slotOf(1, 0, 2) === 1 && slotOf(1, .2, 2) === 1 && slotOf(1, -.2, 2) === -1 && slotOf(0, 1, 2) === 2 && slotOf(0, .8, 2) === 0);
+check('a move shows every slot within one of its way', slotsShown(0, 1) === 2 && slotsShown(.4, 2) === 3
+  && slotsShown(3, 3) === 1 && slotsShown(2.5, 0) === 4);
+check('a move goes as far as it is sent while there are slides enough', reach(0, 3, 6) === 3 && reach(.4, 2, 3) === 2
+  && reach(0, -1, 2) === -1);
+check('two slides caught on their way go on no further than the next', reach(.4, 2, 2) === 1 && reach(-.4, -2, 2) === -1);
+check('a slide is called by its place and name', slideLabel(1, 6, 'Luther') === '2 of 6: Luther');
+check('a swipe a fifth of the way on turns the slide', TURN === .2 && landing(.2, 0, 390, 0) === 1
+  && landing(-.25, 0, 390, 0) === -1);
+check('a shorter one comes back', landing(.1, 0, 390, 0) === 0 && landing(-.15, 0, 390, 0) === 0);
+check('its speed counts as distance still to come', landing(.1, -.5, 390, 0) === 1 && landing(-.1, .5, 390, 0) === -1);
+check('a flick turns it however little it came', landing(.03, -.35, 1280, 0) === 1);
+check('flicked back the other way, it stays', landing(.6, .4, 390, 0) === 0 && landing(-.6, -.4, 390, 0) === 0);
+check('caught on its way, it settles where its speed carries it', landing(.6, 0, 390) === 1 && landing(.4, 0, 390) === 0
+  && landing(.4, -1, 390) === 1);
+check('it comes to rest in a slot on screen, however hard it was thrown', landing(.9, -5, 390, 0) === 1
+  && landing(.2, 5, 390) === 0);
+check('a swipe comes to rest at the speed it was let go', glideTime(300, -2) === 180 && glideTime(300, 1) === 300
+  && glideTime(300, 0) === 375 && glideTime(1000, 0) === 420);
+check('a button turns it steadily, a little longer for each slot further', turnTime(1) === TURN_MS
+  && turnTime(-3) === TURN_MS + 240 && turnTime(9) === 840 && TURN_OWN_MS > TURN_MS);
+
 // Loading ahead of the reader: a row's posters two screens before it is seen, those it
 // shows and the next two, and more rows while three screens of them are still to come.
 const { POSTERS_AHEAD, ROWS_AHEAD, CARDS_AHEAD, POSTERS_AT_ONCE, FLUNG, FLUNG_AT_ONCE, STILL_FLUNG, posterPace, SLOW_POSTER,

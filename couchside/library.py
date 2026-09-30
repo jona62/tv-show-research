@@ -119,6 +119,8 @@ RECENT = 12             # a deeper tier is judged by its own rows, or this many 
 WEAK = 0.5              # and is weak once its best row falls below this share of their median
 PINNED = 2              # cards at the front of a row that keep their places from visit to visit (Top picks' rotate)
 LIST_ROW = 20           # My List's row holds the most recently added
+FEATURED = 6            # shows the home page features at its top, the visit's hero first
+FEATURED_POOL = 20      # the best picks they are drawn from, enough for each to be a franchise and an interest apart
 CREATOR_SHORTEST = 6    # one creator seldom has eight shows, so their row may hold six
 TOP_POOL = 100          # Top picks are calibrated from this many of the plain ranking
 # Steck's lambda for pulling Top picks toward the list's mix of interests. The engine's
@@ -2181,6 +2183,19 @@ class Page:
         chosen = pick_one(eligible, self.fresh, 'hero', top=10, avoid=visible)
         return e.by_id[chosen] if chosen is not None else None
 
+    def featured(self, rows):
+        """The shows the home page features, the visit's hero first: the rest are drawn as the
+        hero is from the best FEATURED_POOL picks not on My List and not resting as a recent
+        hero (Library.draw_featured), and preferably not one the first rows open with."""
+        hero = self.hero(rows)
+        if hero is None:
+            return []
+        e = self.e
+        saved = set(self.saved)
+        pool = [i for i in self.usable if i not in saved and e.shows[i]['id'] not in self.fresh.resting][:FEATURED_POOL]
+        visible = {e.shows[i]['id'] for shelf, items in rows[:3] if items for i in items[:GLANCE]}
+        return self.lib.draw_featured(hero, pool, self.fresh, visible, self.ranking.group)
+
 
 class Deeper:
     """The page past today's rows. Tier 1 opens where today's rows end and its rows join
@@ -2995,9 +3010,10 @@ class Library:
         return profile, settings, positives, negatives, rated, candidates, fresh
 
     def home(self, body):
-        """The home page, or the next rows of it. A first request gets the hero and the
-        first eight rows, and has the page laid out to its end behind it; one that says
-        which rows it shows (shown) gets the next six, from that page (Kept)."""
+        """The home page, or the next rows of it. A first request gets the featured shows,
+        the visit's hero first, and the first eight rows, and has the page laid out to its end
+        behind it; one that says which rows it shows (shown) gets the next six, from that
+        page (Kept)."""
         profile, settings, positives, negatives, rated, candidates, fresh = self.prepare(body)
         saved = self.read_list(body)
         lang = read_lang(body)
@@ -3016,15 +3032,14 @@ class Library:
         answer = {'personal': True, 'date': e.date, 'day': fresh.day,
                   'rows': [page.row(shelf, items) for shelf, items in new[:count]],
                   'more': len(new) > count, **self.extras(page, profile, saved)}
-        hero = page.hero(rows) if page.usable else self.top10[0]
-        if hero is None:
-            hero = self.top10[0]
-        taste.score_others([hero])
+        featured = (page.featured(rows) if page.usable else []) or [self.top10[0]]
+        taste.score_others(featured)
         popular = next((items for shelf, items in rows if shelf.key == 'popular'), None)
         by_taste = lambda items: sorted(items, key=lambda i: (-(taste.match(i) or 0), e.shows[i]['id']))
         unrated = [i for i in self.fresh if e.shows[i]['id'] not in rated]
+        shows = [{**self.detail(i, taste), 'because': taste.closest(i) if page.usable else None} for i in featured]
         answer.update({
-            'hero': {**self.detail(hero, taste), 'because': taste.closest(hero) if page.usable else None},
+            'hero': shows[0], 'featured': shows,
             'top10': [self.card(i, taste) for i in self.top10],
             'fresh': [self.card(i, taste) for i in by_taste(unrated)[:ROW]],
             'soon': [{**self.card(i), 'premiered': e.shows[i]['premiered']} for i in self.soon],
@@ -3136,17 +3151,49 @@ class Library:
             'taste': {'leans': [], 'avoids': []}, 'interests': [],
         }
         if not shown:
-            ranked = [e.shows[i]['id'] for i in self.top10]
-            hero = e.by_id[pick_one(ranked, fresh, 'hero', top=10)]
+            shows = [{**self.detail(i), 'because': None} for i in self._cold_featured(saved, rated, fresh)]
             popular = next((items for key, _t, _k, items in rows if key == 'popular'), self.popular)
             answer.update({
-                'hero': {**self.detail(hero), 'because': None},
+                'hero': shows[0], 'featured': shows,
                 'top10': [card(i) for i in self.top10],
                 'fresh': [card(i) for i in self.fresh[:ROW]],
                 'soon': [{**card(i), 'premiered': e.shows[i]['premiered']} for i in self.soon],
                 'popular': [card(i) for i in popular],
             })
         return answer
+
+    def _cold_featured(self, saved, rated, fresh):
+        """A first visit's featured shows: the hero drawn from the Top 10 as ever, and the
+        rest drawn the same way from the Top 10 and the best known after them. None is on
+        My List, rated or resting as a recent hero, while the Top 10 has any that are not."""
+        e = self.e
+        listed = set(saved)
+        unheld = lambda items: [i for i in items if i not in listed and e.shows[i]['id'] not in rated]
+        top10 = unheld(self.top10) or self.top10
+        hero = e.by_id[pick_one([e.shows[i]['id'] for i in top10], fresh, 'hero', top=10)]
+        known = unheld(self.top10 + self.popular_pool[:FEATURED_POOL - len(self.top10)])
+        return self.draw_featured(hero, [i for i in known if e.shows[i]['id'] not in fresh.resting], fresh)
+
+    def draw_featured(self, hero, pool, fresh, avoid=(), interest=None):
+        """The visit's hero and the shows featured after it, drawn one at a time as the hero is,
+        by weight 1/rank from the ten best of the pool left. Each prefers a show that shares
+        no franchise and no interest (Ranking.group) with those drawn before it, then one that
+        shares no franchise, and one not in avoid (show ids), so a carousel does not show two
+        shows of one world, nor, where the list has more, two of one interest."""
+        e = self.e
+        interest = interest or {}
+        chosen = [hero]
+        while len(chosen) < FEATURED:
+            left = [i for i in pool if i not in chosen]
+            if not left:
+                break
+            franchises = set().union(*(self.facet_sets(i)[0] for i in chosen))
+            interests = {interest.get(i) for i in chosen}
+            apart = [i for i in left if not self.facet_sets(i)[0] & franchises]
+            distinct = [i for i in apart if interest.get(i) not in interests]
+            ranked = [e.shows[i]['id'] for i in distinct or apart or left]
+            chosen.append(e.by_id[pick_one(ranked, fresh, 'featured', top=10, avoid=avoid)])
+        return chosen
 
     def _cold_rows(self, saved, rated, fresh, lang, shown):
         """The first-visit rows as (key, title, kind, items). Rows the browser shows keep
