@@ -475,14 +475,20 @@ dialog.modal::backdrop{background:#000000b8}
 .t-airs{margin:0;font-weight:700;color:var(--ink)}
 .t-summary{margin:0;font-size:15.5px;line-height:1.55;color:var(--ink-2)}
 /* Where to watch: one pill per service, with the service's own small icon, on one line
-   that fades out where it runs over; the caret at its end opens every line (main.js). */
+   that scrolls sideways, with room inside for a focus ring; the caret at its end lays
+   every service out on as many lines as they take (main.js). */
 .watch{display:flex;flex-direction:column;align-items:stretch;gap:8px}
 .watch>.k{font-size:14px;color:var(--dim)}
 .watch-line{display:flex;align-items:flex-start;gap:8px}
-.watch-list{position:relative;flex:1 1 auto;min-width:0;display:flex;flex-wrap:nowrap;gap:8px;overflow:hidden}
-.watch.open .watch-list{flex-wrap:wrap}
-.watch.clipped:not(.open) .watch-list{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 40px),#0000);
-  mask-image:linear-gradient(90deg,#000 calc(100% - 40px),#0000)}
+.watch-list{position:relative;flex:1 1 auto;min-width:0;display:flex;flex-wrap:nowrap;gap:8px;overflow-x:auto;overflow-y:hidden;
+  overscroll-behavior-x:contain;scrollbar-width:none;padding:4px;margin:-4px}
+.watch-list::-webkit-scrollbar{display:none}
+.watch.open .watch-list{flex-wrap:wrap;overflow:visible}
+/* A line that scrolls sideways fades out at an end with more past it (edges, main.js). */
+.more-before,.more-after{-webkit-mask-image:linear-gradient(90deg,#0000,#000 var(--fade-in,0px),#000 calc(100% - var(--fade-out,0px)),#0000);
+  mask-image:linear-gradient(90deg,#0000,#000 var(--fade-in,0px),#000 calc(100% - var(--fade-out,0px)),#0000)}
+.more-before{--fade-in:28px}
+.more-after{--fade-out:40px}
 .watch-link{flex:none;display:inline-flex;align-items:center;gap:7px;padding:5px 12px 5px 8px;border:1px solid #3d3d3d;border-radius:16px;
   background:#262626;color:var(--ink);font-size:13.5px;font-weight:700;text-decoration:none;transition:border-color .15s}
 /* The caret is the height of a pill, and takes a finger 44px across. */
@@ -514,6 +520,14 @@ dialog.unfolding{overflow-anchor:none}
 .t-hero.playing .t-head{position:static;padding:18px 5% 16px;background:var(--bg-2)}
 .t-hero.playing .t-name{font-size:clamp(22px,3vw,34px);text-shadow:none}
 .clips{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:16px 14px;margin:0;padding:0;list-style:none}
+/* Folded, the trailers keep to one row that scrolls sideways, three to a wide screen with
+   the next peeking in to say there are more; Show all lays every one out (setClips). A
+   row that scrolls clips what spills over it, so it keeps room inside for a focus ring. */
+.clips.rail{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:calc((100% - 3 * 14px) / 3.3);
+  overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;scrollbar-width:none;
+  padding:4px;margin:-4px;scroll-padding:0 4px}
+.clips.rail::-webkit-scrollbar{display:none}
+.clips.rail>li{scroll-snap-align:start}
 .clip{display:flex;flex-direction:column;gap:6px;width:100%;padding:0;border:0;background:none;color:inherit;text-align:left;cursor:pointer}
 .clip-thumb{position:relative;display:block;aspect-ratio:16/9;border-radius:6px;overflow:hidden;background:#2b2b2b}
 .clip-thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
@@ -578,8 +592,9 @@ dialog.unfolding{overflow-anchor:none}
   .t-backdrop{display:none}
   .t-hero.has-backdrop .t-poster{display:block}
   .more{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-  /* Two trailers side by side, so the first two take one short row. */
+  /* Two trailers side by side, so a row of them is short; folded, two and the edge of a third. */
   .clips{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 10px}
+  .clips.rail{grid-auto-columns:calc((100% - 2 * 10px) / 2.3)}
   .clip-thumb .i svg{width:32px;height:32px}
   .clip b{font-size:13px}
   /* The close button stays put while the page scrolls, one tap away wherever the thumb has got

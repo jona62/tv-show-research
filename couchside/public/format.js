@@ -139,16 +139,6 @@ export function revealLabel(part, count, open) {
   return open ? 'Show fewer' : `Show all (${count})`;
 }
 
-// Where to watch keeps to one line. Given where each service's pill ends along it, left
-// to right, and the line's width: how many it shows whole. All of them when they fit;
-// otherwise those that end before the fade at its end, and the first one at least.
-export function fitsOnLine(ends, width, fade) {
-  if (!ends.length || ends[ends.length - 1] <= width) return ends.length;
-  let n = 0;
-  while (n < ends.length && ends[n] <= width - fade) n++;
-  return Math.max(1, n);
-}
-
 // What the search page says over its results. Checking the spelling is suggested only
 // when neither the catalogue, typos and all, nor TVmaze found anything, and no shows like
 // the search were found either; when only those were, they follow the note.

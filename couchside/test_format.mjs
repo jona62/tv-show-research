@@ -1,7 +1,7 @@
 import { tieText, leaning, leaningHeading } from './format.js';
 import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere, longDate, airs,
   hostOf, sameService, watchLinks, whereToWatch, trailerSearch, searchNote } from './format.js';
-import { SNIPPETS, snippet, revealLabel, fitsOnLine } from './format.js';
+import { SNIPPETS, snippet, revealLabel } from './format.js';
 let fails = 0;
 const check = (name, ok, extra = '') => { console.log(`${ok ? 'pass' : 'FAIL'}  ${name}${ok ? '' : '  ' + extra}`); if (!ok) fails++; };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -114,10 +114,6 @@ check('the trailers button says how many there are', revealLabel('clips', 6, fal
   && revealLabel('clips', 6, true) === 'Show fewer');
 check('no button text carries a dash', ['episodes', 'clips'].every(part => [true, false].every(open =>
   !/[\u2013\u2014]/.test(revealLabel(part, 7, open)))));
-check('services that fit the line all show', fitsOnLine([90, 200, 300], 300, 40) === 3 && fitsOnLine([], 300, 40) === 0);
-check('past the line, those ending before its fade show', fitsOnLine([90, 200, 280, 400], 300, 40) === 2
-  && fitsOnLine([90, 200, 260, 400], 300, 40) === 3);
-check('a first pill wider than the line still shows', fitsOnLine([420, 500], 300, 40) === 1);
 
 // Recent searches: the last ten committed, newest first, once whatever the case, never one letter.
 const { RECENT_SEARCHES, searchText, recentStore, noteSearch, withoutSearch, recentMatches } = await import('./format.js');

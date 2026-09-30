@@ -8,7 +8,7 @@ import { POSTERS_AHEAD, POSTERS_AT_ONCE, FLUNG, FLUNG_AT_ONCE, STILL_FLUNG, SLOW
   posterPace, catchingUp, rowsToAsk, retryAfter } from './format.js';
 import { genreChoices, nextByLetter, searchText, recentStore, noteSearch, withoutSearch, recentMatches, keepsRow } from './format.js';
 import { keeper, sessionAnswers } from './format.js';
-import { SNIPPETS, snippet, revealLabel, fitsOnLine } from './format.js';
+import { SNIPPETS, snippet, revealLabel } from './format.js';
 import { freshStore, today, dayNumber, noteSeen, noteEngaged, noteRow, noteHero, prune, freshness, watcher }
   from './fresh.js';
 import { daySeed, startersQuery, mergeStarters, browserLanguage, MAX_ROUND, MAX_PICKED } from './starters.js';
@@ -1375,7 +1375,7 @@ function paintTitle() {
 // Where to watch: TMDB's services with their own logos, linking to TMDB's page for the
 // show and credited to JustWatch; without them, where TVmaze says it streams or airs and
 // Apple TV when iTunes sells it, each with the service's own small icon. They keep to
-// one line that fades out where it runs over, and a caret at its end opens the rest.
+// one line that scrolls sideways, and a caret at its end lays them all out.
 function watchEl(s, live, age, tm) {
   const { links, credit } = whereToWatch(s.name, tm, live?.site, live?.channels, age?.apple);
   if (!links.length) return null;
@@ -1383,6 +1383,7 @@ function watchEl(s, live, age, tm) {
   box.append(el('span', 'Where to watch', 'k'));
   const list = el('div', '', 'watch-list');
   list.id = 't-watch';
+  list.addEventListener('scroll', () => edges(list), { passive: true });
   for (const w of links) {
     const a = el('a', '', 'watch-link');
     a.href = w.href;
@@ -1418,31 +1419,37 @@ function watchEl(s, live, age, tm) {
   return box;
 }
 
-// Which services one line shows whole, measured on the page: when they run over, the caret
-// shows and the line fades out at its end, and the pills past the fade leave the tab order
-// until the line is opened.
-const FADE = 40;
+// Whether the services run past one line, measured on the page: when they do, the caret
+// shows, and until it is pressed the line scrolls sideways, every service a swipe or a
+// Tab away.
 function fitWatch(box) {
   const list = box.querySelector('.watch-list'), more = box.querySelector('.watch-more');
   box.classList.remove('open', 'clipped');
   more.hidden = true;
-  let shown = list.children.length;
   if (list.scrollWidth > list.clientWidth + 1) {
     box.classList.add('clipped');
     more.hidden = false;
-    shown = fitsOnLine([...list.children].map(a => a.offsetLeft + a.offsetWidth), list.clientWidth, FADE);
   }
-  box.dataset.shown = String(shown);
   setWatch(box, T.open.watch);
 }
 function setWatch(box, open) {
   const clipped = box.classList.contains('clipped');
-  const shown = Number(box.dataset.shown);
+  const list = box.querySelector('.watch-list');
+  // Opened or closed, the line starts again from its first service; a resize, which a
+  // phone's toolbar makes as the page scrolls, leaves it where it was swiped to.
+  const turned = box.classList.contains('open') !== (clipped && open);
   box.classList.toggle('open', clipped && open);
+  if (turned) list.scrollLeft = 0;
   const more = box.querySelector('.watch-more');
   more.setAttribute('aria-expanded', String(clipped && open));
   more.title = open ? 'Show fewer' : 'Show all';
-  [...box.querySelector('.watch-list').children].forEach((a, n) => { a.inert = clipped && !open && n >= shown; });
+  edges(list);
+}
+// A line that scrolls sideways fades out at each end with more past it.
+function edges(list) {
+  const left = list.scrollLeft;
+  list.classList.toggle('more-before', left > 1);
+  list.classList.toggle('more-after', left + list.clientWidth < list.scrollWidth - 1);
 }
 window.addEventListener('resize', () => requestAnimationFrame(() => {
   const box = T?.main.querySelector('.watch');
@@ -1544,11 +1551,13 @@ function paintTrailerButton() {
   }
 }
 
-// The first two trailers, and a button for the rest, so More like this is not far below.
+// The trailers in one row that scrolls sideways, and a button that lays them all out, so
+// More like this is not far below.
 function paintVideos() {
   if (!T.videos.length) return;
   const list = el('ul', '', 'clips');
   list.id = 't-clips';
+  list.addEventListener('scroll', () => edges(list), { passive: true });
   for (const v of T.videos) {
     const li = el('li');
     const b = button('clip', '', () => playVideo(v));
@@ -1574,13 +1583,19 @@ function paintVideos() {
   setClips(T.open.clips);
   T.clips.hidden = false;
 }
-// Two trailers side by side on a phone, and a whole row of three on a wide screen.
+// More trailers than two on a phone or three on a wide screen keep to one row, which
+// scrolls sideways to the rest with the next one peeking in, until Show all lays every
+// one out, two or three to a line.
 function setClips(open) {
   const items = [...T.clipList.children];
   const shown = snippet(items.length, wide() ? SNIPPETS.clipsWide : SNIPPETS.clips);
-  items.forEach((li, n) => { li.hidden = !open && n >= shown; });
+  const rail = !open && shown < items.length;
+  const turned = T.clipList.classList.contains('rail') !== rail;
+  T.clipList.classList.toggle('rail', rail);
+  if (turned) T.clipList.scrollLeft = 0;
   T.clipsMore.parentElement.hidden = shown === items.length;
   paintReveal(T.clipsMore, revealLabel('clips', items.length, open), open);
+  edges(T.clipList);
 }
 
 // YouTube's no-cookie player, loaded only now. It takes the top of the title page, and
