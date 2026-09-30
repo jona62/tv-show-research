@@ -8,8 +8,8 @@
   --safe-t:env(safe-area-inset-top,0px);--safe-r:env(safe-area-inset-right,0px);
   --safe-b:env(safe-area-inset-bottom,0px);--safe-l:env(safe-area-inset-left,0px);
   --pad:16px;--gutter:max(var(--pad),var(--safe-l),var(--safe-r));
-  /* The dock floats: its height, its lift off the bottom edge, and the foot of the screen it takes. */
-  --dock:60px;--dock-lift:max(10px,calc(var(--safe-b) - 4px));--dock-space:calc(var(--dock) + var(--dock-lift));
+  /* The dock: its height, and the foot of the screen it takes, the home indicator's strip with it. */
+  --dock:56px;--dock-space:calc(var(--dock) + var(--safe-b));
   color-scheme:dark;
 }
 @media(min-width:600px){:root{--card:136px}}
@@ -75,55 +75,41 @@ button.avatar::after{content:'';position:absolute;inset:-6px}
   .links{gap:14px}
 }
 
-/* dock (phones): a floating bar of Liquid Glass ------------------------- */
-/* Inset from the edges and lifted clear of the home indicator. The page shows through,
-   blurred and a little more saturated, under a sheen that is brightest along the top. */
-.dock{position:fixed;inset:auto 0 var(--dock-lift);z-index:30;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));
-  width:min(480px,calc(100% - 2 * max(12px,var(--safe-l),var(--safe-r))));height:var(--dock);margin:0 auto;padding:5px;
-  border-radius:999px;background:linear-gradient(#ffffff1f,#ffffff08 50%,#ffffff05),#1c1c1c99;
-  -webkit-backdrop-filter:blur(20px) saturate(1.8);backdrop-filter:blur(20px) saturate(1.8);
-  box-shadow:inset 0 1px 1px #ffffff2e,inset 0 -1px 1px #00000033,0 10px 30px #00000080,0 2px 8px #0000004d;
-  transform-origin:50% 100%;transition:transform .3s cubic-bezier(.25,.8,.25,1)}
-/* The edge: a hairline that catches the light at the top left and the bottom right. */
-.dock::after{content:'';position:absolute;inset:0;padding:1px;border-radius:inherit;pointer-events:none;
-  background:linear-gradient(135deg,#ffffff66,#ffffff14 32%,#ffffff0a 60%,#ffffff38);
-  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
-  mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0)}
-/* The lens: a pill of brighter glass behind the current tab, gliding to the tab you tap. */
-.dock::before{content:'';position:absolute;inset:5px auto 5px 5px;width:calc((100% - 10px) / 5);border-radius:999px;
-  background:linear-gradient(#ffffff30,#ffffff14);box-shadow:inset 0 1px 0 #ffffff4d,inset 0 0 0 1px #ffffff1a,0 3px 12px #00000047;
-  opacity:0;transform:translateX(calc(var(--at,0) * 100%));transition:transform .3s cubic-bezier(.25,.8,.25,1),opacity .2s}
-.dock:has(>[aria-current=page])::before{opacity:1}
-.dock:has(>:nth-child(2)[aria-current=page]){--at:1}
-.dock:has(>:nth-child(3)[aria-current=page]){--at:2}
-.dock:has(>:nth-child(4)[aria-current=page]){--at:3}
-.dock:has(>:nth-child(5)[aria-current=page]){--at:4}
-.dock a{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
-  min-width:0;border-radius:999px;font-size:10.5px;font-weight:600;line-height:1.2;letter-spacing:.01em;color:#ffffffad;
+/* dock (phones) --------------------------------------------------------- */
+/* A solid bar on the bottom edge, in the page's own black, its foot running under the home
+   indicator; in Safari it rests on the address bar. While the page scrolls it folds away and
+   leaves one round button, for the section you are in (main.js); a pause brings it back, and
+   so does that button. */
+.dock{position:fixed;inset:auto 0 0;z-index:30;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));
+  height:var(--dock-space);padding:0 var(--safe-r) var(--safe-b) var(--safe-l);background:var(--bg);
+  border-top:1px solid var(--line);transition:transform .26s cubic-bezier(.2,.8,.2,1) .06s}
+.dock.away:not(:focus-within){transform:translateY(100%);transition:transform .16s cubic-bezier(.4,0,1,1)}
+.dock a{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  min-width:0;font-size:10.5px;font-weight:600;line-height:1.2;letter-spacing:.01em;color:var(--muted);
   text-decoration:none;-webkit-tap-highlight-color:transparent;transition:color .2s,opacity .15s}
 .dock a .i svg{width:24px;height:24px}
+/* The section you are in: white, a heavier line, and a short bar of the brand along the top edge. */
 .dock a[aria-current=page]{color:#fff}
 .dock a[aria-current=page] .i svg{stroke-width:2.2}
+.dock a[aria-current=page]::before{content:'';position:absolute;top:-1px;left:50%;width:22px;height:3px;margin-left:-11px;
+  border-radius:0 0 3px 3px;background:linear-gradient(90deg,var(--brand),var(--brand-2))}
 .dock a:active{color:#fff;opacity:.7}
 .dock a:focus-visible{outline-offset:-2px}
-.dock-label{display:block;max-width:100%;max-height:1.2em;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
-  transition:max-height .3s,opacity .2s}
-/* Scrolling down tucks it smaller, icons only, as iOS 26 does; scrolling up brings it back,
-   and so does focus from a keyboard. Tucked, a tab still takes a 44px tap. */
-.dock.tucked:not(:has(:focus-visible)){transform:scale(.9)}
-.dock.tucked:not(:has(:focus-visible)) .dock-label{max-height:0;opacity:0}
-/* A new view starts with the dock whole at once, not easing out of its tuck. */
-.dock.still,.dock.still .dock-label{transition:none}
-/* Without :has() the lens cannot find its tab, so the current tab lights up where it is. */
-@supports not selector(:has(a)){
-  .dock::before{display:none}
-  .dock a[aria-current=page]{background:#ffffff26;box-shadow:inset 0 1px 0 #ffffff40}
-}
-/* Solid where the page cannot show through, and for anyone who asks for less transparency. */
-@supports not ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){.dock{background:#1f1f1ff2}}
-@media(prefers-reduced-transparency:reduce){.dock{background:#1f1f1f;-webkit-backdrop-filter:none;backdrop-filter:none}}
-@media(forced-colors:active){.dock{border:1px solid CanvasText}.dock a[aria-current=page]{outline:2px solid Highlight}}
-@media(min-width:760px){.dock{display:none}}
+.dock-label{display:block;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+/* The one button left while the page scrolls, low on the left, clear of the home indicator. */
+.dock-mini{position:fixed;left:max(16px,calc(var(--safe-l) + 12px));bottom:calc(16px + var(--safe-b));z-index:30;
+  display:grid;place-items:center;width:52px;height:52px;padding:0;border:1px solid #3a3a3a;border-radius:50%;
+  background:var(--bg-3);color:#fff;box-shadow:0 6px 18px #00000080;cursor:pointer;-webkit-tap-highlight-color:transparent;
+  opacity:0;transform:scale(.6);pointer-events:none;transition:opacity .12s linear,transform .16s ease-in}
+.dock-mini .i svg{width:24px;height:24px;stroke-width:2.2}
+.dock.away:not(:focus-within)~.dock-mini{opacity:1;transform:none;pointer-events:auto;
+  transition:opacity .18s ease-out .09s,transform .22s cubic-bezier(.2,.8,.2,1) .09s}
+.dock-mini:active{transform:scale(.92)}
+/* A new view starts with the dock whole at once, not easing back in. */
+.dock.still,.dock.still~.dock-mini{transition:none}
+@media(forced-colors:active){.dock{border-top:1px solid CanvasText}.dock a[aria-current=page]{outline:2px solid Highlight}
+  .dock-mini{border-color:CanvasText}}
+@media(min-width:760px){.dock,.dock-mini{display:none}}
 
 main{min-height:70vh;padding-bottom:calc(var(--dock-space) + 24px);outline:none}
 .view.page{padding-top:calc(var(--nav) + var(--safe-t) + 18px)}
@@ -375,7 +361,7 @@ main{min-height:70vh;padding-bottom:calc(var(--dock-space) + 24px);outline:none}
 .pick .tick .i svg{width:44px;height:44px;stroke:var(--brand);stroke-width:2.6}
 .pick[aria-pressed=true] .tick{display:grid}
 .pick:disabled{cursor:default}
-/* It runs down to the bottom edge, and on a phone the dock floats over its foot. */
+/* It runs down to the bottom edge, and on a phone the dock sits over its foot. */
 .welcome-bar{position:fixed;inset:auto 0 0;z-index:25;display:flex;
   gap:10px;align-items:center;justify-content:flex-end;padding:12px var(--gutter) calc(12px + var(--dock-space));background:#141414f2;
   border-top:1px solid var(--line)}

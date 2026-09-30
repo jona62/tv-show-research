@@ -370,7 +370,7 @@ function ratingOf(id, tm, watching = false) {
 
 /* -------------------------------------------------------------- routing */
 let view = null;
-let dockY = 0;       // where the page was when the dock last tucked or came back
+let dockRest = 0;    // the pause after a scroll that brings the dock back
 const where = () => parseRoute(location.pathname, location.search);
 
 function go(path) {
@@ -421,14 +421,16 @@ function paintView(name) {
   }
   if (!$('title').open) document.title = TITLES[name];
   window.scrollTo(0, 0);
-  // A new view starts at the top with the dock whole, not easing out of its tuck.
+  // A new view starts at the top with the dock whole at once, not easing back in, and the
+  // button that stands in for it while the page scrolls shows the section it is now in.
+  clearTimeout(dockRest);
   const dock = $('dock');
-  if (dock.classList.contains('tucked')) {
+  if (dock.classList.contains('away')) {
     dock.classList.add('still');
-    dock.classList.remove('tucked');
+    dockAway(false);
     requestAnimationFrame(() => requestAnimationFrame(() => dock.classList.remove('still')));
   }
-  dockY = 0;
+  paintDockMini();
   syncNav();
   $('find').classList.toggle('open', name === 'search' && wide() && !!where().q);
   if (name === 'welcome') renderWelcome();
@@ -440,6 +442,26 @@ function paintView(name) {
 
 function syncNav() {
   $('nav').classList.toggle('solid', view !== 'home' || window.scrollY > 40);
+}
+
+// How long the page rests after a scroll before the dock comes back, in ms.
+const DOCK_REST = 350;
+// The dock folded away, or back. While it is away its one button is what a tap or a Tab finds.
+function dockAway(away) {
+  const dock = $('dock');
+  if (dock.classList.contains('away') === away) return;
+  dock.classList.toggle('away', away);
+  const mini = $('dock-mini');
+  mini.tabIndex = away ? 0 : -1;
+  mini.setAttribute('aria-hidden', String(!away));
+}
+// The button that stands in for the dock: the icon and name of the section you are in.
+function paintDockMini() {
+  const on = document.querySelector('.dock [aria-current=page]');
+  if (!on) return;
+  const mini = $('dock-mini');
+  mini.replaceChildren(icon(on.dataset.icon));
+  mini.setAttribute('aria-label', `${on.getAttribute('aria-label') || on.textContent.trim()}. Show every section`);
 }
 
 // A link the app opens itself: a plain click, not one asking for a new tab or window.
@@ -3535,15 +3557,20 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
 /* ---------------------------------------------------------------- start */
 if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 for (const a of document.querySelectorAll('.dock [data-icon]')) a.prepend(icon(a.dataset.icon));
-// The dock tucks itself smaller while the page scrolls down and comes back on the way up,
-// as iOS 26 tab bars do. The empty touchstart lets iOS show a pressed tab.
-dockY = window.scrollY;
+// While the page scrolls the dock folds away and leaves one button, for the section you are
+// in; a pause brings the dock back, and so does that button. Not near the top, where there
+// is nothing to make room for, nor for anyone who asks for less motion. The empty touchstart
+// lets iOS show a pressed tab.
 window.addEventListener('scroll', () => {
-  const y = window.scrollY;
-  if (Math.abs(y - dockY) < 10) return;
-  $('dock').classList.toggle('tucked', y > dockY && y > 160 && motion());
-  dockY = y;
+  if (!motion()) return;
+  clearTimeout(dockRest);
+  dockAway(window.scrollY > 40);
+  dockRest = setTimeout(() => dockAway(false), DOCK_REST);
 }, { passive: true });
+$('dock-mini').addEventListener('click', () => {
+  clearTimeout(dockRest);
+  dockAway(false);
+});
 $('dock').addEventListener('touchstart', () => {}, { passive: true });
 for (const b of document.querySelectorAll('.close-btn')) b.append(icon('close'));
 updateCounts();
