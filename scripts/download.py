@@ -6,9 +6,15 @@ manifest at DIR/manifest.json, and leaves data/ alone. Every file is written who
 or not at all, so an interrupted run never leaves half a page behind.
 
 How many pages to ask for comes from the newest show in TVmaze's updates list. The
-show index itself is cached for up to a day, so a page opened by a show added since
-can answer 404 for a while; a 404 is where the index ends, so the download ends
-there too, and those new shows come with another night's download.
+show index itself is cached for up to a day, so its last page can lack the shows
+added since, and a page opened by one can answer 404 for a while; a 404 is where the
+index ends, so the pages end there too. The index the build of 30 September 2026 read
+at 04:30 UTC stopped at a show TVmaze last changed at 19:16 the evening before, and
+six shows TVmaze listed by midnight waited another day. So every show the updates
+list names that no page holds is asked for on its own (/shows/ID, which TVmaze caches
+for an hour at most) and kept in page-newer.json beside the pages, and a build has
+every show TVmaze lists as it downloads. MOST_NEWER caps how many, about a month of
+TVmaze's additions; the rest wait for the index to catch up.
 """
 import concurrent.futures
 import datetime
@@ -27,6 +33,9 @@ import shutil
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 RAW = pathlib.Path(os.environ.get('TV_RAW_DIR') or ROOT / 'data/raw')
 MANIFEST = pathlib.Path(os.environ.get('TV_MANIFEST') or ROOT / 'data/manifest.json')
+# The shows newer than the cached index, as TVmaze answers for each on its own.
+NEWER = 'page-newer.json'
+MOST_NEWER = 1000
 lock = threading.Lock()
 last = 0.0
 
@@ -64,7 +73,7 @@ def write_atomic(path, body):
         raise
 
 def page(n):
-    """(n, how many shows the page holds), or (n, None) when the index has no such page."""
+    """(n, the ids of the shows the page holds), or (n, None) when the index has no such page."""
     path = RAW / f'page-{n:03d}.json'
     if not path.exists():
         body = get(f'https://api.tvmaze.com/shows?page={n}', missing_ok=True)
@@ -72,7 +81,30 @@ def page(n):
             return n, None
         assert isinstance(json.loads(body), list)
         write_atomic(path, body)
-    return n, len(json.loads(path.read_text()))
+    return n, [show['id'] for show in json.loads(path.read_text())]
+
+def newer(updates, held):
+    """How many shows page-newer.json holds: those the updates list names that no page
+    holds, each asked for on its own, lowest id first and MOST_NEWER at most. A show
+    deleted since the updates list was read answers 404 and is left out. A file already
+    there is kept, as the pages are."""
+    path = RAW / NEWER
+    if not path.exists():
+        wanted = sorted(set(map(int, updates)) - held)
+        found = []
+        for show_id in wanted[:MOST_NEWER]:
+            body = get(f'https://api.tvmaze.com/shows/{show_id}', missing_ok=True)
+            show = json.loads(body) if body is not None else None
+            if isinstance(show, dict) and show.get('id') == show_id:
+                found.append(show)
+        if wanted:
+            left = len(wanted) - MOST_NEWER
+            print(f'{len(found):,} of {len(wanted):,} shows newer than the cached index asked for one at a time'
+                  + (f'; {left:,} wait for a later download' if left > 0 else '') + '.', flush=True)
+        if not found:
+            return 0
+        write_atomic(path, json.dumps(found, ensure_ascii=False, separators=(',', ':')).encode())
+    return len(json.loads(path.read_text()))
 
 if __name__ == '__main__':
     parser=argparse.ArgumentParser(description=__doc__)
@@ -101,13 +133,14 @@ if __name__ == '__main__':
         write_atomic(RAW / 'updates.json', get('https://api.tvmaze.com/updates/shows'))
     updates = json.loads((RAW / 'updates.json').read_text())
     pages = max(map(int, updates)) // 250 + 1
-    total, missing = 0, []
+    total, missing, held = 0, [], set()
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-        for count, (n, size) in enumerate(pool.map(page, range(pages)), 1):
-            if size is None:
+        for count, (n, ids) in enumerate(pool.map(page, range(pages)), 1):
+            if ids is None:
                 missing.append(n)
             else:
-                total += size
+                total += len(ids)
+                held.update(ids)
             if count % 25 == 0 or count == pages:
                 print(f'{count}/{pages} pages; {total:,} records', flush=True)
     if missing:
@@ -117,11 +150,9 @@ if __name__ == '__main__':
                              'try again later.')
         if end == 0:
             raise SystemExit('TVmaze answered 404 for every page of its show index.')
-        newer = sum(1 for show in updates if int(show) >= end * 250)
-        newer = '1 newer show' if newer == 1 else f'{newer:,} newer shows'
-        print(f"TVmaze's show index ends at page {end - 1} for now; {newer} in its updates list, added since "
-              'the index was cached, will come with a later download.', flush=True)
+        print(f"TVmaze's show index ends at page {end - 1} for now.", flush=True)
         pages = end
+    total += newer(updates, held)
     manifest = {'source': 'https://www.tvmaze.com/api', 'license': 'CC BY-SA 4.0',
                 'retrieved_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 'pages': pages, 'records': total,

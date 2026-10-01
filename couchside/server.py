@@ -190,9 +190,10 @@ class Pages:
 
 
 def fill(template, engine, library, credit):
-    """The page with this model's count, date and first-visit posters, filled once at
-    startup. TMDB's credit stays only when there is TMDB data to credit."""
-    boot = {'date': engine.date, 'count': engine.n, 'starters': library.starters, 'genres': library.genres}
+    """The page with this model's count, date, newest show and first-visit posters, filled
+    once at startup. TMDB's credit stays only when there is TMDB data to credit."""
+    boot = {'date': engine.date, 'count': engine.n, 'newest': max(engine.by_id), 'starters': library.starters,
+            'genres': library.genres}
     # Every < in the data is escaped, so no show's name can close or confuse the script block.
     payload = json.dumps(boot, ensure_ascii=False, separators=(',', ':')).replace('<', '\\u003c')
     values = {'BOOTSTRAP': payload, 'CATALOG_COUNT': f'{engine.n:,}', 'DATASET_DATE': html.escape(engine.date)}
@@ -205,13 +206,20 @@ SOURCE = model_dir()
 # two versions; follow.py notices the move and the restart loads the new one whole.
 MODEL = Path(os.path.realpath(SOURCE))
 ENGINE = Engine(MODEL)
+# TVmaze numbers shows as it adds them, so a show added since this model was built has an
+# id past the newest the catalogue holds, and its title page comes from TVmaze alone
+# (newer_title). An id more than NEWER_REACH past it, some five months of TVmaze's
+# additions at about 31 a day, is never asked about.
+NEWEST = max(ENGINE.by_id)
+NEWER_REACH = 5000
 LIBRARY = Library(ENGINE, art_file(MODEL))
 # A search's row of shows like it is the title page's own More like this for a show it
 # names, and a search for a film finds shows like it through the model's film index.
 RELATED = Related(LIBRARY, MODEL / 'films.json.gz')
 TMDB = tmdb.load(MODEL / 'tmdb.json.gz', ENGINE.by_id)
 # TVmaze allows about 20 calls every 10 seconds from this host, shared with Next Watch:
-# 12 for title pages here, 4 for this app's search and 4 for Next Watch's.
+# 12 for title pages here (a show newer than the catalogue's whole page among them, one
+# call like any show's details), 4 for this app's search and 4 for Next Watch's.
 LIVE = Live(calls=12)
 TVMAZE = Remote(calls=4)
 TEMPLATE = PUBLIC / 'index.html'
@@ -238,6 +246,32 @@ gc.collect()
 gc.freeze()
 
 
+def newer(show_id):
+    """Whether show_id may be a show TVmaze added since the catalogue was built (NEWEST)."""
+    return type(show_id) is int and NEWEST < show_id <= NEWEST + NEWER_REACH
+
+
+def details(found):
+    """A show's live details as a page reads them: what TVmaze says of the show itself
+    stays here, for a title newer than the catalogue (newer_title)."""
+    return {key: value for key, value in found.items() if key != 'about'}
+
+
+def newer_title(show_id):
+    """The title page of a show newer than the catalogue, from the TVmaze answer its live
+    details come from, sent with them, so the page asks TVmaze for nothing more but its
+    seasons' episodes. It holds the show as TVmaze has it and nothing only the catalogue
+    gives: no match, no reason it surfaced and no shows like it, which need its plot,
+    themes and Wikidata facts in the model's own terms. TMDB's data covers catalogue shows
+    alone, so its trailers, rating and where to watch come from the live sources, as they
+    do for any show TMDB lacks. The nightly build brings the rest."""
+    found = LIVE.show(show_id)
+    if not found['about']:
+        raise LiveError('TVmaze has no details for this show.', 404)
+    return {'show': {**found['about'], 'because': None, 'newer': True}, 'details': details(found),
+            'more': [], 'fans': [], 'tmdb': None}
+
+
 def trailers(show_id):
     """A show's trailers from TMDB when it has any, else KinoCheck's official ones, found
     by the IMDb id TVmaze keeps for it."""
@@ -249,12 +283,23 @@ def trailers(show_id):
 
 
 def episode(episode_id):
-    """One episode in full, for a show in this catalog. TVmaze is asked by the episode's
-    own id, so which show it belongs to is known only from the answer."""
+    """One episode in full, for a show in this catalog or newer than it. TVmaze is asked by
+    the episode's own id, so which show it belongs to is known only from the answer."""
     found = LIVE.episode(episode_id)
-    if found['show'] not in ENGINE.by_id:
+    if found['show'] not in ENGINE.by_id and not newer(found['show']):
         raise LiveError('That episode is not in this catalog.', 404)
     return found
+
+
+def named(show_id):
+    """A show's name, its first year and the year it ended: the catalogue's, or TVmaze's
+    for a show newer than it."""
+    i = ENGINE.by_id.get(show_id)
+    if i is None:
+        about = LIVE.show(show_id)['about'] or {}
+        return about.get('name') or '', about.get('year'), about.get('ended')
+    show = ENGINE.shows[i]
+    return show['name'], show['year'], LIBRARY.ended[i] or None
 
 
 def age(show_id):
@@ -265,15 +310,14 @@ def age(show_id):
     rating = known.get('rating')
     if rating and known.get('providers'):
         return {'rating': rating, 'apple': None}
-    i = ENGINE.by_id[show_id]
-    show = ENGINE.shows[i]
+    name, start, end = named(show_id)
     try:
-        seasons = STORE.get(itunes_search(show['name']), trim_seasons, missing=[])
+        seasons = STORE.get(itunes_search(name), trim_seasons, missing=[])
     except LiveError:
         if rating:
             return {'rating': rating, 'apple': None}
         raise
-    found = match_rating(seasons, show['name'], show['year'], LIBRARY.ended[i] or None)
+    found = match_rating(seasons, name, start, end)
     return {'rating': rating or found['rating'], 'apple': found['apple']}
 
 
@@ -531,7 +575,7 @@ class Handler(SimpleHTTPRequestHandler):
                 episode_id = number(query, 'id', 'the episode')
             else:
                 show_id = number(query, 'id', 'the show')
-                if show_id not in ENGINE.by_id:
+                if show_id not in ENGINE.by_id and not newer(show_id):
                     raise ValueError('That show is not in this catalog.')
             season = number(query, 'season', 'the season') if path == '/api/episodes' else None
         except ValueError as exc:
@@ -542,7 +586,7 @@ class Handler(SimpleHTTPRequestHandler):
             return
         try:
             if path == '/api/extra':
-                self.send_json({'details': LIVE.show(show_id)})
+                self.send_json({'details': details(LIVE.show(show_id))})
             elif path == '/api/episodes':
                 self.send_json({'episodes': LIVE.episodes(show_id, season)})
             elif path == '/api/episode':
@@ -621,12 +665,20 @@ class Handler(SimpleHTTPRequestHandler):
         if self.headers.get_content_type() != 'application/json':
             self.send_json({'error': 'Send application/json.'}, 415)
             return
-        body = self.rfile.read(length)
+        try:
+            payload = json.loads(self.rfile.read(length))
+        except (json.JSONDecodeError, UnicodeDecodeError, RecursionError):
+            self.send_json({'error': 'Send valid JSON.'}, 400)
+            return
+        # A title newer than the catalogue waits on TVmaze, not on the engine, so it takes a
+        # live source's slot rather than one of the engine's few.
+        if route == '/api/title' and isinstance(payload, dict) and newer(payload.get('id')):
+            self.live_title(payload['id'])
+            return
         if not SLOTS.acquire(blocking=False):
             self.send_json({'error': 'Busy right now. Try again in a moment.'}, 503)
             return
         try:
-            payload = json.loads(body)
             if route == '/api/shows':
                 self.send_json({'shows': LIBRARY.cards(read_ids(payload))})
             elif not isinstance(payload, dict):
@@ -648,14 +700,27 @@ class Handler(SimpleHTTPRequestHandler):
                 title = LIBRARY.title(payload)
                 title['tmdb'] = TMDB.get(title['show']['id'])
                 self.send_json(title)
-        except (json.JSONDecodeError, UnicodeDecodeError, RecursionError):
-            self.send_json({'error': 'Send valid JSON.'}, 400)
         except ValueError as exc:
             self.send_json({'error': str(exc)}, 400)
         except (BrokenPipeError, ConnectionResetError, TimeoutError):
             pass
         finally:
             SLOTS.release()
+
+    def live_title(self, show_id):
+        """The title page of a show newer than the catalogue (newer_title), on a live
+        source's slot."""
+        if not LIVE_SLOTS.acquire(blocking=False):
+            self.send_json({'error': 'Busy right now. Try again in a moment.'}, 503)
+            return
+        try:
+            self.send_json(newer_title(show_id))
+        except LiveError as exc:
+            self.send_json({'error': str(exc)}, exc.status)
+        except (BrokenPipeError, ConnectionResetError, TimeoutError):
+            pass
+        finally:
+            LIVE_SLOTS.release()
 
     def list_directory(self, path):
         self.send_error(404)

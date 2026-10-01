@@ -6,8 +6,9 @@ the next build, and some phrasings still miss. When the catalogue finds nothing,
 only guesses (typos, initials, part of a title), the server asks TVmaze's search,
 which is fuzzy and knows other names. Its matches that are in the catalogue lead the
 results, since it knew what the guesses did not; those that are not come back as
-missing, with their TVmaze page, so the page can say they arrive with the nightly
-refresh, and put them first when TVmaze ranks one of them first. The browser never
+missing, with their TVmaze page and poster, so the page can say they arrive with the
+nightly refresh (Couchside opens each as a title page from TVmaze meanwhile), and put
+them first when TVmaze ranks one of them first. The browser never
 talks to TVmaze for this.
 
 TVmaze allows about 20 calls every 10 seconds from one address, and every app on this
@@ -29,12 +30,13 @@ from titles import LIMIT
 API = 'https://api.tvmaze.com'
 AGENT = 'TV Taste/1.0 (+https://github.com/jona62/tv-show-research)'
 PAGE = re.compile(r'https://www\.tvmaze\.com/shows/\d+(?:/[a-z0-9-]*)?')
+POSTER = re.compile(r'https://static\.tvmaze\.com/uploads/images/medium_portrait/\d+/\d+\.jpg')
 SHORTEST = 3            # characters a search needs before TVmaze is asked
 MISSING = 3             # shows outside the catalogue worth naming
 
 
 def trim(raw):
-    """TVmaze's matches, best first, as id, name, premiere year and TVmaze page."""
+    """TVmaze's matches, best first, as id, name, premiere year, TVmaze page and poster."""
     if not isinstance(raw, list):
         raise ValueError('not a TVmaze search answer')
     out = []
@@ -45,9 +47,11 @@ def trim(raw):
         name = ' '.join(show['name'].split())[:200]
         premiered = show.get('premiered') if isinstance(show.get('premiered'), str) else ''
         url = show.get('url')
+        poster = show['image'].get('medium') if isinstance(show.get('image'), dict) else None
         if name:
             out.append({'id': show['id'], 'name': name, 'year': int(premiered[:4]) if premiered[:4].isdigit() else None,
-                        'url': url if isinstance(url, str) and PAGE.fullmatch(url) else f'https://www.tvmaze.com/shows/{show["id"]}'})
+                        'url': url if isinstance(url, str) and PAGE.fullmatch(url) else f'https://www.tvmaze.com/shows/{show["id"]}',
+                        'poster': poster if isinstance(poster, str) and POSTER.fullmatch(poster) else None})
     return out[:10]
 
 

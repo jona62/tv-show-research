@@ -175,7 +175,7 @@ check('a search it cannot place asks TVmaze once', len(tvmaze_asked) == 1 and 'k
 check("TVmaze's match in the catalogue leads, as an ordinary card", status == 200 and found['shows'][0]['id'] == 41469
       and set(found['shows'][0]) >= {'id', 'name', 'year', 'channel', 'known'})
 check('a show TVmaze has and the catalogue does not yet comes back as missing, with its page', found['missing'] == [
-    {'id': 900000001, 'name': 'Kimetsu Academy', 'year': 2026, 'url': NEW_SHOW['url']}]
+    {'id': 900000001, 'name': 'Kimetsu Academy', 'year': 2026, 'url': NEW_SHOW['url'], 'poster': None}]
     and found['missing_first'] is False)
 search('kimetsu no yaiba')
 check('the same search again is answered from the cache', len(tvmaze_asked) == 1)

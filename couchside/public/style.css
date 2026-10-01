@@ -395,14 +395,11 @@ main{min-height:100vh;padding-bottom:calc(var(--dock-space) + 24px);outline:none
 .drop .recent-list li{border:0}
 .drop .recent-q{padding:0 8px 0 16px;font-size:15px}
 .drop .recent-q:hover{background:#ffffff12}
-/* shows TVmaze has that the catalogue does not yet */
-.missing{margin-bottom:18px}
+/* shows TVmaze has that the catalogue does not yet, as posters like the results, kept
+   apart from the results when they come first */
+.missing{margin-bottom:30px}
 .note + .missing .page-h2{margin-top:8px}
-.missing-list{list-style:none;margin:0 var(--gutter);padding:0;max-width:720px}
-.missing-list li{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:10px 0;border-bottom:1px solid var(--line)}
-.missing-list li:last-child{border-bottom:0}
-.missing-list b{font-size:16px;overflow-wrap:anywhere}
-.missing-list a{margin-left:auto;color:var(--brand);font-size:14px;white-space:nowrap}
+.missing .page-h2{margin-bottom:4px}
 /* Shows like the search, under its title matches, or close under the note when none match. */
 #results:empty ~ .related .page-h2{margin-top:8px}
 /* A phone's search holds three posters a line, a row's size, so the shows like it come
@@ -518,6 +515,8 @@ dialog.modal::backdrop{background:#000000b8}
 .t-why{margin:0;font-weight:700;color:var(--brand)}
 .t-why span{font-weight:400;color:var(--ink-2)}
 .t-fits{margin:2px 0 0;font-size:14px;color:var(--ink-2)}
+/* A show newer than the catalogue says so where a match would say why it is here. */
+.t-new{margin:0;font-size:14px;color:var(--ink-2)}
 .leanings-h{margin:18px 0 8px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .leanings{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 .leanings li{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px}
