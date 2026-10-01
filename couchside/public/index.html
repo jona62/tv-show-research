@@ -28,13 +28,13 @@
 <!--start.js asks for the home page as soon as it arrives, while main.js is still on its way-->
 <script type="module" async src="/start.js?v=5402c4619b384072" fetchpriority="high"></script>
 <link rel="preconnect" href="https://static.tvmaze.com" crossorigin>
-<link rel="stylesheet" href="/style.css?v=6d83a9360d16c135">
-<script type="module" src="/main.js?v=d3b3ee9cdfa468de"></script>
+<link rel="stylesheet" href="/style.css?v=c2ea522116ff0551">
+<script type="module" src="/main.js?v=a6cf545c8ed4b748"></script>
 <link rel="modulepreload" href="/episode-ratings.js?v=6d15d3cd82cf93b8">
 <link rel="modulepreload" href="/title-sections.js?v=47e93fa931aed0c8">
 <link rel="modulepreload" href="/show-cards.js?v=6b008b98af842ca4">
 <link rel="modulepreload" href="/filter-state.js?v=a30d1a4517a72575">
-<link rel="modulepreload" href="/filters.js?v=684d55826b6318b3">
+<link rel="modulepreload" href="/filters.js?v=00261d598f52fc5a">
 <link rel="modulepreload" href="/ratings.js?v=d111fa7a20ae2e41">
 <link rel="modulepreload" href="/transfer.js?v=aca34fe2830e9d29">
 <link rel="modulepreload" href="/qr.js?v=d7f92f94bb8911ea">
@@ -96,14 +96,6 @@
   <section id="browse" class="view page" aria-labelledby="browse-h" hidden>
     <div class="browse-head">
       <h1 id="browse-h" class="page-h">Browse</h1>
-      <div class="genre-bar" id="genre-bar">
-        <div class="genre-scroll" id="genre-scroll">
-          <button class="genre-chip genre-all" id="genre-all" type="button" aria-haspopup="dialog" aria-controls="genres"
-                  aria-expanded="false">All genres</button>
-          <span class="genre-sep" aria-hidden="true"></span>
-          <div class="genre-row" id="genre-pick" role="listbox" aria-label="Genre" aria-orientation="horizontal"></div>
-        </div>
-      </div>
     </div>
     <div id="browse-body"></div>
   </section>
@@ -190,14 +182,6 @@
   <button class="menu-item" id="open-move" type="button">Move your list to another device</button>
   <button class="menu-item" id="open-about-2" type="button">How Couchside works</button>
   <button class="menu-item danger" id="reset" type="button">Start over</button>
-</div></dialog>
-
-<dialog id="genres" class="menu genre-menu" aria-labelledby="genres-h"><div class="menu-sheet">
-  <div class="menu-head">
-    <h2 id="genres-h">Genres</h2>
-    <button class="icon-btn close-btn" type="button" data-close aria-label="Close"></button>
-  </div>
-  <div class="genre-list" id="genre-list" role="listbox" aria-labelledby="genres-h"></div>
 </div></dialog>
 
 <dialog id="move" class="modal small" aria-labelledby="move-h"><div class="sheet pad">

@@ -124,8 +124,11 @@ other shows' first matrices. Visible requests take priority in both queues.
 Home, Browse, New & Popular, My List and Search share responsive discovery controls.
 Genre (multiple choices), TVmaze public rating, commitment limits (hours, episodes,
 seasons), episode length, status, premiere year, language and format can combine.
-Desktop uses existing chips; phones use the same menu sheet with removable applied
-chips outside it. Sort works within shelves, keeping the Top 10's original ranks.
+One dropdown uses the existing genre button and menu rows. Genre, Rating,
+Commitment, More filters and Sort expand inside it; desktop anchors the menu beneath
+its button and phones use the existing bottom sheet. A short text summary shows
+applied choices. Browse no longer repeats genres in a horizontal strip. Sort works
+within shelves, keeping the Top 10's original ranks.
 My List searches both saved and rated shows, alongside its personal rating chips.
 Recommendation sections and people's credits use the same controls. Choices are
 page-local session storage, independent of saved recommendation settings and transfers.
@@ -147,7 +150,7 @@ byte budget; the server keeps a small memory cache above persistent SQLite.
 `GET /api/episode-matrices?ids=` accepts up to 40 IDs and serves precomputed compact
 matrices directly from SQLite. Missing shows are queued rather than fetched inside
 the batch request. Cards batch up to 24 visible shows and retry pending matrices
-after four seconds. They keep up to 160 small matrices on the device for seven days,
+after 500ms while first data is pending. They keep up to 400 small matrices on the device for seven days,
 paint those immediately after reopening, and update them from the server. Full episode
 feeds stay in memory for 30 minutes. Description and image data are not downloaded
 for each thumbnail; unavailable data never prevents a title opening.

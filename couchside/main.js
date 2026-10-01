@@ -1,7 +1,7 @@
 import { mountEpisodeRatings } from './episode-ratings.js';
 import { mountTitleSections } from './title-sections.js';
 import { enhanceShowCard,receiveMatrices,matrixPreference } from './show-cards.js';
-import {filtersFor,filterKey,selectShows} from './filter-state.js';
+import {filtersFor,filterKey,selectShows,setFilters} from './filter-state.js';
 import {filterBar} from './filters.js';
 import { cachedRatings } from './ratings.js';
 import { encode, decode, LIMITS, codeFrom } from './transfer.js';
@@ -13,7 +13,7 @@ import { pageKey, ongoing, resumable, keptText, shownRows, withoutCard, viewedSt
   from './format.js';
 import { POSTERS_AHEAD, POSTERS_AT_ONCE, FLUNG, FLUNG_AT_ONCE, STILL_FLUNG, SLOW_POSTER, ROWS_AHEAD, postersToLoad,
   loopPosters, posterPace, catchingUp, rowsToAsk, retryAfter } from './format.js';
-import { genreChoices, nextByLetter, searchText, recentStore, noteSearch, withoutSearch, recentMatches, keepsRow } from './format.js';
+import { genreChoices, searchText, recentStore, noteSearch, withoutSearch, recentMatches, keepsRow } from './format.js';
 import { keeper, sessionAnswers } from './format.js';
 import { TURN_EVERY, slideIn, slotOf, reach, slideLabel, landing, TURN_OWN_MS, glideTime, turnTime } from './format.js';
 import { heading, wandered } from './gestures.js';
@@ -44,6 +44,7 @@ const RATES = [
   { weight: 1, label: 'Love this!', icon: 'heart', said: 'Loved. Your rows will lean hard toward it.' },
 ];
 const VIEWS = ['home', 'welcome', 'browse', 'new', 'list', 'search'];
+const pageFilters = new Map();
 const TITLES = {
   home: 'Couchside', welcome: 'Welcome · Couchside', new: 'New & Popular · Couchside',
   list: 'My List · Couchside', search: 'Search · Couchside', browse: 'Browse · Couchside',
@@ -3500,15 +3501,14 @@ function buildPerson(who) {
   foot.hidden = true;
   foot.append(links);
   $('p-sheet').replaceChildren(close, hero, body, parts.roles.box, parts.appearances.box, parts.crew.box, foot);
-  const controls=filterBar('person',{genres:boot.genres,languages:boot.languages||[],search:true,compact:true,onChange:query=>{
+  const controls=filterBar('person',{genres:boot.genres,languages:boot.languages||[],search:true,compact:true,
+    extra:[{name:'credit-role',label:'Credit type',get:()=>P?.id===who.id?P.creditRole||'':'',
+      options:[['','All credits'],['roles','TV roles'],['appearances','As themselves'],['crew','Behind the camera']],
+      apply:value=>{if(P?.id===who.id)P.creditRole=value;}}],onChange:query=>{
     if(P?.id===who.id){P.filterQuery=query;paintCredits();}
   }});
   controls.element.querySelector('input').placeholder='Find a show in these credits';
   controls.element.querySelector('.sr').textContent='Find a show in these credits';
-  const roles=el('label','','discovery-sort');roles.append(el('span','Credit type','sr'));
-  const role=el('select');
-  for(const [value,label] of [['','All credits'],['roles','TV roles'],['appearances','As themselves'],['crew','Behind the camera']]){const option=el('option',label);option.value=value;role.append(option);}
-  role.onchange=()=>{if(P?.id===who.id){P.creditRole=role.value;paintCredits();}};roles.append(role);controls.element.querySelector('.discovery-tools').append(roles);
   parts.roles.box.before(controls.element);
   return { id: who.id, who, close, hero, name, said, main, side, body, parts, foot, links, data: null, bio: undefined,
            error: null, fitBio: null, open: { roles: false, appearances: false, crew: false, bio: false } };
@@ -3721,93 +3721,25 @@ function sharePerson() {
 let browseKey = null, browseReq = 0, browseShown = null;
 const genreLabel = key => boot.genres.find(g => g.key === key)?.label;
 const GENRES = genreChoices(boot.genres);
-const genreHref = key => (key ? `/browse?genre=${encodeURIComponent(key)}` : '/browse');
-
-function genreOption(g, cls) {
-  const b = el('button', '', cls);
-  b.type = 'button';
-  b.tabIndex = -1;
-  b.dataset.genre = g.key;
-  b.setAttribute('role', 'option');
-  b.append(g.short);
-  return b;
-}
-
-// Marks the option for a genre as chosen and gives it the listbox's one tab stop, which
-// the first option takes when none is chosen.
-function markGenre(box, key) {
-  const options = [...box.querySelectorAll('[role=option]')];
-  const chosen = options.find(o => o.dataset.genre === key) || null;
-  for (const o of options) {
-    o.setAttribute('aria-selected', String(o === chosen));
-    o.tabIndex = o === (chosen || options[0]) ? 0 : -1;
-  }
-  return chosen;
-}
-
-// Arrow keys move along a listbox, Home and End go to either end and a letter to the next
-// option it begins; Enter, Space or a click chooses.
-function listboxKeys(box, back, ahead) {
-  box.addEventListener('keydown', e => {
-    if (e.altKey || e.ctrlKey || e.metaKey) return;
-    const options = [...box.querySelectorAll('[role=option]')];
-    const at = options.indexOf(e.target);
-    if (at < 0) return;
-    const k = e.key;
-    const to = k === ahead ? Math.min(at + 1, options.length - 1) : k === back ? Math.max(at - 1, 0)
-      : k === 'Home' ? 0 : k === 'End' ? options.length - 1
-        : k.length === 1 && k.trim() ? nextByLetter(options.map(o => o.textContent), at, k) : -1;
-    if (to < 0) return;
-    e.preventDefault();
-    for (const o of options) o.tabIndex = o === options[to] ? 0 : -1;
-    options[to].focus();
-  });
-}
-
-// Brings a chip into view near the middle of the row, unless it is in full view already.
-function showChip(chip) {
-  const bar = $('genre-scroll');
-  if (!chip) { bar.scrollLeft = 0; return; }
-  const inset = parseFloat(getComputedStyle(bar).paddingLeft) || 0;
-  const start = chip.offsetLeft, end = start + chip.offsetWidth;
-  if (start >= bar.scrollLeft + inset && end <= bar.scrollLeft + bar.clientWidth - inset) return;
-  bar.scrollLeft = start - (bar.clientWidth - chip.offsetWidth) / 2;
-}
-
-// On a mouse, arrows at either end page through the chips, as they do through a row.
-const syncGenreNudges = (() => {
-  const bar = $('genre-scroll');
-  const page = dir => bar.scrollBy({ left: dir * bar.clientWidth * .8, behavior: motion() ? 'smooth' : 'auto' });
-  const prev = button('nudge prev', '', () => page(-1), 'left');
-  const next = button('nudge next', '', () => page(1), 'right');
-  prev.setAttribute('aria-label', 'Back through the genres');
-  next.setAttribute('aria-label', 'More genres');
-  $('genre-bar').prepend(prev);
-  $('genre-bar').append(next);
-  const sync = () => {
-    prev.hidden = bar.scrollLeft < 8;
-    next.hidden = bar.scrollLeft + bar.clientWidth >= bar.scrollWidth - 8;
-  };
-  bar.addEventListener('scroll', () => requestAnimationFrame(sync), { passive: true });
-  window.addEventListener('resize', sync);
-  return sync;
-})();
-
 function renderBrowse() {
   const { genre } = where();
   const valid = genreLabel(genre) ? genre : '';
-  const row = $('genre-pick');
-  if (!row.childElementCount) row.append(...GENRES.map(g => genreOption(g, 'genre-chip')));
-  const chip = markGenre(row, valid);
-  $('genre-all').classList.toggle('on', !valid);
   if (valid !== browseShown) {
-    // A new choice starts from the top of the page, with its chip in sight.
+    if (valid) {
+      const filters = {...filtersFor('browse')};
+      delete filters.genres;
+      delete filters.format;
+      if (['animation', 'documentary', 'unscripted'].includes(valid)) filters.format = valid;
+      else filters.genres = [valid];
+      setFilters('browse', filters);
+      pageFilters.get('browse')?.paint();
+    }
     if (browseShown !== null && window.scrollY) window.scrollTo(0, 0);
     browseShown = valid;
-    showChip(chip);
   }
-  syncGenreNudges();
-  $('browse-h').textContent = valid ? genreLabel(valid) : 'Browse';
+  const filters = filtersFor('browse');
+  const single = filters.genres?.length === 1 ? filters.genres[0] : filters.format;
+  $('browse-h').textContent = genreLabel(single) || 'Browse';
   if (!valid && !filterKey('browse')) {
     browseKey = '';
     const tiles = el('ul', '', 'tiles');
@@ -3846,50 +3778,6 @@ async function loadBrowse(genre) {
     $('browse-body').replaceChildren(el('p', e.message, 'row-empty'));
   }
 }
-$('genre-pick').addEventListener('click', e => {
-  const option = e.target.closest('[role=option]');
-  if (option) go(genreHref(option.dataset.genre));
-});
-listboxKeys($('genre-pick'), 'ArrowLeft', 'ArrowRight');
-
-// All genres: every genre A to Z after All genres itself, with the one on screen ticked.
-function openGenres() {
-  const list = $('genre-list');
-  if (!list.childElementCount) {
-    list.append(...[{ key: '', short: 'All genres' }, ...GENRES].map(g => {
-      const option = genreOption(g, 'genre-opt');
-      option.append(icon('check'));
-      return option;
-    }));
-  }
-  const { genre } = where();
-  const chosen = markGenre(list, genreLabel(genre) ? genre : '');
-  placeGenres();
-  $('genres').showModal();
-  $('genre-all').setAttribute('aria-expanded', 'true');
-  chosen.focus();
-}
-function placeGenres() {
-  if (!wide()) return;
-  const r = $('genre-all').getBoundingClientRect();
-  $('genres').style.setProperty('--x', `${Math.round(r.left)}px`);
-  $('genres').style.setProperty('--y', `${Math.round(r.bottom + 8)}px`);
-}
-$('genre-all').append(icon('more'));
-$('genre-all').addEventListener('click', openGenres);
-$('genre-list').addEventListener('click', e => {
-  const option = e.target.closest('[role=option]');
-  if (!option) return;
-  $('genres').close();
-  go(genreHref(option.dataset.genre));
-});
-listboxKeys($('genre-list'), 'ArrowUp', 'ArrowDown');
-$('genres').addEventListener('click', e => { if (e.target === $('genres')) $('genres').close(); });
-$('genres').addEventListener('close', () => $('genre-all').setAttribute('aria-expanded', 'false'));
-const followGenres = () => { if ($('genres').open) placeGenres(); };
-window.addEventListener('resize', followGenres);
-window.addEventListener('scroll', followGenres, { passive: true });
-
 /* ----------------------------------------------------------- new & popular */
 // Until the home page is here, its rows stand in as they will land: the Top 10, new this
 // year, Coming soon with its dates and Popular right now.
@@ -4745,12 +4633,13 @@ for (const b of document.querySelectorAll('.close-btn')) b.append(icon('close'))
 for(const [page,anchor] of [['home','rows'],['browse','browse-body'],['new','new-body'],['list','list-note'],['search','recent-page']]){
   const controls=filterBar(page,{genres:boot.genres,languages:boot.languages||[],search:page==='list',onChange:query=>{
     if(page==='home'){homeKey='';loadHome();}
-    if(page==='browse'){browseKey=null;renderBrowse();}
+    if(page==='browse'){browseKey=null;if(where().genre)go('/browse');else renderBrowse();}
     if(page==='new'){newKey='';renderNew();}
     if(page==='list'){listQuery=query; ratedShown=RATED_PAGE; renderList();}
     if(page==='search'){searchShown=null;search($('q-page').value,false);}
   }});
   $(anchor).before(controls.element);
+  pageFilters.set(page,controls);
 }
 updateCounts();
 route();
