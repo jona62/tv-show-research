@@ -12,7 +12,7 @@ Build from the parent research directory:
 .venv/bin/python scripts/build_site.py
 ```
 
-The site is the `tv-taste` app in the root `rig.yaml`, and pushing to `main` deploys it through the Rigbox GitHub connection. It reads the frozen model from `MODEL_DIR=/home/developer/model` on the workspace, not the nightly one, so its numbers stay as published. The public files are committed, so the server needs only Python 3.10+ and no packages.
+The site is the `tv-taste` app in the root `rig.yaml`, and pushing to `main` deploys it through the Rigbox GitHub connection. It reads the frozen model from `MODEL_DIR=/home/developer/data/model` on the workspace's persistent volume, not the nightly one, so its numbers stay as published. The public files are committed, so the server needs only Python 3.10+ and no packages.
 
 Rigbox runs the Python server on port 8080 and probes `/healthz`. Only files inside `public/` are served as files. `model/catalog.json.gz` stays outside the public root. Search and recommendation APIs expose curated results, not raw model files. The original six-show research report remains unchanged and describes the older English-scripted subset. Current catalog statistics and theme definitions are at `/catalog-audit.json` and `/expanded_theme_rules.json`. The app is public in `rig.yaml`.
 
@@ -31,7 +31,7 @@ From the parent project directory, run:
 .venv/bin/python scripts/test_recommender.py
 ```
 
-To publish the result, copy `model/` to `/home/developer/model` on the workspace, then commit `site/public/` and `output/` and push.
+To publish the result, copy `model/` to `/home/developer/data/model` on the workspace, then commit `site/public/` and `output/` and push.
 
 `--refresh` archives the old raw responses and manifest under `data/archive/` before downloading a new complete snapshot. Without that flag the downloader resumes cached pages and preserves their retrieval date. The online model is rebuilt from the full raw catalog; normal user interactions do not download or refit the dataset. Rebuild `model/catalog.json.gz` before the first site build on a clean checkout.
 

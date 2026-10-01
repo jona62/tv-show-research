@@ -54,7 +54,7 @@ needs packages at runtime.
 Next Watch and Couchside read a live model that `scripts/refresher.py` rebuilds
 each night at 04:30 UTC: it downloads TVmaze's whole show index (and, one at a time,
 the shows TVmaze lists that the index, cached for up to a day, does not hold yet),
-rebuilds the model into a new folder under `/home/developer/tv-model/versions/`, checks it,
+rebuilds the model into a new folder under `/home/developer/data/tv-model/versions/`, checks it,
 and only then moves `tv-model/current` to it. Each app notices the move and
 restarts on the new model, Next Watch after 30 seconds and Couchside after 150,
 so they are never down together. A failed build leaves the live model alone and
@@ -112,6 +112,21 @@ Every app is an entry in the root `rig.yaml`, the only manifest in the
 repository. It is connected to Rigbox through the GitHub app, so a push to
 `main` is a deploy, and Rigbox restarts only the apps whose folder, entry or
 secrets changed.
+
+The workspace's `data` volume is mounted at `/home/developer/data`. The frozen
+research model is in `data/model`; the live model versions, downloaded source data,
+provider caches, build history and logs are in `data/tv-model`. Couchside's episode
+ratings database is `data/tv-model/cache/episode-ratings.sqlite3`. These files live
+outside release checkouts, on the persistent volume. User lists and preferences
+remain in each browser's local storage. Each deployed app checks that the volume
+is mounted before starting, so a missing mount cannot create new data on the VM's
+root disk.
+
+The October 2026 migration preserved the original root-disk directories as
+`/home/developer/model.pre-volume-*` and `/home/developer/tv-model.pre-volume-*`.
+The old paths are compatibility links to the volume; all deployed apps use the
+volume paths directly. The originals are recovery snapshots and are no longer
+updated. Check volume free space before a model build or a large cache expansion.
 
 Data from [TVmaze](https://www.tvmaze.com/),
 [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/), and

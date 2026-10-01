@@ -8,7 +8,7 @@ leaves the apps exactly where they were.
 
     .venv/bin/python refresher.py            # from scripts/
 
-MODEL_ROOT (/home/developer/tv-model) holds everything:
+MODEL_ROOT (/home/developer/data/tv-model) holds everything on the persistent volume:
 
     current -> versions/<stamp>   what the apps read, swapped with one rename
     versions/<stamp>/             catalog.json.gz vectors.bin.gz popularity.bin.gz
@@ -49,7 +49,7 @@ clickstream.py counts every month again, beside the cache, which it replaces onl
 the count has every month the cache had. A failed fetch is only a warning: the
 co-interest is built from the cache there is, and a version has none without one.
 
-Settings, all optional: PORT (8083), MODEL_ROOT, SEED_MODEL_DIR (/home/developer/model),
+Settings, all optional: PORT (8083), MODEL_ROOT, SEED_MODEL_DIR (/home/developer/data/model),
 REFRESH_AT_UTC (04:30), AUTO_DELAY_SECONDS (120), TMDB_API_KEY, TMDB_REGION (US),
 TMDB_MIN_POPULARITY (60), TMDB_DAILY_LIMIT (6000), WIKIDATA_MAX_AGE_DAYS (7, and 0
 fetches every run, the film cache too), WIKIDATA_SPARQL_URL and WIKIDATA_BACKOFF_SECONDS,
@@ -696,8 +696,8 @@ class Config:
         # Absolute from the start: the build steps run from scripts/, not from here.
         where = lambda value: Path(os.path.abspath(os.path.expanduser(value)))
         self.port = int(env.get('PORT') or 8083)
-        self.root = where(env.get('MODEL_ROOT') or '/home/developer/tv-model')
-        self.seed = where(env.get('SEED_MODEL_DIR') or '/home/developer/model')
+        self.root = where(env.get('MODEL_ROOT') or '/home/developer/data/tv-model')
+        self.seed = where(env.get('SEED_MODEL_DIR') or '/home/developer/data/model')
         self.refresh_at = parse_clock(env.get('REFRESH_AT_UTC') or '04:30')
         self.auto_delay = float(env.get('AUTO_DELAY_SECONDS') or 120)
         self.tmdb_key = (env.get('TMDB_API_KEY') or '').strip()

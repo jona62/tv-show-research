@@ -108,7 +108,9 @@ key or hover switches, and no accounts.
 including missing scores. A compressed SQLite cache outside the app checkout survives
 restarts and deploys. `RATINGS_CACHE` sets its file; locally it defaults to
 `data/cache/episode-ratings.sqlite3`, and the deployment keeps it under
-`/home/developer/tv-model/cache/`. It retains up to 5,000 recently used shows and drops
+`/home/developer/data/tv-model/cache/` on the workspace's persistent `data` volume.
+The shared model and the refresher's source data and caches use the same volume.
+It retains up to 5,000 recently used shows and drops
 records older than 180 days. Refreshing does not delete the previous answer.
 
 Cached reads return immediately. Airing shows become due daily, completed shows weekly;
