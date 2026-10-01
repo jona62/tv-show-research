@@ -50,16 +50,16 @@ button,input,select,textarea{font:inherit;color:inherit}
   color:#fff;cursor:pointer;font-size:15px}
 .icon-btn:hover{background:#ffffff1a}
 .find{display:flex;align-items:center;flex:none;min-width:0;width:220px;height:44px;
-  border:1px solid #4d4d4d;border-radius:4px;background:#242424;
+  border:1px solid var(--bg-2);border-radius:4px;background:var(--bg);
   transition:width .22s cubic-bezier(.2,.8,.2,1),border-color .18s,background .18s}
 .find input{display:block;flex:1;width:0;min-width:0;border:0;background:none;outline:none;
   padding:10px 0;font-size:16px;appearance:none}
 .find input::-webkit-search-cancel-button{-webkit-appearance:none}
 .find .icon-btn{width:44px;height:42px;border-radius:0;flex:none;padding:0}
 .find .icon-btn:hover{background:#ffffff0d}
-.find.open{width:100%;max-width:720px;border-color:#fff;background:#333}
+.find.open{width:100%;max-width:720px;border-color:var(--bg-3);background:var(--bg)}
 .find .nav-filter{position:relative;flex:none;width:44px;height:42px;margin-left:4px}
-.nav-filter::before{content:'';position:absolute;left:0;top:7px;bottom:7px;border-left:1px solid #4d4d4d}
+.nav-filter::before{content:'';position:absolute;left:0;top:7px;bottom:7px;border-left:1px solid var(--bg-3)}
 .nav-filter .i svg{width:19px;height:19px}
 .nav-filter.active{color:var(--brand)}
 .nav-filter.active::after{content:'';position:absolute;top:7px;right:7px;width:6px;height:6px;border-radius:50%;background:var(--brand)}
