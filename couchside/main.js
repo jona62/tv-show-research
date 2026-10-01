@@ -2560,6 +2560,8 @@ function watchEl(s, live, age, tm) {
 // Tab away.
 function fitWatch(box) {
   const list = box.querySelector('.watch-list'), more = box.querySelector('.watch-more');
+  // A resize can arrive while this row still contains its loading placeholders.
+  if (!list || !more) return;
   box.classList.remove('open', 'clipped');
   more.hidden = true;
   if (list.scrollWidth > list.clientWidth + 1) {
