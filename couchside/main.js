@@ -490,7 +490,7 @@ function paintView(name) {
   }
   paintDockMini();
   syncNav();
-  $('find').classList.toggle('open', name === 'search');
+  expandFind(name === 'search' && $('find').contains(document.activeElement));
   $('q').value = name === 'search' ? where().q : '';
   if (name === 'welcome') renderWelcome();
   if (name === 'list') renderList();
@@ -4145,9 +4145,25 @@ for (const box of [$('recent-page'), $('recent-drop')]) {
     if (e.key === 'ArrowDown' && first) { e.preventDefault(); first.focus(); }
   });
 }
-// The nav's box folds away once it is empty and the focus has gone elsewhere.
+// Search fills the title row while it is in use. Its back arrow restores the
+// wordmark and navigation, leaving the query and results in place.
+function expandFind(open) {
+  $('find').classList.toggle('open', open);
+  $('nav').classList.toggle('searching', open);
+  $('find-open').replaceChildren(icon(open ? 'left' : 'search'));
+  $('find-open').setAttribute('aria-label', open ? 'Close search' : 'Search');
+}
+function closeFind() {
+  $('q').blur();
+  expandFind(false);
+  document.querySelector('.nav .brand').focus({ preventScroll: true });
+  paintRecent();
+}
+// Keep the expanded row steady while its filters are open; the menu is anchored
+// to the funnel. An empty field contracts once its focus has gone elsewhere.
 function settleFind() {
-  if (!$('q').value && !$('find').contains(document.activeElement)) $('find').classList.remove('open');
+  if (!$('q').value && !$('find').contains(document.activeElement)
+      && $('filter-open').getAttribute('aria-expanded') !== 'true') expandFind(false);
   paintRecent();
 }
 for (const area of [$('find'), $('search')]) {
@@ -4157,18 +4173,17 @@ for (const area of [$('find'), $('search')]) {
 window.addEventListener('resize', paintRecent);
 
 $('q').addEventListener('focus', () => {
-  $('find').classList.add('open');
+  expandFind(true);
   if (!wide() && view !== 'search') go('/search');
 });
-$('q').addEventListener('input', () => toSearch($('q').value));
+$('q').addEventListener('input', () => { toSearch($('q').value); expandFind(true); });
 $('q').addEventListener('keydown', e => {
   const input = $('q');
   if (e.key === 'Enter') { commitSearch(input.value); input.blur(); }
   if (e.key === 'Escape') {
     input.value = '';
     if (view === 'search') toSearch('');
-    input.blur();
-    $('find').classList.remove('open');
+    closeFind();
   }
 });
 // Opening one of a search's results, or of the shows like it, commits it too.
@@ -4182,17 +4197,21 @@ $('missing').addEventListener('click', e => { if (e.target.closest('a')) commitS
 function openSearch() {
   if (view !== 'search') go('/search');
   else window.scrollTo(0, 0);
-  $('find').classList.add('open');
+  expandFind(true);
   $('q').focus();
 }
-$('find-open').append(icon('search'));
+expandFind(false);
 $('filter-open').append(icon('filter'));
 $('filter-open').addEventListener('click', () => pageFilters.get(view)?.open());
-$('find-open').addEventListener('click', () => {
+function focusFind() {
   if (!wide()) { openSearch(); return; }
   if (view !== 'search') $('q').value = '';
-  $('find').classList.add('open');
+  expandFind(true);
   $('q').focus();
+}
+$('find-open').addEventListener('click', () => {
+  if ($('find').classList.contains('open')) closeFind();
+  else focusFind();
 });
 for (const a of document.querySelectorAll('a[data-page="search"]')) {
   a.addEventListener('click', e => {
@@ -4204,7 +4223,7 @@ for (const a of document.querySelectorAll('a[data-page="search"]')) {
 document.addEventListener('keydown', e => {
   if (e.key !== '/' || e.target.closest('input, textarea, select') || document.querySelector('dialog[open]')) return;
   e.preventDefault();
-  $('find-open').click();
+  focusFind();
 });
 
 /* -------------------------------------------------------------- welcome */

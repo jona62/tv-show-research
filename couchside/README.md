@@ -134,10 +134,13 @@ upstream failures. Storage and memory caches are bounded, and concurrent live lo
 share one upstream call and one rate-budget entry.
 
 Home, Browse, New & Popular, My List and Search share responsive discovery controls.
-The header's funnel opens filters for the current page and marks active choices.
-Phones and small tablets keep a catalogue search bar beside it; desktop search
-expands from the existing icon. Search results use that same field, while My List
-keeps its own field for saved and rated shows.
+Search shares the Couchside wordmark's row, with the current page's funnel inside
+its right edge. On focus it expands across the row, temporarily replacing the
+wordmark and profile; its back arrow restores the header without clearing results.
+Small tablets keep section links below that row. The existing filter menu stays
+in place while search is expanded, and its funnel marks active choices. Search
+results use that same universal field, while My List keeps its own field for saved
+and rated shows. Reduced-motion preferences disable the expansion animation.
 Genre (multiple choices), TVmaze public rating, commitment limits (hours, episodes,
 seasons), episode length, status, premiere year, language and format can combine.
 One dropdown uses the existing menu rows. Genre, Rating,

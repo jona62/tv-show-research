@@ -2,7 +2,7 @@
   --bg:#141414;--bg-2:#181818;--bg-3:#232323;--bg-4:#2f2f2f;--line:#2e2e2e;
   --ink:#fff;--ink-2:#e2e2e2;--muted:#a8a8a8;--dim:#7c7c7c;
   --brand:#ffb020;--brand-2:#ff6a3d;--match:#3fcf7e;
-  --card:112px;--nav:108px;--r:6px;
+  --card:112px;--nav:68px;--r:6px;
   /* What the screen covers: the status bar, notch or Dynamic Island, the home indicator
      and, in landscape, the sides. Whatever meets an edge keeps clear of it through these. */
   --safe-t:env(safe-area-inset-top,0px);--safe-r:env(safe-area-inset-right,0px);
@@ -45,15 +45,26 @@ button,input,select,textarea{font:inherit;color:inherit}
 .links a{font-size:14px;color:var(--ink-2);text-decoration:none;white-space:nowrap;transition:color .2s}
 .links a:hover{color:var(--muted)}
 .links a[aria-current=page]{color:#fff;font-weight:700}
-.tools{margin-left:auto;display:flex;align-items:center;gap:10px}
+.tools{margin-left:auto;display:flex;flex:1;min-width:0;align-items:center;justify-content:flex-end;gap:10px}
 .icon-btn{display:grid;place-items:center;width:44px;height:44px;border:0;border-radius:50%;background:none;
   color:#fff;cursor:pointer;font-size:15px}
 .icon-btn:hover{background:#ffffff1a}
-.find{display:flex;align-items:center}
-.find input{display:none}
-.nav-filter{position:relative;flex:none}
+.find{display:flex;align-items:center;flex:none;min-width:0;width:220px;height:44px;
+  border:1px solid #4d4d4d;border-radius:4px;background:#242424;
+  transition:width .22s cubic-bezier(.2,.8,.2,1),border-color .18s,background .18s}
+.find input{display:block;flex:1;width:0;min-width:0;border:0;background:none;outline:none;
+  padding:10px 0;font-size:16px;appearance:none}
+.find input::-webkit-search-cancel-button{-webkit-appearance:none}
+.find .icon-btn{width:44px;height:42px;border-radius:0;flex:none;padding:0}
+.find .icon-btn:hover{background:#ffffff0d}
+.find.open{width:100%;max-width:720px;border-color:#fff;background:#333}
+.find .nav-filter{position:relative;flex:none;width:44px;height:42px;margin-left:4px}
+.nav-filter::before{content:'';position:absolute;left:0;top:7px;bottom:7px;border-left:1px solid #4d4d4d}
+.nav-filter .i svg{width:19px;height:19px}
 .nav-filter.active{color:var(--brand)}
-.nav-filter.active::after{content:'';position:absolute;top:7px;right:6px;width:6px;height:6px;border-radius:50%;background:var(--brand)}
+.nav-filter.active::after{content:'';position:absolute;top:7px;right:7px;width:6px;height:6px;border-radius:50%;background:var(--brand)}
+.nav.searching .brand,.nav.searching .links,.nav.searching .avatar{display:none}
+.nav.searching .tools{justify-content:center}
 .avatar{position:relative;width:32px;height:32px;flex:none;border:0;border-radius:6px;cursor:pointer;display:grid;place-items:center;
   background:linear-gradient(135deg,var(--brand),#e04e8a);color:#141414;font-size:16px}
 /* The profile button looks 32px square and takes a 44px tap. */
@@ -62,39 +73,33 @@ button.avatar::after{content:'';position:absolute;inset:-6px}
 @media(min-width:760px){
   .brand{font-size:26px}
   .links{display:flex}
-  .find{border:1px solid transparent;border-radius:4px;transition:border-color .2s,background .2s}
-  .find.open{border-color:#fff;background:#000c}
-  .find.open input{display:block;width:min(260px,24vw);border:0;background:none;padding:6px 8px 6px 0;font-size:14px;outline:none}
-  .find.open .icon-btn{width:34px;height:34px;border-radius:0}
-  .find.open .icon-btn:hover{background:none}
-  .find input::-webkit-search-cancel-button{-webkit-appearance:none}
 }
 
-/* Small tablets keep their section links above the search, within the same header. */
+/* Search shares the wordmark's row; small tablets keep their section links below it. */
 @media(min-width:760px) and (max-width:1023px){
-  :root{--nav:108px}
+  :root{--nav:104px}
+  .nav{display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:56px 32px;
+    gap:0 20px;padding-bottom:8px}
+  .nav .brand{grid-column:1;grid-row:1}
+  .nav .tools{grid-column:2;grid-row:1;width:100%}
+  .nav .links{grid-column:1 / -1;grid-row:2;justify-self:start;gap:22px}
+  .nav .find{width:240px}
+  .nav .find.open{width:100%;max-width:720px}
+  .nav.searching .tools{grid-column:1 / -1}
+  .nav.searching .links{display:flex}
   .brand{font-size:22px}
-  .links{gap:12px}
   .links a{font-size:13px}
 }
-/* Phones and small tablets keep search and the current page's filters within easy reach. */
-@media(max-width:1023px){
-  .nav{display:grid;grid-template-columns:minmax(0,1fr) 44px;grid-template-rows:48px 44px;gap:8px;
-    padding-bottom:8px}
-  .brand{grid-column:1;grid-row:1;justify-self:start}
-  .tools{display:contents}
-  .nav .avatar{grid-column:2;grid-row:1;justify-self:center}
-  .nav .find{grid-column:1;grid-row:2;min-width:0;border:1px solid #4d4d4d;border-radius:4px;background:#242424}
-  .nav .find:focus-within{border-color:#fff;background:#333}
-  .nav .find .icon-btn{width:40px;height:42px;flex:none;border-radius:0}
-  .nav .find input{display:block;width:100%;min-width:0;flex:1;border:0;background:none;outline:none;padding:10px 10px 10px 0;font-size:16px;appearance:none}
-  .nav-filter{grid-column:2;grid-row:2}
+@media(max-width:759px){
+  .nav{gap:10px}
+  .nav .brand{font-size:clamp(17px,4.9vw,21px)}
+  .nav .tools{gap:8px}
+  .nav .find{width:clamp(118px,39vw,154px);max-width:calc(100% - 40px)}
+  .nav .find.open{width:100%;max-width:100%}
+  .nav .find .nav-filter{margin-left:0}
 }
-@media(min-width:760px) and (max-width:1023px){
-  .nav{grid-template-columns:auto minmax(0,1fr) 44px}
-  .links{grid-column:2;grid-row:1;justify-self:end}
-  .nav .find{grid-column:1 / span 2}
-  .nav .avatar,.nav-filter{grid-column:3}
+@media(prefers-reduced-motion:reduce){
+  .find{transition:none}
 }
 
 /* dock (phones) --------------------------------------------------------- */
