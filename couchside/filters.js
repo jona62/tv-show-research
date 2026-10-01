@@ -5,33 +5,38 @@ const node = (tag,cls,text) => { const n=document.createElement(tag); if(cls)n.c
 const button = (text,action,cls='menu-item') => { const b=node('button',cls,text); b.type='button'; b.onclick=action; return b; };
 const labels={rating:v=>`TVmaze ${v}+`,length:v=>({short:'Under 30 min',standard:'30–60 min',long:'Over 60 min'})[v],status:v=>v==='Running'?'Ongoing':v,year:v=>`Since ${v}`,language:v=>v,format:v=>({scripted:'Scripted',animation:'Animation',documentary:'Documentary',unscripted:'Unscripted'})[v],episodes:v=>`Up to ${v} episodes`,seasons:v=>`Up to ${v} season${v===1?'':'s'}`,hours:v=>`Up to ${v} hours`};
 
-export function filterBar(page,{genres=[],languages=[],onChange,search=false,compact=false,extra=[]}={}) {
+export function filterBar(page,{genres=[],languages=[],onChange,onPaint,search=false,compact=false,trigger=null,extra=[]}={}) {
   const bar=node('div',`discovery${compact?' discovery-compact':''}`),tools=node('div','discovery-tools');
   const applied=node('div','discovery-active'),description=node('span','discovery-description');
-  let find='';
+  let find='',count=0,opened=null;
   const changed=()=>{paint();onChange?.(find);};
   if(search){
     const label=node('label','discovery-find');label.append(node('span','sr','Find a show in your list'));
     const input=node('input');input.type='search';input.placeholder='Find a show in your list';input.maxLength=100;
     input.oninput=()=>{find=input.value;onChange?.(find);};label.append(input);tools.append(label);
   }
-  const filters=button('',sheet,'genre-chip genre-all');
+  const filters=button('',()=>sheet(),'genre-chip genre-all');
+  filters.hidden=!!trigger;
   filters.setAttribute('aria-haspopup','dialog');filters.setAttribute('aria-expanded','false');
   tools.append(filters);
-  applied.append(description,button('Clear',clear,'link discovery-clear'));
+  applied.append(description,button('Clear',()=>{clear();(trigger||filters).focus({preventScroll:true});},'link discovery-clear'));
   bar.append(tools,applied);
   const defaultSort={search:'Relevance',list:'Recently added',more:'Most similar',fans:'Fan favorites',person:'Original order'}[page]||'For you';
   const sorts=[['',defaultSort],['popular','Popularity'],['rating','Highest rated'],['newest','Newest'],['shortest','Shortest watch time'],...(page==='list'?[['name','A–Z']]:[])];
   const summary=(f,keys)=>keys.flatMap(k=>k==='genres'?(f.genres||[]):f[k]?[labels[k]?.(f[k])||sorts.find(([v])=>v===f[k])?.[1]].filter(Boolean):[]).join(', ');
   function clear(){setFilters(page,{});extra.forEach(f=>f.apply(''));changed();}
   function paint(){
-    const f=filtersFor(page),count=Object.entries(f).reduce((n,[k,v])=>n+(k==='genres'?v.length:1),0)+extra.filter(f=>f.get()).length;
+    const f=filtersFor(page);count=Object.entries(f).reduce((n,[k,v])=>n+(k==='genres'?v.length:1),0)+extra.filter(f=>f.get()).length;
     html(filters,`<span>Filters${count?` (${count})`:''}</span>${icon('down')}`);
     filters.classList.toggle('on',!!count);
     description.textContent=[summary(f,Object.keys(f)),...extra.map(f=>f.options.find(([v])=>v===f.get()&&v)?.[1])].filter(Boolean).join(' · ');
     applied.hidden=!count;
+    tools.hidden=!!trigger&&!search;
+    bar.hidden=!!trigger&&!search&&!count;
+    onPaint?.();
   }
-  function sheet(){
+  function sheet(anchor=trigger||filters){
+    if(opened)return;
     const draft=structuredClone(filtersFor(page)),extras=new Map(extra.map(f=>[f.name,f.get()]));
     const dialog=node('dialog','menu genre-menu discovery-menu'),body=node('div','menu-sheet');
     const head=node('div','menu-head'),title=node('h2','','Filters');title.id=`discovery-${page}-h`;
@@ -107,15 +112,15 @@ export function filterBar(page,{genres=[],languages=[],onChange,search=false,com
     form.append(sections,foot);form.onsubmit=e=>{e.preventDefault();setFilters(page,draft);extra.forEach(f=>f.apply(extras.get(f.name)));changed();dialog.close();};body.append(form);dialog.append(body);document.body.append(dialog);
     function place(){
       if(innerWidth<760)return;
-      const r=filters.getBoundingClientRect(),width=Math.min(360,innerWidth-32);
+      const r=anchor.getBoundingClientRect(),width=Math.min(360,innerWidth-32);
       const height=Math.min(640,innerHeight-32,sections.scrollHeight+head.getBoundingClientRect().height+foot.getBoundingClientRect().height);
       const y=innerHeight-r.bottom-16>=height?r.bottom+8:r.top-16>=height?r.top-height-8:Math.max(16,innerHeight-height-16);
       dialog.style.setProperty('--x',`${Math.max(16,Math.min(r.left,innerWidth-width-16))}px`);
       dialog.style.setProperty('--y',`${y}px`);
     }
     dialog.onclick=e=>{if(e.target===dialog)dialog.close();};
-    dialog.onclose=()=>{window.removeEventListener('resize',place);window.removeEventListener('scroll',place);dialog.remove();filters.setAttribute('aria-expanded','false');filters.focus({preventScroll:true});};
-    window.addEventListener('resize',place);window.addEventListener('scroll',place,{passive:true});dialog.showModal();place();filters.setAttribute('aria-expanded','true');
+    dialog.onclose=()=>{window.removeEventListener('resize',place);window.removeEventListener('scroll',place);dialog.remove();opened=null;anchor.setAttribute('aria-expanded','false');anchor.focus({preventScroll:true});};
+    window.addEventListener('resize',place);window.addEventListener('scroll',place,{passive:true});dialog.showModal();opened=dialog;place();anchor.setAttribute('aria-expanded','true');
   }
-  paint();return {element:bar,paint,query:()=>find};
+  paint();return {element:bar,paint,open:sheet,count:()=>count,query:()=>find};
 }

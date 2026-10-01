@@ -122,9 +122,13 @@ TMDB enrichment has its own queue and worker, so long-running shows do not hold 
 other shows' first matrices. Visible requests take priority in both queues.
 
 Home, Browse, New & Popular, My List and Search share responsive discovery controls.
+The header's funnel opens filters for the current page and marks active choices.
+Phones and small tablets keep a catalogue search bar beside it; desktop search
+expands from the existing icon. Search results use that same field, while My List
+keeps its own field for saved and rated shows.
 Genre (multiple choices), TVmaze public rating, commitment limits (hours, episodes,
 seasons), episode length, status, premiere year, language and format can combine.
-One dropdown uses the existing genre button and menu rows. Genre, Rating,
+One dropdown uses the existing menu rows. Genre, Rating,
 Commitment, More filters and Sort expand inside it; desktop anchors the menu beneath
 its button and phones use the existing bottom sheet. A short text summary shows
 applied choices. Browse no longer repeats genres in a horizontal strip. Sort works

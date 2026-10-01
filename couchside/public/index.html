@@ -28,13 +28,13 @@
 <!--start.js asks for the home page as soon as it arrives, while main.js is still on its way-->
 <script type="module" async src="/start.js?v=5402c4619b384072" fetchpriority="high"></script>
 <link rel="preconnect" href="https://static.tvmaze.com" crossorigin>
-<link rel="stylesheet" href="/style.css?v=c2ea522116ff0551">
-<script type="module" src="/main.js?v=a6cf545c8ed4b748"></script>
+<link rel="stylesheet" href="/style.css?v=8111eb916bb2e66e">
+<script type="module" src="/main.js?v=1e877d4d873c7912"></script>
 <link rel="modulepreload" href="/episode-ratings.js?v=6d15d3cd82cf93b8">
 <link rel="modulepreload" href="/title-sections.js?v=47e93fa931aed0c8">
 <link rel="modulepreload" href="/show-cards.js?v=6b008b98af842ca4">
 <link rel="modulepreload" href="/filter-state.js?v=a30d1a4517a72575">
-<link rel="modulepreload" href="/filters.js?v=00261d598f52fc5a">
+<link rel="modulepreload" href="/filters.js?v=92f20b6c7f241e66">
 <link rel="modulepreload" href="/ratings.js?v=d111fa7a20ae2e41">
 <link rel="modulepreload" href="/transfer.js?v=aca34fe2830e9d29">
 <link rel="modulepreload" href="/qr.js?v=d7f92f94bb8911ea">
@@ -62,6 +62,7 @@
              aria-label="Search shows by title" enterkeyhint="search">
       <div class="recent drop" id="recent-drop" hidden></div>
     </div>
+    <button class="icon-btn nav-filter" id="filter-open" type="button" aria-label="Filter Home shows" aria-haspopup="dialog" aria-expanded="false" hidden></button>
     <button class="avatar" id="account-open" type="button" aria-label="Your profile and settings" aria-haspopup="dialog"></button>
   </div>
 </header>
@@ -122,10 +123,6 @@
 
   <section id="search" class="view page" aria-labelledby="search-h" hidden>
     <h1 id="search-h" class="sr">Search</h1>
-    <div class="search-box">
-      <input id="q-page" type="search" placeholder="Search by title" autocomplete="off" maxlength="100"
-             aria-label="Search shows by title" enterkeyhint="search">
-    </div>
     <div class="recent" id="recent-page" hidden></div>
     <p class="note" id="search-note" role="status" aria-live="polite"></p>
     <ul class="grid" id="results"></ul>

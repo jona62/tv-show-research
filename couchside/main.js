@@ -52,6 +52,7 @@ const TITLES = {
 // Thumb, heart, star, search and navigation shapes follow Feather icons (MIT, Cole Bemis).
 const ICONS = {
   search: '<circle cx="11" cy="11" r="7"/><path d="M20.5 20.5l-4.3-4.3"/>',
+  filter: '<path d="M22 3H2l8 9.5V19l4 2v-8.5L22 3z"/>',
   clock: '<circle cx="12" cy="12" r="9.5"/><path d="M12 6.5V12l3.5 2"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   check: '<path d="M20 6L9 17l-5-5"/>',
@@ -489,16 +490,26 @@ function paintView(name) {
   }
   paintDockMini();
   syncNav();
-  $('find').classList.toggle('open', name === 'search' && wide() && !!where().q);
+  $('find').classList.toggle('open', name === 'search');
+  $('q').value = name === 'search' ? where().q : '';
   if (name === 'welcome') renderWelcome();
   if (name === 'list') renderList();
   if (name === 'new') renderNew();
   if (name === 'browse') renderBrowse();
-  if (name === 'search') $('q-page').value = where().q;
+  paintHeaderFilters();
 }
 
 function syncNav() {
   $('nav').classList.toggle('solid', view !== 'home' || window.scrollY > 40);
+}
+
+function paintHeaderFilters() {
+  const control = pageFilters.get(view), trigger = $('filter-open');
+  trigger.hidden = !control;
+  const count = control?.count() || 0;
+  const page = {home:'Home',browse:'Browse',new:'New & Popular',list:'My List',search:'Search'}[view];
+  trigger.setAttribute('aria-label', `Filter ${page || 'shows'}${page ? ' shows' : ''}${count ? `, ${count} active` : ''}`);
+  trigger.classList.toggle('active', !!count);
 }
 
 // How long the page rests after a scroll before the dock comes back, in ms.
@@ -3715,9 +3726,8 @@ function sharePerson() {
 }
 
 /* --------------------------------------------------------------- browse */
-// Genres are picked from a row of chips, or from All genres: a sheet on phones and a
-// panel under its button on wide screens. Both are listboxes, and choosing a genre
-// changes the address as a link does, so Back steps through the genres chosen.
+// Genre tiles can open a shared Browse link. That genre becomes a selection in the
+// same filters used by the header, preserving links and Back through those tiles.
 let browseKey = null, browseReq = 0, browseShown = null;
 const genreLabel = key => boot.genres.find(g => g.key === key)?.label;
 const GENRES = genreChoices(boot.genres);
@@ -3943,7 +3953,8 @@ function suggestions() {
 // back to the search on screen, such as by closing a title opened from it, keeps its results.
 function search(q, typed = true) {
   const query = q.trim();
-  for (const input of [$('q'), $('q-page')]) if (document.activeElement !== input && input.value !== q) input.value = q;
+  const input = $('q');
+  if (document.activeElement !== input && input.value !== q) input.value = q;
   paintRecent();
   const key=query+filterKey('search');
   if (key === searchShown) return;
@@ -4038,12 +4049,12 @@ window.addEventListener('storage', e => {
   paintRecent();
 });
 
-// They show under the search page's box on phones while it has the focus or is empty,
+// They show on the results page on phones while the header search has focus or is empty,
 // and drop from the nav's box on wide screens while it has the focus. Once something is
 // typed, only those it begins, or begins a word of, stay.
 const holdsFocus = (...nodes) => nodes.some(n => n.contains(document.activeElement));
 function paintRecent() {
-  const phone = !wide(), page = $('q-page');
+  const phone = !wide(), page = $('q');
   fillRecent($('recent-page'), page,
     phone && view === 'search' && (holdsFocus(page, $('recent-page')) || !searchText(page.value)));
   fillRecent($('recent-drop'), $('q'), !phone && $('find').classList.contains('open') && holdsFocus($('find')));
@@ -4079,7 +4090,7 @@ function fillRecent(box, input, show) {
   box.replaceChildren(head, list);
 }
 function searchAgain(q) {
-  for (const input of [$('q'), $('q-page')]) input.value = q;
+  $('q').value = q;
   toSearch(q, false);
   commitSearch(q);
   document.activeElement?.blur();
@@ -4092,7 +4103,8 @@ function forget(box, input, q) {
   const left = box.querySelectorAll('.recent-x');
   (left[Math.min(at, left.length - 1)] || input).focus();
 }
-for (const [box, input] of [[$('recent-page'), $('q-page')], [$('recent-drop'), $('q')]]) {
+for (const box of [$('recent-page'), $('recent-drop')]) {
+  const input = $('q');
   // Pressing one keeps the focus, and a phone's keyboard, in the box.
   box.addEventListener('mousedown', e => { if (e.target.closest('button')) e.preventDefault(); });
   box.addEventListener('keydown', e => {
@@ -4118,13 +4130,21 @@ for (const area of [$('find'), $('search')]) {
 }
 window.addEventListener('resize', paintRecent);
 
-for (const input of [$('q'), $('q-page')]) {
-  input.addEventListener('input', () => toSearch(input.value));
-  input.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { commitSearch(input.value); input.blur(); }
-    if (e.key === 'Escape' && input === $('q')) { input.value = ''; input.blur(); $('find').classList.remove('open'); }
-  });
-}
+$('q').addEventListener('focus', () => {
+  $('find').classList.add('open');
+  if (!wide() && view !== 'search') go('/search');
+});
+$('q').addEventListener('input', () => toSearch($('q').value));
+$('q').addEventListener('keydown', e => {
+  const input = $('q');
+  if (e.key === 'Enter') { commitSearch(input.value); input.blur(); }
+  if (e.key === 'Escape') {
+    input.value = '';
+    if (view === 'search') toSearch('');
+    input.blur();
+    $('find').classList.remove('open');
+  }
+});
 // Opening one of a search's results, or of the shows like it, commits it too.
 for (const grid of [$('results'), $('related-grid')]) {
   grid.addEventListener('click', e => { if (e.target.closest('.card-hit, .push')) commitSearch(resultsFor); });
@@ -4136,9 +4156,12 @@ $('missing').addEventListener('click', e => { if (e.target.closest('a')) commitS
 function openSearch() {
   if (view !== 'search') go('/search');
   else window.scrollTo(0, 0);
-  $('q-page').focus();
+  $('find').classList.add('open');
+  $('q').focus();
 }
 $('find-open').append(icon('search'));
+$('filter-open').append(icon('filter'));
+$('filter-open').addEventListener('click', () => pageFilters.get(view)?.open());
 $('find-open').addEventListener('click', () => {
   if (!wide()) { openSearch(); return; }
   if (view !== 'search') $('q').value = '';
@@ -4631,12 +4654,12 @@ $('dock-mini').addEventListener('click', () => {
 $('dock').addEventListener('touchstart', () => {}, { passive: true });
 for (const b of document.querySelectorAll('.close-btn')) b.append(icon('close'));
 for(const [page,anchor] of [['home','rows'],['browse','browse-body'],['new','new-body'],['list','list-note'],['search','recent-page']]){
-  const controls=filterBar(page,{genres:boot.genres,languages:boot.languages||[],search:page==='list',onChange:query=>{
+  const controls=filterBar(page,{genres:boot.genres,languages:boot.languages||[],trigger:$('filter-open'),search:page==='list',onPaint:paintHeaderFilters,onChange:query=>{
     if(page==='home'){homeKey='';loadHome();}
     if(page==='browse'){browseKey=null;if(where().genre)go('/browse');else renderBrowse();}
     if(page==='new'){newKey='';renderNew();}
     if(page==='list'){listQuery=query; ratedShown=RATED_PAGE; renderList();}
-    if(page==='search'){searchShown=null;search($('q-page').value,false);}
+    if(page==='search'){searchShown=null;search($('q').value,false);}
   }});
   $(anchor).before(controls.element);
   pageFilters.set(page,controls);

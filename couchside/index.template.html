@@ -50,6 +50,7 @@
              aria-label="Search shows by title" enterkeyhint="search">
       <div class="recent drop" id="recent-drop" hidden></div>
     </div>
+    <button class="icon-btn nav-filter" id="filter-open" type="button" aria-label="Filter Home shows" aria-haspopup="dialog" aria-expanded="false" hidden></button>
     <button class="avatar" id="account-open" type="button" aria-label="Your profile and settings" aria-haspopup="dialog"></button>
   </div>
 </header>
@@ -110,10 +111,6 @@
 
   <section id="search" class="view page" aria-labelledby="search-h" hidden>
     <h1 id="search-h" class="sr">Search</h1>
-    <div class="search-box">
-      <input id="q-page" type="search" placeholder="Search by title" autocomplete="off" maxlength="100"
-             aria-label="Search shows by title" enterkeyhint="search">
-    </div>
     <div class="recent" id="recent-page" hidden></div>
     <p class="note" id="search-note" role="status" aria-live="polite"></p>
     <ul class="grid" id="results"></ul>

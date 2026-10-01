@@ -2,7 +2,7 @@
   --bg:#141414;--bg-2:#181818;--bg-3:#232323;--bg-4:#2f2f2f;--line:#2e2e2e;
   --ink:#fff;--ink-2:#e2e2e2;--muted:#a8a8a8;--dim:#7c7c7c;
   --brand:#ffb020;--brand-2:#ff6a3d;--match:#3fcf7e;
-  --card:112px;--nav:58px;--r:6px;
+  --card:112px;--nav:108px;--r:6px;
   /* What the screen covers: the status bar, notch or Dynamic Island, the home indicator
      and, in landscape, the sides. Whatever meets an edge keeps clear of it through these. */
   --safe-t:env(safe-area-inset-top,0px);--safe-r:env(safe-area-inset-right,0px);
@@ -51,6 +51,9 @@ button,input,select,textarea{font:inherit;color:inherit}
 .icon-btn:hover{background:#ffffff1a}
 .find{display:flex;align-items:center}
 .find input{display:none}
+.nav-filter{position:relative;flex:none}
+.nav-filter.active{color:var(--brand)}
+.nav-filter.active::after{content:'';position:absolute;top:7px;right:6px;width:6px;height:6px;border-radius:50%;background:var(--brand)}
 .avatar{position:relative;width:32px;height:32px;flex:none;border:0;border-radius:6px;cursor:pointer;display:grid;place-items:center;
   background:linear-gradient(135deg,var(--brand),#e04e8a);color:#141414;font-size:16px}
 /* The profile button looks 32px square and takes a 44px tap. */
@@ -67,12 +70,31 @@ button.avatar::after{content:'';position:absolute;inset:-6px}
   .find input::-webkit-search-cancel-button{-webkit-appearance:none}
 }
 
-/* A small tablet, or a phone on its side, has a tighter nav: its links stay on one line
-   beside an open search box and within a landscape notch's gutters. */
+/* Small tablets keep their section links above the search, within the same header. */
 @media(min-width:760px) and (max-width:1023px){
-  .nav{gap:16px}
+  :root{--nav:108px}
   .brand{font-size:22px}
-  .links{gap:14px}
+  .links{gap:12px}
+  .links a{font-size:13px}
+}
+/* Phones and small tablets keep search and the current page's filters within easy reach. */
+@media(max-width:1023px){
+  .nav{display:grid;grid-template-columns:minmax(0,1fr) 44px;grid-template-rows:48px 44px;gap:8px;
+    padding-bottom:8px}
+  .brand{grid-column:1;grid-row:1;justify-self:start}
+  .tools{display:contents}
+  .nav .avatar{grid-column:2;grid-row:1;justify-self:center}
+  .nav .find{grid-column:1;grid-row:2;min-width:0;border:1px solid #4d4d4d;border-radius:4px;background:#242424}
+  .nav .find:focus-within{border-color:#fff;background:#333}
+  .nav .find .icon-btn{width:40px;height:42px;flex:none;border-radius:0}
+  .nav .find input{display:block;width:100%;min-width:0;flex:1;border:0;background:none;outline:none;padding:10px 10px 10px 0;font-size:16px;appearance:none}
+  .nav-filter{grid-column:2;grid-row:2}
+}
+@media(min-width:760px) and (max-width:1023px){
+  .nav{grid-template-columns:auto minmax(0,1fr) 44px}
+  .links{grid-column:2;grid-row:1;justify-self:end}
+  .nav .find{grid-column:1 / span 2}
+  .nav .avatar,.nav-filter{grid-column:3}
 }
 
 /* dock (phones) --------------------------------------------------------- */
@@ -364,13 +386,7 @@ main{min-height:100vh;padding-bottom:calc(var(--dock-space) + 24px);outline:none
 .more-rated{display:flex;justify-content:center;margin:18px var(--gutter) 0}
 
 /* search --------------------------------------------------------------- */
-.search-box{position:relative;margin:0 var(--gutter) 12px}
-.search-box input{width:100%;padding:12px 14px;border:1px solid #444;border-radius:6px;background:#2a2a2a;
-  color:var(--ink);font-size:16px;-webkit-appearance:none;appearance:none}
-.search-box input:focus{border-color:#fff;outline:none;background:#333}
-/* Wide screens search from the nav, so the page's own box is only for phones. */
-@media(min-width:760px){.search-box{display:none}}
-/* Recent searches: under the search page's box on phones, dropping from the nav's box on wide screens. */
+/* Recent searches: on the results page on phones, dropping from the nav on wide screens. */
 .find{position:relative}
 .recent{margin:0 var(--gutter) 14px}
 .recent-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
