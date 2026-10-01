@@ -22,6 +22,7 @@ workspace:
 apps:
   tv-taste:
     path: ./site
+    volumes: [data]
     port: 8080
     visibility: public
     start: mountpoint -q /home/developer/data && python3 server.py
@@ -37,6 +38,7 @@ apps:
 
   next-watch:
     path: ./app
+    volumes: [data]
     port: 8081
     visibility: public
     start: mountpoint -q /home/developer/data && python3 server.py
@@ -54,6 +56,7 @@ apps:
 
   couchside:
     path: ./couchside
+    volumes: [data]
     port: 8082
     visibility: public
     start: mountpoint -q /home/developer/data && python3 server.py
@@ -81,6 +84,7 @@ apps:
   # scripts/refresher.py. The build peaks near 1.1 GB, so it is capped below the servers.
   model-refresher:
     path: ./scripts
+    volumes: [data]
     port: 8083
     install: python3 -m venv --copies .venv && .venv/bin/pip install --no-cache-dir -r requirements-refresher.txt
     dependencyInputs: [ requirements-refresher.txt ]
