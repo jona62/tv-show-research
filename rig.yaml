@@ -15,6 +15,10 @@ visibility: public
 
 workspace:
   image: base
+  volumes:
+    - name: data
+      mountPath: /home/developer/data
+      sizeMb: 1024
   # Three engines hold about 350 MB each here; a nightly build peaks near 1 GB.
   resources: { ramMb: 3072, vcpuCount: 1, diskSizeMb: 5120 }
   deployment:
