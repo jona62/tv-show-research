@@ -118,7 +118,8 @@ def trim_about(raw):
     """The show itself, in the shape a title page takes from the catalogue (library.detail),
     for a show TVmaze added since it was built; None without an id and a name. Its network
     and country are its web channel's when it has one, as the catalogue's are, and its
-    summary keeps to the catalogue's length. Themes come from the build alone, so it has none."""
+    summary keeps to the catalogue's length. Themes come from the build alone, so it has none.
+    How well known it is (known) is TVmaze's 0 to 100 weight, as the catalogue's popularity is."""
     name = ' '.join(raw['name'].split())[:200] if isinstance(raw.get('name'), str) else ''
     if not whole(raw.get('id')) or not name:
         return None
@@ -140,7 +141,7 @@ def trim_about(raw):
         'status': raw['status'] if isinstance(raw.get('status'), str) else None,
         'summary': plain(raw.get('summary'), 480), 'ended': int(ended[:4]) if ended else None,
         'premiered': premiered or None, 'poster': picture(image), 'art': picture(image, 'original'),
-        'themes': [], 'match': None,
+        'themes': [], 'match': None, 'known': max(0, min(100, whole(raw.get('weight')) or 0)),
     }
 
 
@@ -301,9 +302,11 @@ class Live:
         with urlopen(request, timeout=6) as response:
             return json.load(response)
 
-    def get(self, path, trim, missing=None):
+    def get(self, path, trim, missing=None, ttl=None):
         """A trimmed answer for path. With missing set, a 404 is an answer too, cached like
-        any other, so a show with no trailer is not asked about again and again."""
+        any other, so a show with no trailer is not asked about again and again. ttl, when
+        given, is how long this answer is kept in place of the client's own."""
+        ttl = self.ttl if ttl is None else ttl
         now = self.clock()
         with self.lock:
             held = self.cache.get(path)
@@ -323,7 +326,7 @@ class Live:
             if exc.code == 404 and missing is not None:
                 value = missing
                 with self.lock:
-                    self.cache[path] = (self.clock() + self.ttl, value)
+                    self.cache[path] = (self.clock() + ttl, value)
                 return value
             if exc.code in (403, 429):
                 with self.lock:
@@ -340,7 +343,7 @@ class Live:
                 return held[1]
             raise LiveError('That service could not be reached.') from None
         with self.lock:
-            self.cache[path] = (self.clock() + self.ttl, value)
+            self.cache[path] = (self.clock() + ttl, value)
             self.cache.move_to_end(path)
             while len(self.cache) > self.size:
                 self.cache.popitem(last=False)

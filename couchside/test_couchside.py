@@ -5,7 +5,7 @@ Nothing here reaches TVmaze, TMDB or anything else: live clients are driven by f
 and the server reads a temporary model laid out the way the refresher leaves one.
 """
 from collections import Counter
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from http.server import ThreadingHTTPServer
 from functools import partial
 from pathlib import Path
@@ -99,6 +99,8 @@ os.environ['MODEL_DIR'] = str(TMP / 'current')
 
 import server                                                    # noqa: E402
 import follow                                                    # noqa: E402
+from added import Added, Search, current, read, trim_updates, NAMED  # noqa: E402
+from titles import forms                                         # noqa: E402
 import tmdb                                                      # noqa: E402
 from build import MODULES                                        # noqa: E402
 from engine import DEFAULT_SETTINGS, QUICK_PICKS, Engine         # noqa: E402
@@ -1538,6 +1540,132 @@ check('a biography asked for twice at once is looked up once', first is second a
       and first.result(5)['wikidata'] == 'Q23547')
 check('and asked for after, it comes from what was kept', joined.get(who) == first.result() and len(lookups) == 1)
 
+# 6c. The shows TVmaze added since the catalogue was built, which search finds on every
+# query (added.py): matched as the catalogue's first three tiers match, read about hourly
+# from TVmaze's updates list, each asked for once.
+
+
+def keyed(q, name, year=None):
+    words = read(name)
+    return Search(q).key(words, forms(words), year)
+
+
+for q, name, year, want, what in [
+        ('howard stern show', 'The Howard Stern Show', 2026, (0, False), 'the whole title, without its article'),
+        ('the howard stern show', 'The Howard Stern Show', 1992, (0, False), 'the whole title'),
+        ('brooklyn nine nine', 'Brooklyn 99', 2013, (0, False), 'numbers as words or digits'),
+        ('spongebob', 'Sponge Bob', 1999, (0, False), 'the title without its spaces'),
+        ("grey's anatomy", 'Greys Anatomy', 2005, (0, False), 'an apostrophe joining its word'),
+        ('howard ster', 'The Howard Stern Show', 2026, (1, False), 'its start'),
+        ('stern howard', 'The Howard Stern Show', 2026, (2, False), 'every word starting one of its words'),
+        ('operatiekamer', 'De operatiekamer', 2026, (2, False), 'a word of it'),
+        ('howard stern radio', 'The Howard Stern Show', 2026, None, 'a word it does not have'),
+        ('v', 'V', 2009, (0, False), 'a title of one letter, whole'),
+        ('v', 'Vikings', 2013, None, 'one letter as the start of a title'),
+        ('th', 'The Howard Stern Show', 2026, None, 'two letters as the start of a title'),
+        ('howard stern show 2026', 'The Howard Stern Show', 2026, (0, False), 'the show of the year the search ends with'),
+        ('howard stern show 2026', 'The Howard Stern Show', 1992, (0, True), 'a show of another year, after it'),
+        ('space 1999', 'Space: 1999', 1975, (0, False), 'a year that is part of the title')]:
+    check(f"a just-added show {'is' if want else 'is not'} matched by {what}", keyed(q, name, year) == want,
+          (q, name, keyed(q, name, year)))
+check('running, or premiering within two months before or one after, is premiering or airing now', [
+    current({'status': s, 'premiered': p}, date(2026, 9, 30)) for s, p in [
+        ('Running', '2019-01-01'), ('In Development', '2026-10-04'), ('In Development', '2026-11-02'),
+        ('Ended', '2026-08-01'), ('Ended', '2026-07-31'), ('To Be Determined', None)]]
+    == [True, True, False, True, False, False])
+check('an updates list keeps whole ids and whole-second times', trim_updates(
+    {'94778': 1790000000, '94779': 1.5, 'x': 1, '7': '1790000000'}) == {94778: 1790000000})
+
+NOW = int(datetime(2026, 9, 30, 20, tzinfo=timezone.utc).timestamp())   # in seconds, as TVmaze's updates list has it
+updated = {94760: NOW - 50000, 94767: NOW - 90000, 94778: NOW - 3000, 94779: NOW - 2000, 94790: NOW - 900,
+           99767: NOW - 10}
+shows_on_tvmaze = {94767: 'Community', 94778: 'The Howard Stern Show', 94790: 'Blackmere'}
+added_asked, added_busy = [], set()
+
+
+def tvmaze_added(path):
+    """TVmaze's updates list and the shows it names: one deleted since (94779), and those
+    a test makes busy."""
+    added_asked.append(path)
+    if path.startswith('/updates/shows?since='):
+        return {str(k): v for k, v in updated.items()}
+    show_id = int(re.match(r'/shows/(\d+)\?', path)[1])
+    if show_id in added_busy:
+        raise HTTPError(path, 429, 'slow down', {}, None)
+    if show_id not in shows_on_tvmaze:
+        raise HTTPError(path, 404, 'gone', {}, None)
+    return {'id': show_id, 'name': shows_on_tvmaze[show_id], 'premiered': '2026-09-17', 'status': 'Running',
+            'url': f'https://www.tvmaze.com/shows/{show_id}/x', 'weight': 50 + show_id % 7,
+            'image': {'medium': IMAGES + f'medium_portrait/1/{show_id}.jpg'}}
+
+
+clock = [float(NOW)]
+gaps = []
+added = Added(Live(fetch=tvmaze_added, clock=lambda: clock[0]), 94766, 5000, clock=lambda: clock[0], sleep=gaps.append)
+check('the first read of the updates list reaches back a week, however old the catalogue', added.window() == 'week')
+check('a round keeps the shows past the catalogue\'s newest', added.refresh() == 3
+      and sorted(added.shows) == [94767, 94778, 94790])
+check('asking for each once, newest first, a gap apart, the list read first', added_asked[0] == '/updates/shows?since=week'
+      and [int(re.match(r'/shows/(\d+)\?', p)[1]) for p in added_asked[1:]] == [94790, 94779, 94778, 94767]
+      and gaps == [2.0, 2.0, 2.0], added_asked)
+check('not one the catalogue holds, nor one past what a title page opens', not {94760, 99767} & set(added.shows)
+      and not any('/shows/94760?' in p or '/shows/99767?' in p for p in added_asked))
+check('and one TVmaze no longer has is remembered as gone', added.gone == {94779})
+check('each kept as search names it', added.shows[94778][0] == {
+    'id': 94778, 'name': 'The Howard Stern Show', 'year': 2026, 'url': 'https://www.tvmaze.com/shows/94778/x',
+    'poster': IMAGES + 'medium_portrait/1/94778.jpg', 'premiered': '2026-09-17', 'status': 'Running', 'known': 55})
+added_asked.clear()
+clock[0] += 3600
+check('an hour on, a day of the list is read, and no show is asked for again', added.window() == 'day'
+      and added.refresh() == 0 and added_asked == ['/updates/shows?since=day'])
+updated.update({94791: NOW + 3000, 94792: NOW + 3100})
+shows_on_tvmaze.update({94791: 'Coffin Moon', 94792: 'The Mafia Nanny'})
+added_busy.add(94791)
+added_asked.clear()
+clock[0] += 3600
+check('TVmaze busy ends a round, with what it had still to ask about waiting', added.refresh() == 1
+      and 94792 in added.shows and added.waiting == {94791})
+added_busy.clear()
+clock[0] += 3600
+check('and the next round asks for it', added.refresh() == 1 and 94791 in added.shows and not added.waiting)
+clock[0] += 30 * 3600
+check('after a day without the list, a week of it is read', added.window() == 'week')
+clock[0] += 7 * 86400
+check('after a week, a month', added.window() == 'month')
+full = Added(Live(fetch=tvmaze_added), 94766, 5000, most=2, clock=lambda: float(NOW), sleep=lambda s: None)
+full.refresh()
+check('at most the newest MOST are kept', sorted(full.shows) == [94791, 94792] and not full.waiting)
+down = Added(Live(fetch=lambda path: (_ for _ in ()).throw(URLError('down'))), 94766, 5000, clock=lambda: float(NOW),
+             sleep=lambda s: None)
+check('TVmaze out of reach is no round, to be tried again sooner', down.refresh() is None and not down.shows)
+
+# Joined to a search's answer: ahead of TVmaze's own missing shows, and ahead of the
+# catalogue's matches when a just-added show matches better, or the search names both
+# whole and the new one is premiering or airing now.
+OLD_STERN = {'id': 28283, 'name': 'The Howard Stern Show', 'year': 1992}
+answered = lambda shows, missing=(), first=False: {'shows': list(shows), 'missing': list(missing), 'missing_first': first}
+joined = added.join(answered([OLD_STERN]), 'howard stern show', today=date(2026, 9, 30))
+check('a new show named like an older one is named beside it, and leads while it airs',
+      joined['shows'] == [OLD_STERN] and [m['id'] for m in joined['missing']] == [94778] and joined['missing_first'] is True
+      and set(joined['missing'][0]) == {'id', 'name', 'year', 'url', 'poster'})
+added.shows[94778][0]['status'], added.shows[94778][0]['premiered'] = 'In Development', None
+joined = added.join(answered([OLD_STERN]), 'howard stern show', today=date(2026, 9, 30))
+check('a new one not airing yet follows the catalogue\'s', [m['id'] for m in joined['missing']] == [94778]
+      and joined['missing_first'] is False)
+check('a year picks between them', added.join(answered([OLD_STERN]), 'howard stern show 2026')['missing_first'] is True
+      and added.join(answered([OLD_STERN]), 'howard stern show 1992')['missing_first'] is False)
+added.shows[94778][0]['status'], added.shows[94778][0]['premiered'] = 'Running', '2026-09-17'
+check('a tie of two titles\' starts leaves the catalogue\'s first',
+      added.join(answered([OLD_STERN]), 'howard stern', today=date(2026, 9, 30))['missing_first'] is False)
+joined = added.join(answered([], [{'id': 94792, 'name': 'The Mafia Nanny'}, {'id': 500, 'name': 'Other'}]), 'blackmere')
+check('one the catalogue cannot match leads, ahead of TVmaze\'s own, each named once',
+      joined['missing_first'] is True and [m['id'] for m in joined['missing']] == [94790, 94792, 500])
+many = added.join(answered([], [{'id': n, 'name': 'x'} for n in range(500, 505)]), 'the')
+check(f'at most {NAMED} are named', len(many['missing']) == NAMED)
+check('a search they do not match leaves the answer as it was',
+      added.join(answered([OLD_STERN], [], False), 'xyzzyq') == answered([OLD_STERN], [], False)
+      and Added(None, 1, 1).join(answered([]), 'blackmere') == answered([]))
+
 # 7. The server end to end, with every outside service faked.
 asked = {'kino': [], 'store': []}
 # iTunes seasons by a word of the name searched for. Game of Thrones's rating here differs
@@ -2026,6 +2154,49 @@ check('a newer title waits on a live source\'s slot, not one of the engine\'s', 
 server.LIVE = Live(fetch=lambda path: (_ for _ in ()).throw(HTTPError(path, 429, 'slow down', {}, None)))
 check('with TVmaze asking for a pause, a newer title is a 503 the page asks again after',
       fetch('/api/title', {'profile': [], 'id': NEWER_ID + 1})[0] == 503)
+
+# Search finds the shows TVmaze added since the catalogue on every query, from what the
+# server keeps of them (added.py), so a new show named like one the catalogue holds, a
+# reboot or a revival, is named beside it, and opens from the answer kept for it.
+STERN_ID = server.NEWEST + 12
+STERN_RAW = {**NEWER_RAW, 'id': STERN_ID, 'name': 'The Howard Stern Show', 'premiered': '2026-09-17', 'status': 'Running',
+             'url': f'https://www.tvmaze.com/shows/{STERN_ID}/the-howard-stern-show', 'weight': 85,
+             'webChannel': {'name': 'HBO Max', 'country': None, 'officialSite': 'https://www.hbomax.com/'}}
+stern_asked = []
+
+
+def tvmaze_stern(path):
+    """TVmaze for title pages, with an updates list naming a show the catalogue lacks and
+    one it holds."""
+    if path.startswith('/updates/shows?since='):
+        stern_asked.append(path)
+        return {str(STERN_ID): NOW, str(server.NEWEST - 5): NOW}
+    if path.startswith(f'/shows/{STERN_ID}?'):
+        stern_asked.append(path)
+        return STERN_RAW
+    return tvmaze_live(path)
+
+
+server.LIVE = Live(fetch=tvmaze_stern)
+server.ADDED = Added(server.LIVE, server.NEWEST, server.NEWER_REACH, sleep=lambda s: None)
+check('the server keeps the shows TVmaze lists past its catalogue, the updates list read first',
+      server.ADDED.refresh() == 1 and list(server.ADDED.shows) == [STERN_ID] and len(stern_asked) == 2
+      and stern_asked[0] == '/updates/shows?since=week' and stern_asked[1].startswith(f'/shows/{STERN_ID}?'))
+tvmaze_asked.clear()
+status, _headers, body = fetch('/api/search?q=howard%20stern%20show')
+found = json.loads(body)
+check('a search names a new show beside the catalogue\'s of the same name, the new one first while it airs',
+      status == 200 and [(c['id'], c['year']) for c in found['shows'][:1]] == [(28283, 1992)]
+      and [(m['id'], m['name'], m['year']) for m in found['missing']] == [(STERN_ID, 'The Howard Stern Show', 2026)]
+      and found['missing'][0]['poster'] == NEWER_RAW['image']['medium'] and found['missing_first'] is True, found)
+check('without asking TVmaze', tvmaze_asked == [] and len(stern_asked) == 2)
+status, _headers, body = fetch('/api/title', {'profile': [], 'id': STERN_ID})
+check('and it opens from the answer kept for it, TVmaze asked nothing more', status == 200
+      and json.loads(body)['show']['name'] == 'The Howard Stern Show' and json.loads(body)['show']['channel'] == 'HBO Max'
+      and len(stern_asked) == 2)
+status, _headers, body = fetch('/api/search?q=breaking%20bad')
+check('a search it does not match is as it was', json.loads(body)['missing'] == [])
+server.ADDED = Added(None, server.NEWEST, server.NEWER_REACH)
 server.LIVE = shared_live
 status, headers, body = fetch('/api/icon?host=www.netflix.com')
 check('icons are served as images and cached a week', status == 200 and headers.get('Content-Type') == 'image/png'
