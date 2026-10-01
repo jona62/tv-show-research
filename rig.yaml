@@ -2,14 +2,13 @@
 # else (the machine running the deploy does the git checkout), so model/ never
 # reaches the workspace; the release uploader refuses a file over about 2 MB anyway.
 #
-# The research site reads the frozen September snapshot, copied once over SSH to
-# /home/developer/data/model on the persistent Rigbox volume. model-refresher
-# rebuilds a live model from fresh TVmaze data every night into
-# /home/developer/data/tv-model, and Next Watch and Couchside read its current link.
-# Couchside's SQLite ratings cache lives on the same volume. When current moves,
-# each app restarts on the new model after its own delay, so the two are never
-# down together.
-# Each start checks the volume mount before opening or creating persistent data.
+# Shared data lives on the persistent volume: data/model is the frozen research
+# snapshot and data/tv-model holds the nightly model, source data and ratings cache.
+# /home/developer/model and /home/developer/tv-model are stable links into that volume.
+# Apps use these shared host paths: Rigbox's per-app volumes: [data] would bind a
+# private app directory over the volume root and hide the shared models.
+# Each start checks the volume mount and its data link before opening persistent data.
+# When current moves, Next Watch and Couchside restart after their own delays.
 name: tv-taste
 visibility: public
 
@@ -26,12 +25,11 @@ workspace:
 apps:
   tv-taste:
     path: ./site
-    volumes: [data]
     port: 8080
     visibility: public
-    start: mountpoint -q /home/developer/data && python3 server.py
+    start: mountpoint -q /home/developer/data && test -L /home/developer/model && python3 server.py
     env:
-      MODEL_DIR: /home/developer/data/model
+      MODEL_DIR: /home/developer/model
     health:
       path: /healthz
       timeoutSeconds: 60
@@ -42,13 +40,12 @@ apps:
 
   next-watch:
     path: ./app
-    volumes: [data]
     port: 8081
     visibility: public
-    start: mountpoint -q /home/developer/data && python3 server.py
+    start: mountpoint -q /home/developer/data && test -L /home/developer/tv-model && python3 server.py
     env:
       PORT: "8081"
-      MODEL_DIR: /home/developer/data/tv-model/current
+      MODEL_DIR: /home/developer/tv-model/current
       RELOAD_DELAY_SECONDS: "30"
     health:
       path: /healthz
@@ -60,15 +57,14 @@ apps:
 
   couchside:
     path: ./couchside
-    volumes: [data]
     port: 8082
     visibility: public
-    start: mountpoint -q /home/developer/data && python3 server.py
+    start: mountpoint -q /home/developer/data && test -L /home/developer/tv-model && python3 server.py
     env:
       PORT: "8082"
-      MODEL_DIR: /home/developer/data/tv-model/current
+      MODEL_DIR: /home/developer/tv-model/current
       RELOAD_DELAY_SECONDS: "150"
-      RATINGS_CACHE: /home/developer/data/tv-model/cache/episode-ratings.sqlite3
+      RATINGS_CACHE: /home/developer/tv-model/cache/episode-ratings.sqlite3
     secrets:
       - name: TMDB_API_KEY
         from: TMDB_READ_API
@@ -88,11 +84,10 @@ apps:
   # scripts/refresher.py. The build peaks near 1.1 GB, so it is capped below the servers.
   model-refresher:
     path: ./scripts
-    volumes: [data]
     port: 8083
     install: python3 -m venv --copies .venv && .venv/bin/pip install --no-cache-dir -r requirements-refresher.txt
     dependencyInputs: [ requirements-refresher.txt ]
-    start: mountpoint -q /home/developer/data && .venv/bin/python refresher.py
+    start: mountpoint -q /home/developer/data && test -L /home/developer/tv-model && test -L /home/developer/model && .venv/bin/python refresher.py
     health:
       path: /healthz
       timeoutSeconds: 60
@@ -109,8 +104,8 @@ apps:
         optional: true
     env:
       PORT: "8083"
-      MODEL_ROOT: /home/developer/data/tv-model
-      SEED_MODEL_DIR: /home/developer/data/model
+      MODEL_ROOT: /home/developer/tv-model
+      SEED_MODEL_DIR: /home/developer/model
       REFRESH_AT_UTC: "04:30"
     source:
       kind: git

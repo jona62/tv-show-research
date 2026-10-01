@@ -120,12 +120,18 @@ ratings database is `data/tv-model/cache/episode-ratings.sqlite3`. These files l
 outside release checkouts, on the persistent volume. User lists and preferences
 remain in each browser's local storage. Each deployed app checks that the volume
 is mounted before starting, so a missing mount cannot create new data on the VM's
-root disk, and requests `volumes: [data]` for Rigbox's volume access permissions.
+root disk.
+
+The apps share the model through `/home/developer/model` and
+`/home/developer/tv-model`, stable links to the corresponding directories on the
+volume. Each start also checks that its link exists. Keep these links when setting
+up a replacement root disk. Rigbox's per-app `volumes: [data]` creates a private
+directory bound over the volume root; these apps use the shared host paths so the
+refresher's published model remains visible to every reader.
 
 The October 2026 migration preserved the original root-disk directories as
 `/home/developer/model.pre-volume-*` and `/home/developer/tv-model.pre-volume-*`.
-The old paths are compatibility links to the volume; all deployed apps use the
-volume paths directly. The originals are recovery snapshots and are no longer
+The originals are recovery snapshots and are no longer
 updated. Check volume free space before a model build or a large cache expansion.
 
 Data from [TVmaze](https://www.tvmaze.com/),
