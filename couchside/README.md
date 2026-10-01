@@ -469,7 +469,9 @@ the answer's cards carry posters, a card found through another title has that
 title as a caption, and shows TVmaze has that the catalogue does not yet are
 posters too, from TVmaze's answer, named like the matches with their year or *New*,
 under the results, or above them when TVmaze ranks one of them first. Each opens its
-own title page.
+own title page. The server also keeps the shows TVmaze has added since the catalogue
+was built and matches them on every search ([below](#shows-newer-than-the-catalogue)),
+so a new show named like one the catalogue holds is offered too.
 
 ### Shows newer than the catalogue
 
@@ -492,6 +494,30 @@ it lacks, but it can go on My List, which keeps its name and poster in the brows
 and leaves it out of what the server ranks until the refresh brings it in under the
 same id; a list moved to another device before then leaves it out. A show TVmaze does
 not have is an answer too, kept like any other, so a made-up id is asked about once.
+
+Search finds them on every query, not only when the catalogue's own match is weak and
+TVmaze's search is asked: a reboot or a revival shares its name with a show the
+catalogue holds, as HBO Max's *The Howard Stern Show* of 2026 does with the 1992 one,
+and new shows are what people search for most. So the server keeps the shows TVmaze
+lists past the catalogue's newest (`added.py`). About every hour it reads TVmaze's
+updates list, a day of it (a week on starting, so a catalogue left far behind brings no
+flood of calls on every restart, and a week or a month after a longer gap), and asks
+for each new show once, two seconds apart, through the client, cache and rate window
+title pages use, so that answer is the one its title page opens from. That is some 24
+calls a day for the list and one for each of the 30 or so new shows; a restart reads
+the list again and asks again for the shows the catalogue still lacks, and TVmaze busy
+leaves the rest for the next round. A new show is searchable within an hour or two of
+TVmaze listing it, TVmaze's own caching included. Each search matches
+them locally as the catalogue's first three tiers do, on its reading of titles: the
+whole title, its start, or every word starting one of its words, with a year ending the
+search picking the show of that year. Those it matches lead the missing shows, ahead of
+any TVmaze's search named, three in all, and come ahead of the catalogue's matches when
+one matches better than the catalogue's best does, or the search names both whole and
+the new one is running or premieres within two months before or a month after today:
+*howard stern show* leads with the 2026 show, the 1992 one first among the matches
+below. Two titles that only start alike (*the*, *howard stern*) leave the catalogue's
+first. At most 1,000 are kept, about a month of TVmaze's additions, the newest, and the
+next nightly build starts the list again from nothing.
 
 ### Shows like a search
 
@@ -722,7 +748,13 @@ Wikidata out of reach, nothing about the viewer sent on); search over HTTP, by a
 through a fake TVmaze, with a show too new for the catalogue, and that show's title
 page from TVmaze (the page and its details from one call, its episodes, trailers and
 rating, one TVmaze lacks asked about once, ids past reach or below the newest never
-sent to TVmaze, and none of the engine's slots taken); the HTTP server end
+sent to TVmaze, and none of the engine's slots taken); the shows TVmaze added since,
+against a fake updates list (matched as the catalogue's first three tiers match, the
+list a week, a day or a month of it as the gap since the last read asks, each show asked
+for once and newest first, one TVmaze no longer has remembered, TVmaze busy leaving the
+rest for the next round, the newest kept, and over HTTP a new show named like an older
+one beside it and first while it airs, without asking TVmaze, opening from the answer
+kept for it); the HTTP server end
 to end: pages and their previews, the loaded model's date and count on the page,
 TMDB's credit only with TMDB data, the policy, the 404 page, the manifest, icon
 sizes and file types, ETags and 304s, gzip (packed only for a browser that takes it,

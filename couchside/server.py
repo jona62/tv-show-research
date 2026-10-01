@@ -14,6 +14,7 @@ import os
 import re
 import threading
 
+from added import Added
 from engine import Engine, MAX_LIST
 from fallback import Remote, answer
 from library import Library, DESCRIPTION, MAX_SAVED
@@ -219,9 +220,13 @@ RELATED = Related(LIBRARY, MODEL / 'films.json.gz')
 TMDB = tmdb.load(MODEL / 'tmdb.json.gz', ENGINE.by_id)
 # TVmaze allows about 20 calls every 10 seconds from this host, shared with Next Watch:
 # 12 for title pages here (a show newer than the catalogue's whole page among them, one
-# call like any show's details), 4 for this app's search and 4 for Next Watch's.
+# call like any show's details, and the shows TVmaze added since, kept for search), 4 for
+# this app's search and 4 for Next Watch's.
 LIVE = Live(calls=12)
 TVMAZE = Remote(calls=4)
+# The shows TVmaze lists past the catalogue's newest, read about hourly and each asked for
+# once, so search finds them on every query, a show named like an older one too (added.py).
+ADDED = Added(LIVE, NEWEST, NEWER_REACH)
 TEMPLATE = PUBLIC / 'index.html'
 PAGE = fill(TEMPLATE.read_text(), ENGINE, LIBRARY, bool(TMDB)) if TEMPLATE.exists() else ''
 # Every page says which build it is, read with the page at startup, so the service worker
@@ -352,9 +357,10 @@ def biography(person_id):
 
 def search(q):
     """A search's answer: its title matches, best first, the shows TVmaze knows that the
-    catalogue does not yet (fallback.py), and a row of shows like it (related.py), or
-    None for the row: {'title': 'More like Game of Thrones', 'kind', 'shows': cards}."""
-    found = answer(ENGINE, q, TVMAZE, LIBRARY.card)
+    catalogue does not yet (fallback.py), the ones it added since that match first among
+    them (added.py), and a row of shows like it (related.py), or None for the row:
+    {'title': 'More like Game of Thrones', 'kind', 'shows': cards}."""
+    found = ADDED.join(answer(ENGINE, q, TVMAZE, LIBRARY.card), q)
     row = RELATED.of(q, found['shows'])
     found['related'] = {**row, 'shows': [LIBRARY.card(j) for j in row['shows']]} if row else None
     return found
@@ -734,5 +740,7 @@ if __name__ == '__main__':
     follow.start(os.environ.get('MODEL_DIR') or SOURCE, MODEL)
     # What searching by meaning reads is built behind the first requests, not before them.
     threading.Thread(target=RELATED.warm, daemon=True).start()
+    # The shows TVmaze has added since the catalogue, read at once and about hourly after.
+    threading.Thread(target=ADDED.run, name='added', daemon=True).start()
     port = int(os.environ.get('PORT', '8082'))
     ThreadingHTTPServer(('0.0.0.0', port), partial(Handler, directory=str(PUBLIC))).serve_forever()
