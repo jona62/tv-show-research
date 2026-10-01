@@ -63,9 +63,10 @@ rebuilt every night. Nothing plays. It is for finding your next show.
 - **Search** finds a show however it is typed: with typos, odd spacing or
   punctuation, by another of its titles in any language (the card then says
   *Also known as* that title), with a year to pick between a show and its remake,
-  or pasted with more words than TVmaze's name for it. A show too new for the
-  catalogue is named with a link to its TVmaze page, since the nightly refresh
-  brings it in. Under the matches comes a row of shows like the search: *More like
+  or pasted with more words than TVmaze's name for it. A show TVmaze added since
+  the nightly refresh is a poster under *Just added to TVmaze*, and opens a title
+  page of its own from TVmaze ([below](#shows-newer-than-the-catalogue)) until the
+  refresh brings it in. Under the matches comes a row of shows like the search: *More like
   Game of Thrones* for a search that names a show, *Shows like zombies* for a topic,
   and *Shows like Mad Max* for a film or film series, by the film's own genres and
   subjects.
@@ -466,7 +467,31 @@ TVmaze's own search when the catalogue finds nothing or only guesses. Both are
 copied here by `build.py`; Next Watch's README says how they match and rank. Here
 the answer's cards carry posters, a card found through another title has that
 title as a caption, and shows TVmaze has that the catalogue does not yet are
-listed under the results, or above them when TVmaze ranks one of them first.
+posters too, from TVmaze's answer, named like the matches with their year or *New*,
+under the results, or above them when TVmaze ranks one of them first. Each opens its
+own title page.
+
+### Shows newer than the catalogue
+
+TVmaze adds some 30 shows a day, and the catalogue takes them in each night. A show
+added since, found by search, listed in someone's credits, kept on My List or opened
+by a link, opens the same title page from TVmaze alone. TVmaze numbers shows as it adds
+them, so the server and the page tell such a show by its id, past the newest the
+catalogue holds (the page has it from the server, which asks TVmaze only up to 5,000
+past it), and `POST /api/title` answers for it from the one call any show's live
+details take (`live.py` keeps the show itself from that answer too), sending those
+details with it, so the page asks TVmaze for nothing more but the episodes it opens.
+TMDB's data covers the catalogue's shows alone, so its trailers, age rating and where
+to watch come from KinoCheck, iTunes and TVmaze, as for any show TMDB lacks. It has
+no match, no reason it surfaced, and no *More like this* or *Fans also like*: those
+need its plot and themes in the model's own terms and Wikidata's facts, which only
+the build gives, and shows picked by its genres alone would not be the same measure,
+so the page says they come with the nightly refresh. Until then it cannot be rated,
+since a rating ranks the catalogue's shows and the server refuses a list holding one
+it lacks, but it can go on My List, which keeps its name and poster in the browser
+and leaves it out of what the server ranks until the refresh brings it in under the
+same id; a list moved to another device before then leaves it out. A show TVmaze does
+not have is an answer too, kept like any other, so a made-up id is asked about once.
 
 ### Shows like a search
 
@@ -590,7 +615,7 @@ and leave 4 each to search here and on Next Watch. When TVmaze is unreachable a
 title page simply shows everything else. An episode opened in full is one more
 call, `/api/episode?id=` by its TVmaze id, with its guest cast and crew; it is
 kept the same way, an id TVmaze does not know included, and answered only for
-shows in the catalogue.
+shows in the catalogue or newer than it.
 
 - **Trailers** come from [KinoCheck](https://api.kinocheck.com/), a free API
   of official trailers, looked up by the IMDb id TVmaze keeps. It covers most
@@ -694,7 +719,10 @@ them on Wikidata by id or by name and birth date and never by a guess, Wikipedia
 summary only for the same item, a source out of reach resting, one lookup however
 often it is asked for) and over HTTP (bad ids, a person TVmaze lacks, TVmaze or
 Wikidata out of reach, nothing about the viewer sent on); search over HTTP, by another title and
-through a fake TVmaze, with a show too new for the catalogue; the HTTP server end
+through a fake TVmaze, with a show too new for the catalogue, and that show's title
+page from TVmaze (the page and its details from one call, its episodes, trailers and
+rating, one TVmaze lacks asked about once, ids past reach or below the newest never
+sent to TVmaze, and none of the engine's slots taken); the HTTP server end
 to end: pages and their previews, the loaded model's date and count on the page,
 TMDB's credit only with TMDB data, the policy, the 404 page, the manifest, icon
 sizes and file types, ETags and 304s, gzip (packed only for a browser that takes it,

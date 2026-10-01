@@ -109,7 +109,7 @@ from library import FEATURED, FEATURED_POOL                      # noqa: E402
 from library import Kept, KEPT_PAGES, KEPT_FOR, asked as kept_under, read_shown  # noqa: E402
 from library import (Page, Deeper, FIRST_PAGE, NEXT_PAGE, MOST_ROWS, CREATOR_SHORTEST, NOT_FOR_ME,  # noqa: E402
                      INTEREST_CAP, HIDDEN, PINNED, LONGEST, TIERS)
-from live import (Live, LiveError, Icons, trim_show, trim_episodes, trim_episode, trim_videos,  # noqa: E402
+from live import (Live, LiveError, Icons, trim_show, trim_about, trim_episodes, trim_episode, trim_videos,  # noqa: E402
                   trim_seasons, match_rating, IMAGES, WHOLE_SUMMARY)
 
 engine, lib = server.ENGINE, server.LIBRARY
@@ -1016,6 +1016,40 @@ check('images from anywhere but TVmaze are dropped', shape['cast'][1]['photo'] i
 check('the main backdrop wins', shape['backdrop'] == IMAGES + 'o/1/8.jpg')
 check('the IMDb id and site survive', shape['imdb'] == 'tt0903747' and shape['site'] == 'http://www.amc.com/x')
 check('a bad IMDb id is dropped', trim_show({**RAW, 'externals': {'imdb': 'javascript:x'}})['imdb'] is None)
+# The same answer carries the show itself, which a show newer than the catalogue has its
+# whole title page from, in the shape the catalogue's shows take (library.detail).
+NEWER_RAW = {
+    **RAW, 'id': 94790, 'name': ' The  Midnight Garden ', 'url': 'https://www.tvmaze.com/shows/94790/the-midnight-garden',
+    'type': 'Scripted', 'language': 'English', 'genres': ['Drama', 'Mystery', 7], 'status': 'Running', 'runtime': None,
+    'averageRuntime': 52, 'premiered': '2026-09-28', 'ended': None, 'rating': {'average': None},
+    'webChannel': {'name': 'Hulu', 'country': None, 'officialSite': 'https://www.hulu.com/'},
+    'network': {'name': 'FX', 'country': {'code': 'US'}},
+    'image': {'medium': IMAGES + 'medium_portrait/610/1525001.jpg', 'original': IMAGES + 'original_untouched/610/1525001.jpg'},
+    'summary': '<p><b>The Midnight Garden</b> follows a botanist &amp; her ' + 'strange night garden, ' * 40 + '</p>',
+    'externals': {'imdb': 'tt39000001'},
+}
+about = trim_show(NEWER_RAW)['about']
+check('the show itself comes with its details, as a title page shows one', {
+    k: about[k] for k in ('id', 'name', 'year', 'premiered', 'ended', 'runtime', 'rating', 'genres', 'url', 'type',
+                          'language', 'status', 'match', 'themes')} == {
+    'id': 94790, 'name': 'The Midnight Garden', 'year': 2026, 'premiered': '2026-09-28', 'ended': None, 'runtime': 52,
+    'rating': None, 'genres': ['Drama', 'Mystery'], 'url': NEWER_RAW['url'], 'type': 'Scripted', 'language': 'English',
+    'status': 'Running', 'match': None, 'themes': []}, about)
+check('its channel and country are its web channel\'s, as the catalogue has them',
+      about['channel'] == 'Hulu' and about['country'] is None
+      and trim_about({**NEWER_RAW, 'webChannel': None})['channel'] == 'FX'
+      and trim_about({**NEWER_RAW, 'webChannel': None})['country'] == 'US')
+check('its summary is plain text, cut to the catalogue\'s length at a word',
+      about['summary'].startswith('The Midnight Garden follows a botanist & her strange')
+      and len(about['summary']) <= 481 and about['summary'].endswith('…'))
+check('its poster and art are TVmaze\'s, and only TVmaze\'s', about['poster'] == NEWER_RAW['image']['medium']
+      and about['art'] == NEWER_RAW['image']['original']
+      and trim_about({**NEWER_RAW, 'image': {'medium': 'https://evil.example/x.jpg'}})['poster'] is None)
+check('a page that is not TVmaze\'s is its TVmaze page by id', trim_about({**NEWER_RAW, 'url': 'javascript:x'})['url']
+      == 'https://www.tvmaze.com/shows/94790')
+check('an ended show ends in the year TVmaze says', trim_about({**NEWER_RAW, 'ended': '2027-01-05'})['ended'] == 2027)
+check('an answer without a name or an id is no show', shape['about'] is None
+      and trim_about({**NEWER_RAW, 'name': '  '}) is None and trim_about({**NEWER_RAW, 'id': '94790'}) is None)
 episodes = trim_episodes([{'id': 12192, 'number': 1, 'name': 'Pilot', 'runtime': 58, 'airdate': '2008-01-20',
                            'image': {'medium': IMAGES + 'medium_landscape/1/3.jpg'}, 'summary': '<p>A &amp; B <b>go</b>.</p>'},
                           {'id': '12193', 'number': None, 'name': 'Special', 'runtime': None, 'summary': None}, 'junk'])
@@ -1171,12 +1205,17 @@ try:
 except LiveError as exc:
     check('a 429 is reported as busy', exc.status == 503)
 check('a 429 pauses further calls', limited.pause > now[0])
-missing = Live(fetch=lambda p: (_ for _ in ()).throw(HTTPError(p, 404, 'gone', {}, None)), clock=lambda: now[0])
-try:
-    missing.show(1)
-    check('a show TVmaze lacks is a 404', False)
-except LiveError as exc:
-    check('a show TVmaze lacks is a 404', exc.status == 404)
+gone_asked = []
+missing = Live(fetch=lambda p: gone_asked.append(p) or (_ for _ in ()).throw(HTTPError(p, 404, 'gone', {}, None)),
+               clock=lambda: now[0])
+for attempt in range(2):
+    try:
+        missing.show(1)
+        check('a show TVmaze lacks is a 404', False)
+    except LiveError as exc:
+        if not attempt:
+            check('a show TVmaze lacks is a 404', exc.status == 404 and str(exc) == 'TVmaze has no details for this show.')
+check('and is not asked about again, as an id newer than the catalogue may well not be', len(gone_asked) == 1)
 window = Live(fetch=lambda p: RAW, calls=2, period=10, clock=lambda: now[0])
 window.show(1)
 window.show(2)
@@ -1509,6 +1548,8 @@ SEASONS = {
     'Thrones': ('Game of Thrones', 'TV-14', '2011-04-17T07:00:00Z',
                 'https://itunes.apple.com/us/tv-season/game-of-thrones-season-1/id1'),
     'Severance': ('Severance', 'TV-MA', '2022-02-18T07:00:00Z', 'https://itunes.apple.com/us/tv-season/severance-season-1/id2'),
+    'Midnight': ('The Midnight Garden', 'TV-14', '2026-09-28T07:00:00Z',
+                 'https://itunes.apple.com/us/tv-season/the-midnight-garden-season-1/id3'),
 }
 
 
@@ -1526,7 +1567,8 @@ def itunes(path):
 
 tvmaze_asked = []
 NEW_SHOW = {'id': 900000001, 'name': 'Kimetsu Academy', 'premiered': '2026-09-26',
-            'url': 'https://www.tvmaze.com/shows/900000001/kimetsu-academy'}
+            'url': 'https://www.tvmaze.com/shows/900000001/kimetsu-academy',
+            'image': {'medium': IMAGES + 'medium_portrait/610/1525002.jpg'}}
 
 
 def tvmaze(path):
@@ -1557,7 +1599,29 @@ def people(path):
     return {**PERSON_RAW, 'id': person_id}
 
 
-server.LIVE = Live(fetch=lambda path: people(path) if path.startswith('/people/') else fake(path))
+# Shows TVmaze added since the catalogue was built: one it has, with an episode of its own,
+# and one it does not.
+NEWER_ID, GONE_ID = server.NEWEST + 9, server.NEWEST + 11
+NEWER_EPISODE = {**RAW_EPISODE, 'id': 5000002,
+                 '_links': {'show': {'href': f'https://api.tvmaze.com/shows/{NEWER_ID}', 'name': 'The Midnight Garden'}}}
+newer_asked = []
+
+
+def tvmaze_live(path):
+    """TVmaze for title pages, people and episodes, and shows newer than the catalogue."""
+    if path.startswith('/people/'):
+        return people(path)
+    if path.startswith((f'/shows/{NEWER_ID}?', f'/shows/{GONE_ID}?')):
+        newer_asked.append(path)
+        if path.startswith(f'/shows/{GONE_ID}?'):
+            raise HTTPError(path, 404, 'gone', {}, None)
+        return {**NEWER_RAW, 'id': NEWER_ID}
+    if path.startswith('/episodes/5000002?'):
+        return NEWER_EPISODE
+    return fake(path)
+
+
+server.LIVE = Live(fetch=tvmaze_live)
 server.BIOGRAPHIES = Biographies(Live(fetch=wikidata), Live(fetch=wikipedia))
 server.KINO = Live(fetch=kinocheck)
 server.STORE = Live(fetch=itunes)
@@ -1794,8 +1858,9 @@ found = json.loads(body)
 check("a search the catalogue cannot place asks TVmaze, whose match leads as a card",
       status == 200 and len(tvmaze_asked) == 1 and found['shows'][0]['id'] == 41469 and found['shows'][0]['poster'])
 check('and the show TVmaze put first is the one the search names', found['related']['title'] == 'More like Demon Slayer')
-check('a show too new for the catalogue comes back as missing, with its TVmaze page', found['missing'] == [
-    {'id': 900000001, 'name': 'Kimetsu Academy', 'year': 2026, 'url': NEW_SHOW['url']}])
+check('a show too new for the catalogue comes back as missing, with its TVmaze page and poster', found['missing'] == [
+    {'id': 900000001, 'name': 'Kimetsu Academy', 'year': 2026, 'url': NEW_SHOW['url'],
+     'poster': NEW_SHOW['image']['medium']}])
 status, _headers, body = fetch('/api/search?q=xyzzyq')
 check('TVmaze failing is an empty answer, not an error', status == 200
       and json.loads(body) == {'shows': [], 'missing': [], 'missing_first': False, 'related': None})
@@ -1895,6 +1960,73 @@ status, _headers, body = fetch('/api/rating?id=169')
 check('age ratings come through', status == 200 and json.loads(body) == {
     'rating': 'TV-MA', 'apple': 'https://itunes.apple.com/us/tv-season/breaking-bad-season-5/id533936970'})
 check('a trailer needs a show id', fetch('/api/trailer?id=')[0] == 400)
+
+# A show TVmaze added since the catalogue was built opens a title page from TVmaze alone, the
+# page and its live details from one call, and its seasons, episodes, trailers and rating as
+# any show's. A TVmaze client of its own here keeps these calls out of the rate window the
+# checks after them use.
+shared_live = server.LIVE
+server.LIVE = Live(fetch=tvmaze_live)
+check('a show past the catalogue\'s newest, and within reach of it, is taken for a newer show',
+      server.newer(NEWER_ID) and server.newer(server.NEWEST + server.NEWER_REACH) and not server.newer(server.NEWEST)
+      and not server.newer(server.NEWEST + server.NEWER_REACH + 1) and not server.newer(True)
+      and not server.newer(str(NEWER_ID)))
+newer_asked.clear()
+status, _headers, body = fetch('/api/title', {'profile': PROFILE, 'settings': {}, 'id': NEWER_ID})
+newer_title = json.loads(body)
+check('a newer show\'s title page comes from TVmaze', status == 200 and newer_title['show']['id'] == NEWER_ID
+      and newer_title['show']['name'] == 'The Midnight Garden' and newer_title['show']['year'] == 2026
+      and newer_title['show']['channel'] == 'Hulu' and newer_title['show']['poster'] == NEWER_RAW['image']['medium']
+      and newer_title['show']['newer'] is True, (status, body[:200]))
+check('with nothing only the catalogue gives: no match, no reason it surfaced, no shows like it, no TMDB data',
+      newer_title['show']['match'] is None and newer_title['show']['because'] is None and newer_title['more'] == []
+      and newer_title['fans'] == [] and newer_title['tmdb'] is None)
+check('its live details come with it, the show itself left out of them',
+      newer_title['details']['cast'][0]['name'] == 'Bryan Cranston' and 'about' not in newer_title['details']
+      and [s['number'] for s in newer_title['details']['seasons']] == [1, 2])
+check('all from one call to TVmaze', newer_asked == [f'/shows/{NEWER_ID}?embed%5B%5D=cast&embed%5B%5D=seasons&embed%5B%5D=images'])
+status, _headers, body = fetch(f'/api/extra?id={NEWER_ID}')
+check('its live details asked for apart come from the same answer', status == 200
+      and json.loads(body) == {'details': newer_title['details']} and len(newer_asked) == 1)
+check('a catalogue show\'s live details leave the show itself out too', 'about' not in json.loads(fetch('/api/extra?id=169')[2])['details'])
+status, _headers, body = fetch(f'/api/episodes?id={NEWER_ID}&season=1')
+check('its seasons\' episodes come through', status == 200 and json.loads(body)['episodes'][0]['name'] == 'Pilot')
+status, _headers, body = fetch('/api/episode?id=5000002')
+check('and each episode in full', status == 200 and json.loads(body)['episode']['show'] == NEWER_ID)
+status, _headers, body = fetch(f'/api/trailer?id={NEWER_ID}')
+check('its trailers are looked for by its IMDb id', status == 200 and json.loads(body) == {'videos': []}
+      and 'tt39000001' in asked['kino'][-1])
+status, _headers, body = fetch(f'/api/rating?id={NEWER_ID}')
+check('and its age rating by its name and years, with TVmaze asked nothing more', status == 200 and json.loads(body) == {
+    'rating': 'TV-14', 'apple': 'https://itunes.apple.com/us/tv-season/the-midnight-garden-season-1/id3'}
+    and 'Midnight' in asked['store'][-1] and len(newer_asked) == 1)
+for attempt in range(2):
+    status, _headers, body = fetch('/api/title', {'profile': [], 'id': GONE_ID})
+    if not attempt:
+        check('a newer show TVmaze has not got is a 404 that says so',
+              status == 404 and json.loads(body) == {'error': 'TVmaze has no details for this show.'})
+check('and is not asked about again', fetch(f'/api/extra?id={GONE_ID}')[0] == 404
+      and sum(path.startswith(f'/shows/{GONE_ID}?') for path in newer_asked) == 1)
+gap = next(i for i in range(server.NEWEST - 1, 0, -1) if i not in engine.by_id)
+asked_before = (len(newer_asked), len(calls))
+for far, what in ((server.NEWEST + server.NEWER_REACH + 1, 'past reach'), (gap, 'below the newest')):
+    status, _headers, body = fetch('/api/title', {'profile': [], 'id': far})
+    check(f'a show the catalogue lacks {what} is not taken for a newer one',
+          status == 400 and json.loads(body) == {'error': 'That show is not in this catalog.'}
+          and fetch(f'/api/extra?id={far}')[0] == 400)
+check('and TVmaze is asked nothing about it', (len(newer_asked), len(calls)) == asked_before)
+taken = [server.SLOTS.acquire(blocking=False) for _ in range(3)]
+newer_status = fetch('/api/title', {'profile': [], 'id': NEWER_ID})[0]
+catalogue_status = fetch('/api/title', {'profile': [], 'id': 169})[0]
+for got in taken:
+    if got:
+        server.SLOTS.release()
+check('a newer title waits on a live source\'s slot, not one of the engine\'s', all(taken) and newer_status == 200
+      and catalogue_status == 503, (taken, newer_status, catalogue_status))
+server.LIVE = Live(fetch=lambda path: (_ for _ in ()).throw(HTTPError(path, 429, 'slow down', {}, None)))
+check('with TVmaze asking for a pause, a newer title is a 503 the page asks again after',
+      fetch('/api/title', {'profile': [], 'id': NEWER_ID + 1})[0] == 503)
+server.LIVE = shared_live
 status, headers, body = fetch('/api/icon?host=www.netflix.com')
 check('icons are served as images and cached a week', status == 200 and headers.get('Content-Type') == 'image/png'
       and headers.get('Cache-Control') == 'public, max-age=604800' and body.startswith(b'\x89PNG'))
@@ -2031,6 +2163,8 @@ boot = json.loads(re.search(rb'<script type="application/json" id="boot">(.*?)</
 check('the page carries the loaded model\'s date and count', boot['date'] == MODEL_DATE and boot['count'] == engine.n
       and f'Catalogue snapshot {MODEL_DATE}.'.encode() in page_root
       and f'{engine.n:,} series from {MODEL_DATE}.'.encode() in page_root)
+check('and its newest show, past which the page takes a show for one newer than the catalogue, as the server does',
+      boot['newest'] == server.NEWEST == max(engine.by_id))
 check('and its fallback starters, with the posters of the model it loaded',
       [c['id'] for c in boot['starters']] == [c['id'] for c in lib.starters]
       and all(c['poster'] == lib.poster(engine.by_id[c['id']]) for c in boot['starters']))
@@ -2041,11 +2175,12 @@ check('How Couchside works says what TMDB supplies', b'that streaming data comes
 check('no credit marker reaches the page', b'<!--tmdb' not in page_root and b'<!--/tmdb' not in page_root)
 plain = server.fill(server.TEMPLATE.read_text(), engine, lib, False)
 check('without TMDB data there is no TMDB credit', 'TMDB' not in plain and 'tmdb' not in plain)
-stand_in = type('Model', (), {'date': '2031-02-03', 'n': 12345})()
+stand_in = type('Model', (), {'date': '2031-02-03', 'n': 12345, 'by_id': {7: 0, 120001: 1, 3: 2}})()
 odd = type('Shelves', (), {'starters': [{'id': 1, 'name': '</script><!--<script>'}], 'genres': []})()
 filled = server.fill(server.TEMPLATE.read_text(), stand_in, odd, False)
 check('whatever model is loaded fills the page', 'Catalogue snapshot 2031-02-03.' in filled and '12,345 series' in filled
-      and json.loads(re.search(r'id="boot">(.*?)</script>', filled, re.S)[1])['starters'][0]['name'] == '</script><!--<script>')
+      and json.loads(re.search(r'id="boot">(.*?)</script>', filled, re.S)[1])['starters'][0]['name'] == '</script><!--<script>'
+      and json.loads(re.search(r'id="boot">(.*?)</script>', filled, re.S)[1])['newest'] == 120001)
 logo = (ROOT / 'couchside' / 'brand' / 'tmdb.svg').read_bytes()
 status, headers, body = fetch('/tmdb.svg')
 check('TMDB\'s logo is served as TMDB publishes it', status == 200 and headers.get('Content-Type') == 'image/svg+xml'

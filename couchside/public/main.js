@@ -145,6 +145,12 @@ function remember(c) {
   return c;
 }
 const info = id => known.get(id) || state.profile.find(p => p.id === id) || state.saved.find(s => s.id === id) || { id, name: '' };
+// A show TVmaze added since the catalogue was built: its title page says so once it has
+// loaded, and before that its id does, since TVmaze numbers shows as it adds them and the
+// server tells them apart the same way (boot.newest is the newest show the catalogue holds).
+// Its page comes from TVmaze alone, and it cannot be rated until the nightly refresh brings
+// it in, since ratings rank the catalogue's shows.
+const newer = id => known.get(id)?.newer ?? id > boot.newest;
 const rated = id => state.profile.find(p => p.id === id)?.weight;
 const inList = id => state.saved.some(s => s.id === id);
 const motion = () => !matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -1905,7 +1911,7 @@ function cardEl(c, { rank = 0, soon = false, note = '', row = '', ahead = false 
   const meta = el('div', '', 'card-meta');
   const quick = el('div', '', 'quick');
   const full = { ...c, ...(known.get(c.id) || {}) };
-  quick.append(listButton(full, 'tiny'), ...rateButtons(full, [.7, 1], 'tiny'));
+  quick.append(listButton(full, 'tiny'), ...(newer(c.id) ? [] : rateButtons(full, [.7, 1], 'tiny')));
   const open = button('round tiny push', '', () => openTitle(c.id, { row }), 'more');
   open.setAttribute('aria-label', `More about ${c.name}`);
   quick.append(open);
@@ -1932,7 +1938,8 @@ const PRESS_SLOP = 6;       // px it may wander meanwhile
 let pressing = null;
 function pressed(id) {
   titleOf(id).catch(() => {});
-  details(id);
+  // A show newer than the catalogue has its live details with its title (showTitle).
+  if (!newer(id)) details(id);
 }
 document.addEventListener('pointerdown', e => {
   clearTimeout(pressing?.timer);
@@ -2053,6 +2060,10 @@ function paintRates(id) {
 }
 // Tapping the pressed rating again takes it back.
 function rate(c, weight) {
+  if (newer(c.id)) {
+    toast(`${c.name || 'This show'} can be rated once the nightly refresh adds it to the catalogue.`);
+    return;
+  }
   const found = state.profile.find(p => p.id === c.id);
   if (found && found.weight === weight) {
     state.profile = state.profile.filter(p => p.id !== c.id);
@@ -2165,7 +2176,7 @@ function showTitle(id, play = false, place = null) {
   const loaded = titleOf(id);
   loaded.then(data => {
     if (token !== titleToken) return;
-    remember(data.show);
+    remember({ ...data.show, newer: !!data.show.newer });
     [...data.more, ...(data.fans || [])].forEach(remember);
     T.data = data;
     paintTitle();
@@ -2178,7 +2189,10 @@ function showTitle(id, play = false, place = null) {
     paintTitle();
     paintBackdrop();
   });
-  details(id).then(live => {
+  // A show newer than the catalogue has its live details with its title, from the same
+  // TVmaze answer, so the server asks TVmaze once for both; a catalogue show asks apart.
+  const lived = newer(id) ? loaded.then(data => data.details || details(id), () => null) : details(id);
+  lived.then(live => {
     if (token !== titleToken) return;
     if (!live) {
       // Without TVmaze's details there are no seasons to show, and no cast to wait for.
@@ -2250,7 +2264,7 @@ function buildTitle(c) {
   share.title = 'Share';
   // The round buttons keep to a line of their own on a phone, under Trailer and My List.
   const icons = el('div', '', 't-icons');
-  icons.append(rateGroup(c), share, out);
+  icons.append(...(newer(c.id) ? [] : [rateGroup(c)]), share, out);
   // Trailer's place, until the title says whether it has one (paintTrailerButton).
   const trailer = el('span', '', 'btn skel trailer');
   trailer.setAttribute('aria-hidden', 'true');
@@ -2270,6 +2284,8 @@ function buildTitle(c) {
   videos.setAttribute('aria-label', 'Trailers and more');
   videos.append(...videosSkeleton());
   const more = el('section', '', 't-section');
+  // A show newer than the catalogue has no shows like it until the nightly refresh (paintMore).
+  more.hidden = newer(c.id);
   const moreH = el('h3', 'More like this');
   moreH.id = 't-more-h';
   more.setAttribute('aria-labelledby', moreH.id);
@@ -2395,6 +2411,14 @@ function paintTitle() {
     poster.replaceWith(shown);
     if (!T.hero.querySelector('.t-blur')) T.hero.prepend(picture(s.poster || art, 't-blur'));
   } else if (!waiting) poster?.classList.remove('skel');
+  // Once the title is here it says whether the show can be rated: not one newer than the
+  // catalogue, while a page kept from before the nightly refresh may have taken a show it
+  // brought in for one.
+  if (T.data) {
+    const rates = T.acts.querySelector('.rates');
+    if (s.newer) rates?.remove();
+    else if (!rates) T.acts.querySelector('.t-icons').prepend(rateGroup(s));
+  }
   T.acts.querySelector('.rates')?.setAttribute('aria-label', `Rate ${s.name}`);
   paintOut(T, s);
   syncList(s.id);
@@ -2408,7 +2432,10 @@ function paintTitle() {
     else if (s.because.shared?.length) why.append(el('span', ` · shares ${s.because.shared.join(', ').toLowerCase()}`));
     main.push(why);
     if (s.because.fits?.length) main.push(el('p', `Fits your taste for ${joinNames(s.because.fits.map(leaning))}.`, 't-fits'));
-  } else if (waiting && state.profile.some(p => p.weight > 0) && rated(T.id) === undefined) {
+  } else if (s.newer) {
+    main.push(el('p', 'Just added to TVmaze. It joins the catalogue in the nightly refresh, and then you can rate it '
+      + 'and see shows like it.', 't-new'));
+  } else if (waiting && state.profile.some(p => p.weight > 0) && rated(T.id) === undefined && !newer(T.id)) {
     // A title the list likes something near and has not rated says why it is here.
     main.push(skelIn('p', 't-why', '17em'));
   }
@@ -2802,6 +2829,8 @@ function castFact(cast) {
 
 function paintMore() {
   const items = T.data.more;
+  // A show newer than the catalogue has none until the nightly refresh brings it in.
+  T.moreList.closest('section').hidden = !!T.data.show?.newer;
   T.moreList.replaceChildren(...(items.length ? items.map(moreCard)
     : [el('li', 'Nothing in the catalogue sits close enough to this one.', 'muted')]));
   // The server sends none when fewer than four qualify, and the section stays hidden.
@@ -3627,7 +3656,10 @@ function setCredits(part, open) {
 function creditCard(c, gender) {
   const li = el('li');
   const { as, when, said } = creditLines(c, gender);
-  if (c.show) li.append(cardEl(c.show, { note: said }));
+  // A show TVmaze added since the catalogue was built opens its page from TVmaze too, its
+  // name on a tile until the nightly refresh brings its poster.
+  const card = c.show || (newer(c.id) ? { id: c.id, name: c.name } : null);
+  if (card) li.append(cardEl(card, { note: said }));
   else {
     const tile = el('div', '', 'card p-off');
     tile.append(artEl({ id: c.id, name: c.name }, null, false));
@@ -3643,7 +3675,7 @@ function creditCard(c, gender) {
     caption.append(line);
   }
   // A card's own label says all of this already.
-  if (c.show) caption.setAttribute('aria-hidden', 'true');
+  if (card) caption.setAttribute('aria-hidden', 'true');
   li.append(caption);
   return li;
 }
@@ -4017,21 +4049,14 @@ function search(q, typed = true) {
   }, typed ? 200 : 0);
 }
 
-// Shows TVmaze has that the catalogue does not yet, each linked to its TVmaze page;
-// ahead of the results when TVmaze ranks one of them first.
+// Shows TVmaze has that the catalogue does not yet, as posters named like the results
+// above, each opening a title page of its own from TVmaze (newer), with New for its year
+// when it has none yet; ahead of the results when TVmaze ranks one of them first.
 function showMissing(missing, first) {
   const box = $('missing');
   box.hidden = !missing.length;
-  $('missing-list').replaceChildren(...missing.map(m => {
-    const li = el('li');
-    const link = el('a', 'See it on TVmaze');
-    link.href = m.url;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    link.setAttribute('aria-label', `${m.name} on TVmaze, opens in a new tab`);
-    li.append(el('b', m.name), el('span', m.year ? String(m.year) : 'New', 'muted'), link);
-    return li;
-  }));
+  missing.forEach(m => remember({ ...m, newer: true }));
+  fill($('missing-list'), missing, c => ({ titled: true, also: c.year ? '' : 'New', note: 'just added to TVmaze' }));
   $('search').insertBefore(box, first ? $('results') : $('related'));
 }
 

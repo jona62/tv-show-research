@@ -2344,15 +2344,23 @@ check('download --out leaves the default paths alone', not sentinel.exists())
 check('--refresh and --out together are refused', combined == 2)
 
 
-def download_into(out, served, newest, flaky=()):
-    """download.py --out OUT against a pretend TVmaze whose updates name shows up to id
-    newest and whose index serves the pages in served, 404 for the rest; each page in
-    flaky times out once first. Returns (exit status, what it printed)."""
+def download_into(out, served, newest, flaky=(), shows=(), asked=None):
+    """download.py --out OUT against a pretend TVmaze whose updates name shows 1 and newest
+    and whose index serves the pages in served, 404 for the rest; each page in flaky times
+    out once first. A show asked for on its own is there when its id is in shows, and
+    every such id asked for is added to asked. Returns (exit status, what it printed)."""
     timed_out = set()
 
     def fake(url, timeout=None):
         if url.endswith('/updates/shows'):
             return io.BytesIO(json.dumps({'1': 1, str(newest): 2}).encode())
+        alone = re.fullmatch(r'https://api\.tvmaze\.com/shows/(\d+)', url)
+        if alone:
+            if asked is not None:
+                asked.append(int(alone[1]))
+            if int(alone[1]) not in shows:
+                raise HTTPError(url, 404, 'Not Found', None, None)
+            return io.BytesIO(json.dumps({'id': int(alone[1]), 'name': 'Brand New'}).encode())
         n = int(url.rsplit('=', 1)[1])
         if n in flaky and n not in timed_out:
             timed_out.add(n)
@@ -2376,18 +2384,37 @@ def download_into(out, served, newest, flaky=()):
 
 # TVmaze's updates name a show added after its cached index: page 2 answers 404 for now.
 out = TMP / 'download-ahead'
-status, said = download_into(out, {0: [{'id': 1}], 1: [{'id': 250}]}, newest=510)
+alone = []
+status, said = download_into(out, {0: [{'id': 1}], 1: [{'id': 250}]}, newest=510, shows={510}, asked=alone)
 manifest = json.loads((out / 'manifest.json').read_text()) if (out / 'manifest.json').exists() else {}
-check('a last page the index does not serve yet ends the download there', status == 0
-      and manifest.get('pages') == 2 and manifest.get('records') == 2
-      and sorted(manifest.get('files') or {}) == ['page-000.json', 'page-001.json'], (status, manifest))
-check('and says how many newer shows wait for a later download',
-      'ends at page 1 for now; 1 newer show in its updates list' in said, said)
+check('a last page the index does not serve yet ends the pages there', status == 0
+      and manifest.get('pages') == 2 and 'ends at page 1 for now' in said, (status, manifest, said))
+check('and the show the updates name past it is asked for on its own and kept beside the pages',
+      alone == [510] and json.loads((out / 'page-newer.json').read_text()) == [{'id': 510, 'name': 'Brand New'}]
+      and manifest.get('records') == 3
+      and sorted(manifest.get('files') or {}) == ['page-000.json', 'page-001.json', 'page-newer.json'], (alone, manifest))
+check('which the download says', '1 of 1 shows newer than the cached index asked for one at a time.' in said, said)
 try:
     indexed = refresher.check_index(out)['pages']
 except refresher.StepFailed as exc:
     indexed = str(exc)
 check('which the refresher takes as a complete index', indexed == 2, indexed)
+# A last page cached before the newest shows were added: it is served, but lacks them.
+out = TMP / 'download-stale'
+alone = []
+status, said = download_into(out, {0: [{'id': 1}], 1: [{'id': 250}], 2: [{'id': 500}]}, newest=510, shows={510},
+                             asked=alone)
+check('a show a cached last page lacks is asked for on its own too', status == 0 and alone == [510]
+      and [s['id'] for s in json.loads((out / 'page-newer.json').read_text())] == [510]
+      and json.loads((out / 'manifest.json').read_text())['records'] == 4, (status, alone, said))
+# A show deleted between the updates list and its own answer is left out, and no file is written.
+out = TMP / 'download-gone'
+status, said = download_into(out, {0: [{'id': 1}], 1: [{'id': 250}]}, newest=510)
+check('a show TVmaze no longer has is left out', status == 0 and not (out / 'page-newer.json').exists()
+      and json.loads((out / 'manifest.json').read_text())['records'] == 2
+      and '0 of 1 shows newer than the cached index' in said, (status, said))
+check('and a download whose pages hold every show asks for none on its own',
+      not (TMP / 'download-out' / 'page-newer.json').exists())
 status, said = download_into(TMP / 'download-gap', {0: [{'id': 1}], 2: [{'id': 510}]}, newest=510)
 check('a page missing before the last one still fails the download', status not in (0, None)
       and 'page 1 of its show index but has later pages' in str(status), status)

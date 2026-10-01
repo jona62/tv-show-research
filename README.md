@@ -52,8 +52,9 @@ needs packages at runtime.
 ## Fresh data every night
 
 Next Watch and Couchside read a live model that `scripts/refresher.py` rebuilds
-each night at 04:30 UTC: it downloads TVmaze's whole show index, rebuilds the
-model into a new folder under `/home/developer/tv-model/versions/`, checks it,
+each night at 04:30 UTC: it downloads TVmaze's whole show index (and, one at a time,
+the shows TVmaze lists that the index, cached for up to a day, does not hold yet),
+rebuilds the model into a new folder under `/home/developer/tv-model/versions/`, checks it,
 and only then moves `tv-model/current` to it. Each app notices the move and
 restarts on the new model, Next Watch after 30 seconds and Couchside after 150,
 so they are never down together. A failed build leaves the live model alone and

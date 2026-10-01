@@ -10,6 +10,10 @@ The snapshot holds everything the ranking needs, so none of this is required: a
 title page renders without it and fills in as each answer arrives. Answers are
 trimmed, cached, and kept inside each service's rate limit; after a 429 a source
 backs off, and a stale answer is served rather than none.
+
+A show TVmaze added since the snapshot has its whole title page from TVmaze: the
+answer that carries a show's cast and seasons carries the show itself too (about), so
+its page costs no more calls than any other show's details.
 """
 from collections import OrderedDict, deque
 import html
@@ -29,6 +33,7 @@ YOUTUBE_ID = re.compile(r'[A-Za-z0-9_-]{11}')
 HOST = re.compile(r'(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}')
 AGES = ('TV-Y', 'TV-Y7', 'TV-G', 'TV-PG', 'TV-14', 'TV-MA')
 IMAGES = 'https://static.tvmaze.com/uploads/images/'
+PAGE = re.compile(r'https://www\.tvmaze\.com/shows/\d+(?:/[a-z0-9-]*)?')
 AGENT = 'Couchside/1.0 (+https://github.com/jona62/tv-show-research)'
 SHOW = '/shows/{id}?embed%5B%5D=cast&embed%5B%5D=seasons&embed%5B%5D=images'
 EPISODES = '/seasons/{id}/episodes'
@@ -105,7 +110,37 @@ def trim_show(raw):
         'ended': raw.get('ended') if isinstance(raw.get('ended'), str) else None,
         'days': [d for d in schedule.get('days') or [] if isinstance(d, str)],
         'time': schedule.get('time') if isinstance(schedule.get('time'), str) else '',
-        'channels': channels,
+        'channels': channels, 'about': trim_about(raw),
+    }
+
+
+def trim_about(raw):
+    """The show itself, in the shape a title page takes from the catalogue (library.detail),
+    for a show TVmaze added since it was built; None without an id and a name. Its network
+    and country are its web channel's when it has one, as the catalogue's are, and its
+    summary keeps to the catalogue's length. Themes come from the build alone, so it has none."""
+    name = ' '.join(raw['name'].split())[:200] if isinstance(raw.get('name'), str) else ''
+    if not whole(raw.get('id')) or not name:
+        return None
+    first = raw.get('webChannel') if isinstance(raw.get('webChannel'), dict) else None
+    home = first or (raw.get('network') if isinstance(raw.get('network'), dict) else {})
+    country = home.get('country') if isinstance(home.get('country'), dict) else {}
+    premiered, ended = shaped(raw, 'premiered', DAY), shaped(raw, 'ended', DAY)
+    url = raw.get('url')
+    image = raw.get('image')
+    return {
+        'id': raw['id'], 'name': name, 'year': int(premiered[:4]) if premiered else None,
+        'runtime': whole(raw.get('averageRuntime')) or whole(raw.get('runtime')), 'rating': score(raw.get('rating')),
+        'genres': [g for g in raw.get('genres') or [] if isinstance(g, str)][:10],
+        'url': url if isinstance(url, str) and PAGE.fullmatch(url) else f'https://www.tvmaze.com/shows/{raw["id"]}',
+        'channel': ' '.join(home['name'].split())[:100] if isinstance(home.get('name'), str) else None,
+        'language': raw['language'] if isinstance(raw.get('language'), str) else None,
+        'type': raw['type'] if isinstance(raw.get('type'), str) else None,
+        'country': country['code'] if isinstance(country.get('code'), str) else None,
+        'status': raw['status'] if isinstance(raw.get('status'), str) else None,
+        'summary': plain(raw.get('summary'), 480), 'ended': int(ended[:4]) if ended else None,
+        'premiered': premiered or None, 'poster': picture(image), 'art': picture(image, 'original'),
+        'themes': [], 'match': None,
     }
 
 
@@ -312,7 +347,13 @@ class Live:
         return value
 
     def show(self, show_id):
-        return self.get(SHOW.format(id=show_id), trim_show)
+        """A show's details. An id TVmaze does not know is an answer too, kept like any
+        other, so one asked for as a show newer than the catalogue that TVmaze has not got
+        either is not asked about again and again."""
+        found = self.get(SHOW.format(id=show_id), trim_show, missing={})
+        if not found:
+            raise LiveError('TVmaze has no details for this show.', 404)
+        return found
 
     def episodes(self, show_id, number):
         season = next((s for s in self.show(show_id)['seasons'] if s['number'] == number), None)

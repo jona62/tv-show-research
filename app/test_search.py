@@ -192,16 +192,18 @@ for label, content, raw in [('not gzip', b'plain', True), ('broken JSON', gzip.c
 
 
 # 4. The TVmaze fallback, with a fake TVmaze.
-def result(id, name, premiered=None, url=None):
+def result(id, name, premiered=None, url=None, image=None):
     return {'score': 0.9, 'show': {'id': id, 'name': name, 'premiered': premiered,
-                                   'url': url or f'https://www.tvmaze.com/shows/{id}/x'}}
+                                   'url': url or f'https://www.tvmaze.com/shows/{id}/x', 'image': image}}
 
 
+POSTER = 'https://static.tvmaze.com/uploads/images/medium_portrait/190/475439.jpg'
 check('TVmaze answers are trimmed to what the page shows', trim([
-    result(9, 'Succession', '2018-06-03'), result(77, ' New  Show ', None, 'javascript:alert(1)'),
+    result(9, 'Succession', '2018-06-03', image={'medium': POSTER, 'original': POSTER.replace('medium_portrait', 'original_untouched')}),
+    result(77, ' New  Show ', None, 'javascript:alert(1)', {'medium': 'https://evil.example/x.jpg'}),
     {'show': {'id': '5', 'name': 'x'}}, {'show': {'id': 6}}, 'junk', result(8, '', '2020-01-01')]) == [
-    {'id': 9, 'name': 'Succession', 'year': 2018, 'url': 'https://www.tvmaze.com/shows/9/x'},
-    {'id': 77, 'name': 'New Show', 'year': None, 'url': 'https://www.tvmaze.com/shows/77'}])
+    {'id': 9, 'name': 'Succession', 'year': 2018, 'url': 'https://www.tvmaze.com/shows/9/x', 'poster': POSTER},
+    {'id': 77, 'name': 'New Show', 'year': None, 'url': 'https://www.tvmaze.com/shows/77', 'poster': None}])
 try:
     trim({'not': 'a list'})
     check('an answer that is not a list is refused', False)
@@ -331,7 +333,7 @@ httpd = ThreadingHTTPServer(('127.0.0.1', 0), FakeTVmaze)
 threading.Thread(target=httpd.serve_forever, daemon=True).start()
 local = partial(Remote, base=f'http://127.0.0.1:{httpd.server_address[1]}', timeout=.5)
 check('the client reads a real HTTP answer', local().search('sucession') == [
-    {'id': 9, 'name': 'Succession', 'year': 2018, 'url': 'https://www.tvmaze.com/shows/9/x'}])
+    {'id': 9, 'name': 'Succession', 'year': 2018, 'url': 'https://www.tvmaze.com/shows/9/x', 'poster': None}])
 started = time.perf_counter()
 check('a slow TVmaze is given up on after the timeout', local().search('slow') is None
       and time.perf_counter() - started < 1.2, time.perf_counter() - started)
