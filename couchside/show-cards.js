@@ -1,7 +1,7 @@
 import {matrixRatings,cachedMatrix,freshMatrix,ratingSources,compactMatrix,matrixSkeleton,icon,html,esc,acceptMatrices} from './ratings.js';
 const KEY='couchside.show-cards';
-let matrix=false;
-try{matrix=localStorage.getItem(KEY)==='matrix';}catch{}
+let matrix=true;
+try{matrix=localStorage.getItem(KEY)!=='standard';}catch{}
 const account=document.querySelector('#account .menu-sheet');
 const preferences=document.createElement('fieldset');preferences.className='ratings-card-preference';
 html(preferences,`<legend>Show cards</legend><div class="ratings-card-choices"><button type="button" data-cards="standard" aria-pressed="${!matrix}">${icon('poster')}<span>Standard</span></button><button type="button" data-cards="matrix" aria-pressed="${matrix}">${icon('grid')}<span>Episode matrix</span></button></div><p>Saved on this device</p>`);
@@ -105,4 +105,4 @@ preferences.querySelectorAll('[data-cards]').forEach(button=>button.onclick=()=>
 });
 apply();
 
-window.addEventListener('storage',event=>{if(event.key===KEY){matrix=event.newValue==='matrix';apply();}});
+window.addEventListener('storage',event=>{if(event.key===KEY){matrix=event.newValue!=='standard';apply();}});

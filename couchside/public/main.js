@@ -1,6 +1,6 @@
 import { mountEpisodeRatings } from './episode-ratings.js?v=a6849b3dcf8c367f';
 import { mountTitleSections } from './title-sections.js?v=47e93fa931aed0c8';
-import { enhanceShowCard,receiveMatrices,matrixPreference } from './show-cards.js?v=688ac95280287779';
+import { enhanceShowCard,receiveMatrices,matrixPreference } from './show-cards.js?v=0d3c0b29c4aff4c2';
 import {filtersFor,filterKey,selectShows,setFilters} from './filter-state.js?v=a30d1a4517a72575';
 import {filterBar} from './filters.js?v=7194f66a7f854167';
 import { cachedRatings, ratings, seasons as ratingSeasons } from './ratings.js?v=bd9d1b3ac9a562f7';

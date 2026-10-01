@@ -53,7 +53,8 @@ rebuilt every night. Nothing plays. It is for finding your next show.
   and shows its match with quick buttons for My List, *I like this*, *Love this*
   and more info. On a touch screen, a long press lifts it into a larger preview
   with just *More info* and My List, and a tap still opens it.
-  The settings menu offers Standard or Episode matrix cards, saved on this device.
+  Episode matrix cards are the default. The settings menu offers Standard or Episode
+  matrix cards, saved on this device; an existing choice is kept.
   Matrix applies across Home, Browse, New & Popular, My List, Search, and the title's
   More like this and Fans also like. These sections use the same compact poster,
   hover description and quick actions, with season rows and episode colours beneath
