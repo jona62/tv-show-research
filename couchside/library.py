@@ -2732,6 +2732,7 @@ class Library:
         s = self.e.shows[i]
         return {'id': s['id'], 'name': s['name'], 'year': s['year'], 'poster': self.poster(i),
                 'genres': s['genres'][:3], 'runtime': s['runtime'], 'type': s['type'],
+                'summary': s['summary'] or '',
                 'match': taste.match(i) if taste else None,
                 'badge': 'top10' if i in self.top10_set else 'new' if i in self.recent else None}
 

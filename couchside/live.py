@@ -37,6 +37,7 @@ PAGE = re.compile(r'https://www\.tvmaze\.com/shows/\d+(?:/[a-z0-9-]*)?')
 AGENT = 'Couchside/1.0 (+https://github.com/jona62/tv-show-research)'
 SHOW = '/shows/{id}?embed%5B%5D=cast&embed%5B%5D=seasons&embed%5B%5D=images'
 EPISODES = '/seasons/{id}/episodes'
+EPISODE_RATINGS = '/shows/{id}/episodes'
 EPISODE = '/episodes/{id}?embed%5B%5D=guestcast&embed%5B%5D=guestcrew'
 # An episode's page reads its summary whole, and some run past two thousand characters;
 # this only stops a runaway one.
@@ -231,7 +232,8 @@ def trim_episodes(raw):
         out.append({'id': whole(e.get('id')), 'number': whole(e.get('number')), 'name': e['name'],
                     'runtime': whole(e.get('runtime')),
                     'airdate': e.get('airdate') if isinstance(e.get('airdate'), str) else '',
-                    'still': picture(e.get('image')), 'summary': plain(e.get('summary'), 360)})
+                    'still': picture(e.get('image')), 'rating': score(e.get('rating')),
+                    'summary': plain(e.get('summary'), 360)})
     return out
 
 
@@ -239,6 +241,25 @@ def score(value):
     """TVmaze's average rating out of 10, once enough people have rated."""
     average = value.get('average') if isinstance(value, dict) else None
     return round(float(average), 1) if type(average) in (int, float) and 0 < average <= 10 else None
+
+
+def trim_episode_ratings(raw):
+    """Every regular episode for charts, preserving long seasons and missing ratings."""
+    if not isinstance(raw, list):
+        raise ValueError('not an episode list')
+    out = []
+    seen = set()
+    for e in raw:
+        if (not isinstance(e, dict) or not isinstance(e.get('name'), str)
+                or not whole(e.get('id')) or not whole(e.get('season')) or not whole(e.get('number'))
+                or e['id'] in seen):
+            continue
+        seen.add(e['id'])
+        out.append({'id': e['id'], 'season': e['season'], 'number': e['number'], 'name': e['name'],
+                    'runtime': whole(e.get('runtime')), 'rating': score(e.get('rating')),
+                    'airdate': shaped(e, 'airdate', DAY), 'image': picture(e.get('image')),
+                    'summary': plain(e.get('summary'), WHOLE_SUMMARY)})
+    return sorted(out, key=lambda e: (e['season'], e['number'], e['id']))
 
 
 def shaped(raw, key, pattern):
@@ -363,6 +384,10 @@ class Live:
         if not season:
             raise LiveError('That season is not listed for this show.', 404)
         return self.get(EPISODES.format(id=season['id']), trim_episodes)
+
+    def episode_ratings(self, show_id):
+        """One cached TVmaze request for every season, shared by cards and title charts."""
+        return self.get(EPISODE_RATINGS.format(id=show_id), trim_episode_ratings)
 
     def episode(self, episode_id):
         """One episode in full. An id TVmaze does not know is an answer too, kept like any

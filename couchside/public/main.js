@@ -1,3 +1,7 @@
+import { mountEpisodeRatings } from './episode-ratings.js?v=8cceaa5751baeee2';
+import { mountTitleSections } from './title-sections.js?v=47e93fa931aed0c8';
+import { enhanceShowCard } from './show-cards.js?v=e375e2c343dcc089';
+import { cachedRatings } from './ratings.js?v=a0f46d692a8f11a1';
 import { encode, decode, LIMITS, codeFrom } from './transfer.js?v=aca34fe2830e9d29';
 import { matrix, svgPath } from './qr.js?v=d7f92f94bb8911ea';
 import { tieText, leaning, leaningHeading } from './format.js?v=e565cc65c0882a95';
@@ -1880,7 +1884,7 @@ window.addEventListener('resize', () => {
 // buttons for My List and a rating; those skip the tab order, since the title page
 // offers the same actions to everyone. A card may carry one call-out, such as "Same
 // creator as Breaking Bad". In a row (ahead) its poster loads when the row asks.
-function cardEl(c, { rank = 0, soon = false, note = '', row = '', ahead = false } = {}) {
+function cardEl(c, { rank = 0, soon = false, note = '', row = '', ahead = false, related = false } = {}) {
   const card = el('div', '', 'card');
   card.dataset.id = c.id;
   const hit = button('card-hit', '', () => openTitle(c.id, { row }));
@@ -1925,6 +1929,7 @@ function cardEl(c, { rank = 0, soon = false, note = '', row = '', ahead = false 
   for (const b of quick.querySelectorAll('button')) b.tabIndex = -1;
   card.append(meta);
   if (soon && c.premiered) card.append(el('span', `Premieres ${premiere(c.premiered)}`, 'soon-date'));
+  enhanceShowCard(card, { ...full, similar: c.similar, why: c.why }, related);
   return card;
 }
 
@@ -2117,6 +2122,8 @@ function closeTitle() {
 }
 function hideTitle() {
   if (episodeId) hideEpisode();
+  T?.ratingsDispose?.();
+  T?.sectionsDispose?.();
   titleToken++;
   titleId = null;
   T = null;
@@ -2160,6 +2167,8 @@ function returnTo(dialog, place, same) {
 
 function showTitle(id, play = false, place = null) {
   if (E && E.show !== id) hideEpisode();
+  T?.ratingsDispose?.();
+  T?.sectionsDispose?.();
   const token = ++titleToken;
   titleId = id;
   T = buildTitle({ ...info(id), id });
@@ -2314,6 +2323,7 @@ function buildTitle(c) {
               eps: null, epsMore: null, clipList: null, clipsMore: null, pick: null, season: null, episodeSeason: null,
               open: { watch: false, episodes: false, clips: false } };
   paintOut(t, c);
+  mountTitleSections(t, { revealButton, paintReveal, unfold, busy, edges });
   return t;
 }
 
@@ -2495,6 +2505,7 @@ function paintTitle() {
   if (live?.site) links.append(document.createTextNode(' · '), link(live.site, 'Official site'));
   about.push(links);
   T.about.replaceChildren(...about);
+  T.sectionsUpdate?.();
 }
 
 // Where to watch: TMDB's services with their own logos, linking to TMDB's page for the
@@ -2783,7 +2794,7 @@ async function shareLink(url, title, text, copied) {
 // The cast under About, each with their own page when TVmaze gives their id.
 function castEl(cast) {
   const list = el('ul', '', 'cast');
-  for (const p of cast.slice(0, 12)) {
+  for (const p of cast) {
     const li = el('li');
     const face = el('span', '', 'face');
     if (p.photo) {
@@ -2839,32 +2850,14 @@ function paintMore() {
   T.fansSub.textContent = name ? `Shows that ${name} fans also look up` : 'Shows its fans also look up';
   T.fansList.replaceChildren(...fans.map(moreCard));
   T.fans.hidden = !fans.length;
+  T.sectionsUpdate?.();
 }
 // A show like this one: how similar it is to this title, in the green a match wears, and
 // why it is here (the same world, the same creator). Never a match: how close a show sits
 // to this title says nothing of how well it fits a list, so it reads "% similar".
 function moreCard(c) {
-  const li = el('li', '', 'more-card');
-  li.dataset.id = c.id;
-  const open = button('more-open', '', () => openTitle(c.id));
-  const similar = c.similar ? `${c.similar}% similar` : '';
-  open.setAttribute('aria-label', [c.name, c.year, similar, c.why].filter(Boolean).join(', '));
-  open.append(artEl(c));
-  const top = el('div', '', 'more-top');
-  const facts = el('div', '', 'more-info');
-  if (c.year) facts.append(el('span', String(c.year)));
-  top.append(facts, listButton(c, 'round'));
-  const body = el('div', '', 'more-body');
-  body.append(el('h4', c.name));
-  if (similar || c.why) {
-    const why = el('div', '', 'more-why');
-    if (similar) why.append(el('b', similar, 'match'));
-    if (c.why) why.append(el('span', c.why));
-    body.append(why);
-  }
-  body.append(top);
-  if (c.summary) body.append(el('p', c.summary));
-  li.append(open, body);
+  const li = el('li', '', 'ratings-related-card');
+  li.append(cardEl(c, { related: true, note: [c.similar ? `${c.similar}% similar` : '', c.why].filter(Boolean).join(' · ') }));
   return li;
 }
 
@@ -2901,7 +2894,12 @@ function paintEpisodes(painted = () => {}) {
   });
   T.episodes.replaceChildren(head, T.eps, T.epsMore.parentElement);
   T.episodes.hidden = false;
-  loadSeason(first.number).then(painted);
+  const t = T;
+  loadSeason(first.number).then(async () => {
+    if (T !== t) return;
+    await mountEpisodeRatings(t, { openEpisode, episodeEl, revealButton, paintReveal, unfold, busy, snippet, revealLabel });
+    if (T === t) painted();
+  });
 }
 
 // A season shows its first few episodes until they are all asked for, and every season
@@ -2912,6 +2910,7 @@ function setEpisodes(open) {
   items.forEach((li, n) => { li.hidden = !open && n >= shown; });
   T.epsMore.parentElement.hidden = shown === items.length;
   paintReveal(T.epsMore, revealLabel('episodes', items.length, open), open);
+  T.ratingsUpdate?.();
 }
 
 async function loadSeason(number) {
@@ -2920,7 +2919,9 @@ async function loadSeason(number) {
   t.eps.replaceChildren(...Array.from({ length: SNIPPETS.episodes }, episodeSkeleton));
   setEpisodes(t.open.episodes);
   try {
-    const { episodes } = await patient(`/api/episodes?id=${t.id}&season=${number}`);
+    const cached = cachedRatings(t.id);
+    const { episodes } = cached ? { episodes: cached.episodes.filter(ep => ep.season === number)
+      .map(ep => ({ ...ep, still: ep.image })) } : await patient(`/api/episodes?id=${t.id}&season=${number}`);
     if (token !== seasonToken || T !== t) return;
     // Kept with its show, for an episode opened from it to step through the season.
     t.season = { show: t.id, number, episodes };

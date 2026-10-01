@@ -53,6 +53,11 @@ rebuilt every night. Nothing plays. It is for finding your next show.
   and shows its match with quick buttons for My List, *I like this*, *Love this*
   and more info. On a touch screen, a long press lifts it into a larger preview
   with just *More info* and My List, and a tap still opens it.
+  The settings menu offers Standard or Episode matrix cards, saved on this device.
+  Matrix applies across Home, Browse, New & Popular, My List, Search, and the title's
+  More like this and Fans also like. These sections use the same compact poster,
+  hover description and quick actions, with season rows and episode colours beneath
+  the poster when Matrix is selected. Descriptions stay inside the hover panel.
 - **Browse** opens every genre and format as a poster tile, and each one as rows
   ranked for you: top picks, new, acclaimed, popular and deeper cuts.
 - **New & Popular** has the Top 10, new shows this year ranked for you, and
@@ -83,6 +88,32 @@ Next Watch, so a list moves between the two apps as well as between devices: a
 link, the code alone, a QR code while the list fits one (a few hundred ratings),
 and *Save as a file* for any length, opened on the other device with *Open a saved
 file* (Next Watch's README says why).
+
+## Episode ratings
+
+Episodes offer List, Grid, Wrapped and Timeline in an icon menu, plus an All seasons
+or Season filter. List keeps the existing episode rows and shows the TVmaze score
+beside the title. Grid and Wrapped use the same rating colours and qualitative key;
+hover or keyboard focus shows the episode's still, description and exact score.
+Clicking any episode opens its existing sheet. Timeline uses half-point ticks,
+a range based on the lowest score and a smooth five-episode average. Compare searches
+any other show and plots the two series' season averages on one shared scale.
+
+The episode list, More like this, Fans also like and About cast use the same
+Show all / Show fewer pill as trailers. Collapsed recommendations and cast remain
+scrollable horizontally; expanded they use the full grid. There are no extra colour,
+key or hover switches, and no accounts.
+
+`GET /api/episode-ratings?id=` returns every regular episode across all seasons,
+including missing scores, from one TVmaze request. The live client caches it for
+six hours and shares its source budget with title details. Card matrices load as
+they enter view, two at a time, and reuse the same data as title charts. The browser
+keeps at most 160 completed feeds for 30 minutes; unavailable data does not prevent
+a title or its original episode list from opening. The production build versions
+and includes all four new modules in its service worker.
+
+Data and ratings are from TVmaze, out of 10. The rating palette follows SeriesGraph;
+the surrounding interface and smoothing retain Couchside's design.
 
 ## An app on your phone
 
@@ -120,8 +151,9 @@ is not the app's gets a page asking for the connection back, and a path that lea
 nowhere gets the app's own *Lost your way?* page.
 
 Text goes gzipped to any browser that takes it: the page, its scripts and styles,
-JSON answers, SVG and the manifest, a quarter or less of their size (a home page's
-59 KB is 8 KB). Each file is gzipped once and kept, every answer says it varies by
+JSON answers, SVG and the manifest. Hover descriptions make the card responses
+larger; the release fixture's home page compresses from 140 KB to 41 KB. Each file
+is gzipped once and kept, every answer says it varies by
 Accept-Encoding, and gzipped bytes carry their own ETag. The page asks for its
 scripts and styles by the hash of what they hold (`/main.js?v=...`, written by
 `build.py`, which also names each module's hash in the imports between them), so
@@ -715,6 +747,7 @@ from whichever model it loaded.
 .venv/bin/python couchside/test_couchside.py
 node couchside/test_format.mjs
 node couchside/test_gestures.mjs
+node couchside/test_ratings.mjs
 .venv/bin/python couchside/test_related.py
 .venv/bin/python couchside/test_long_lists.py
 ```

@@ -112,7 +112,7 @@ from library import Kept, KEPT_PAGES, KEPT_FOR, asked as kept_under, read_shown 
 from library import (Page, Deeper, FIRST_PAGE, NEXT_PAGE, MOST_ROWS, CREATOR_SHORTEST, NOT_FOR_ME,  # noqa: E402
                      INTEREST_CAP, HIDDEN, PINNED, LONGEST, TIERS)
 from live import (Live, LiveError, Icons, trim_show, trim_about, trim_episodes, trim_episode, trim_videos,  # noqa: E402
-                  trim_seasons, match_rating, IMAGES, WHOLE_SUMMARY)
+                  trim_seasons, trim_episode_ratings, match_rating, IMAGES, WHOLE_SUMMARY)
 
 engine, lib = server.ENGINE, server.LIBRARY
 # Here a page kept for the requests for more (library.Kept) is laid out in step with them,
@@ -1060,6 +1060,23 @@ check('specials are kept and junk dropped', len(episodes) == 2 and episodes[1]['
 check('each episode in a season keeps the id that opens it, and only a whole number',
       episodes[0]['id'] == 12192 and episodes[1]['id'] is None)
 
+RATED_EPISODES = [{'id': n, 'season': 1, 'number': n, 'name': f'Episode {n}',
+                   'rating': {'average': 7.3}, 'summary': '<p>A &amp; B go.</p>'} for n in range(1, 181)]
+rated_episodes = trim_episode_ratings([*reversed(RATED_EPISODES), RATED_EPISODES[0],
+                                      {'id': 181, 'season': 2, 'number': 1, 'name': 'Unrated',
+                                       'image': {'medium': 'https://evil.example/image.jpg'}},
+                                      {'id': 182, 'season': 2, 'number': None, 'name': 'Special'}, 'junk'])
+check('the ratings feed keeps a whole long season, in order, without duplicate ids',
+      len(rated_episodes) == 181 and [e['number'] for e in rated_episodes[:180]] == list(range(1, 181)))
+check('the ratings feed keeps plain descriptions, exact scores and missing scores',
+      rated_episodes[0]['summary'] == 'A & B go.' and rated_episodes[0]['rating'] == 7.3
+      and rated_episodes[-1]['rating'] is None and rated_episodes[-1]['image'] is None)
+rating_calls = []
+rating_live = Live(fetch=lambda path: rating_calls.append(path) or RATED_EPISODES)
+rating_live.episode_ratings(169)
+rating_live.episode_ratings(169)
+check('every season uses one cached TVmaze request', rating_calls == ['/shows/169/episodes'])
+
 # One episode in full, as TVmaze answers /episodes/{id} with its guest cast and crew.
 RAW_EPISODE = {
     'id': 12203, 'name': 'Breakage', 'season': 2, 'number': 5, 'type': 'regular', 'airdate': '2009-04-05',
@@ -1171,6 +1188,8 @@ ELSEWHERE = {**RAW_EPISODE, 'id': 5000001, '_links': {'show': {'href': 'https://
 
 def fake(path):
     calls.append(path)
+    if path == '/shows/169/episodes':
+        return RATED_EPISODES
     if path.startswith('/seasons/'):
         return [{'id': 12199, 'number': 1, 'name': 'Pilot'}]
     if path.startswith('/episodes/'):
@@ -1914,8 +1933,10 @@ for said in ('GZIP', 'x-gzip', '*', 'deflate, gzip;q=0.5', 'br;q=1.0, gzip;q=0.8
 answers = [fetch('/api/home', {'profile': PROFILE, 'settings': DEFAULT_SETTINGS}, headers=headers) for headers in (GZ, {})]
 check('a home page goes gzipped too, to the same answer, and is never kept', [a[0] for a in answers] == [200, 200]
       and answers[0][1].get('Content-Encoding') == 'gzip' and answers[1][1].get('Content-Encoding') is None
-      and json.loads(gzip.decompress(answers[0][2])) == json.loads(answers[1][2]) and len(answers[0][2]) < len(answers[1][2]) / 4
-      and answers[0][1].get('Cache-Control') == 'no-store' and answers[0][1].get('ETag') is None)
+      # Cards now carry descriptions for hover panels; text compresses less than repeated metadata.
+      and json.loads(gzip.decompress(answers[0][2])) == json.loads(answers[1][2]) and len(answers[0][2]) < len(answers[1][2]) / 2
+      and answers[0][1].get('Cache-Control') == 'no-store' and answers[0][1].get('ETag') is None,
+      [(a[0], len(a[2]), a[1].get('Content-Encoding'), a[1].get('Cache-Control')) for a in answers])
 status, headers, body = fetch('/healthz', headers=GZ)
 check('an answer too small to be worth it goes whole', headers.get('Content-Encoding') is None and json.loads(body) == {'status': 'ok'})
 status, headers, body = fetch('/icon-192.png', headers=GZ)
@@ -2057,6 +2078,12 @@ check('episodes need a season', fetch('/api/episodes?id=169')[0] == 400)
 status, _headers, body = fetch('/api/episodes?id=169&season=1')
 check('episodes come through', status == 200 and json.loads(body)['episodes'][0]['name'] == 'Pilot')
 check('each with the id that opens it', json.loads(body)['episodes'][0]['id'] == 12199)
+status, _headers, body = fetch('/api/episode-ratings?id=169')
+check('all episode ratings come through the shared live endpoint', status == 200
+      and json.loads(body)['id'] == 169 and len(json.loads(body)['episodes']) == 180)
+check('ratings reject invalid and out-of-catalogue ids', fetch('/api/episode-ratings?id=abc')[0] == 400
+      and fetch('/api/episode-ratings?id=999999999')[0] == 400)
+check('shared cards carry descriptions for hover panels', bool(lib.card(engine.by_id[169])['summary']))
 status, headers, body = fetch('/api/episode?id=12203')
 check('an episode comes through whole, guests and crew with their person ids',
       status == 200 and json.loads(body) == {'episode': trim_episode(RAW_EPISODE)}
@@ -2292,12 +2319,15 @@ for query, what in [('seed=xyz', 'a bad seed'), ('round=51', 'a round past 50'),
     check(f'starters refuse {what}', status == 400 and body['error'])
 
 # 7b. TMDB first, and the live sources asked only for what it lacks.
+# These source checks have their own budget, apart from the endpoint checks above.
+server.LIVE = Live(fetch=tvmaze_live)
 before = len(asked['kino'])
 status, _headers, body = fetch('/api/trailer?id=2993')
 check('TMDB\'s trailers come first, without asking KinoCheck',
       status == 200 and json.loads(body)['videos'] == known[2993]['videos'] and len(asked['kino']) == before)
 status, _headers, body = fetch('/api/trailer?id=44933')
-check('without TMDB trailers, KinoCheck\'s', status == 200 and json.loads(body)['videos'][0]['youtube'] == 'CCCCCCCCCCC')
+check('without TMDB trailers, KinoCheck\'s', status == 200 and json.loads(body)['videos'][0]['youtube'] == 'CCCCCCCCCCC',
+      (status, body))
 before = len(asked['store'])
 status, _headers, body = fetch('/api/rating?id=2993')
 check('TMDB\'s rating comes first, and iTunes is not asked while TMDB lists where to watch',

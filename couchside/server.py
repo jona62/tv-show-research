@@ -43,7 +43,7 @@ MOST_BODY = 98304
 # A list brought in from another device is looked up in one go: every rating and every
 # saved show.
 MOST_IDS = MAX_LIST + MAX_SAVED
-LIVE_ROUTES = ('/api/extra', '/api/episodes', '/api/episode', '/api/trailer', '/api/rating')
+LIVE_ROUTES = ('/api/extra', '/api/episodes', '/api/episode', '/api/episode-ratings', '/api/trailer', '/api/rating')
 # Someone in a cast, by TVmaze person id: who they are and what they are in, and apart from
 # that, since Wikidata can take seconds to answer, their biography.
 PEOPLE_ROUTES = ('/api/person', '/api/biography')
@@ -595,6 +595,8 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json({'details': details(LIVE.show(show_id))})
             elif path == '/api/episodes':
                 self.send_json({'episodes': LIVE.episodes(show_id, season)})
+            elif path == '/api/episode-ratings':
+                self.send_json({'id': show_id, 'episodes': LIVE.episode_ratings(show_id)})
             elif path == '/api/episode':
                 self.send_json({'episode': episode(episode_id)})
             elif path == '/api/trailer':
