@@ -1,9 +1,9 @@
-import { mountEpisodeRatings } from './episode-ratings.js?v=6d15d3cd82cf93b8';
+import { mountEpisodeRatings } from './episode-ratings.js?v=a6849b3dcf8c367f';
 import { mountTitleSections } from './title-sections.js?v=47e93fa931aed0c8';
-import { enhanceShowCard,receiveMatrices,matrixPreference } from './show-cards.js?v=6b008b98af842ca4';
+import { enhanceShowCard,receiveMatrices,matrixPreference } from './show-cards.js?v=688ac95280287779';
 import {filtersFor,filterKey,selectShows,setFilters} from './filter-state.js?v=a30d1a4517a72575';
-import {filterBar} from './filters.js?v=92f20b6c7f241e66';
-import { cachedRatings } from './ratings.js?v=d111fa7a20ae2e41';
+import {filterBar} from './filters.js?v=7194f66a7f854167';
+import { cachedRatings, ratings, seasons as ratingSeasons } from './ratings.js?v=bd9d1b3ac9a562f7';
 import { encode, decode, LIMITS, codeFrom } from './transfer.js?v=aca34fe2830e9d29';
 import { matrix, svgPath } from './qr.js?v=d7f92f94bb8911ea';
 import { tieText, leaning, leaningHeading } from './format.js?v=e565cc65c0882a95';
@@ -1961,6 +1961,7 @@ const PRESS_SLOP = 6;       // px it may wander meanwhile
 let pressing = null;
 function pressed(id) {
   titleOf(id).catch(() => {});
+  ratings(id).catch(() => {});
   // A show newer than the catalogue has its live details with its title (showTitle).
   if (!newer(id)) details(id);
 }
@@ -2200,6 +2201,17 @@ function showTitle(id, play = false, place = null) {
   T.close.focus({ preventScroll: true });
   document.title = `${T.card.name || 'Show'} · Couchside`;
   paintTitle();
+  // The durable episode answer can land before cast or recommendations. Ask at once,
+  // rather than fetching a season first and then asking for those episodes again.
+  ratings(id).then(data => {
+    if (token !== titleToken) return;
+    T.episodeData = data;
+    paintEpisodes(settle);
+  }).catch(() => {
+    if (token !== titleToken) return;
+    T.ratingsFailed = true;
+    paintEpisodes(settle);
+  });
   const loaded = titleOf(id);
   loaded.then(data => {
     if (token !== titleToken) return;
@@ -2222,10 +2234,10 @@ function showTitle(id, play = false, place = null) {
   lived.then(live => {
     if (token !== titleToken) return;
     if (!live) {
-      // Without TVmaze's details there are no seasons to show, and no cast to wait for.
-      T.episodes.hidden = true;
+      // Saved episodes remain usable when cast and other live details are unavailable.
       T.liveFailed = true;
       paintTitle();
+      paintEpisodes(settle);
       return;
     }
     T.live = live;
@@ -2339,6 +2351,7 @@ function buildTitle(c) {
   const t = { id: c.id, card: c, hero, backdrop, name, out, acts, listed, main, side, episodes, clips: videos, moreList,
               fans, fansSub, fansList, about, close, data: null, live: null, liveFailed: false, age: null, videos: null, error: '',
               eps: null, epsMore: null, clipList: null, clipsMore: null, pick: null, season: null, episodeSeason: null,
+              episodeData: null, ratingsFailed: false,
               open: { watch: false, episodes: false, clips: false } };
   paintOut(t, c);
   mountTitleSections(t, { revealButton, paintReveal, unfold, busy, edges });
@@ -2478,7 +2491,7 @@ function paintTitle() {
   // Once the title has loaded, so TVmaze's channels never stand in for TMDB's services.
   const watch = waiting ? watchSkeleton() : watchEl(s, live, T.age, T.data?.tmdb);
   if (watch) main.push(watch);
-  if (T.data) main.push(el('p', s.summary || 'TVmaze has no summary for this show yet.', 't-summary'));
+  if (s.summary || T.data) main.push(el('p', s.summary || 'TVmaze has no summary for this show yet.', 't-summary'));
   else if (T.error) main.push(el('p', T.error, 't-summary muted'));
   // A show's summary runs about six lines of a wide sheet and eight of a phone's.
   else main.push(skelLines(wide() ? 6 : 8, 'p', 't-summary'));
@@ -2486,14 +2499,14 @@ function paintTitle() {
   if (watch && !waiting) fitWatch(watch);
 
   // The cast comes with TVmaze's details, after the title, and has its line kept till then.
-  T.side.replaceChildren(...(waiting ? ['90%', '55%', '80%', '40%'].map(w => skelIn('p', '', w)) : [
+  T.side.replaceChildren(...[
     live || T.liveFailed ? castFact(live?.cast || []) : skelIn('p', '', '90%'),
     fact('Genres', s.genres?.join(', ')),
     fact('This show is about', s.themes?.slice(0, 4).join(', ').toLowerCase()),
     fact('On', s.channel),
-  ].filter(Boolean)));
+  ].filter(Boolean));
 
-  if (!T.data) {
+  if (!T.data && !live) {
     // A title that could not be had has no shows like it or facts about it to wait for.
     if (T.error) {
       T.moreList.closest('section').hidden = true;
@@ -2889,7 +2902,16 @@ function moreCard(c) {
 }
 
 function paintEpisodes(painted = () => {}) {
-  const list = T.live.seasons;
+  if (T.eps || (!T.episodeData && !T.ratingsFailed)) return;
+  const saved = T.episodeData;
+  const list = saved?.episodes.length ? ratingSeasons(saved).map(number => {
+    const first = saved.episodes.find(e => e.season === number);
+    return {number, year: Number(first.airdate?.slice(0, 4)) || null};
+  }) : T.live?.seasons;
+  if (!list) {
+    if (T.liveFailed) T.episodes.hidden = true;
+    return;
+  }
   if (!list.length) {
     T.episodes.hidden = true;
     return;
@@ -2922,11 +2944,15 @@ function paintEpisodes(painted = () => {}) {
   T.episodes.replaceChildren(head, T.eps, T.epsMore.parentElement);
   T.episodes.hidden = false;
   const t = T;
-  loadSeason(first.number).then(async () => {
+  const mount = async () => {
     if (T !== t) return;
-    await mountEpisodeRatings(t, { openEpisode, episodeEl, revealButton, paintReveal, unfold, busy, snippet, revealLabel });
+    await mountEpisodeRatings(t, { openEpisode, episodeEl, revealButton, paintReveal, unfold, busy, snippet, revealLabel }, saved);
     if (T === t) painted();
-  });
+  };
+  if (saved?.episodes.length) {
+    t.season = { show: t.id, number: first.number, episodes: saved.episodes.filter(e => e.season === first.number).map(e => ({ ...e, still: e.image })) };
+    mount();
+  } else loadSeason(first.number).then(mount);
 }
 
 // A season shows its first few episodes until they are all asked for, and every season

@@ -148,3 +148,6 @@ export function compactMatrix(s) {
   if(!ss.length)return '<span class="ratings-mini-empty">No episodes yet</span>';
   return `<svg class="ratings-mini" viewBox="0 0 ${max} ${ss.length}" role="img" aria-label="${s.episodes.length} episode ratings, seasons in rows">${s.episodes.map(e=>`<rect x="${e.number-1}" y="${rows.get(e.season)}" width=".82" height=".82" rx=".12" fill="${band(e.rating).colour}"><title>${code(e)} · ${esc(e.name)} · ${score(e.rating)} · ${band(e.rating).name}${ratingSource(e)?' · '+esc(ratingSource(e)):''}</title></rect>`).join('')}</svg>`;
 }
+export function matrixSkeleton() {
+  return `<span class="ratings-mini-loading" aria-hidden="true">${'<span class="ratings-mini-cell skel"></span>'.repeat(24)}</span>`;
+}

@@ -224,8 +224,9 @@ TMDB = tmdb.load(MODEL / 'tmdb.json.gz', ENGINE.by_id)
 # 12 for title pages here (a show newer than the catalogue's whole page among them, one
 # call like any show's details, and the shows TVmaze added since, kept for search), 4 for
 # this app's search and 4 for Next Watch's.
-LIVE = Live(calls=12)
-RATINGS = Episodes(EpisodeStore(os.environ.get('RATINGS_CACHE') or HERE.parent / 'data/cache/episode-ratings.sqlite3'), LIVE,
+EPISODE_STORE = EpisodeStore(os.environ.get('RATINGS_CACHE') or HERE.parent / 'data/cache/episode-ratings.sqlite3')
+LIVE = Live(calls=12, store=EPISODE_STORE)
+RATINGS = Episodes(EPISODE_STORE, LIVE,
                    ended=(s['id'] for s in ENGINE.shows if s.get('status') == 'Ended'))
 RATING_KEY = os.environ.get('TMDB_API_KEY', '')
 if RATING_KEY:

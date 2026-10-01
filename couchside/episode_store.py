@@ -66,6 +66,7 @@ class Store:
             self.db.execute('ALTER TABLE episodes ADD COLUMN matrix BLOB')
         self.db.commit()
         self.db.execute('CREATE TABLE IF NOT EXISTS summaries (id INTEGER PRIMARY KEY, data TEXT)')
+        self.db.execute('CREATE TABLE IF NOT EXISTS live_details (path TEXT PRIMARY KEY, fetched REAL, data BLOB)')
         self.summaries = {}
         for show_id, data in self.db.execute('SELECT id, data FROM summaries'):
             try:
@@ -82,6 +83,25 @@ class Store:
                 if held:
                     self.summarize(show_id, held[1], at=held[0])
         self.db.commit()
+
+    def get_live(self, path):
+        """TVmaze show details share this durable store, with a bounded stale fallback."""
+        with self.lock:
+            row = self.db.execute('SELECT fetched, data FROM live_details WHERE path=?', (path,)).fetchone()
+            if not row or self.clock() - row[0] > 30 * DAY:
+                return None
+            try:
+                return row[0], json.loads(gzip.decompress(row[1]))
+            except (OSError, ValueError, EOFError):
+                return None
+
+    def put_live(self, path, value):
+        data = gzip.compress(json.dumps(value, separators=(',', ':'), allow_nan=False).encode(), mtime=0)
+        with self.lock:
+            self.db.execute('INSERT OR REPLACE INTO live_details VALUES (?, ?, ?)', (path, self.clock(), data))
+            self.db.execute('DELETE FROM live_details WHERE fetched<?', (self.clock() - 30 * DAY,))
+            self.db.execute('DELETE FROM live_details WHERE path IN (SELECT path FROM live_details ORDER BY fetched DESC LIMIT -1 OFFSET ?)', (self.most,))
+            self.db.commit()
 
     def summarize(self, show_id, value, at=None):
         episodes = [e for e in value['episodes'] if not e.get('airdate') or e['airdate'] <= date.today().isoformat()]

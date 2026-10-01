@@ -1,4 +1,4 @@
-import {esc,score,code,average,seasons,band,icon,html,legend,ratings,ratingSource,ratingSources} from './ratings.js?v=d111fa7a20ae2e41';
+import {esc,score,code,average,seasons,band,icon,html,legend,ratings,ratingSource,ratingSources} from './ratings.js?v=bd9d1b3ac9a562f7';
 const plain = value => new DOMParser().parseFromString(value||'', 'text/html').body.textContent||'';
 const layouts=[['list','Episode list'],['grid','Grid'],['wrapped','Wrapped'],['timeline','Timeline']];
 const ep = e => ({...e,still:e.image,summary:plain(e.summary)});
@@ -134,11 +134,11 @@ function compareSearch(host,s,onPick) {
   comparison.dispose=()=>{token++;clearTimeout(timer);dialog?.removeEventListener('pointerdown',outside);};
   return comparison;
 }
-export async function mountEpisodeRatings(t,{openEpisode,episodeEl,revealButton,paintReveal,unfold,busy,snippet,revealLabel}) {
+export async function mountEpisodeRatings(t,{openEpisode,episodeEl,revealButton,paintReveal,unfold,busy,snippet,revealLabel},saved=null) {
   if(t.episodes.dataset.ratingsMounted)return;
   t.episodes.dataset.ratingsMounted='true';
   let data;
-  try{data=await ratings(t.id);}catch{return;}
+  try{data=saved||await ratings(t.id);}catch{return;}
   if(!t.episodes.isConnected||!data.episodes.length)return;
   const s={...data,name:t.live?.name||t.name.textContent||data.name||t.card.name||'This show'};
   let layout='list',season='all',expanded=t.open.episodes,other=null;
@@ -177,7 +177,7 @@ export async function mountEpisodeRatings(t,{openEpisode,episodeEl,revealButton,
     tip.hide();t.ratingsUpdate();const es=s.episodes.filter(e=>season==='all'||e.season===Number(season));
     if(layout==='list'){
       root.replaceChildren();const list=document.createElement('ol');list.className='eps';list.id='ratings-episode-list';
-      es.forEach(e=>{
+      const rowFor=e=>{
         const row=episodeEl(ep(e),{show:s.id,number:e.season,episodes:s.episodes.filter(x=>x.season===e.season).map(ep)});
         if(season==='all'){const number=row.querySelector('.ep-num');number.textContent=code(e);number.classList.add('ratings-list-code');row.querySelector('.ep-open')?.setAttribute('aria-label',`${code(e)}: ${e.name}`);}
         const heading=row.querySelector('h4'),meta=document.createElement('span'),badge=document.createElement('span'),b=band(e.rating);
@@ -188,12 +188,14 @@ export async function mountEpisodeRatings(t,{openEpisode,episodeEl,revealButton,
         badge.setAttribute('role','img');badge.setAttribute('aria-label',label);badge.title=label;
         html(badge,e.rating==null?'Unrated':`<b>${score(e.rating)}</b><small>/10</small>`);
         meta.append(badge);heading.append(meta);
-        list.append(row);
-      });
+        return row;
+      };
       root.append(list);
       const set=open=>{
         const shown=snippet(es.length,3);
-        [...list.children].forEach((row,index)=>{row.hidden=!open&&index>=shown;});
+        // Build only what is shown. Long-running series can have thousands of rows;
+        // constructing them and their images just to hide them stalls the title sheet.
+        list.replaceChildren(...es.slice(0,open?es.length:shown).map(rowFor));
         more.parentElement.hidden=shown===es.length;
         paintReveal(more,revealLabel('episodes',es.length,open),open);
       };

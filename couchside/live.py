@@ -16,9 +16,11 @@ answer that carries a show's cast and seasons carries the show itself too (about
 its page costs no more calls than any other show's details.
 """
 from collections import OrderedDict, deque
+from concurrent.futures import Future
 import html
 import json
 import re
+import sqlite3
 import threading
 import time
 from urllib.error import HTTPError, URLError
@@ -310,13 +312,14 @@ def trim_episode(raw):
 
 
 class Live:
-    def __init__(self, fetch=None, base=API, ttl=6 * 3600, size=500, calls=15, period=10.0, clock=time.monotonic):
+    def __init__(self, fetch=None, base=API, ttl=6 * 3600, size=500, calls=15, period=10.0, clock=time.monotonic, store=None):
         self.fetch = fetch or self._http
         self.base, self.ttl, self.size, self.calls, self.period, self.clock = base, ttl, size, calls, period, clock
         self.cache = OrderedDict()
         self.sent = deque()
         self.pause = 0.0
         self.lock = threading.Lock()
+        self.store, self.inflight = store, {}
 
     def _http(self, path):
         request = Request(self.base + path, headers={'User-Agent': AGENT, 'Accept': 'application/json'})
@@ -331,7 +334,41 @@ class Live:
                 self.sent.popleft()
             return now >= self.pause and len(self.sent) < self.calls - reserve
 
-    def get(self, path, trim, missing=None, ttl=None):
+    def get(self, path, trim, missing=None, ttl=None, persist=False):
+        """Concurrent readers share one upstream lookup and one rate-budget entry."""
+        with self.lock:
+            held = self.cache.get(path)
+            if held and held[0] > self.clock():
+                self.cache.move_to_end(path)
+                return held[1]
+            pending = self.inflight.get(path)
+            owner = pending is None
+            if owner:
+                pending = self.inflight[path] = Future()
+        if not owner:
+            try:
+                return pending.result(timeout=8)
+            except TimeoutError:
+                raise LiveError('Details are loading. Try again in a moment.', 503) from None
+        try:
+            value = self._get(path, trim, missing, ttl, persist)
+            pending.set_result(value)
+            return value
+        except Exception as exc:
+            pending.set_exception(exc)
+            raise
+        finally:
+            with self.lock:
+                self.inflight.pop(path, None)
+
+    def _save(self, path, value, persist):
+        if persist and self.store:
+            try:
+                self.store.put_live(path, value)
+            except (OSError, sqlite3.Error):
+                pass  # The memory cache remains usable if the durable store is busy.
+
+    def _get(self, path, trim, missing=None, ttl=None, persist=False):
         """A trimmed answer for path. With missing set, a 404 is an answer too, cached like
         any other, so a show with no trailer is not asked about again and again. ttl, when
         given, is how long this answer is kept in place of the client's own."""
@@ -339,6 +376,17 @@ class Live:
         now = self.clock()
         with self.lock:
             held = self.cache.get(path)
+            if held is None and persist and self.store:
+                try:
+                    saved = self.store.get_live(path)
+                except (OSError, sqlite3.Error):
+                    saved = None
+                if saved:
+                    at, value = saved
+                    held = (now + ttl - (self.store.clock() - at), value)
+                    self.cache[path] = held
+                    while len(self.cache) > self.size:
+                        self.cache.popitem(last=False)
             if held and held[0] > now:
                 self.cache.move_to_end(path)
                 return held[1]
@@ -356,6 +404,10 @@ class Live:
                 value = missing
                 with self.lock:
                     self.cache[path] = (self.clock() + ttl, value)
+                    self.cache.move_to_end(path)
+                    while len(self.cache) > self.size:
+                        self.cache.popitem(last=False)
+                self._save(path, value, persist)
                 return value
             if exc.code in (403, 429):
                 with self.lock:
@@ -376,13 +428,14 @@ class Live:
             self.cache.move_to_end(path)
             while len(self.cache) > self.size:
                 self.cache.popitem(last=False)
+        self._save(path, value, persist)
         return value
 
     def show(self, show_id):
         """A show's details. An id TVmaze does not know is an answer too, kept like any
         other, so one asked for as a show newer than the catalogue that TVmaze has not got
         either is not asked about again and again."""
-        found = self.get(SHOW.format(id=show_id), trim_show, missing={})
+        found = self.get(SHOW.format(id=show_id), trim_show, missing={}, persist=True)
         if not found:
             raise LiveError('TVmaze has no details for this show.', 404)
         return found

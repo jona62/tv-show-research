@@ -1,4 +1,4 @@
-import {matrixRatings,cachedMatrix,freshMatrix,ratingSources,compactMatrix,icon,html,esc,acceptMatrices} from './ratings.js';
+import {matrixRatings,cachedMatrix,freshMatrix,ratingSources,compactMatrix,matrixSkeleton,icon,html,esc,acceptMatrices} from './ratings.js';
 const KEY='couchside.show-cards';
 let matrix=false;
 try{matrix=localStorage.getItem(KEY)==='matrix';}catch{}
@@ -14,6 +14,7 @@ function paintMatrix(tile,s){
   if(drawn.get(tile)===signature)return;
   drawn.set(tile,signature);
   tile.dataset.matrixState='ready';
+  tile.setAttribute('aria-busy','false');
   const source=ratingSources(s);
   html(tile,`${compactMatrix(s)}<span class="ratings-mini-caption">${s.episodes.length?`${s.episodes.length} episodes${source?' · '+esc(source):''}`:'No episodes yet'}</span>`);
 }
@@ -41,13 +42,14 @@ function pump(){
       if(!waiting.has(Number(node.dataset.show))||!node.isConnected)return false;
       node.dataset.matrixRetries=String(Number(node.dataset.matrixRetries||0)+1);
       if(Number(node.dataset.matrixRetries)<=240)return true;
-      if(node.dataset.matrixState!=='ready'){node.dataset.matrixState='error';html(node,'<span class="ratings-mini-empty">Ratings unavailable</span>');}
+      if(node.dataset.matrixState!=='ready'){node.dataset.matrixState='error';node.setAttribute('aria-busy','false');html(node,'<span class="ratings-mini-empty">Ratings unavailable</span>');}
       return false;
     });
     if(retry.length)setTimeout(()=>{pending.push(...retry);pump();},body.pending.length?500:5000);
   }).catch(()=>{
     for(const node of batch)if(node.dataset.matrixState!=='ready'){
       node.dataset.matrixState='error';html(node,'<span class="ratings-mini-empty">Ratings unavailable</span>');
+      node.setAttribute('aria-busy','false');
     }
   }).finally(()=>{running=false;pump();});
 }
@@ -82,7 +84,8 @@ export function enhanceShowCard(card,show,related=false){
   const node=document.createElement('button');node.type='button';node.className='ratings-card-matrix';node.dataset.show=show.id;
   node.dataset.matrixState='idle';
   node.setAttribute('aria-label',`Open episode ratings for ${show.name}`);
-  html(node,`<span class="ratings-mini-loading" aria-hidden="true"></span><span class="ratings-mini-caption">Episode ratings</span>`);
+  node.setAttribute('aria-busy','true');
+  html(node,`${matrixSkeleton()}<span class="ratings-mini-caption">Episode ratings</span>`);
   node.onclick=()=>hit.click();card.append(node);
   const cached=cachedMatrix(Number(show.id));
   if(cached)paintMatrix(node,cached);

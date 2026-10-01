@@ -8,7 +8,7 @@ import threading
 import time
 
 from episode_store import DAY, MAX_AGE, Store, Episodes, Tmdb, choose_rating, merge
-from live import LiveError
+from live import Live, LiveError
 
 EPISODES = [
     {'id': 1, 'season': 1, 'number': 1, 'name': 'Pilot', 'rating': 8.1,
@@ -16,6 +16,75 @@ EPISODES = [
     {'id': 2, 'season': 1, 'number': 2, 'name': 'Next', 'rating': None,
      'airdate': '2020-01-08', 'summary': 'The next description.', 'image': None},
 ]
+
+
+class LiveDetailsTests(TestCase):
+    def setUp(self):
+        self.folder = TemporaryDirectory()
+        self.addCleanup(self.folder.cleanup)
+        self.now = 1000
+        self.path = Path(self.folder.name) / 'ratings.sqlite3'
+        self.store = Store(self.path, clock=lambda: self.now)
+        self.addCleanup(self.store.db.close)
+        self.raw = {'id': 169, 'name': 'A show', '_embedded': {'cast': [], 'seasons': []}}
+
+    def test_show_details_survive_restart_without_renewing_their_freshness(self):
+        calls = []
+        first = Live(fetch=lambda path: calls.append(path) or self.raw, ttl=60, store=self.store)
+        value = first.show(169)
+        self.now += 10
+        reopened = Store(self.path, clock=lambda: self.now)
+        self.addCleanup(reopened.db.close)
+        second = Live(fetch=lambda path: calls.append(path) or {**self.raw, 'name': 'Updated'}, ttl=60, store=reopened)
+        self.assertEqual(second.show(169), value)
+        self.assertEqual(len(calls), 1)
+        self.now += 60
+        # A new process restores the remaining TTL, not another full lifetime.
+        third = Live(fetch=lambda path: calls.append(path) or {**self.raw, 'name': 'Updated'}, ttl=60, store=reopened)
+        self.assertEqual(third.show(169)['about']['name'], 'Updated')
+        self.assertEqual(len(calls), 2)
+
+    def test_saved_details_cover_throttling_but_expire_after_retention_limit(self):
+        value = Live(fetch=lambda path: self.raw, ttl=60, store=self.store).show(169)
+        self.now += 61
+        def throttled(path):
+            raise HTTPError(path, 429, 'Busy', {}, None)
+        reader = Live(fetch=throttled, ttl=60, store=self.store)
+        self.assertEqual(reader.show(169), value)
+        self.assertGreater(reader.pause, reader.clock())
+        self.now += 31 * DAY
+        with self.assertRaises(LiveError):
+            Live(fetch=throttled, store=self.store).show(169)
+
+    def test_concurrent_details_share_one_upstream_call_and_budget_entry(self):
+        entered, release = threading.Event(), threading.Event()
+        calls = []
+        def fetch(path):
+            calls.append(path)
+            entered.set()
+            release.wait(2)
+            return self.raw
+        reader = Live(fetch=fetch, store=self.store)
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            futures = [pool.submit(reader.show, 169) for _ in range(8)]
+            self.assertTrue(entered.wait(1))
+            release.set()
+            values = [f.result(2) for f in futures]
+        self.assertTrue(all(value == values[0] for value in values))
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(len(reader.sent), 1)
+        self.assertFalse(reader.inflight)
+
+    def test_missing_show_is_cached_across_restart(self):
+        calls = []
+        def missing(path):
+            calls.append(path)
+            raise HTTPError(path, 404, 'Gone', {}, None)
+        for _ in range(2):
+            with self.assertRaises(LiveError) as error:
+                Live(fetch=missing, store=self.store).show(169)
+            self.assertEqual(error.exception.status, 404)
+        self.assertEqual(len(calls), 1)
 
 
 class FakeLive:

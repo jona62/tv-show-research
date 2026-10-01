@@ -1149,8 +1149,9 @@ dialog.peek::backdrop{background:#000000c7}
 .ratings-mini{display:block;width:100%;height:64px;object-fit:contain}
 .ratings-mini-caption{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ratings-mini-empty{font-size:11px;color:var(--dim)}
-.ratings-mini-loading{display:block;width:100%;height:48px;background:repeating-linear-gradient(90deg,#ffffff0a 0 5px,transparent 5px 8px);opacity:.6}
-@media(max-width:600px){.ratings-controls{gap:8px}.ratings-controls select{min-width:0;flex:1;font-size:15px;padding:8px}.ratings-view-button{gap:8px;font-size:15px;padding:8px 10px}.ratings-view-button>.ratings-icon:last-child{margin-left:4px}.ratings-key{gap:9px 12px}.ratings-key small{display:none}.ratings-cell{height:40px}.ratings-compare-head{align-items:flex-start;flex-direction:column;gap:8px}.ratings-search-wrap input{font-size:16px}.ratings-matrix-cards .ratings-card-matrix{height:80px;padding:8px 3px 3px}.ratings-mini{height:46px}.ratings-mini-caption{font-size:9px}}
+.ratings-mini-loading{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));grid-template-rows:repeat(3,1fr);gap:3px;width:100%;height:64px}
+.ratings-mini-cell{min-width:0;border-radius:2px}
+@media(max-width:600px){.ratings-controls{gap:8px}.ratings-controls select{min-width:0;flex:1;font-size:15px;padding:8px}.ratings-view-button{gap:8px;font-size:15px;padding:8px 10px}.ratings-view-button>.ratings-icon:last-child{margin-left:4px}.ratings-key{gap:9px 12px}.ratings-key small{display:none}.ratings-cell{height:40px}.ratings-compare-head{align-items:flex-start;flex-direction:column;gap:8px}.ratings-search-wrap input{font-size:16px}.ratings-matrix-cards .ratings-card-matrix{height:80px;padding:8px 3px 3px}.ratings-mini,.ratings-mini-loading{height:46px}.ratings-mini-caption{font-size:9px}}
 @media(max-width:600px) and (hover:hover) and (pointer:fine){.ratings-matrix-cards .card>.card-meta{bottom:80px}.ratings-matrix-cards .card>.badge-rate{bottom:86px}}
 @media(prefers-reduced-motion:reduce){.ratings-cell{transition:none}}
 @media(max-width:600px){.episode-ratings .ep h4{flex-direction:column;gap:6px}.episode-ratings .ratings-list-meta{gap:8px}}

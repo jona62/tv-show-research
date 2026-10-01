@@ -121,6 +121,18 @@ for the same cold show share one lookup. Cold title pages use TVmaze first while
 TMDB enrichment has its own queue and worker, so long-running shows do not hold up
 other shows' first matrices. Visible requests take priority in both queues.
 
+Opening a show starts its all-episode lookup alongside the title and cast requests.
+Saved episodes populate the list and rating views without a separate season request,
+and a card's description appears immediately. The collapsed episode list builds only
+its visible rows; expanding it builds the rest. Unloaded card matrices show individual
+shimmering cells, with motion disabled for reduced-motion preferences. Unrated episodes
+keep their ordinary gray cells once the data arrives.
+
+TVmaze show details also live in the same volume-backed SQLite cache. They remain
+fresh for six hours across restarts, with up to 30 days of saved data available during
+upstream failures. Storage and memory caches are bounded, and concurrent live lookups
+share one upstream call and one rate-budget entry.
+
 Home, Browse, New & Popular, My List and Search share responsive discovery controls.
 The header's funnel opens filters for the current page and marks active choices.
 Phones and small tablets keep a catalogue search bar beside it; desktop search

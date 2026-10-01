@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { band, average, compactMatrix, ratings, cachedRatings, matrixRatings, cachedMatrix, ratingSources } from './ratings.js';
+import { band, average, compactMatrix, matrixSkeleton, ratings, cachedRatings, matrixRatings, cachedMatrix, ratingSources } from './ratings.js';
 import { chart } from './episode-ratings.js';
 
 assert.equal(band(9.7).name, 'Absolute cinema');
@@ -24,6 +24,8 @@ assert.match(matrix, /viewBox="0 0 3 2"/);
 assert.match(matrix, /&lt;Pilot&gt;/);
 assert.match(matrix, /x="2" y="0"/); // A missing episode position stays empty.
 assert.match(matrix, /fill="#bdbdbd"/);
+assert.equal((matrixSkeleton().match(/ratings-mini-cell skel/g) || []).length, 24);
+assert.match(matrixSkeleton(), /aria-hidden="true"/);
 const timeline = chart(episodes);
 assert.match(timeline, /data-min="6"/);
 assert.match(timeline, />6.5<\/text>/);
