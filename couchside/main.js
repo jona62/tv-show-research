@@ -1,6 +1,8 @@
 import { mountEpisodeRatings } from './episode-ratings.js';
 import { mountTitleSections } from './title-sections.js';
-import { enhanceShowCard } from './show-cards.js';
+import { enhanceShowCard,receiveMatrices,matrixPreference } from './show-cards.js';
+import {filtersFor,filterKey,selectShows} from './filter-state.js';
+import {filterBar} from './filters.js';
 import { cachedRatings } from './ratings.js';
 import { encode, decode, LIMITS, codeFrom } from './transfer.js';
 import { matrix, svgPath } from './qr.js';
@@ -351,6 +353,7 @@ async function request(path, options = {}, started = null) {
     error.status = res.status;
     throw error;
   }
+  receiveMatrices(body.matrices);
   return body;
 }
 
@@ -401,8 +404,8 @@ function post(path, body, signal) {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: packed(body), signal,
   });
   if (!KEEP[path]) return send();
-  const { profile, settings, id, genre } = body;
-  return asked(`${path} ${JSON.stringify([profile, settings, id, genre])}`, KEEP[path] * MINUTE, send);
+  const { profile, settings, id, genre, filters, matrix, recommendation_filters } = body;
+  return asked(`${path} ${JSON.stringify([profile, settings, id, genre, filters, matrix, recommendation_filters])}`, KEEP[path] * MINUTE, send);
 }
 const taste = () => tasteOf(state);
 
@@ -545,7 +548,7 @@ edgeBack(() => !!titleId || !!personId || (view !== 'home' && !document.querySel
 let home = null, homeKey = '', homeReq = 0, homeAbort = null, homeTimer = 0, moreBusy = false;
 // Why the page could not be had, if it could not, so the views drawn from it stop waiting.
 let homeFailed = '';
-const currentKey = () => pageKey(taste(), state.saved.map(s => s.id));
+const currentKey = () => pageKey(taste(), state.saved.map(s => s.id)) + filterKey('home');
 
 function refresh(delay = 450) {
   clearTimeout(homeTimer);
@@ -587,6 +590,7 @@ function renewHome() {
 for (const d of document.querySelectorAll('dialog')) d.addEventListener('close', renewHome);
 
 function rememberHome(data) {
+  receiveMatrices(data.matrices);
   if (data.hero) remember(data.hero);
   (data.featured || []).forEach(remember);
   for (const r of data.rows) r.items.forEach(remember);
@@ -814,11 +818,13 @@ function renderHomeLoading() {
 }
 
 function renderHome() {
+  $('hero').hidden=!home.hero;
   // The featured shows, the visit's hero first; a page kept from before them has its hero alone.
-  renderFeatured(home.featured?.length ? home.featured : [home.hero]);
+  if (home.hero) renderFeatured(home.featured?.length ? home.featured : [home.hero]);
+  else { $('hero').replaceChildren(); $('hero').classList.remove('loading'); }
   // The hero rests for the rest of the day and, the day's first, for a week, so the next
   // visits' are others (fresh.js).
-  noteHero(memory, home.hero.id, today());
+  if(home.hero) noteHero(memory, home.hero.id, today());
   keepMemory();
   const holder = $('rows');
   holder.replaceChildren();
@@ -871,8 +877,8 @@ function settleHome(id) {
 // Recently viewed: titles you opened in the last fortnight and have not rated or listed.
 function recentRow() {
   const rated = new Set(state.profile.map(p => p.id)), saved = new Set(state.saved.map(s => s.id));
-  const items = recentlyViewed(viewed, dayNumber(today()), { rated, saved })
-    .map(v => ({ ...v, ...(known.get(v.id) || {}) }));
+  const items = selectShows(recentlyViewed(viewed, dayNumber(today()), { rated, saved })
+    .map(v => ({ ...v, ...(known.get(v.id) || {}) })),'home');
   const sec = rowEl({ key: 'recent', title: 'Recently viewed', kind: 'recent', items });
   sec.id = 'row-recent';
   sec.hidden = !items.length;
@@ -1500,7 +1506,7 @@ function rowEl(r, { watch = false } = {}) {
       num.setAttribute('aria-hidden', 'true');
       li.append(num);
     }
-    const card = cardEl(c, { rank: r.kind === 'top10' ? n + 1 : 0, soon: r.kind === 'soon', row, ahead: true });
+    const card = cardEl(c, { rank: r.kind === 'top10' ? c.rank || n + 1 : 0, soon: r.kind === 'soon', row, ahead: true });
     if (watch) seenWatch.observe(card, c.id);
     li.append(card);
     track.append(li);
@@ -1991,7 +1997,7 @@ function peekOf(card, close) {
 peeks(peekOf);
 
 function listRow() {
-  const items = state.saved.slice().reverse().slice(0, 20).map(s => ({ ...s, ...(known.get(s.id) || {}) }));
+  const items = selectShows(state.saved.slice().reverse().map(s => ({ ...s, ...(known.get(s.id) || {}) })),'home').slice(0,20);
   const sec = rowEl({ key: 'list', title: 'My List', kind: 'list', items });
   sec.id = 'row-list';
   sec.hidden = !items.length;
@@ -2324,6 +2330,12 @@ function buildTitle(c) {
               open: { watch: false, episodes: false, clips: false } };
   paintOut(t, c);
   mountTitleSections(t, { revealButton, paintReveal, unfold, busy, edges });
+  for(const [page,section] of [['more',more],['fans',fans]]){
+    const controls=filterBar(page,{genres:boot.genres,languages:boot.languages||[],compact:true,onChange:()=>{
+      titleOf(t.id).then(data=>{if(T!==t)return;t.data=data;[...data.more,...(data.fans||[])].forEach(remember);paintMore();},e=>toast(e.message));
+    }});
+    section.querySelector('h3').after(controls.element);
+  }
   return t;
 }
 
@@ -2334,7 +2346,7 @@ function paintOut(t, s) {
 
 // A title's page for this list, asked for once however many ask: a finger landing on a
 // poster asks (prefetch), and opening it finds the answer on its way (post keeps it).
-const titleOf = id => freshFields().then(fresh => post('/api/title', { ...taste(), ...fresh, id }));
+const titleOf = id => freshFields().then(fresh => post('/api/title', { ...taste(), ...fresh, id, matrix:matrixPreference(), recommendation_filters:{more:filtersFor('more'),fans:filtersFor('fans')} }));
 
 // Where to watch on its way: its heading over a line of pills, as watchEl lays it out.
 function watchSkeleton() {
@@ -2851,7 +2863,8 @@ function paintMore() {
   const name = T.data.show?.name || T.card.name;
   T.fansSub.textContent = name ? `Shows that ${name} fans also look up` : 'Shows its fans also look up';
   T.fansList.replaceChildren(...fans.map(moreCard));
-  T.fans.hidden = !fans.length;
+  T.fans.hidden = !fans.length&&!filterKey('fans');
+  if(!fans.length&&filterKey('fans'))T.fansList.append(el('li','No recommendations match these filters.','muted'));
   T.sectionsUpdate?.();
 }
 // A show like this one: how similar it is to this title, in the green a match wears, and
@@ -3487,6 +3500,16 @@ function buildPerson(who) {
   foot.hidden = true;
   foot.append(links);
   $('p-sheet').replaceChildren(close, hero, body, parts.roles.box, parts.appearances.box, parts.crew.box, foot);
+  const controls=filterBar('person',{genres:boot.genres,languages:boot.languages||[],search:true,compact:true,onChange:query=>{
+    if(P?.id===who.id){P.filterQuery=query;paintCredits();}
+  }});
+  controls.element.querySelector('input').placeholder='Find a show in these credits';
+  controls.element.querySelector('.sr').textContent='Find a show in these credits';
+  const roles=el('label','','discovery-sort');roles.append(el('span','Credit type','sr'));
+  const role=el('select');
+  for(const [value,label] of [['','All credits'],['roles','TV roles'],['appearances','As themselves'],['crew','Behind the camera']]){const option=el('option',label);option.value=value;role.append(option);}
+  role.onchange=()=>{if(P?.id===who.id){P.creditRole=role.value;paintCredits();}};roles.append(role);controls.element.querySelector('.discovery-tools').append(roles);
+  parts.roles.box.before(controls.element);
   return { id: who.id, who, close, hero, name, said, main, side, body, parts, foot, links, data: null, bio: undefined,
            error: null, fitBio: null, open: { roles: false, appearances: false, crew: false, bio: false } };
 }
@@ -3623,8 +3646,9 @@ function paintCredits() {
   const { person: who } = P.data;
   P.parts.appearances.h.textContent = selfHeading(who.gender);
   for (const part of ['roles', 'appearances', 'crew']) {
-    const list = P.data[part], s = P.parts[part];
-    s.box.hidden = !list.length;
+    const creditsById=new Map(P.data[part].map(c=>[c.id,c]));
+    const list=selectShows(P.data[part].map(c=>({...c,...(c.show||{})})),'person',P.filterQuery||'').map(c=>creditsById.get(c.id)),s=P.parts[part];
+    s.box.hidden = !list.length||!!(P.creditRole&&P.creditRole!==part);
     s.more?.parentElement.remove();
     s.more = null;
     s.grid.replaceChildren(...list.map(c => creditCard(c, who.gender)));
@@ -3784,7 +3808,7 @@ function renderBrowse() {
   }
   syncGenreNudges();
   $('browse-h').textContent = valid ? genreLabel(valid) : 'Browse';
-  if (!valid) {
+  if (!valid && !filterKey('browse')) {
     browseKey = '';
     const tiles = el('ul', '', 'tiles');
     tiles.append(...GENRES.map(g => {
@@ -3799,10 +3823,10 @@ function renderBrowse() {
     $('browse-body').replaceChildren(tiles);
     return;
   }
-  const key = `${valid}|${JSON.stringify(taste())}`;
+  const key = `${valid}|${JSON.stringify(taste())}${filterKey('browse')}`;
   if (key === browseKey) return;
   browseKey = key;
-  loadBrowse(valid);
+  loadBrowse(valid || 'all');
 }
 
 async function loadBrowse(genre) {
@@ -3810,7 +3834,7 @@ async function loadBrowse(genre) {
   $('browse-body').replaceChildren(skelRow('section', { title: '12em' }), skelRow('section', { title: '10em' }),
     skelRow('section', { title: '11em' }));
   try {
-    const data = await post('/api/browse', { ...taste(), ...await freshFields(), genre });
+    const data = await post('/api/browse', { ...taste(), ...await freshFields(), genre, filters:filtersFor('browse'), matrix:matrixPreference() });
     if (id !== browseReq) return;
     for (const r of data.rows) r.items.forEach(remember);
     $('browse-body').replaceChildren(...(data.rows.length ? data.rows.map(rowEl)
@@ -3869,21 +3893,31 @@ window.addEventListener('scroll', followGenres, { passive: true });
 /* ----------------------------------------------------------- new & popular */
 // Until the home page is here, its rows stand in as they will land: the Top 10, new this
 // year, Coming soon with its dates and Popular right now.
+let newData=null,newKey='',newRequest=0;
 function renderNew() {
+  const key=JSON.stringify(taste())+filterKey('new');
+  const independent=!!(filterKey('home')||filterKey('new'));
+  if(independent&&key!==newKey){
+    newKey=key;newData=null;const id=++newRequest;
+    freshFields().then(ask=>post('/api/home',{...homeBody(state,ask),filters:filtersFor('new')})).then(data=>{
+      if(id!==newRequest)return;newData=data;rememberHome(data);if(view==='new')renderNew();
+    },e=>{if(id===newRequest){newKey='';$('new-body').replaceChildren(el('p',e.message,'row-empty'));}});
+  }
+  const feed=independent?newData:home;
   const holder = $('new-body');
-  if (!home) {
+  if (!feed) {
     holder.replaceChildren(...(homeFailed ? [el('p', homeFailed, 'row-empty')]
       : [skelRow('section', { kind: 'top10', title: '9em' }), skelRow('section', { title: '12em' }),
         skelRow('section', { kind: 'soon', title: '7em' }), skelRow('section', { title: '9em' })]));
     return;
   }
-  const rows = [{ key: 'top10', title: 'Top 10 shows today', kind: 'top10', items: home.top10 }];
-  if (home.fresh.length) {
-    rows.push({ key: 'fresh', title: home.personal ? 'New this year, picked for you' : 'New this year', kind: 'row', items: home.fresh });
+  const rows = feed.top10.length?[{ key: 'top10', title: 'Top 10 shows today', kind: 'top10', items: feed.top10 }]:[];
+  if (feed.fresh.length) {
+    rows.push({ key: 'fresh', title: feed.personal ? 'New this year, picked for you' : 'New this year', kind: 'row', items: feed.fresh });
   }
-  if (home.soon.length) rows.push({ key: 'soon', title: 'Coming soon', kind: 'soon', items: home.soon });
-  if (home.popular?.length) rows.push({ key: 'popular', title: 'Popular right now', kind: 'row', items: home.popular });
-  redraw(holder, () => holder.replaceChildren(...rows.map(rowEl)));
+  if (feed.soon.length) rows.push({ key: 'soon', title: 'Coming soon', kind: 'soon', items: feed.soon });
+  if (feed.popular?.length) rows.push({ key: 'popular', title: 'Popular right now', kind: 'row', items: feed.popular });
+  redraw(holder, () => holder.replaceChildren(...(rows.length?rows.map(rowEl):[el('p','No shows match these filters. Try widening them or clear all.','row-empty')])));
   reveal(holder.children);
 }
 
@@ -3929,11 +3963,20 @@ function fill(grid, items, options = () => ({})) {
   })));
 }
 
+let listQuery='',listHydrating=false;
+const listLoaded=new Set();
+function hydrateList(){
+  const ids=[...new Set([...state.saved,...state.profile].map(s=>s.id))].filter(id=>!listLoaded.has(id));
+  if(listHydrating||!ids.length)return;
+  listHydrating=true;
+  post('/api/shows',{ids:ids.slice(0,200),matrix:matrixPreference()}).then(data=>{data.shows.forEach(remember);ids.slice(0,200).forEach(id=>listLoaded.add(id));if(view==='list')renderList();},()=>{}).finally(()=>{listHydrating=false;if(ids.length>200)hydrateList();});
+}
 function renderList() {
-  const saved = state.saved.slice().reverse().map(s => ({ ...s, ...(known.get(s.id) || {}) }));
+  hydrateList();
+  const saved = selectShows(state.saved.slice().reverse().map(s => ({ ...s, ...(known.get(s.id) || {}) })),'list',listQuery);
   $('list-note').textContent = saved.length
     ? `${saved.length} show${saved.length === 1 ? '' : 's'} saved for later.`
-    : 'Nothing saved yet. Tap My List on any show and it waits here.';
+    : state.saved.length?'No saved shows match these filters.':'Nothing saved yet. Tap My List on any show and it waits here.';
   fill($('list-grid'), saved);
 
   const filters = $('rated-filter');
@@ -3950,8 +3993,8 @@ function renderList() {
   // A long list is found by name and shown a page at a time, newest first.
   $('rated-find-box').hidden = state.profile.length <= RATED_PAGE;
   const needle = folded(ratedFind);
-  const list = state.profile.filter(p => GROUPS[ratedFilter][1](p) && (!needle || folded(p.name).includes(needle)))
-    .reverse();
+  const list = selectShows(state.profile.filter(p => GROUPS[ratedFilter][1](p) && (!needle || folded(p.name).includes(needle)))
+    .reverse().map(p=>({...p,...known.get(p.id)})),'list',listQuery);
   const page = list.slice(0, ratedShown);
   $('rated-note').textContent = !state.profile.length ? 'Nothing rated yet. Open a show and tap a thumb or the heart.'
     : !list.length ? (needle ? `No show you rated matches “${ratedFind}”.` : 'Nothing here yet.')
@@ -4014,14 +4057,15 @@ function search(q, typed = true) {
   const query = q.trim();
   for (const input of [$('q'), $('q-page')]) if (document.activeElement !== input && input.value !== q) input.value = q;
   paintRecent();
-  if (query === searchShown) return;
-  searchShown = query;
+  const key=query+filterKey('search');
+  if (key === searchShown) return;
+  searchShown = key;
   clearTimeout(searchTimer);
   const id = ++searchReq;
-  if (!query) { suggestions(); return; }
+  if (!query&&!filterKey('search')) { suggestions(); return; }
   // One character finds only a show of that one letter, such as V, so until one turns
   // up the page keeps its suggestions.
-  const quiet = query.length < 2;
+  const quiet = query.length === 1;
   if (quiet) suggestions();
   else {
     $('search-note').textContent = 'Searching…';
@@ -4032,11 +4076,11 @@ function search(q, typed = true) {
   searchTimer = setTimeout(async () => {
     try {
       const { shows, missing = [], missing_first: first = false, related = null } =
-        await call(`/api/search?q=${encodeURIComponent(query)}`);
+        await call(`/api/search?q=${encodeURIComponent(query)}&filters=${encodeURIComponent(JSON.stringify(filtersFor('search')))}${matrixPreference()?'&matrix=1':''}`);
       if (id !== searchReq || (quiet && !shows.length)) return;
       shows.forEach(remember);
       resultsFor = query;
-      $('search-note').textContent = searchNote(query, shows.length, missing.length, related?.shows?.length || 0);
+      $('search-note').textContent = !query?`${shows.length} shows match these filters.`:searchNote(query, shows.length, missing.length, related?.shows?.length || 0);
       // Every match names its show under its poster, as a poster's art does not always
       // say which show it is: Outer Banks' says OBX 5.
       fill($('results'), shows.map(s => ({ ...s, ...(known.get(s.id) || {}), aka: s.aka })),
@@ -4698,6 +4742,16 @@ $('dock-mini').addEventListener('click', () => {
 });
 $('dock').addEventListener('touchstart', () => {}, { passive: true });
 for (const b of document.querySelectorAll('.close-btn')) b.append(icon('close'));
+for(const [page,anchor] of [['home','rows'],['browse','browse-body'],['new','new-body'],['list','list-note'],['search','recent-page']]){
+  const controls=filterBar(page,{genres:boot.genres,languages:boot.languages||[],search:page==='list',onChange:query=>{
+    if(page==='home'){homeKey='';loadHome();}
+    if(page==='browse'){browseKey=null;renderBrowse();}
+    if(page==='new'){newKey='';renderNew();}
+    if(page==='list'){listQuery=query; ratedShown=RATED_PAGE; renderList();}
+    if(page==='search'){searchShown=null;search($('q-page').value,false);}
+  }});
+  $(anchor).before(controls.element);
+}
 updateCounts();
 route();
 loadHome();

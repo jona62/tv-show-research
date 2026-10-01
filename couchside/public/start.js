@@ -9,6 +9,7 @@
 import { LIMITS, packList } from './transfer.js?v=aca34fe2830e9d29';
 import { freshStore, today, prune, beginVisit, freshness } from './fresh.js?v=afcc972f76479400';
 import { pageKey, ongoing, resumable } from './format.js?v=e565cc65c0882a95';
+import {filtersFor,filterKey,wantsMatrices} from './filter-state.js?v=a30d1a4517a72575';
 
 /* ------------------------------------------------------------- the list */
 export const KEY = 'couchside-v1';
@@ -131,7 +132,7 @@ export const languages = () => (globalThis.navigator?.languages?.length ? [...na
   : [globalThis.navigator?.language || '']).filter(t => TAG.test(t)).slice(0, 8);
 // What asking for the home page carries: the list, My List, what the visit asks with
 // (ask) and the browser's languages. Asking for more rows adds which rows are shown (main.js).
-export const homeBody = (state, ask) => ({ ...tasteOf(state), list: state.saved.map(s => s.id), ...ask, lang: languages() });
+export const homeBody = (state, ask) => ({ ...tasteOf(state), list: state.saved.map(s => s.id), ...ask, lang: languages(), filters:filtersFor('home'), matrix:wantsMatrices() });
 // A request's body as sent: the list packed as ids and a character a rating (transfer.js),
 // a quarter of the bytes.
 export const packed = body => JSON.stringify(Array.isArray(body.profile) ? { ...body, profile: packList(body.profile) } : body);
@@ -141,7 +142,7 @@ export const PAGE_KEY = 'couchside-home';
 function keptPage(state, visit) {
   try {
     const page = JSON.parse(sessionStorage.getItem(PAGE_KEY));
-    return resumable(page, { key: pageKey(tasteOf(state), state.saved.map(s => s.id)), visit }) && page.home.ask;
+    return resumable(page, { key: pageKey(tasteOf(state), state.saved.map(s => s.id)) + filterKey('home'), visit }) && page.home.ask;
   } catch { return false; }
 }
 

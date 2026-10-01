@@ -35,7 +35,7 @@ HERE = Path(__file__).resolve().parent
 APP = HERE.parent / 'app'
 PUBLIC = HERE / 'public'
 OWN = ('style.css', 'main.js', 'format.js', 'gestures.js', 'start.js', 'ratings.js',
-       'episode-ratings.js', 'show-cards.js', 'title-sections.js')
+       'episode-ratings.js', 'show-cards.js', 'title-sections.js', 'filter-state.js', 'filters.js')
 SHARED = ('transfer.js', 'qr.js', 'fresh.js', 'starters.js')
 # Next Watch's server modules, copied beside this server so it deploys by itself.
 MODULES = ('engine.py', 'taste.py', 'titles.py', 'fallback.py', 'follow.py', 'facets.py', 'neighbours.py', 'fresh.py',

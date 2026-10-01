@@ -5,6 +5,7 @@ from tempfile import TemporaryDirectory
 from urllib.error import HTTPError
 from unittest import TestCase, main
 import threading
+import time
 
 from episode_store import DAY, MAX_AGE, Store, Episodes, Tmdb, choose_rating, merge
 from live import LiveError
@@ -33,6 +34,55 @@ class FakeLive:
 
 
 class RatingsTests(TestCase):
+    def test_out_of_order_lanes_preserve_new_episodes_scores_and_freshness(self):
+        self.service.get(1)
+        old_at, old = self.store.get(1)
+        self.now += 1
+        eps = [*EPISODES, {**EPISODES[-1], 'id': 3, 'number': 3}]
+        updated = {**old, 'tvmaze': eps, 'episodes': eps}
+        self.store.put(1, updated)
+        tvmaze_at = self.now
+        self.now += 1
+        scores = {'1:2': {'rating': 9.2, 'votes': 50, 'airdate': '2020-01-08'}}
+        provider = {**old, 'tmdb': scores, 'tmdb_at': self.now, 'episodes': merge(old['tvmaze'], scores)}
+        self.store.put(1, provider, fetched_at=old_at)
+        at, result = self.store.get(1)
+        self.assertEqual(at, tvmaze_at, 'enrichment does not renew TVmaze freshness')
+        self.assertEqual(len(result['episodes']), 3)
+        self.assertEqual(result['episodes'][1]['rating'], 9.2)
+        self.now += 1
+        self.store.put(1, updated)
+        self.assertEqual(self.store.get(1)[1]['episodes'][1]['rating_source'], 'TMDB')
+
+    def test_slow_season_enrichment_cannot_block_a_new_matrix(self):
+        entered, release = threading.Event(), threading.Event()
+        class Provider:
+            def ratings(inner, show_id, live):
+                entered.set()
+                release.wait(3)
+                return {}
+        self.service.get(1)
+        self.service.tmdb = Provider()
+        self.service.queue_enrichment(1)
+        workers = [threading.Thread(target=self.service.run), threading.Thread(target=self.service.enrich)]
+        self.service.interval = .01
+        for worker in workers:
+            worker.start()
+        try:
+            self.assertTrue(entered.wait(1))
+            self.assertEqual(self.service.matrices([2])['pending'], [2])
+            deadline = time.monotonic() + 1
+            while time.monotonic() < deadline and not self.store.get(2):
+                time.sleep(.01)
+            self.assertTrue(self.store.get(2), 'TVmaze matrix is ready while TMDB is still busy')
+            self.assertFalse(release.is_set())
+        finally:
+            release.set()
+            self.service.stop.set()
+            self.service.ready.set()
+            for worker in workers:
+                worker.join(2)
+
     def setUp(self):
         self.folder = TemporaryDirectory()
         self.addCleanup(self.folder.cleanup)

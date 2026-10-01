@@ -1,4 +1,4 @@
-import {esc,score,code,average,seasons,band,icon,html,legend,ratings,ratingSource,ratingSources} from './ratings.js?v=8a8ae7c4ab9cb933';
+import {esc,score,code,average,seasons,band,icon,html,legend,ratings,ratingSource,ratingSources} from './ratings.js?v=d111fa7a20ae2e41';
 const plain = value => new DOMParser().parseFromString(value||'', 'text/html').body.textContent||'';
 const layouts=[['list','Episode list'],['grid','Grid'],['wrapped','Wrapped'],['timeline','Timeline']];
 const ep = e => ({...e,still:e.image,summary:plain(e.summary)});

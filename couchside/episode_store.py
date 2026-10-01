@@ -14,6 +14,7 @@ import math
 import sqlite3
 import threading
 import time
+from datetime import date
 
 from live import AGENT, LiveError
 
@@ -58,14 +59,53 @@ class Store:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(str(path), check_same_thread=False, timeout=10)
         self.lock = threading.Lock()
+        self.memory = OrderedDict()
         self.db.execute('PRAGMA journal_mode=WAL')
         self.db.execute('CREATE TABLE IF NOT EXISTS episodes (id INTEGER PRIMARY KEY, fetched REAL, touched REAL, data BLOB, matrix BLOB)')
         if 'matrix' not in {r[1] for r in self.db.execute('PRAGMA table_info(episodes)')}:
             self.db.execute('ALTER TABLE episodes ADD COLUMN matrix BLOB')
         self.db.commit()
+        self.db.execute('CREATE TABLE IF NOT EXISTS summaries (id INTEGER PRIMARY KEY, data TEXT)')
+        self.summaries = {}
+        for show_id, data in self.db.execute('SELECT id, data FROM summaries'):
+            try:
+                summary = json.loads(data)
+                if isinstance(summary, dict) and 'at' in summary:
+                    self.summaries[show_id] = summary
+            except (ValueError, TypeError):
+                pass
+        self.revision = 0
+        # Backfill once from the existing persistent cache; no upstream requests.
+        for show_id in self.recent(self.most):
+            if show_id not in self.summaries:
+                held = self.get(show_id)
+                if held:
+                    self.summarize(show_id, held[1], at=held[0])
+        self.db.commit()
+
+    def summarize(self, show_id, value, at=None):
+        episodes = [e for e in value['episodes'] if not e.get('airdate') or e['airdate'] <= date.today().isoformat()]
+        if not episodes:
+            return
+        runtimes = [e.get('runtime') for e in episodes]
+        complete = all(type(n) in (int, float) and n > 0 for n in runtimes)
+        summary = {'episodes': len(episodes), 'seasons': len({e['season'] for e in episodes}),
+                   'total_minutes': sum(runtimes) if complete else None, 'minutes_estimated': not complete}
+        previous = self.summaries.get(show_id, {})
+        if {k: v for k, v in previous.items() if k != 'at'} != summary or self.clock() - previous.get('at', 0) > MAX_AGE:
+            self.revision += 1
+        summary['at'] = self.clock() if at is None else at
+        self.summaries = {**self.summaries, show_id: summary}
+        self.db.execute('INSERT OR REPLACE INTO summaries VALUES (?, ?)', (show_id, json.dumps(summary)))
 
     def get(self, show_id, compact=False):
         with self.lock:
+            if compact and show_id in self.memory:
+                held = self.memory[show_id]
+                if self.clock() - held[0] <= MAX_AGE:
+                    self.memory.move_to_end(show_id)
+                    return held
+                self.memory.pop(show_id)
             column = 'matrix' if compact else 'data'
             row = self.db.execute(f'SELECT fetched, {column} FROM episodes WHERE id=?', (show_id,)).fetchone()
             if not row:
@@ -82,21 +122,45 @@ class Store:
                 self.db.execute('DELETE FROM episodes WHERE id=?', (show_id,))
                 self.db.commit()
                 return None
+            if compact:
+                self.memory[show_id] = (row[0], value)
+                while len(self.memory) > 512:
+                    self.memory.popitem(last=False)
             return row[0], value
 
-    def put(self, show_id, value):
+    def put(self, show_id, value, fetched_at=None):
         now = self.clock()
-        data = gzip.compress(json.dumps(value, separators=(',', ':'), allow_nan=False).encode(), mtime=0)
-        fields = ('season', 'number', 'name', 'rating', 'rating_source', 'rating_votes')
-        compact = {**{k: value[k] for k in ('id', 'tmdb_at')},
-                   'episodes': [{k: e.get(k) for k in fields} for e in value['episodes']],
-                   'tvmaze': [{k: e.get(k) for k in fields} for e in value['tvmaze']]}
-        matrix = gzip.compress(json.dumps(compact, separators=(',', ':'), allow_nan=False).encode(), mtime=0)
+        fetched_at = now if fetched_at is None else fetched_at
         with self.lock:
-            self.db.execute('INSERT OR REPLACE INTO episodes VALUES (?, ?, ?, ?, ?)', (show_id, now, now, data, matrix))
+            # The two refresh lanes can finish together. A TVmaze update keeps a
+            # newer provider answer that finished after its initial cache read.
+            row = self.db.execute('SELECT fetched, data FROM episodes WHERE id=?', (show_id,)).fetchone()
+            if row:
+                try:
+                    latest = json.loads(gzip.decompress(row[1]))
+                    if row[0] > fetched_at:
+                        fetched_at = row[0]
+                        value = {**value, 'tvmaze': latest['tvmaze'],
+                                 'episodes': merge(latest['tvmaze'], value.get('tmdb', {}))}
+                    checked = latest.get('tmdb_at', 0)
+                    if checked > value.get('tmdb_at', 0) and now - checked <= MAX_AGE:
+                        value = {**value, 'tmdb_at': checked, 'tmdb': latest.get('tmdb', {}),
+                                 'episodes': merge(value['tvmaze'], latest.get('tmdb', {}))}
+                except (OSError, ValueError, EOFError):
+                    pass
+            data = gzip.compress(json.dumps(value, separators=(',', ':'), allow_nan=False).encode(), mtime=0)
+            fields = ('season', 'number', 'name', 'rating', 'rating_source', 'rating_votes')
+            compact = {**{k: value[k] for k in ('id', 'tmdb_at')},
+                       'episodes': [{k: e.get(k) for k in fields} for e in value['episodes']],
+                       'tvmaze': [{k: e.get(k) for k in fields} for e in value['tvmaze']]}
+            matrix = gzip.compress(json.dumps(compact, separators=(',', ':'), allow_nan=False).encode(), mtime=0)
+            self.summarize(show_id, value, at=fetched_at)
+            self.memory.pop(show_id, None)
+            self.db.execute('INSERT OR REPLACE INTO episodes VALUES (?, ?, ?, ?, ?)', (show_id, fetched_at, now, data, matrix))
             self.db.execute('DELETE FROM episodes WHERE fetched<?', (now - MAX_AGE,))
             self.db.execute('DELETE FROM episodes WHERE id IN (SELECT id FROM episodes ORDER BY touched DESC LIMIT -1 OFFSET ?)', (self.most,))
             self.db.commit()
+            return value
 
     def touch(self, show_id):
         with self.lock:
@@ -187,10 +251,13 @@ class Tmdb:
 
 
 class Episodes:
-    def __init__(self, store, live, tmdb=None, clock=time.time, interval=2, ended=()):
+    def __init__(self, store, live, tmdb=None, clock=time.time, interval=1, ended=()):
         self.store, self.live, self.tmdb, self.clock, self.interval = store, live, tmdb, clock, interval
         self.lock, self.ready = threading.Lock(), threading.Event()
         self.pending, self.active, self.rest = OrderedDict(), {}, {}
+        self.enrichment = OrderedDict()
+        self.enrichment_active, self.enrichment_rest = set(), {}
+        self.stop = threading.Event()
         self.ended, self.popular = set(ended), ()
         self.started = False
 
@@ -199,7 +266,7 @@ class Episodes:
 
     def enriching(self, show_id, value):
         checked = value.get('tmdb_at', 0)
-        return bool(self.tmdb and (not checked or self.stale(show_id, checked)))
+        return bool(self.tmdb and not getattr(self.tmdb, 'disabled', False) and (not checked or self.stale(show_id, checked)))
 
     def saved(self, show_id, compact=False):
         held = self.store.get(show_id, compact=compact)
@@ -209,19 +276,26 @@ class Episodes:
             value = held[1]
             if self.clock() - value.get('tmdb_at', 0) > MAX_AGE and any(e.get('rating_source') == 'TMDB' for e in value['episodes']):
                 value = {**value, 'tmdb': {}, 'episodes': merge(value['tvmaze'], {})}
+            if self.enriching(show_id, value):
+                self.queue_enrichment(show_id, urgent=True)
             return value
+
+    def queue_enrichment(self, show_id, urgent=False):
+        with self.lock:
+            if show_id in self.enrichment_active or self.enrichment_rest.get(show_id, 0) > self.clock():
+                return
+            if len(self.enrichment) < 2400 or show_id in self.enrichment:
+                self.enrichment[show_id] = urgent or self.enrichment.get(show_id, False)
 
     def queue(self, show_id, urgent=False):
         with self.lock:
             if show_id in self.active or self.rest.get(show_id, 0) > self.clock():
                 return
-            if show_id not in self.pending and len(self.pending) >= 500:
+            if show_id not in self.pending and len(self.pending) >= 2400:
                 if not urgent:
                     return
                 self.pending.popitem()
-            self.pending[show_id] = None
-            if urgent:
-                self.pending.move_to_end(show_id, last=False)
+            self.pending[show_id] = urgent or self.pending.get(show_id, False)
             self.ready.set()
 
     def refresh(self, show_id, enrich=True):
@@ -246,7 +320,7 @@ class Episodes:
             if self.clock() - checked > MAX_AGE:
                 scores = {}
             value = {'id': show_id, 'tvmaze': episodes, 'episodes': merge(episodes, scores), 'tmdb': scores, 'tmdb_at': checked}
-            self.store.put(show_id, value)
+            value = self.store.put(show_id, value)
             event.set()  # First visitors can use TVmaze while TMDB's seasons arrive.
             if enrich and self.tmdb:
                 try:
@@ -257,8 +331,7 @@ class Episodes:
             if self.clock() - checked > MAX_AGE:
                 scores = {}
             value = {'id': show_id, 'tvmaze': episodes, 'episodes': merge(episodes, scores), 'tmdb': scores, 'tmdb_at': checked}
-            self.store.put(show_id, value)
-            return value
+            return self.store.put(show_id, value)
         except LiveError:
             with self.lock:
                 self.rest = {k: v for k, v in self.rest.items() if v > self.clock()}
@@ -276,7 +349,7 @@ class Episodes:
             # queued separately so a long-running show's seasons never block its page.
             value = self.refresh(show_id, enrich=False)
             if self.tmdb:
-                self.queue(show_id, urgent=True)
+                self.queue_enrichment(show_id, urgent=True)
         self.store.touch(show_id)
         return {'id': show_id, 'episodes': value['episodes'], 'sources': source_names(value['episodes']),
                 'refreshing': self.enriching(show_id, value)}
@@ -302,29 +375,71 @@ class Episodes:
         self.popular = tuple(popular)
         self.plan()
         threading.Thread(target=self.run, name='episode-ratings', daemon=True).start()
+        if self.tmdb:
+            threading.Thread(target=self.enrich, name='episode-enrichment', daemon=True).start()
+
+    def enrich(self):
+        # Season lookups have their own paced lane; a long show cannot hold up
+        # other shows' first TVmaze matrices. All writes still use the shared store.
+        while not self.stop.is_set():
+            with self.lock:
+                show_id = next((k for k, urgent in self.enrichment.items() if urgent), next(iter(self.enrichment), None))
+                if show_id is not None:
+                    self.enrichment.pop(show_id)
+                    self.enrichment_active.add(show_id)
+            if show_id is None:
+                self.stop.wait(.25)
+                continue
+            held = self.store.get(show_id)
+            if not held:
+                with self.lock:
+                    self.enrichment_active.discard(show_id)
+                continue
+            try:
+                scores = self.tmdb.ratings(show_id, self.live)
+                held = self.store.get(show_id)
+                if not held:
+                    continue
+                value = held[1]
+                value = {**value, 'tmdb': scores, 'tmdb_at': self.clock(), 'episodes': merge(value['tvmaze'], scores)}
+                self.store.put(show_id, value, fetched_at=held[0])
+            except (LiveError, OSError, ValueError, KeyError, TypeError, sqlite3.Error):
+                with self.lock:
+                    self.enrichment_rest[show_id] = self.clock() + 60
+            finally:
+                with self.lock:
+                    self.enrichment_active.discard(show_id)
 
     def plan(self):
         for show_id in dict.fromkeys((*self.popular, *self.store.recent())):
             held = self.store.get(show_id)
-            if not held or self.stale(show_id, held[0]) or self.enriching(show_id, held[1]):
+            if not held or self.stale(show_id, held[0]):
                 self.queue(show_id)
+            elif self.enriching(show_id, held[1]):
+                self.queue_enrichment(show_id)
 
     def run(self):
         planned = self.clock()
-        while True:
+        while not self.stop.is_set():
             self.ready.wait(60)
+            if hasattr(self.live, 'spare') and not self.live.spare():
+                self.stop.wait(.5)
+                continue
             if self.clock() - planned >= 3600:
                 self.plan()
                 planned = self.clock()
             with self.lock:
                 if self.pending:
-                    show_id, _ = self.pending.popitem(last=False)
+                    show_id = next((k for k, urgent in self.pending.items() if urgent), next(iter(self.pending)))
+                    self.pending.pop(show_id)
                 else:
                     self.ready.clear()
                     continue
             try:
-                self.refresh(show_id)
+                self.refresh(show_id, enrich=False)
+                if self.tmdb:
+                    self.queue_enrichment(show_id)
             except (LiveError, OSError, ValueError, sqlite3.Error):
                 # Readers keep stale data. A later request retries after the cooldown.
                 pass
-            time.sleep(self.interval)
+            self.stop.wait(self.interval)

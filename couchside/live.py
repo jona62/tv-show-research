@@ -323,6 +323,14 @@ class Live:
         with urlopen(request, timeout=6) as response:
             return json.load(response)
 
+    def spare(self, reserve=2):
+        """Background readers leave room in the shared budget for title-page details."""
+        with self.lock:
+            now = self.clock()
+            while self.sent and now - self.sent[0] > self.period:
+                self.sent.popleft()
+            return now >= self.pause and len(self.sent) < self.calls - reserve
+
     def get(self, path, trim, missing=None, ttl=None):
         """A trimmed answer for path. With missing set, a 404 is an answer too, cached like
         any other, so a show with no trailer is not asked about again and again. ttl, when

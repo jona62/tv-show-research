@@ -1,4 +1,4 @@
-import {matrixRatings,cachedMatrix,ratingSources,compactMatrix,icon,html,esc} from './ratings.js';
+import {matrixRatings,cachedMatrix,freshMatrix,ratingSources,compactMatrix,icon,html,esc,acceptMatrices} from './ratings.js';
 const KEY='couchside.show-cards';
 let matrix=false;
 try{matrix=localStorage.getItem(KEY)==='matrix';}catch{}
@@ -8,7 +8,11 @@ html(preferences,`<legend>Show cards</legend><div class="ratings-card-choices"><
 account.querySelector('#reach').closest('label').before(preferences);
 const pending=[];let running=false,pumpTimer;
 const tilesFor=id=>document.querySelectorAll(`.ratings-card-matrix[data-show="${id}"]`);
+const drawn=new WeakMap();
 function paintMatrix(tile,s){
+  const signature=s.sources+'|'+s.episodes.map(e=>[e.season,e.number,e.name,e.rating,e.rating_source,e.rating_votes].join('/')).join('|');
+  if(drawn.get(tile)===signature)return;
+  drawn.set(tile,signature);
   tile.dataset.matrixState='ready';
   const source=ratingSources(s);
   html(tile,`${compactMatrix(s)}<span class="ratings-mini-caption">${s.episodes.length?`${s.episodes.length} episodes${source?' · '+esc(source):''}`:'No episodes yet'}</span>`);
@@ -17,13 +21,15 @@ function pump(){
   if(!matrix||running||!pending.length)return;
   const batch=[],ids=new Set();
   while(pending.length&&ids.size<24){
-    const foreground=pending.findIndex(node=>node.closest('dialog[open]'));
+    const foreground=pending.findIndex(node=>{const r=node.getBoundingClientRect();return node.closest('dialog[open]')||(r.top<innerHeight&&r.bottom>0&&r.left<innerWidth&&r.right>0);});
     const [node]=pending.splice(foreground<0?0:foreground,1);
     if(!node.isConnected)continue;
     if(node.dataset.matrixState==='error')continue;
     if(!node.getClientRects().length){delete node.dataset.matrixAsked;visible.observe(node);continue;}
     if(node.dataset.matrixState!=='ready')node.dataset.matrixState='loading';
     const id=Number(node.dataset.show);
+    const cached=freshMatrix(id);
+    if(cached){paintMatrix(node,cached);continue;}
     batch.push(node);ids.add(id);
   }
   if(!ids.size)return;
@@ -34,11 +40,11 @@ function pump(){
     const retry=batch.filter(node=>{
       if(!waiting.has(Number(node.dataset.show))||!node.isConnected)return false;
       node.dataset.matrixRetries=String(Number(node.dataset.matrixRetries||0)+1);
-      if(Number(node.dataset.matrixRetries)<=30)return true;
+      if(Number(node.dataset.matrixRetries)<=240)return true;
       if(node.dataset.matrixState!=='ready'){node.dataset.matrixState='error';html(node,'<span class="ratings-mini-empty">Ratings unavailable</span>');}
       return false;
     });
-    if(retry.length)setTimeout(()=>{pending.push(...retry);pump();},4000);
+    if(retry.length)setTimeout(()=>{pending.push(...retry);pump();},body.pending.length?500:5000);
   }).catch(()=>{
     for(const node of batch)if(node.dataset.matrixState!=='ready'){
       node.dataset.matrixState='error';html(node,'<span class="ratings-mini-empty">Ratings unavailable</span>');
@@ -54,7 +60,12 @@ const visible=new IntersectionObserver(entries=>{
     }
   }
   clearTimeout(pumpTimer);pumpTimer=setTimeout(pump,30);
-},{rootMargin:'80px'});
+},{rootMargin:'1800px 600px'});
+export const matrixPreference=()=>matrix;
+export function receiveMatrices(body){
+  acceptMatrices(body);
+  for(const s of body?.shows||[])for(const tile of tilesFor(s.id))paintMatrix(tile,s);
+}
 // Called by Couchside's shared card constructor, before rows make inert copies.
 export function enhanceShowCard(card,show,related=false){
   const hit=card.querySelector('.card-hit'),meta=card.querySelector('.card-meta');

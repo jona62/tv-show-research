@@ -28,6 +28,8 @@ export function icon(name) {
     search:'<circle cx="11" cy="11" r="7"/><path d="M20.5 20.5l-4.3-4.3"/>',
     close:'<path d="M18 6L6 18M6 6l12 12"/>',
     poster:'<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M5 16l5-5 4 4 2-2 3 3"/>',
+    filter:'<path d="M4 7h16M7 12h10M10 17h4"/>',
+    sort:'<path d="M8 4v16m-4-4 4 4 4-4M15 5h6M15 10h4M15 15h2"/>',
   };
   return `<svg class="ratings-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name]||paths.grid}</svg>`;
 }
@@ -49,6 +51,21 @@ export const cachedRatings = id => {
 const cache = new Map();
 const MATRIX_KEY = 'couchside.episode-matrices-v1';
 const matrices = new Map();
+const MAX_MATRICES = 400;
+let saveTimer;
+function saveMatrices() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    const save = () => {
+      // A bounded byte budget matters more than the number of shows for long soaps.
+      const kept = [...matrices];
+      let text = JSON.stringify(kept);
+      while (text.length > 1800000 && kept.length) { kept.shift(); text = JSON.stringify(kept); }
+      try { localStorage.setItem(MATRIX_KEY, text); } catch { /* Server cache still works. */ }
+    };
+    if (globalThis.requestIdleCallback) requestIdleCallback(save, {timeout: 2000}); else save();
+  }, 500);
+}
 try {
   const saved = JSON.parse(localStorage.getItem(MATRIX_KEY));
   if (Array.isArray(saved)) for (const [id, held] of saved) {
@@ -57,7 +74,7 @@ try {
         && Array.isArray(es) && es.every(e=>e&&Number.isInteger(e.season)&&e.season>0&&Number.isInteger(e.number)&&e.number>0
           &&(e.rating===null||(Number.isFinite(e.rating)&&e.rating>0&&e.rating<=10)))) matrices.set(id, held);
   }
-  while(matrices.size>MAX_CACHED)matrices.delete(matrices.keys().next().value);
+  while(matrices.size>MAX_MATRICES)matrices.delete(matrices.keys().next().value);
 } catch { /* First visit, unavailable storage, or a malformed cache. */ }
 export const cachedMatrix = id => {
   const full=cachedRatings(id);if(full)return full;
@@ -65,10 +82,20 @@ export const cachedMatrix = id => {
   if(held&&Date.now()-held.at<7*86400000)return held.value;
   if(held)matrices.delete(id);
 };
+export const freshMatrix = id => {
+  const held=matrices.get(id),full=cachedRatings(id);
+  return full&&!full.refreshing?full:held&&Date.now()-held.at<CACHED_FOR&&!held.value.refreshing?held.value:null;
+};
 export async function matrixRatings(ids) {
   const response = await fetch(`/api/episode-matrices?ids=${[...new Set(ids)].slice(0,40).join(',')}`);
   const body = await response.json();
   if (!response.ok || !Array.isArray(body.shows) || !Array.isArray(body.pending)) throw Error(body.error || 'Ratings are unavailable.');
+  acceptMatrices(body);
+  return body;
+}
+// Feed answers carry saved matrices so card construction does not need another trip.
+export function acceptMatrices(body) {
+  if (!body || !Array.isArray(body.shows)) return;
   for (const value of body.shows) {
     matrices.delete(value.id);matrices.set(value.id, {at:Date.now(),value});
     const full = cachedRatings(value.id);
@@ -86,9 +113,8 @@ export async function matrixRatings(ids) {
       if(changed&&typeof window!=='undefined')window.dispatchEvent(new CustomEvent('couchside-ratings',{detail:value.id}));
     }
   }
-  while (matrices.size > MAX_CACHED) matrices.delete(matrices.keys().next().value);
-  try { localStorage.setItem(MATRIX_KEY, JSON.stringify([...matrices])); } catch { /* The shared server cache still works. */ }
-  return body;
+  while (matrices.size > MAX_MATRICES) matrices.delete(matrices.keys().next().value);
+  saveMatrices();
 }
 function followEnrichment(id, attempt=0) {
   setTimeout(async()=>{
@@ -118,7 +144,7 @@ export function ratings(id) {
   return cache.get(id);
 }
 export function compactMatrix(s) {
-  const ss=seasons(s),max=Math.max(1,...s.episodes.map(e=>e.number));
+  const ss=seasons(s),max=Math.max(1,...s.episodes.map(e=>e.number)),rows=new Map(ss.map((n,i)=>[n,i]));
   if(!ss.length)return '<span class="ratings-mini-empty">No episodes yet</span>';
-  return `<svg class="ratings-mini" viewBox="0 0 ${max} ${ss.length}" role="img" aria-label="${s.episodes.length} episode ratings, seasons in rows">${s.episodes.map(e=>`<rect x="${e.number-1}" y="${ss.indexOf(e.season)}" width=".82" height=".82" rx=".12" fill="${band(e.rating).colour}"><title>${code(e)} · ${esc(e.name)} · ${score(e.rating)} · ${band(e.rating).name}${ratingSource(e)?' · '+esc(ratingSource(e)):''}</title></rect>`).join('')}</svg>`;
+  return `<svg class="ratings-mini" viewBox="0 0 ${max} ${ss.length}" role="img" aria-label="${s.episodes.length} episode ratings, seasons in rows">${s.episodes.map(e=>`<rect x="${e.number-1}" y="${rows.get(e.season)}" width=".82" height=".82" rx=".12" fill="${band(e.rating).colour}"><title>${code(e)} · ${esc(e.name)} · ${score(e.rating)} · ${band(e.rating).name}${ratingSource(e)?' · '+esc(ratingSource(e)):''}</title></rect>`).join('')}</svg>`;
 }

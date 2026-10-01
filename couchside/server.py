@@ -17,6 +17,7 @@ import threading
 from added import Added
 from engine import Engine, MAX_LIST
 from episode_store import Store as EpisodeStore, Episodes, Tmdb as EpisodeTmdb
+from discovery import Discovery, read_filters, fits, sort_key
 from fallback import Remote, answer
 from library import Library, DESCRIPTION, MAX_SAVED
 from live import (Live, LiveError, Icons, KINOCHECK, ITUNES, trim_videos, trim_seasons,
@@ -195,7 +196,7 @@ def fill(template, engine, library, credit):
     """The page with this model's count, date, newest show and first-visit posters, filled
     once at startup. TMDB's credit stays only when there is TMDB data to credit."""
     boot = {'date': engine.date, 'count': engine.n, 'newest': max(engine.by_id), 'starters': library.starters,
-            'genres': library.genres}
+            'genres': library.genres, 'languages': sorted(v for v in getattr(engine, 'metadata', {}).get('language', []) if v)}
     # Every < in the data is escaped, so no show's name can close or confuse the script block.
     payload = json.dumps(boot, ensure_ascii=False, separators=(',', ':')).replace('<', '\\u003c')
     values = {'BOOTSTRAP': payload, 'CATALOG_COUNT': f'{engine.n:,}', 'DATASET_DATE': html.escape(engine.date)}
@@ -229,6 +230,8 @@ RATINGS = Episodes(EpisodeStore(os.environ.get('RATINGS_CACHE') or HERE.parent /
 RATING_KEY = os.environ.get('TMDB_API_KEY', '')
 if RATING_KEY:
     RATINGS.tmdb = EpisodeTmdb(RATING_KEY, tmdb.ids(MODEL / 'tmdb.json.gz'))
+DISCOVERY = Discovery(LIBRARY, RATINGS.store, MODEL / 'tmdb.json.gz')
+LIBRARY.discovery = DISCOVERY
 TVMAZE = Remote(calls=4)
 # The shows TVmaze lists past the catalogue's newest, read about hourly and each asked for
 # once, so search finds them on every query, a show named like an older one too (added.py).
@@ -365,14 +368,42 @@ def biography(person_id):
     return BIOGRAPHIES.get(someone(person_id))
 
 
-def search(q):
+def decorate(value, matrix=False):
+    """Deliver cached matrices beside cards, and warm the next visible cards early."""
+    if not matrix:
+        return value
+    ids = []
+    def visit(item):
+        if isinstance(item, dict):
+            if 'poster' in item and item.get('id') in ENGINE.by_id and item['id'] not in ids:
+                ids.append(item['id'])
+            for child in item.values():
+                visit(child)
+        elif isinstance(item, list):
+            # The first six cards of every row come before cards reached horizontally.
+            for child in item[:6]:
+                visit(child)
+    visit(value)
+    value['matrices'] = RATINGS.matrices(ids[:48])
+    return value
+
+
+def search(q, filters=None):
     """A search's answer: its title matches, best first, the shows TVmaze knows that the
     catalogue does not yet (fallback.py), the ones it added since that match first among
     them (added.py), and a row of shows like it (related.py), or None for the row:
     {'title': 'More like Game of Thrones', 'kind', 'shows': cards}."""
-    found = ADDED.join(answer(ENGINE, q, TVMAZE, LIBRARY.card), q)
+    rules = read_filters(filters)
+    if rules:
+        hits = ENGINE.titles.find(q, limit=ENGINE.n).hits if q.strip() else [(i, None) for i in DISCOVERY.view(rules).shelf]
+        matches = [(i, aka) for i, aka in hits if fits(DISCOVERY.record(i), rules)]
+        order = DISCOVERY.order([i for i, _aka in matches], rules)
+        aliases = dict(matches)
+        found = {'shows': [{**LIBRARY.card(i), 'aka': aliases[i]} for i in order[:60]], 'missing': [], 'missing_first': False}
+    else:
+        found = ADDED.join(answer(ENGINE, q, TVMAZE, LIBRARY.card), q)
     row = RELATED.of(q, found['shows'])
-    found['related'] = {**row, 'shows': [LIBRARY.card(j) for j in row['shows']]} if row else None
+    found['related'] = {**row, 'shows': [LIBRARY.card(j) for j in row['shows'] if fits(DISCOVERY.record(j), rules)]} if row else None
     return found
 
 
@@ -553,9 +584,12 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json({'error': 'Search terms must be 100 characters or fewer.'}, 400)
                 return
             try:
-                found = search(q)
-                self.cache_control = SEARCH_CACHE
+                rules = json.loads(query.get('filters', ['{}'])[0])
+                found = decorate(search(q, rules), query.get('matrix') == ['1'])
+                self.cache_control = SEARCH_CACHE if not rules and 'matrix' not in query else 'no-store'
                 self.send_json(found, validate=True)
+            except (ValueError, TypeError) as exc:
+                self.send_json({'error': str(exc)}, 400)
             except (BrokenPipeError, ConnectionResetError, TimeoutError):
                 pass    # the page moved on to a longer search while TVmaze answered
             return
@@ -710,26 +744,42 @@ class Handler(SimpleHTTPRequestHandler):
             return
         try:
             if route == '/api/shows':
-                self.send_json({'shows': LIBRARY.cards(read_ids(payload))})
+                self.send_json(decorate({'shows': LIBRARY.cards(read_ids(payload))}, payload.get('matrix') is True))
             elif not isinstance(payload, dict):
                 raise ValueError('Send your list and settings as an object.')
             elif route == '/api/home':
                 # The first eight rows and the featured shows, the visit's hero first, or, for a
                 # request that says which rows it already shows, the next ones
                 # (library.Library.home). Each featured show carries TMDB's data, as a title does.
-                home = LIBRARY.home(payload)
+                home = DISCOVERY.view(payload.get('filters')).home(payload)
                 if home.get('hero'):
                     for show in (home['hero'], *home.get('featured', ())):
                         show['tmdb'] = TMDB.get(show['id'])
-                self.send_json(home)
+                self.send_json(decorate(home, payload.get('matrix') is True))
             elif route == '/api/browse':
-                self.send_json(LIBRARY.browse(payload))
+                view = DISCOVERY.view(payload.get('filters'))
+                result = view.browse(payload)
+                rules = read_filters(payload.get('filters'))
+                for row in result['rows']:
+                    ordered = DISCOVERY.order([ENGINE.by_id[c['id']] for c in row['items']], rules)
+                    cards = {c['id']: c for c in row['items']}
+                    row['items'] = [cards[ENGINE.shows[i]['id']] for i in ordered]
+                self.send_json(decorate(result, payload.get('matrix') is True))
             else:
                 # TMDB's rating, trailers, backdrop and where to watch come with the title,
                 # so the page asks the live sources only for what TMDB lacks.
                 title = LIBRARY.title(payload)
+                if not isinstance(payload.get('recommendation_filters', {}), dict):
+                    raise ValueError('Send recommendation filters as an object.')
+                for section in ('more', 'fans'):
+                    raw = payload.get('recommendation_filters', {}).get(section)
+                    if raw:
+                        title[section] = DISCOVERY.view(raw).title(payload)[section]
+                        rules = read_filters(raw)
+                        if rules.get('sort'):
+                            title[section].sort(key=lambda s: sort_key({**s, **DISCOVERY.metadata(s['id'])}, rules['sort'], ENGINE.popularity[ENGINE.by_id[s['id']]]))
                 title['tmdb'] = TMDB.get(title['show']['id'])
-                self.send_json(title)
+                self.send_json(decorate(title, payload.get('matrix') is True))
         except ValueError as exc:
             self.send_json({'error': str(exc)}, 400)
         except (BrokenPipeError, ConnectionResetError, TimeoutError):
@@ -766,8 +816,9 @@ if __name__ == '__main__':
     threading.Thread(target=RELATED.warm, daemon=True).start()
     # The shows TVmaze has added since the catalogue, read at once and about hourly after.
     threading.Thread(target=ADDED.run, name='added', daemon=True).start()
-    # Cache the 200 most popular shows gradually; cached readers never wait for this.
+    # Warm a broader catalogue gradually, leaving live-request capacity for visitors.
+    # Data stays on the workspace volume, so this work also benefits later visits.
     popular = sorted(range(ENGINE.n), key=lambda i: (ENGINE.popularity[i], ENGINE.shows[i].get('rating') or 0), reverse=True)
-    RATINGS.start(ENGINE.shows[i]['id'] for i in popular[:200])
+    RATINGS.start(ENGINE.shows[i]['id'] for i in popular[:2000])
     port = int(os.environ.get('PORT', '8082'))
     ThreadingHTTPServer(('0.0.0.0', port), partial(Handler, directory=str(PUBLIC))).serve_forever()

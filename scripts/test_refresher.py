@@ -58,7 +58,7 @@ BUILD_KEYS = ['version', 'built_at', 'snapshot_date', 'shows', 'pipeline', 'seed
 PUBLISHED = ['2026-06', '2026-07', '2026-08']
 COUNTS = {'1-2': 120, '1-3': 30, '2-3': 60}
 RECORD_KEYS = ['tmdb_id', 'fetched_at', 'rating', 'watch_link', 'providers', 'trailers', 'backdrop',
-               'vote_average', 'vote_count']
+               'vote_average', 'vote_count', 'episodes', 'seasons']
 TMP = Path(tempfile.mkdtemp(prefix='refresher-test-'))
 OPENER = build_opener(ProxyHandler({}))
 failures = []
@@ -159,7 +159,8 @@ def write_raw(folder, count=None, shows=None):
 
 def tmdb_record(show_id, fetched=NOW):
     return {'tmdb_id': 1000 + show_id, 'fetched_at': tmdb.iso(fetched), 'rating': 'TV-14', 'watch_link': None,
-            'providers': [], 'trailers': [], 'backdrop': None, 'vote_average': 7.5, 'vote_count': 12}
+            'providers': [], 'trailers': [], 'backdrop': None, 'vote_average': 7.5, 'vote_count': 12,
+            'episodes': 62, 'seasons': 5}
 
 
 def write_tmdb(folder, records, fetched=NOW):
@@ -995,7 +996,7 @@ class FakeConnection:
 def details(tmdb_id, providers=True):
     return {
         'id': tmdb_id, 'name': 'Breaking Bad', 'backdrop_path': '/tsRy63Mu5cu8etL1X7ZLyf7UP1M.jpg',
-        'vote_average': 8.921, 'vote_count': 15000,
+        'vote_average': 8.921, 'vote_count': 15000, 'number_of_episodes': 62, 'number_of_seasons': 5,
         'content_ratings': {'results': [{'iso_3166_1': 'GB', 'rating': '18'}, {'iso_3166_1': 'US', 'rating': 'TV-MA'}]},
         'watch/providers': {'results': {
             'GB': {'flatrate': [{'provider_name': 'Netflix UK', 'logo_path': '/gb.jpg', 'display_priority': 0}]},
@@ -1032,6 +1033,7 @@ def details(tmdb_id, providers=True):
 
 record = tmdb.trim_details(details(1396), 1396, 'US', '2026-09-28T05:00:00Z')
 check('a record has exactly the schema keys', list(record) == RECORD_KEYS, list(record))
+check('season and episode totals are preserved for commitment filters', record['episodes'] == 62 and record['seasons'] == 5)
 check('the rating is the region\'s', record['rating'] == 'TV-MA')
 check('providers run subscription, free, ads, rent, buy, each in TMDB\'s order',
       [(p['name'], p['kind']) for p in record['providers']] == [
@@ -1197,6 +1199,9 @@ order, _eligible = tmdb.plan(index, set(index) - {12}, cached, misses, NOW, min_
 check('only shows in the catalog are chosen', 12 not in order)
 order, _eligible = tmdb.plan(index, set(index), cached, misses, NOW, min_popularity=88, limit=100, top=2)
 check('the popularity floor applies', all(100 - sid >= 88 for sid in order) and order)
+legacy = {'11': {k: v for k, v in cached['11'].items() if k not in ('episodes', 'seasons')}}
+order, _eligible = tmdb.plan({11: index[11]}, {11}, legacy, {}, NOW, min_popularity=60, limit=1, top=1)
+check('old cached records backfill counts within the existing nightly budget', order == [11])
 
 # A rejected key stops the step, keeps what is cached, and says so.
 server = FakeTMDB(always=Answer(401))
@@ -1250,7 +1255,8 @@ check('a show\'s own trailers carry no season', all('season' not in t for t in r
 
 def bare_details(tmdb_id, seasons):
     """A show's details with no trailer or teaser of its own, only a clip."""
-    return {**details(tmdb_id), 'seasons': [{'season_number': n, 'episode_count': 8} for n in seasons],
+    return {**details(tmdb_id), 'number_of_seasons': max(seasons, default=0),
+            'seasons': [{'season_number': n, 'episode_count': 8} for n in seasons],
             'videos': {'results': [{'site': 'YouTube', 'type': 'Clip', 'official': True, 'key': 'CLIPONLY001',
                                     'name': 'A clip', 'published_at': '2012-01-01T00:00:00.000Z'}]}}
 

@@ -379,7 +379,9 @@ def trim_details(raw, tmdb_id, region, fetched_at):
             'trailers': trim_trailers(raw.get('videos')),
             'backdrop': image(raw.get('backdrop_path')),
             'vote_average': number(raw.get('vote_average')),
-            'vote_count': count if type(count) is int and count >= 0 else None}
+            'vote_count': count if type(count) is int and count >= 0 else None,
+            'episodes': raw.get('number_of_episodes') if type(raw.get('number_of_episodes')) is int else None,
+            'seasons': raw.get('number_of_seasons') if type(raw.get('number_of_seasons')) is int else None}
 
 
 # Choosing what to fetch --------------------------------------------------------------
@@ -435,7 +437,8 @@ def plan(index, in_catalog, shows, ids, now, min_popularity=MIN_POPULARITY, limi
     candidates = [sid for sid in eligible if not waiting(sid)]
     popular = set(eligible[:top])
     missing = [sid for sid in candidates if str(sid) not in shows]
-    due = [sid for sid in candidates if str(sid) in shows and not young(shows[str(sid)], now, FRESH)]
+    due = [sid for sid in candidates if str(sid) in shows and (
+        not young(shows[str(sid)], now, FRESH) or 'episodes' not in shows[str(sid)] or 'seasons' not in shows[str(sid)])]
     first = [sid for sid in due if sid in popular]
     stalest = sorted((sid for sid in due if sid not in popular),
                      key=lambda sid: (shows[str(sid)].get('fetched_at') or '', -index[sid][0], sid))

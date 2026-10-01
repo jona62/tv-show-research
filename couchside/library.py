@@ -332,7 +332,10 @@ class Taste:
         scores = self.scores if scoring is None else self.e.rank(
             self.candidates, scoring, self.negatives, self.affinities, self.settings, self.positives)
         ids = self.lib.ids
-        return sorted((i for i in self.candidates if scores[i] > 0), key=lambda i: (-scores[i], ids[i]))
+        ranked = sorted((i for i in self.candidates if scores[i] > 0), key=lambda i: (-scores[i], ids[i]))
+        if getattr(self.lib, 'rules', {}).get('sort', 'relevance') != 'relevance':
+            return self.lib.discovery.order(ranked, self.lib.rules)
+        return ranked
 
     def score_others(self, indices):
         """Scores for shows outside the pool (rated, obscure, filtered out), worked out
@@ -2731,13 +2734,17 @@ class Library:
     def card(self, i, taste=None):
         s = self.e.shows[i]
         return {'id': s['id'], 'name': s['name'], 'year': s['year'], 'poster': self.poster(i),
-                'genres': s['genres'][:3], 'runtime': s['runtime'], 'type': s['type'],
+                'genres': s['genres'], 'runtime': s['runtime'], 'type': s['type'],
                 'summary': s['summary'] or '',
                 'match': taste.match(i) if taste else None,
-                'badge': 'top10' if i in self.top10_set else 'new' if i in self.recent else None}
+                'badge': 'top10' if i in self.top10_set else 'new' if i in self.recent else None,
+                'rank': (self.base.top10 if hasattr(self, 'base') else self.top10).index(i) + 1 if i in self.top10_set else None,
+                **(self.discovery.metadata(s['id']) if hasattr(self, 'discovery') else {})}
 
     def _fits(self, key, i):
         """Whether show i belongs under a genre, or under a format such as animation."""
+        if key == 'all':
+            return True
         if key in FORMAT_ROWS:
             return self.e.shows[i]['type'] in FORMAT_GROUPS[key]
         return key in self.e.shows[i]['genres']
@@ -3041,7 +3048,7 @@ class Library:
         answer = {'personal': True, 'date': e.date, 'day': fresh.day,
                   'rows': [page.row(shelf, items) for shelf, items in new[:count]],
                   'more': len(new) > count, **self.extras(page, profile, saved)}
-        featured = (page.featured(rows) if page.usable else []) or [self.top10[0]]
+        featured = (page.featured(rows) if page.usable else []) or self.top10[:1] or self.shelf[:1]
         taste.score_others(featured)
         popular = next((items for shelf, items in rows if shelf.key == 'popular'), None)
         by_taste = lambda items: sorted(items, key=lambda i: (-(taste.match(i) or 0), e.shows[i]['id']))
@@ -3255,11 +3262,11 @@ class Library:
         """Rows for one genre or format: ranked for you once you have rated something,
         by popularity before that."""
         key = body.get('genre') if isinstance(body, dict) else None
-        if not isinstance(key, str) or (key not in GENRE_ROWS and key not in FORMAT_ROWS):
+        if not isinstance(key, str) or (key not in GENRE_ROWS and key not in FORMAT_ROWS and key != 'all'):
             raise ValueError('Choose a genre to browse.')
         profile, settings, positives, negatives, rated, candidates, fresh = self.prepare(body)
         e = self.e
-        label = GENRE_ROWS.get(key) or FORMAT_ROWS[key]
+        label = 'TV shows' if key == 'all' else GENRE_ROWS.get(key) or FORMAT_ROWS[key]
         noun = lower_first(label)
         shelf = [i for i in self.shelf if self._fits(key, i) and e.shows[i]['id'] not in rated]
         taste = Taste(self, positives, negatives, settings, candidates) if positives else None

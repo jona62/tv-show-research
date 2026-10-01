@@ -114,11 +114,35 @@ It retains up to 5,000 recently used shows and drops
 records older than 180 days. Refreshing does not delete the previous answer.
 
 Cached reads return immediately. Airing shows become due daily, completed shows weekly;
-stale data stays visible while one background worker refreshes it. The worker warms
-the 200 most popular shows and recently accessed shows, checking hourly, with two
-seconds between jobs and TVmaze's existing shared rate budget. Concurrent requests
+stale data stays visible while a background worker refreshes it. The worker warms
+the 2,000 most popular shows and recently accessed shows, checking hourly, with one
+second between jobs and room reserved in TVmaze's shared rate budget for title pages. Concurrent requests
 for the same cold show share one lookup. Cold title pages use TVmaze first while
-TMDB enrichment proceeds in the background, so long-running shows do not hold up pages.
+TMDB enrichment has its own queue and worker, so long-running shows do not hold up
+other shows' first matrices. Visible requests take priority in both queues.
+
+Home, Browse, New & Popular, My List and Search share responsive discovery controls.
+Genre (multiple choices), TVmaze public rating, commitment limits (hours, episodes,
+seasons), episode length, status, premiere year, language and format can combine.
+Desktop uses existing chips; phones use the same menu sheet with removable applied
+chips outside it. Sort works within shelves, keeping the Top 10's original ranks.
+My List searches both saved and rated shows, alongside its personal rating chips.
+Recommendation sections and people's credits use the same controls. Choices are
+page-local session storage, independent of saved recommendation settings and transfers.
+
+Commitment totals come from regular episode records saved in a durable SQLite
+summary table, with future-dated episodes omitted. For completed shows, nightly TMDB
+season/episode totals provide additional coverage. A total runtime is exact when all
+episode lengths exist, otherwise estimated from the show's typical episode length.
+Unknown counts never pass an active commitment limit. Legacy TMDB cache records
+backfill the new totals inside the existing nightly request budget.
+
+Matrix-mode feed, browse, search, title and list responses carry cached matrices for
+the first cards in each row and warm missing ones before scrolling. The browser also
+looks 1,800 pixels ahead vertically and 600 horizontally, reuses fresh answers and
+polls pending first matrices after 500ms instead of four seconds. Identical answers
+do not rebuild SVGs. Browser persistence is written during idle time with a bounded
+byte budget; the server keeps a small memory cache above persistent SQLite.
 
 `GET /api/episode-matrices?ids=` accepts up to 40 IDs and serves precomputed compact
 matrices directly from SQLite. Missing shows are queued rather than fetched inside

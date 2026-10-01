@@ -353,6 +353,42 @@ main{min-height:100vh;padding-bottom:calc(var(--dock-space) + 24px);outline:none
 .cap-meta{font-size:12px;line-height:1.25;color:var(--muted)}
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin:0 var(--gutter) 12px}
 .chip{border:1px solid #ffffff4d;border-radius:18px;background:none;padding:6px 14px;font-size:13.5px;cursor:pointer;color:var(--ink-2)}
+.discovery{margin:16px var(--gutter) 24px;min-width:0}
+.discovery-tools{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.discovery-tools .chip{display:flex;align-items:center;gap:6px;min-height:40px}
+.discovery .ratings-icon{width:18px;height:18px;flex:none}
+.discovery-filter.on{background:var(--bg-4);border-color:#ffffffa6}
+.discovery-sort{display:flex;align-items:center;gap:6px;margin-left:auto;min-width:0;max-width:100%}
+.discovery-sort select{border:0;background:var(--bg);color:var(--ink-2);font:inherit;font-size:14px;min-height:44px;max-width:190px;cursor:pointer}
+.discovery-active{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px}
+.discovery-applied{display:inline-flex;align-items:center;gap:6px;background:var(--bg-3);max-width:100%;overflow-wrap:anywhere}
+.discovery-applied span{display:flex;flex:none}
+.discovery-applied .ratings-icon{width:14px;height:14px}
+.discovery-clear{font-size:13px;min-height:40px;padding:0 6px}
+.discovery-find{flex:1;min-width:180px;max-width:460px}
+.discovery-find input,.discovery-field input,.discovery-field select{width:100%;min-height:44px;border:1px solid var(--line);border-radius:4px;background:var(--bg-3);color:var(--ink);font:inherit;padding:10px 12px;font-size:16px}
+dialog.menu.discovery-menu{max-height:calc(100dvh - var(--safe-t));overflow:auto;overscroll-behavior:contain;background:var(--bg-2)}
+.discovery-menu .menu-sheet{max-width:640px;padding-bottom:0;background:var(--bg-2)}
+.discovery-menu .menu-head{position:sticky;top:0;z-index:2;background:var(--bg-2);border-bottom:1px solid var(--line)}
+.discovery-fields{display:grid;grid-template-columns:1fr 1fr;gap:20px;padding:20px}
+.discovery-field{display:flex;flex-direction:column;gap:8px;min-width:0;font-size:14px;font-weight:600;color:var(--ink-2)}
+.discovery-fields fieldset{grid-column:1/-1;border:0;margin:0;padding:0;min-width:0}
+.discovery-fields legend{font-weight:700;font-size:15px;margin-bottom:10px}
+.discovery-genres{display:flex;flex-wrap:wrap;gap:8px}
+.discovery-genre{position:relative;cursor:pointer}
+.discovery-genre input{position:absolute;opacity:0;width:1px;height:1px}
+.discovery-genre span{display:block;padding:8px 12px;border:1px solid #ffffff40;border-radius:20px;font-size:13px;min-height:36px}
+.discovery-genre input:checked+span{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.discovery-genre input:focus-visible+span{outline:2px solid var(--ink);outline-offset:3px}
+.discovery-presets{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.discovery-limits{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.discovery-help{font-size:12px;color:var(--muted);line-height:1.55;margin:12px 0 0}
+.discovery-actions{grid-column:1/-1;display:flex;gap:10px;justify-content:space-between;position:sticky;bottom:0;background:var(--bg-2);padding:16px 0 max(16px,var(--safe-b));border-top:1px solid var(--line)}
+.discovery-compact{margin:10px 0 16px}
+.discovery-compact .discovery-sort{margin-left:0}
+@media(min-width:760px){dialog.menu.discovery-menu{width:min(640px,calc(100vw - 40px));margin:60px auto;max-height:calc(100dvh - 120px)}.discovery-menu .menu-sheet{width:100%;border-radius:8px}}
+@media(max-width:759px){.discovery-quick{display:none!important}.discovery-tools .chip{min-height:44px}.discovery-find{flex-basis:100%;max-width:none}.discovery{margin-top:12px}dialog.menu.discovery-menu{width:100%;max-width:100%;margin:auto 0 0;max-height:92dvh}.discovery-menu .menu-sheet{border-radius:12px 12px 0 0;padding-left:var(--safe-l);padding-right:var(--safe-r)}.discovery-fields{padding:16px;gap:16px}.discovery-genre span{min-height:44px;padding:12px}.discovery-presets .chip{min-height:44px}}
+@media(max-width:359px){.discovery-fields{grid-template-columns:1fr}.discovery-actions .btn{padding:10px 12px;font-size:14px}.discovery-limits{gap:6px}.discovery-field input{padding:10px 8px}.discovery-sort select{max-width:155px}}
 .chip:hover{border-color:#fff}
 .chip[aria-pressed=true]{background:#fff;border-color:#fff;color:#141414;font-weight:700}
 .empty{grid-column:1/-1;color:var(--muted);font-size:14.5px;padding:10px 0}
