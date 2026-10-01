@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { band, average, compactMatrix, ratings, cachedRatings } from './ratings.js';
+import { band, average, compactMatrix, ratings, cachedRatings, matrixRatings, cachedMatrix, ratingSources } from './ratings.js';
 import { chart } from './episode-ratings.js';
 
 assert.equal(band(9.7).name, 'Absolute cinema');
@@ -48,4 +48,19 @@ await assert.rejects(ratings(82), /Unavailable/);
 assert.equal(cachedRatings(82), undefined);
 globalThis.fetch = async () => ({ ok: true, json: async () => ({ id: 82, episodes: [] }) });
 assert.deepEqual((await ratings(82)).episodes, [], 'a failed request can be retried');
-console.log('Episode palette, charts, missing data and shared request cache passed.');
+let batchUrl;
+globalThis.fetch = async url => {
+  batchUrl=url;
+  return {ok:true,json:async()=>({shows:[{id:169,sources:'TMDB',episodes:[
+    {season:1,number:1,name:'<Pilot>',rating:9.1,rating_source:'TMDB',rating_votes:100},
+  ]}],pending:[526]})};
+};
+const batch=await matrixRatings([169,526,169]);
+assert.equal(batchUrl,'/api/episode-matrices?ids=169,526');
+assert.deepEqual(batch.pending,[526]);
+assert.equal(cachedMatrix(169).episodes[0].rating,9.1);
+assert.equal(cachedRatings(169).episodes[0].name,'<Pilot>');
+assert.equal(cachedRatings(169).episodes[0].rating_source,'TMDB');
+assert.match(compactMatrix(cachedMatrix(169)),/TMDB/);
+assert.equal(ratingSources(batch.shows[0]),'TMDB');
+console.log('Episode palette, charts, missing data, shared request cache and compact batches passed.');

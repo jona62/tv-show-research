@@ -58,6 +58,11 @@ apps:
       PORT: "8082"
       MODEL_DIR: /home/developer/tv-model/current
       RELOAD_DELAY_SECONDS: "150"
+      RATINGS_CACHE: /home/developer/tv-model/cache/episode-ratings.sqlite3
+    secrets:
+      - name: TMDB_API_KEY
+        from: TMDB_READ_API
+        optional: true
     health:
       path: /healthz
       timeoutSeconds: 120

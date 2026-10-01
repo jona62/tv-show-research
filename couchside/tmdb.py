@@ -116,3 +116,15 @@ def load(path, known=None):
         if block:
             found[show_id] = block
     return found
+
+
+def ids(path):
+    """Exact mappings already established by the nightly refresher."""
+    try:
+        with gzip.open(path, 'rt', encoding='utf-8') as f:
+            raw = json.load(f)
+        return {int(k): v['tmdb_id'] for k, v in raw.get('shows', {}).items()
+                if isinstance(k, str) and SHOW_ID.fullmatch(k) and isinstance(v, dict)
+                and type(v.get('tmdb_id')) is int and v['tmdb_id'] > 0}
+    except (OSError, ValueError, EOFError, AttributeError, zlib.error):
+        return {}

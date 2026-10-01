@@ -96,6 +96,7 @@ with gzip.open(VERSION / 'search.json.gz', 'wt', encoding='utf-8') as f:
     'pipeline': 'test', 'seeded_from': None, 'tmdb': {'fetched_at': TMDB_FILE['fetched_at'], 'shows': 3}}))
 os.symlink(VERSION.relative_to(TMP), TMP / 'current')
 os.environ['MODEL_DIR'] = str(TMP / 'current')
+os.environ['RATINGS_CACHE'] = str(TMP / 'cache/episodes.sqlite3')
 
 import server                                                    # noqa: E402
 import follow                                                    # noqa: E402
@@ -1769,6 +1770,7 @@ def tvmaze_live(path):
 
 
 server.LIVE = Live(fetch=tvmaze_live)
+server.RATINGS.live = server.LIVE
 server.BIOGRAPHIES = Biographies(Live(fetch=wikidata), Live(fetch=wikipedia))
 server.KINO = Live(fetch=kinocheck)
 server.STORE = Live(fetch=itunes)
@@ -2083,6 +2085,15 @@ check('all episode ratings come through the shared live endpoint', status == 200
       and json.loads(body)['id'] == 169 and len(json.loads(body)['episodes']) == 180)
 check('ratings reject invalid and out-of-catalogue ids', fetch('/api/episode-ratings?id=abc')[0] == 400
       and fetch('/api/episode-ratings?id=999999999')[0] == 400)
+status, _headers, body = fetch('/api/episode-matrices?ids=169,82')
+matrices = json.loads(body)
+check('matrix batches serve saved data without episode descriptions and queue cold shows', status == 200
+      and matrices['shows'][0]['id'] == 169 and matrices['pending'] == [82]
+      and len(matrices['shows'][0]['episodes']) == 180
+      and 'summary' not in matrices['shows'][0]['episodes'][0])
+check('matrix batches validate the whole input before queueing work', fetch('/api/episode-matrices?ids=169,nope')[0] == 400
+      and fetch('/api/episode-matrices?ids=999999999')[0] == 400
+      and fetch('/api/episode-matrices?ids=' + ','.join(['169'] * 41))[0] == 400)
 check('shared cards carry descriptions for hover panels', bool(lib.card(engine.by_id[169])['summary']))
 status, headers, body = fetch('/api/episode?id=12203')
 check('an episode comes through whole, guests and crew with their person ids',

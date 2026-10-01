@@ -1,4 +1,4 @@
-import {esc,score,code,average,seasons,band,icon,html,legend,ratings} from './ratings.js?v=a0f46d692a8f11a1';
+import {esc,score,code,average,seasons,band,icon,html,legend,ratings,ratingSource,ratingSources} from './ratings.js?v=8a8ae7c4ab9cb933';
 const plain = value => new DOMParser().parseFromString(value||'', 'text/html').body.textContent||'';
 const layouts=[['list','Episode list'],['grid','Grid'],['wrapped','Wrapped'],['timeline','Timeline']];
 const ep = e => ({...e,still:e.image,summary:plain(e.summary)});
@@ -58,7 +58,7 @@ export function chart(es,other=null,names=[]) {
   const comparison=Boolean(other);
   const points=list=>comparison?[...new Set(list.map(e=>e.season))].map(n=>({season:n,rating:average(list.filter(e=>e.season===n)),label:`S${n}`})):list.map(e=>({...e,label:code(e)}));
   const a=points(es),b=other?points(other):[],all=[...es,...(other||[])].filter(e=>e.rating!=null);
-  if(!all.length)return '<p class="ratings-empty">These episodes have not been rated on TVmaze yet.</p>';
+  if(!all.length)return '<p class="ratings-empty">These episodes have not been rated yet.</p>';
   const low=Math.max(0,Math.min(9,Math.floor(Math.min(...all.map(e=>e.rating)))-1));
   const ss=[...new Set([...a,...b].map(p=>p.season))].sort((x,y)=>x-y),count=Math.max(1,a.length,b.length);
   const x=(p,i)=>46+(comparison?ss.indexOf(p.season)/Math.max(1,ss.length-1):i/Math.max(1,count-1))*686;
@@ -95,7 +95,7 @@ function tooltip(host) {
     hide();
     active={target};
     const b=band(e.rating),summary=plain(e.summary).trim();
-    html(tip,`${e.image?`<img src="${esc(e.image)}" alt="" loading="lazy">`:''}<div class="ratings-tooltip-body"><span class="ratings-tooltip-code">${showName?esc(showName)+' · ':''}${e.number?code(e):'Season '+e.season}</span><b>${esc(e.name||'Season average')}</b><div class="ratings-tooltip-score"><strong style="background:${b.colour};color:${b.text}">${score(e.rating)}</strong><span>${b.name}<small>${e.rating==null?'Awaiting audience ratings':'out of 10 on TVmaze'}</small></span></div>${e.number?`<p class="ratings-tooltip-summary">${esc(summary||'No episode description available.')}</p>`:''}</div>`);
+    html(tip,`${e.image?`<img src="${esc(e.image)}" alt="" loading="lazy">`:''}<div class="ratings-tooltip-body"><span class="ratings-tooltip-code">${showName?esc(showName)+' · ':''}${e.number?code(e):'Season '+e.season}</span><b>${esc(e.name||'Season average')}</b><div class="ratings-tooltip-score"><strong style="background:${b.colour};color:${b.text}">${score(e.rating)}</strong><span>${b.name}<small>${e.rating==null?'Awaiting audience ratings':`out of 10 on ${esc(ratingSource(e))}${e.rating_votes?' · '+Number(e.rating_votes).toLocaleString()+' votes':''}`}</small></span></div>${e.number?`<p class="ratings-tooltip-summary">${esc(summary||'No episode description available.')}</p>`:''}</div>`);
     tip.hidden=false;target.setAttribute('aria-describedby',tip.id);
     position();
   };
@@ -150,7 +150,9 @@ export async function mountEpisodeRatings(t,{openEpisode,episodeEl,revealButton,
   const compare=document.createElement('div');compare.className='ratings-compare';root.after(compare);
   const tip=tooltip(t.episodes);
   const comparison=compareSearch(compare,s,value=>{other=value;paintComparison();});
-  t.ratingsDispose=()=>{tip.dispose();comparison.dispose();};
+  const updated=event=>{if(event.detail===s.id||event.detail===other?.id){paint();paintComparison();}};
+  window.addEventListener('couchside-ratings',updated);
+  t.ratingsDispose=()=>{tip.dispose();comparison.dispose();window.removeEventListener('couchside-ratings',updated);};
   if(t.pick)t.pick.hidden=true;
   t.ratingsUpdate=()=>{t.eps.hidden=true;t.epsMore.parentElement.hidden=true;};
   t.ratingsUpdate();
@@ -167,7 +169,7 @@ export async function mountEpisodeRatings(t,{openEpisode,episodeEl,revealButton,
     tip.hide();if(!other){comparison.replaceChildren();return;}
     html(comparison,`<p class="ratings-comparison-key"><span>${esc(s.name)}</span><span>${esc(other.name)}</span></p>${chart(s.episodes,other.episodes,[s.name,other.name])}<p class="ratings-credit">Average episode rating per season · Seasons align by number</p>`);
     comparison.querySelectorAll('[data-season]').forEach(target=>{
-      const show=Number(target.dataset.showIndex)===0?s:other,n=Number(target.dataset.season),eps=show.episodes.filter(e=>e.season===n),e={season:n,rating:average(eps),name:`${eps.length} episodes`};
+      const show=Number(target.dataset.showIndex)===0?s:other,n=Number(target.dataset.season),eps=show.episodes.filter(e=>e.season===n),e={season:n,rating:average(eps),rating_source:ratingSources({episodes:eps}),name:`${eps.length} episodes`};
       target.onpointerenter=()=>tip.show(target,e,show.name);target.onpointerleave=tip.leave;target.onfocus=()=>tip.show(target,e,show.name);target.onblur=tip.hide;
     });
   }
@@ -182,7 +184,7 @@ export async function mountEpisodeRatings(t,{openEpisode,episodeEl,revealButton,
         meta.className='ratings-list-meta';
         const runtime=heading.querySelector('span');if(runtime)meta.append(runtime);
         badge.className='ratings-list-score';badge.style.background=b.colour;badge.style.color=b.text;
-        const label=e.rating==null?'Unrated on TVmaze':`${score(e.rating)} out of 10 on TVmaze, ${b.name}`;
+        const label=e.rating==null?'Unrated':`${score(e.rating)} out of 10 on ${ratingSource(e)}, ${b.name}`;
         badge.setAttribute('role','img');badge.setAttribute('aria-label',label);badge.title=label;
         html(badge,e.rating==null?'Unrated':`<b>${score(e.rating)}</b><small>/10</small>`);
         meta.append(badge);heading.append(meta);
@@ -203,7 +205,7 @@ export async function mountEpisodeRatings(t,{openEpisode,episodeEl,revealButton,
       root.append(more.parentElement);set(expanded);
       return;
     }
-    html(root,`${legend()}${layout==='grid'?grid(es):layout==='wrapped'?wrapped(es):chart(es)}<p class="ratings-credit">TVmaze episode ratings · Out of 10${layout==='timeline'?' · Amber line: smoothed 5-episode average':''}</p>`);
+    html(root,`${legend()}${layout==='grid'?grid(es):layout==='wrapped'?wrapped(es):chart(es)}<p class="ratings-credit">${esc(ratingSources({episodes:es})||'Audience')} episode ratings · Out of 10${layout==='timeline'?' · Amber line: smoothed 5-episode average':''}</p>`);
     bindHover(root);
   }
   filter.onchange=()=>{season=filter.value;expanded=t.open.episodes=false;paint();};paint();

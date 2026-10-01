@@ -1,6 +1,8 @@
 export const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export const score = n => n == null ? 'Unrated' : Number(n).toFixed(1);
 export const code = e => `S${e.season} E${e.number}`;
+export const ratingSource = e => e.rating_source || (e.rating != null ? 'TVmaze' : '');
+export const ratingSources = s => s.sources || [...new Set(s.episodes.map(ratingSource).filter(Boolean))].join(' / ');
 export const average = es => { const rated = es.filter(e => e.rating != null); return rated.length ? rated.reduce((n,e) => n + e.rating, 0) / rated.length : null; };
 export const seasons = s => [...new Set(s.episodes.map(e => e.season))];
 // SeriesGraph's public-rating palette and one-decimal boundaries, inspected October 1, 2026.
@@ -45,6 +47,57 @@ export const cachedRatings = id => {
   if (held) { loaded.delete(id); cache.delete(id); }
 };
 const cache = new Map();
+const MATRIX_KEY = 'couchside.episode-matrices-v1';
+const matrices = new Map();
+try {
+  const saved = JSON.parse(localStorage.getItem(MATRIX_KEY));
+  if (Array.isArray(saved)) for (const [id, held] of saved) {
+    const es=held?.value?.episodes;
+    if (Number.isInteger(id) && id>0 && held?.value?.id===id && Date.now() - held?.at < 7 * 86400000
+        && Array.isArray(es) && es.every(e=>e&&Number.isInteger(e.season)&&e.season>0&&Number.isInteger(e.number)&&e.number>0
+          &&(e.rating===null||(Number.isFinite(e.rating)&&e.rating>0&&e.rating<=10)))) matrices.set(id, held);
+  }
+  while(matrices.size>MAX_CACHED)matrices.delete(matrices.keys().next().value);
+} catch { /* First visit, unavailable storage, or a malformed cache. */ }
+export const cachedMatrix = id => {
+  const full=cachedRatings(id);if(full)return full;
+  const held=matrices.get(id);
+  if(held&&Date.now()-held.at<7*86400000)return held.value;
+  if(held)matrices.delete(id);
+};
+export async function matrixRatings(ids) {
+  const response = await fetch(`/api/episode-matrices?ids=${[...new Set(ids)].slice(0,40).join(',')}`);
+  const body = await response.json();
+  if (!response.ok || !Array.isArray(body.shows) || !Array.isArray(body.pending)) throw Error(body.error || 'Ratings are unavailable.');
+  for (const value of body.shows) {
+    matrices.delete(value.id);matrices.set(value.id, {at:Date.now(),value});
+    const full = cachedRatings(value.id);
+    if (full) {
+      let changed=full.sources!==value.sources;
+      const scores = new Map(value.episodes.map(e=>[`${e.season}:${e.number}`,e]));
+      for (const e of full.episodes) {
+        const picked=scores.get(`${e.season}:${e.number}`);
+        if(picked){
+          changed ||= ['rating','rating_source','rating_votes'].some(key=>e[key]!==picked[key]);
+          Object.assign(e,{rating:picked.rating,rating_source:picked.rating_source,rating_votes:picked.rating_votes});
+        }
+      }
+      full.sources=value.sources;
+      if(changed&&typeof window!=='undefined')window.dispatchEvent(new CustomEvent('couchside-ratings',{detail:value.id}));
+    }
+  }
+  while (matrices.size > MAX_CACHED) matrices.delete(matrices.keys().next().value);
+  try { localStorage.setItem(MATRIX_KEY, JSON.stringify([...matrices])); } catch { /* The shared server cache still works. */ }
+  return body;
+}
+function followEnrichment(id, attempt=0) {
+  setTimeout(async()=>{
+    try {
+      const body=await matrixRatings([id]);
+      if(attempt<7&&body.shows.some(s=>s.id===id&&s.refreshing))followEnrichment(id,attempt+1);
+    } catch { /* Keep the answer already displayed. */ }
+  },4000);
+}
 export function ratings(id) {
   const held = cachedRatings(id);
   if (held) return Promise.resolve(held);
@@ -56,6 +109,7 @@ export function ratings(id) {
       if(!Array.isArray(body.episodes))throw Error('Ratings are unavailable.');
       loaded.set(id,{at:Date.now(),value:body});
       while(loaded.size>MAX_CACHED){const oldest=loaded.keys().next().value;loaded.delete(oldest);cache.delete(oldest);}
+      if(body.refreshing)followEnrichment(id);
       return body;
     };
     const pending=request(0).catch(error=>{cache.delete(id);throw error;});
@@ -66,5 +120,5 @@ export function ratings(id) {
 export function compactMatrix(s) {
   const ss=seasons(s),max=Math.max(1,...s.episodes.map(e=>e.number));
   if(!ss.length)return '<span class="ratings-mini-empty">No episodes yet</span>';
-  return `<svg class="ratings-mini" viewBox="0 0 ${max} ${ss.length}" role="img" aria-label="${s.episodes.length} episode ratings, seasons in rows">${s.episodes.map(e=>`<rect x="${e.number-1}" y="${ss.indexOf(e.season)}" width=".82" height=".82" rx=".12" fill="${band(e.rating).colour}"><title>${code(e)} · ${esc(e.name)} · ${score(e.rating)} · ${band(e.rating).name}</title></rect>`).join('')}</svg>`;
+  return `<svg class="ratings-mini" viewBox="0 0 ${max} ${ss.length}" role="img" aria-label="${s.episodes.length} episode ratings, seasons in rows">${s.episodes.map(e=>`<rect x="${e.number-1}" y="${ss.indexOf(e.season)}" width=".82" height=".82" rx=".12" fill="${band(e.rating).colour}"><title>${code(e)} · ${esc(e.name)} · ${score(e.rating)} · ${band(e.rating).name}${ratingSource(e)?' · '+esc(ratingSource(e)):''}</title></rect>`).join('')}</svg>`;
 }

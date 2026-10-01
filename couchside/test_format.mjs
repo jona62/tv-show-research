@@ -634,8 +634,11 @@ const later = await starting('later', { session: { 'couchside-visit': JSON.strin
 check('but a tab come back to after half an hour away begins the day\'s next visit, and asks for its page',
   later.start.opened.visit.n === 2 && later.asked.length === 1 && JSON.parse(later.asked[0].body).visit !== homeAsked.visit
   && JSON.parse(later.asked[0].body).seed === homeAsked.seed);
-check('a list saved before version 2 moves to the wider reach once', start.sanitize({ version: 1, settings: { known_min: 85 } }).settings.known_min === 60
-  && start.sanitize({ version: 2, settings: { known_min: 85 } }).settings.known_min === 85);
+check('new lists default to well-known shows, while saved choices are preserved', start.fresh().settings.known_min === 85
+  && start.sanitize({}).settings.known_min === 85
+  && start.sanitize({ version: 1, settings: { known_min: 85 } }).settings.known_min === 85
+  && start.sanitize({ version: 2, settings: { known_min: 60 } }).settings.known_min === 60
+  && start.sanitize({ version: 2, settings: { known_min: 0 } }).settings.known_min === 0);
 for (const name of ['document', 'localStorage', 'sessionStorage']) delete globalThis[name];
 globalThis.fetch = realFetch;
 

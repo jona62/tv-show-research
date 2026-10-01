@@ -1,7 +1,7 @@
-import { mountEpisodeRatings } from './episode-ratings.js?v=8cceaa5751baeee2';
+import { mountEpisodeRatings } from './episode-ratings.js?v=f62e612f6e74d942';
 import { mountTitleSections } from './title-sections.js?v=47e93fa931aed0c8';
-import { enhanceShowCard } from './show-cards.js?v=e375e2c343dcc089';
-import { cachedRatings } from './ratings.js?v=a0f46d692a8f11a1';
+import { enhanceShowCard } from './show-cards.js?v=803e692e33776dc9';
+import { cachedRatings } from './ratings.js?v=8a8ae7c4ab9cb933';
 import { encode, decode, LIMITS, codeFrom } from './transfer.js?v=aca34fe2830e9d29';
 import { matrix, svgPath } from './qr.js?v=d7f92f94bb8911ea';
 import { tieText, leaning, leaningHeading } from './format.js?v=e565cc65c0882a95';
@@ -23,7 +23,7 @@ import { daySeed, startersQuery, mergeStarters, browserLanguage, MAX_ROUND, MAX_
 import { sheets, closing, reveal, crossfade, peeks, edgeBack, speed } from './gestures.js?v=c2173468ef22c30e';
 import { REST, LOOP_WAIT, goesRound, loopCopies, copiesOf, lapHome, restPlace, toCard } from './gestures.js?v=c2173468ef22c30e';
 import { KEY, DEFAULTS, REACH, VERSION, MAX_RATED, fresh, tidy, stored, FRESH_KEY, readMemory, remembered, opened,
-  newVisit, keepVisit, tasteOf, homeBody, packed, PAGE_KEY, take } from './start.js?v=5422435405754c9e';
+  newVisit, keepVisit, tasteOf, homeBody, packed, PAGE_KEY, take } from './start.js?v=e001754ee5695b6e';
 
 const boot = JSON.parse(document.getElementById('boot').textContent);
 // iOS zooms into a field it judges small and stays zoomed. maximum-scale=1 in the page's
@@ -3139,7 +3139,7 @@ function paintEpisode() {
   }
   e.meta.replaceChildren(...[airing(ep.airdate, ep.airstamp), ep.runtime ? runtime(ep.runtime) : '']
     .filter(Boolean).map(fact => el('span', fact)));
-  if (ep.rating) e.meta.append(ratingEl(ep.rating));
+  if (ep.rating) e.meta.append(ratingEl(ep.rating, ep.rating_source));
   else if (waiting && !ep.name) e.meta.append(skelIn('span', '', '11em'));
   e.share.hidden = !ep.name;
 
@@ -3195,10 +3195,10 @@ function nameEpisode() {
 }
 
 // TVmaze's rating in the meta line, where the dots between facts fall only between spans.
-function ratingEl(rating) {
+function ratingEl(rating, source = 'TVmaze') {
   const span = el('span', '', 'e-rating');
-  span.title = 'Rating on TVmaze';
-  span.append(icon('star'), el('b', rating.toFixed(1)), el('span', ' out of 10 on TVmaze', 'sr'));
+  span.title = `Rating on ${source}`;
+  span.append(icon('star'), el('b', rating.toFixed(1)), el('span', ` out of 10 on ${source}`, 'sr'));
   return span;
 }
 

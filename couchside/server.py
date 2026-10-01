@@ -16,6 +16,7 @@ import threading
 
 from added import Added
 from engine import Engine, MAX_LIST
+from episode_store import Store as EpisodeStore, Episodes, Tmdb as EpisodeTmdb
 from fallback import Remote, answer
 from library import Library, DESCRIPTION, MAX_SAVED
 from live import (Live, LiveError, Icons, KINOCHECK, ITUNES, trim_videos, trim_seasons,
@@ -223,6 +224,11 @@ TMDB = tmdb.load(MODEL / 'tmdb.json.gz', ENGINE.by_id)
 # call like any show's details, and the shows TVmaze added since, kept for search), 4 for
 # this app's search and 4 for Next Watch's.
 LIVE = Live(calls=12)
+RATINGS = Episodes(EpisodeStore(os.environ.get('RATINGS_CACHE') or HERE.parent / 'data/cache/episode-ratings.sqlite3'), LIVE,
+                   ended=(s['id'] for s in ENGINE.shows if s.get('status') == 'Ended'))
+RATING_KEY = os.environ.get('TMDB_API_KEY', '')
+if RATING_KEY:
+    RATINGS.tmdb = EpisodeTmdb(RATING_KEY, tmdb.ids(MODEL / 'tmdb.json.gz'))
 TVMAZE = Remote(calls=4)
 # The shows TVmaze lists past the catalogue's newest, read about hourly and each asked for
 # once, so search finds them on every query, a show named like an older one too (added.py).
@@ -293,6 +299,10 @@ def episode(episode_id):
     found = LIVE.episode(episode_id)
     if found['show'] not in ENGINE.by_id and not newer(found['show']):
         raise LiveError('That episode is not in this catalog.', 404)
+    cached = RATINGS.saved(found['show'])
+    picked = next((e for e in cached['episodes'] if e['id'] == episode_id), None) if cached else None
+    if picked:
+        found = {**found, **{key: picked[key] for key in ('rating', 'rating_source', 'rating_votes')}}
     return found
 
 
@@ -552,6 +562,18 @@ class Handler(SimpleHTTPRequestHandler):
         if path in LIVE_ROUTES:
             self.live(path, query)
             return
+        if path == '/api/episode-matrices':
+            try:
+                raw = query.get('ids', [''])[0].split(',')
+                if not 1 <= len(raw) <= 40 or any(not re.fullmatch(r'[1-9][0-9]{0,8}', key) for key in raw):
+                    raise ValueError('Choose between 1 and 40 shows.')
+                ids = list(dict.fromkeys(map(int, raw)))
+                if any(show_id not in ENGINE.by_id and not newer(show_id) for show_id in ids):
+                    raise ValueError('That show is not in this catalog.')
+                self.send_json(RATINGS.matrices(ids))
+            except ValueError as exc:
+                self.send_json({'error': str(exc)}, 400)
+            return
         if path in PEOPLE_ROUTES:
             self.people(path, query)
             return
@@ -596,7 +618,7 @@ class Handler(SimpleHTTPRequestHandler):
             elif path == '/api/episodes':
                 self.send_json({'episodes': LIVE.episodes(show_id, season)})
             elif path == '/api/episode-ratings':
-                self.send_json({'id': show_id, 'episodes': LIVE.episode_ratings(show_id)})
+                self.send_json(RATINGS.get(show_id))
             elif path == '/api/episode':
                 self.send_json({'episode': episode(episode_id)})
             elif path == '/api/trailer':
@@ -744,5 +766,8 @@ if __name__ == '__main__':
     threading.Thread(target=RELATED.warm, daemon=True).start()
     # The shows TVmaze has added since the catalogue, read at once and about hourly after.
     threading.Thread(target=ADDED.run, name='added', daemon=True).start()
+    # Cache the 200 most popular shows gradually; cached readers never wait for this.
+    popular = sorted(range(ENGINE.n), key=lambda i: (ENGINE.popularity[i], ENGINE.shows[i].get('rating') or 0), reverse=True)
+    RATINGS.start(ENGINE.shows[i]['id'] for i in popular[:200])
     port = int(os.environ.get('PORT', '8082'))
     ThreadingHTTPServer(('0.0.0.0', port), partial(Handler, directory=str(PUBLIC))).serve_forever()

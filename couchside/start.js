@@ -14,12 +14,11 @@ import { pageKey, ongoing, resumable } from './format.js';
 export const KEY = 'couchside-v1';
 export const DEFAULTS = {
   text: 40, themes: 35, genres: 25, closest: .3, dislike: .35, language: 'all', type: 'all',
-  status: 'all', year_min: 1900, runtime_min: 0, rating_min: 0, known_min: 60,
+  status: 'all', year_min: 1900, runtime_min: 0, rating_min: 0, known_min: 85,
 };
 export const REACH = [85, 60, 0];
-// Version 2 widened the default reach to fairly known shows of any year, once the ranking
-// learned which eras and how well known a list likes.
-export const VERSION = 2;
+// Version 3 defaults to well-known shows. Existing valid reach choices stay as saved.
+export const VERSION = 3;
 // Up to 3,000 ratings, as many as someone who watches a great deal has seen.
 export const MAX_RATED = LIMITS.rated;
 export const WEIGHTS = [1, .7, .35, 0, -1];
@@ -46,10 +45,7 @@ export function sanitize(raw) {
       saved.push(tidy(s));
     }
   }
-  // A list saved before version 2 reached only well known shows because that was the
-  // default, so it moves to the new one once.
-  let reach = raw.settings?.known_min;
-  if (!(raw.version >= 2) && reach === 85) reach = DEFAULTS.known_min;
+  const reach = raw.settings?.known_min;
   return {
     version: VERSION,
     profile, saved, settings: { ...DEFAULTS, known_min: REACH.includes(reach) ? reach : DEFAULTS.known_min },

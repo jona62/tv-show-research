@@ -105,14 +105,42 @@ scrollable horizontally; expanded they use the full grid. There are no extra col
 key or hover switches, and no accounts.
 
 `GET /api/episode-ratings?id=` returns every regular episode across all seasons,
-including missing scores, from one TVmaze request. The live client caches it for
-six hours and shares its source budget with title details. Card matrices load as
-they enter view, two at a time, and reuse the same data as title charts. The browser
-keeps at most 160 completed feeds for 30 minutes; unavailable data does not prevent
-a title or its original episode list from opening. The production build versions
-and includes all four new modules in its service worker.
+including missing scores. A compressed SQLite cache outside the app checkout survives
+restarts and deploys. `RATINGS_CACHE` sets its file; locally it defaults to
+`data/cache/episode-ratings.sqlite3`, and the deployment keeps it under
+`/home/developer/tv-model/cache/`. It retains up to 5,000 recently used shows and drops
+records older than 180 days. Refreshing does not delete the previous answer.
 
-Data and ratings are from TVmaze, out of 10. The rating palette follows SeriesGraph;
+Cached reads return immediately. Airing shows become due daily, completed shows weekly;
+stale data stays visible while one background worker refreshes it. The worker warms
+the 200 most popular shows and recently accessed shows, checking hourly, with two
+seconds between jobs and TVmaze's existing shared rate budget. Concurrent requests
+for the same cold show share one lookup. Cold title pages use TVmaze first while
+TMDB enrichment proceeds in the background, so long-running shows do not hold up pages.
+
+`GET /api/episode-matrices?ids=` accepts up to 40 IDs and serves precomputed compact
+matrices directly from SQLite. Missing shows are queued rather than fetched inside
+the batch request. Cards batch up to 24 visible shows and retry pending matrices
+after four seconds. They keep up to 160 small matrices on the device for seven days,
+paint those immediately after reopening, and update them from the server. Full episode
+feeds stay in memory for 30 minutes. Description and image data are not downloaded
+for each thumbnail; unavailable data never prevents a title opening.
+
+With `TMDB_API_KEY`, the worker matches shows by their existing exact TMDB mapping,
+or by IMDb ID, and fetches episode scores and vote counts by season. Episode dates
+must agree when both sources provide them. Selection is per episode: TMDB with at
+least 20 votes, then TVmaze, then a smaller TMDB sample. This threshold is a coverage
+and sample-size policy, not a claim that one source is objectively more accurate.
+Zero-vote scores stay missing. Scores are never blended, invented, or borrowed from
+the show's overall rating. The provider and available vote count appear with the
+rating. Last-good TMDB data is kept during outages, up to 180 days from its own fetch.
+TMDB requests are paced at three per second and back off on 429; rejected credentials
+disable that reader until restart. No IMDb score feed is configured: IMDb IDs are
+used for matching only, and an IMDb ratings feed requires a separate connection.
+
+New lists default to **Well-known shows**; saved valid recommendation choices remain
+unchanged. The production build versions all episode modules in its service worker.
+Episode descriptions and images come from TVmaze. Scores are out of 10. The rating palette follows SeriesGraph;
 the surrounding interface and smoothing retain Couchside's design.
 
 ## An app on your phone
@@ -748,6 +776,7 @@ from whichever model it loaded.
 node couchside/test_format.mjs
 node couchside/test_gestures.mjs
 node couchside/test_ratings.mjs
+.venv/bin/python couchside/test_episode_store.py
 .venv/bin/python couchside/test_related.py
 .venv/bin/python couchside/test_long_lists.py
 ```

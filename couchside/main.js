@@ -3139,7 +3139,7 @@ function paintEpisode() {
   }
   e.meta.replaceChildren(...[airing(ep.airdate, ep.airstamp), ep.runtime ? runtime(ep.runtime) : '']
     .filter(Boolean).map(fact => el('span', fact)));
-  if (ep.rating) e.meta.append(ratingEl(ep.rating));
+  if (ep.rating) e.meta.append(ratingEl(ep.rating, ep.rating_source));
   else if (waiting && !ep.name) e.meta.append(skelIn('span', '', '11em'));
   e.share.hidden = !ep.name;
 
@@ -3195,10 +3195,10 @@ function nameEpisode() {
 }
 
 // TVmaze's rating in the meta line, where the dots between facts fall only between spans.
-function ratingEl(rating) {
+function ratingEl(rating, source = 'TVmaze') {
   const span = el('span', '', 'e-rating');
-  span.title = 'Rating on TVmaze';
-  span.append(icon('star'), el('b', rating.toFixed(1)), el('span', ' out of 10 on TVmaze', 'sr'));
+  span.title = `Rating on ${source}`;
+  span.append(icon('star'), el('b', rating.toFixed(1)), el('span', ` out of 10 on ${source}`, 'sr'));
   return span;
 }
 
