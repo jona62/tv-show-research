@@ -42,11 +42,12 @@ def reset_public(folder):
 
 
 def bundle_styles(source, destination, *, extras=()):
-    """Include the shared touch-control guard in every app's generated stylesheet.
+    """Include the shared form-font guard in every app's generated stylesheet.
 
     The first declared layer wins for important rules, including against later
     component-important overrides. A layer declaration also permits a source
-    stylesheet to begin with @import; the guard rules themselves go last.
+    stylesheet to begin with @import; the guard rules themselves go last. The
+    guard also has an unlayered fallback for browsers without layer support.
     """
     guard = Path(__file__).with_name('touch-forms.css').read_text(encoding='utf-8')
     styles = '\n\n'.join(Path(path).read_text(encoding='utf-8').rstrip() for path in (source, *extras))

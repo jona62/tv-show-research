@@ -1,19 +1,34 @@
-/* A shared floor for editable controls on phones, tablets and hybrid devices.
-   Keep it global so sheets and dialogs mounted elsewhere share the same rule. */
+/* Keep editable text large enough to avoid iOS focus zoom. This fallback must
+   stay outside @layer and pointer queries: older Safari ignores layers, and
+   input hardware must not decide whether readable form text is protected.
+   The px declaration also protects browsers without CSS max() support. */
+input,
+select,
+textarea,
+[contenteditable]:not([contenteditable="false"]),
+[contenteditable]:not([contenteditable="false"]) *,
+[role="textbox"],
+[role="textbox"] * {
+  font-size: 16px !important;
+  font-size: max(16px, 1rem) !important;
+}
+
+/* Native WebKit search/select appearances can ignore author font sizes.
+   Component selectors can still choose their own appearance. */
+input[type="search"] { -webkit-appearance: textfield; appearance: textfield; }
+select { -webkit-appearance: menulist-button; appearance: menulist-button; }
+
+/* The first declared layer keeps the same floor above component-important
+   overrides in current browsers, including controls in portal dialogs. */
 @layer touch-forms {
-  @media (any-pointer: coarse) {
-    /* WebKit's native search and select appearances can ignore the font floor.
-       Existing component appearances still take precedence over these defaults. */
-    input[type="search"] { -webkit-appearance: textfield; appearance: textfield; }
-    select { -webkit-appearance: menulist-button; appearance: menulist-button; }
-    input,
-    select,
-    textarea,
-    [contenteditable]:not([contenteditable="false"]),
-    [contenteditable]:not([contenteditable="false"]) *,
-    [role="textbox"],
-    [role="textbox"] * {
-      font-size: max(16px, 1rem) !important;
-    }
+  input,
+  select,
+  textarea,
+  [contenteditable]:not([contenteditable="false"]),
+  [contenteditable]:not([contenteditable="false"]) *,
+  [role="textbox"],
+  [role="textbox"] * {
+    font-size: 16px !important;
+    font-size: max(16px, 1rem) !important;
   }
 }

@@ -35,10 +35,14 @@ setup. Run these from the repository root with the project's Python environment:
 | --- | --- |
 | `build <target>` | `app`, `couchside`, `site`, `all` |
 | `run <target>` | `app`, `couchside`, `site`, `pipeline` |
-| `test <target>` | `app`, `couchside`, `site`, `pipeline`, `all` |
+| `test <target>` | `app`, `couchside`, `site`, `pipeline`, `tools`, `all` |
 
 The helper selects the right working directory and entrypoint. It also runs
 pipeline jobs and [recommendation benchmarks](pipeline/bench/README.md).
+
+Shared browser checks run with `test tools` and are included in `test all`.
+Install their WebKit browser once with
+`.venv/bin/python -m playwright install webkit`.
 
 ## Fresh recommendations
 

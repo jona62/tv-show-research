@@ -239,7 +239,7 @@ dialog[open]{display:flex;align-items:flex-end;justify-content:center}
   padding-top:20px;border-top:1px solid var(--line)}
 #move .field{margin-top:16px}
 #move input,#move textarea{width:100%;margin-top:6px;padding:9px 10px;border:1px solid var(--line);
-  border-radius:7px;background:var(--raised);color:var(--ink);font:12.5px/1.5 ui-monospace,Menlo,monospace;
+  border-radius:7px;background:var(--raised);color:var(--ink);font:16px/1.5 ui-monospace,Menlo,monospace;
   overflow-wrap:anywhere;resize:vertical}
 #move input:focus,#move textarea:focus{border-color:var(--accent);background:var(--paper)}
 .move-acts{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}

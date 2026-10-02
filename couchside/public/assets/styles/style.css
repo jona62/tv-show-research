@@ -942,7 +942,7 @@ dialog.small .sheet{max-width:560px;margin-inline:auto}
 .corner{position:absolute;top:calc(12px + var(--edge-t));right:calc(12px + var(--edge-r))}
 .field{display:flex;flex-direction:column;gap:6px;margin-top:14px;font-size:13px;color:var(--muted)}
 .field input,.field textarea{width:100%;padding:10px;border:1px solid #444;border-radius:6px;background:#0f0f0f;color:var(--ink);
-  font:13px/1.5 ui-monospace,Menlo,monospace;overflow-wrap:anywhere;resize:vertical}
+  font:16px/1.5 ui-monospace,Menlo,monospace;overflow-wrap:anywhere;resize:vertical}
 .account-panel{padding:16px;border-bottom:1px solid #2c2c2c}
 .account-email{margin:0;font-size:14px;font-weight:600;overflow-wrap:anywhere}
 .account-status{margin:6px 0 0;color:var(--muted);font-size:13px;line-height:1.5}
@@ -1306,22 +1306,37 @@ dialog.peek::backdrop{background:#000000c7}
   .taste-radar-liked{stroke:Highlight;fill:none}
 }
 
-/* A shared floor for editable controls on phones, tablets and hybrid devices.
-   Keep it global so sheets and dialogs mounted elsewhere share the same rule. */
+/* Keep editable text large enough to avoid iOS focus zoom. This fallback must
+   stay outside @layer and pointer queries: older Safari ignores layers, and
+   input hardware must not decide whether readable form text is protected.
+   The px declaration also protects browsers without CSS max() support. */
+input,
+select,
+textarea,
+[contenteditable]:not([contenteditable="false"]),
+[contenteditable]:not([contenteditable="false"]) *,
+[role="textbox"],
+[role="textbox"] * {
+  font-size: 16px !important;
+  font-size: max(16px, 1rem) !important;
+}
+
+/* Native WebKit search/select appearances can ignore author font sizes.
+   Component selectors can still choose their own appearance. */
+input[type="search"] { -webkit-appearance: textfield; appearance: textfield; }
+select { -webkit-appearance: menulist-button; appearance: menulist-button; }
+
+/* The first declared layer keeps the same floor above component-important
+   overrides in current browsers, including controls in portal dialogs. */
 @layer touch-forms {
-  @media (any-pointer: coarse) {
-    /* WebKit's native search and select appearances can ignore the font floor.
-       Existing component appearances still take precedence over these defaults. */
-    input[type="search"] { -webkit-appearance: textfield; appearance: textfield; }
-    select { -webkit-appearance: menulist-button; appearance: menulist-button; }
-    input,
-    select,
-    textarea,
-    [contenteditable]:not([contenteditable="false"]),
-    [contenteditable]:not([contenteditable="false"]) *,
-    [role="textbox"],
-    [role="textbox"] * {
-      font-size: max(16px, 1rem) !important;
-    }
+  input,
+  select,
+  textarea,
+  [contenteditable]:not([contenteditable="false"]),
+  [contenteditable]:not([contenteditable="false"]) *,
+  [role="textbox"],
+  [role="textbox"] * {
+    font-size: 16px !important;
+    font-size: max(16px, 1rem) !important;
   }
 }

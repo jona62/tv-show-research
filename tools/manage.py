@@ -9,6 +9,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 APPS = ('app', 'couchside', 'site')
 SERVICES = (*APPS, 'pipeline')
+TEST_TARGETS = (*SERVICES, 'tools')
 
 
 def launch(command, directory=ROOT):
@@ -53,7 +54,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='command', required=True)
     for command, choices in (('build', (*APPS, 'all')), ('run', SERVICES),
-                             ('test', (*SERVICES, 'all'))):
+                             ('test', (*TEST_TARGETS, 'all'))):
         commands.add_parser(command).add_argument('target', choices=choices)
     for command, folder in (('job', 'pipeline/jobs'), ('bench', 'pipeline/bench')):
         child = commands.add_parser(command)
@@ -72,7 +73,7 @@ def main():
         module = 'backend.refresher' if args.target == 'pipeline' else 'backend.server'
         return launch([sys.executable, '-m', module], ROOT / args.target)
     if args.command == 'test':
-        targets = SERVICES if args.target == 'all' else (args.target,)
+        targets = TEST_TARGETS if args.target == 'all' else (args.target,)
         return int(sum(check(service) for service in targets) > 0)
     if args.command == 'job':
         return launch([sys.executable, ROOT / 'pipeline/run.py', args.name, *args.args])
