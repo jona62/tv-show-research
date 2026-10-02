@@ -111,28 +111,23 @@
 .comparison-overlay-mean{color:var(--muted);font-variant-numeric:tabular-nums}
 .comparison-overlay .ratings-credit{margin-bottom:18px}
 .comparison-overlay-frame,.comparison-overlay .ratings-chart-wrap{min-width:0}
-.comparison-overlay .comparison-overlay-label{left:0;padding-left:0;white-space:nowrap}
+.comparison-overlay .comparison-overlay-label{left:0;right:128px;padding-left:0;white-space:nowrap}
+.comparison-overlay .ratings-chart-label-trend{right:0}
 .comparison-overlay .ratings-chart-wrap{overflow:hidden;touch-action:pan-y;cursor:grab;user-select:none;-webkit-user-select:none}
 .comparison-overlay .ratings-timeline *{pointer-events:none}
 .is-panning .ratings-chart-wrap{cursor:grabbing}
-.comparison-zoom-controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;margin:0 0 18px}
-.comparison-zoom-actions{display:flex;align-items:center;gap:8px}
-.comparison-zoom-picker .ratings-view-button{font-size:13px;min-height:36px;padding:6px 10px;gap:6px}
-.comparison-zoom-picker .ratings-view-button>.ratings-icon:last-child{margin-left:4px}
-.comparison-zoom-picker .ratings-view-options{width:180px}
-.comparison-zoom-picker .ratings-view-options button{font-size:13px}
+.comparison-zoom-controls{position:absolute;top:0;right:0;z-index:3}
+.comparison-zoom-actions{display:flex;align-items:center;gap:4px}
 .comparison-zoom-actions .round{font-size:20px;line-height:1}
-.comparison-zoom-reset{font-size:13px;min-height:36px;padding:6px}
-.comparison-zoom-controls .ratings-credit{margin:0;font-size:11px}
-.comparison-zoom-range{flex-basis:100%;font-variant-numeric:tabular-nums}
+.comparison-zoom-reset{font-size:12px;min-height:34px;padding:4px}
+.comparison-zoom-range{position:absolute;width:1px;height:1px;margin:0;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.comparison-overlay .comparison-zoom-hint{margin:8px 0 18px;font-size:11px}
 @media(any-pointer:coarse){
-  .comparison-zoom-picker .ratings-view-button,.comparison-zoom-picker .ratings-view-options button,.comparison-zoom-reset{min-height:44px}
+  .comparison-zoom-reset{min-height:44px;min-width:44px}
   .comparison-zoom-actions .round{width:44px;height:44px}
-}
-@media(max-width:600px){
-  .comparison-zoom-controls{gap:8px;margin-bottom:16px}
-  .comparison-zoom-picker .ratings-view-button{font-size:12px}
-  .comparison-zoom-hint{flex-basis:100%}
+  .comparison-overlay-frame{padding-top:12px}
+  .comparison-overlay .comparison-overlay-label{top:12px;right:144px}
+  .comparison-overlay .ratings-chart-label-trend{top:312px;right:0}
 }
 .comparison-overlay .ratings-point-hit{pointer-events:none}
 .comparison-overlay .ratings-point-hit:hover .comparison-overlay-point-hidden,.comparison-overlay .ratings-point-hit.is-hovered .comparison-overlay-point-hidden,.comparison-overlay .ratings-point-hit:focus .comparison-overlay-point-hidden{opacity:1}

@@ -1,6 +1,5 @@
-import { html, icon } from './ratings.js';
+import { html } from './ratings.js';
 
-const choices = [['episodes', 'Episodes'], ['ratings', 'Ratings'], ['both', 'Both']];
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
 const initial = () => ({ zoomX: 1, startIndex: 0, low: null, high: null });
 
@@ -31,14 +30,11 @@ function zoomed(value, source, factor, axis, anchor) {
 
 // State and event targets live outside the SVG that is reprojected on each frame.
 export function createComparisonViewport({ changed = () => {} } = {}) {
-  let view = initial(), source, plan, scope, axis = 'episodes', board, controller, frame, drag, touch, gesture;
+  let view = initial(), source, plan, scope, board, controller, frame, drag, touch, gesture;
   let suppressClick = 0, disposed = false, foreignTouch = false;
   const controls = document.createElement('div');
   controls.className = 'comparison-zoom-controls'; controls.dataset.comparisonZoomControls = '';
-  html(controls, `<div class="comparison-zoom-actions" role="group" aria-label="Timeline zoom"><div class="ratings-picker comparison-zoom-picker"><button class="ratings-view-button" type="button" data-zoom-menu aria-haspopup="listbox" aria-expanded="false" aria-controls="comparison-zoom-options"><span>Zoom: Episodes</span>${icon('down')}</button><div class="ratings-view-options" id="comparison-zoom-options" role="listbox" aria-label="Zoom direction" hidden>${choices.map(([value, name]) => `<button type="button" role="option" tabindex="-1" data-zoom-choice="${value}" aria-selected="${value === axis}"><span>${name}</span>${icon('check')}</button>`).join('')}</div></div><button class="round small" type="button" data-zoom-action="out" aria-label="Zoom out timeline" title="Zoom out">−</button><button class="round small" type="button" data-zoom-action="in" aria-label="Zoom in timeline" title="Zoom in">+</button><button class="link comparison-zoom-reset" type="button" data-zoom-action="reset" aria-label="Reset timeline zoom">Reset</button></div><p class="ratings-credit comparison-zoom-hint">Scroll or pinch to zoom · Drag to move</p><p class="ratings-credit comparison-zoom-range" role="status" aria-live="polite"></p>`);
-  const trigger = controls.querySelector('[data-zoom-menu]'), menu = controls.querySelector('[role="listbox"]');
-  const close = (focus = false) => { menu.hidden = true; trigger.setAttribute('aria-expanded', 'false'); if (focus) trigger.focus({ preventScroll: true }); };
-  const open = () => { menu.hidden = false; trigger.setAttribute('aria-expanded', 'true'); menu.querySelector('[aria-selected="true"]')?.focus({ preventScroll: true }); };
+  html(controls, `<div class="comparison-zoom-actions" role="group" aria-label="Timeline zoom"><button class="round small" type="button" data-zoom-action="out" aria-label="Zoom out timeline" title="Zoom out">−</button><button class="round small" type="button" data-zoom-action="in" aria-label="Zoom in timeline" title="Zoom in">+</button><button class="link comparison-zoom-reset" type="button" data-zoom-action="reset" aria-label="Reset timeline zoom" title="Show the full comparison">Reset</button></div><p class="comparison-zoom-range" role="status" aria-live="polite"></p>`);
   const hideTip = () => { const tip = board?.closest('.compare-page')?.querySelector('.ratings-tooltip'); if (tip) tip.hidden = true; };
   const publish = (immediate = false) => {
     hideTip(); cancelAnimationFrame(frame);
@@ -54,8 +50,8 @@ export function createComparisonViewport({ changed = () => {} } = {}) {
     const current = bounded(view, source);
     return { index: current.startIndex + current.span / 2, rating: (current.low + current.high) / 2 };
   };
-  const controlZoom = factor => update(zoomed(view, source, factor, axis, centre()), true);
-  const inChart = target => target instanceof Element && Boolean(target.closest('.comparison-overlay-frame'));
+  const controlZoom = factor => update(zoomed(view, source, factor, 'both', centre()), true);
+  const inChart = target => target instanceof Element && !target.closest('.comparison-zoom-controls') && Boolean(target.closest('.comparison-overlay-frame'));
   function location(clientX, clientY) {
     const svg = board.querySelector('.ratings-timeline'), bounds = svg.getBoundingClientRect();
     if (!Number.isFinite(clientX)) clientX = bounds.left + bounds.width / 2;
@@ -67,7 +63,7 @@ export function createComparisonViewport({ changed = () => {} } = {}) {
     const fraction = clamp((row.bottom - point.y) / (row.bottom - row.top), 0, 1);
     return { index: plan.startIndex + clamp((point.x - 20) / plan.spacing, 0, plan.span),
       rating: plan.low + fraction * (plan.high - plan.low), rowHeight: row.bottom - row.top,
-      inAxis: clientX < bounds.left, x: point.x, y: point.y };
+      inAxis: clientX < bounds.left, inXAxis: point.y > plan.raw.bottom && point.y < 290, x: point.x, y: point.y };
   }
   function pan(before, geometry, dx, dy, horizontalOnly = false) {
     const current = bounded(before, source), next = { ...current };
@@ -77,12 +73,12 @@ export function createComparisonViewport({ changed = () => {} } = {}) {
   }
   function wheel(event) {
     if (!inChart(event.target) || !plan?.live || !event.cancelable) return;
-    event.preventDefault(); close();
+    event.preventDefault();
     const units = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 300 : 1;
     if (!event.ctrlKey && !event.metaKey && Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
       const current = bounded(view, source); update({ ...current, startIndex: current.startIndex + event.deltaX * units / plan.spacing }); return;
     }
-    const anchor = location(event.clientX, event.clientY), direction = event.shiftKey || anchor.inAxis ? 'ratings' : axis;
+    const anchor = location(event.clientX, event.clientY), direction = event.shiftKey || anchor.inAxis ? 'ratings' : anchor.inXAxis ? 'episodes' : 'both';
     update(zoomed(view, source, Math.exp(-clamp(event.deltaY * units, -160, 160) * .005), direction, anchor));
   }
   function pointerDown(event) {
@@ -125,7 +121,7 @@ export function createComparisonViewport({ changed = () => {} } = {}) {
     if (points.length === 2 && touch.points.length === 2) {
       if (event.cancelable) event.preventDefault(); event.stopPropagation();
       const middle = midpoint(points), ratio = distance(points) / Math.max(24, distance(touch.points));
-      const next = zoomed(touch.before, source, clamp(ratio, .05, 20), axis, touch.anchor);
+      const next = zoomed(touch.before, source, clamp(ratio, .05, 20), 'both', touch.anchor);
       const spacing = (plan.width - 64) / next.span;
       next.startIndex -= (middle.x - touch.middle.x) / spacing;
       const shift = (middle.y - touch.middle.y) / touch.anchor.rowHeight * (next.high - next.low);
@@ -154,21 +150,11 @@ export function createComparisonViewport({ changed = () => {} } = {}) {
     if (event.cancelable) event.preventDefault();
     if (touch?.points.length === 2) return;
     suppressClick = performance.now() + 400;
-    update(zoomed(gesture.before, source, clamp(event.scale || 1, .05, 20), axis, gesture.anchor));
+    update(zoomed(gesture.before, source, clamp(event.scale || 1, .05, 20), 'both', gesture.anchor));
   }
   function keydown(event) {
     if (event.ctrlKey || event.metaKey || event.altKey) return;
-    const option = event.target.closest('[data-zoom-choice]');
-    if (controls.contains(event.target)) {
-      if (event.key === 'Escape' && !menu.hidden) { event.preventDefault(); event.stopPropagation(); close(true); }
-      else if (event.target === trigger && ['ArrowDown', 'ArrowUp'].includes(event.key)) { event.preventDefault(); open(); }
-      else if (!menu.hidden && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
-        event.preventDefault(); const buttons = [...menu.querySelectorAll('button')], index = buttons.indexOf(event.target);
-        buttons[event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length]?.focus();
-      } else if (option && ['Enter', ' '].includes(event.key)) { event.preventDefault(); event.stopPropagation(); choose(option.dataset.zoomChoice); }
-      else if (event.key === 'Tab') close();
-      return;
-    }
+    if (controls.contains(event.target)) return;
     if (!event.target.matches('.ratings-chart-wrap')) return;
     const current = bounded(view, source), next = { ...current }, step = current.span * .15;
     if (['+', '='].includes(event.key)) controlZoom(1.5);
@@ -182,27 +168,19 @@ export function createComparisonViewport({ changed = () => {} } = {}) {
     event.preventDefault(); event.stopPropagation();
     if (!['+', '=', '-', '0'].includes(event.key)) update(next, true);
   }
-  function choose(value) { if (!choices.some(([id]) => id === value)) return; axis = value; close(true); updateControls(); }
   function click(event) {
     if (performance.now() < suppressClick && inChart(event.target)) { event.preventDefault(); event.stopImmediatePropagation(); return; }
     const button = event.target.closest('button'); if (!button || !controls.contains(button)) return;
-    if (button.hasAttribute('data-zoom-menu')) { event.preventDefault(); menu.hidden ? open() : close(); }
-    else if (button.dataset.zoomChoice) { event.preventDefault(); choose(button.dataset.zoomChoice); }
-    else if (button.dataset.zoomAction) { event.preventDefault(); close(); button.dataset.zoomAction === 'reset' ? reset() : controlZoom(button.dataset.zoomAction === 'in' ? 1.5 : 1 / 1.5); }
+    if (button.dataset.zoomAction) { event.preventDefault(); button.dataset.zoomAction === 'reset' ? reset() : controlZoom(button.dataset.zoomAction === 'in' ? 1.5 : 1 / 1.5); }
   }
   function updateControls() {
     if (!source || !plan) return;
     controls.hidden = !board?.querySelector('.ratings-timeline');
-    trigger.querySelector('span').textContent = `Zoom: ${choices.find(([id]) => id === axis)[1]}`;
-    trigger.setAttribute('aria-label', `Timeline zoom: ${choices.find(([id]) => id === axis)[1]}`);
-    menu.querySelectorAll('[data-zoom-choice]').forEach(button => button.setAttribute('aria-selected', String(button.dataset.zoomChoice === axis)));
     const current = bounded(view, source), span = current.high - current.low;
-    controls.querySelector('[data-zoom-action="in"]').disabled = (axis === 'ratings' || current.zoomX >= Math.max(1, source.maxCount - 1)) && (axis === 'episodes' || span <= .5);
-    controls.querySelector('[data-zoom-action="out"]').disabled = (axis === 'ratings' || current.zoomX <= 1) && (axis === 'episodes' || span >= 10);
+    controls.querySelector('[data-zoom-action="in"]').disabled = current.zoomX >= Math.max(1, source.maxCount - 1) && span <= .5;
+    controls.querySelector('[data-zoom-action="out"]').disabled = current.zoomX <= 1 && span >= 10;
     controls.querySelector('.comparison-zoom-range').textContent = `Episodes ${Math.floor(current.startIndex) + 1}–${Math.min(source.maxCount, Math.ceil(current.startIndex + current.span) + 1)} of ${source.maxCount} · Ratings ${current.low.toFixed(2).replace(/\.00$/, '')}–${current.high.toFixed(2).replace(/\.00$/, '')}`;
   }
-  const outside = event => { if (!controls.contains(event.target)) close(); };
-  document.addEventListener('pointerdown', outside);
   return {
     prepare(nextSource, nextScope) {
       source = nextSource;
@@ -222,7 +200,6 @@ export function createComparisonViewport({ changed = () => {} } = {}) {
         listen('touchend', touchEnd); listen('touchcancel', touchEnd);
         listen('gesturestart', gestureStart, { passive: false }); listen('gesturechange', gestureMove, { passive: false });
         listen('gestureend', () => { gesture = null; });
-        listen('focusout', event => { if (controls.contains(event.target) && !controls.contains(event.relatedTarget)) close(); });
       }
       updateControls();
     },
@@ -234,10 +211,10 @@ export function createComparisonViewport({ changed = () => {} } = {}) {
     },
     suspend() {
       cancelAnimationFrame(frame); controller?.abort(); board?.classList.remove('is-panning'); board = null;
-      drag = touch = gesture = null; foreignTouch = false; close();
+      drag = touch = gesture = null; foreignTouch = false;
     },
     dispose() {
-      disposed = true; cancelAnimationFrame(frame); controller?.abort(); document.removeEventListener('pointerdown', outside);
+      disposed = true; cancelAnimationFrame(frame); controller?.abort();
       drag = touch = gesture = null; controls.remove();
     },
   };

@@ -241,7 +241,7 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
     if (!content.contains(active)) return null;
     return active.dataset.compareSeason ? `[data-compare-season="${active.dataset.compareSeason}"]`
       : active.closest('.compare-picker') ? `[data-compare-picker="${active.closest('.compare-picker').dataset.picker}"]`
-        : active.closest('.comparison-zoom-controls') ? active.dataset.zoomAction ? `[data-zoom-action="${active.dataset.zoomAction}"]` : '[data-zoom-menu]'
+        : active.dataset.zoomAction ? `[data-zoom-action="${active.dataset.zoomAction}"]`
         : active.dataset.episode && active.dataset.showId ? `.ratings-point-hit[data-show-id="${active.dataset.showId}"][data-episode="${active.dataset.episode}"]`
           : active.classList.contains('ratings-chart-wrap') ? '.ratings-chart-wrap'
             : active.dataset.action ? ['action', 'id', 'direction', 'mode', 'view'].filter(key => active.dataset[key] != null)
@@ -266,7 +266,14 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
     const options = { availableWidth, pointStyle: state.pointStyle, viewport: timelineView.options(), sourcePlan: timelineSourcePlan };
     const plan = comparisonOverlayPlan(timelineModel, availableWidth, options.viewport, timelineSourcePlan);
     const replacement = document.createElement('div');
-    html(replacement, `<div data-comparison-zoom-controls></div>${comparisonOverlayHTML(timelineModel, options)}`);
+    html(replacement, comparisonOverlayHTML(timelineModel, options));
+    const chart = replacement.querySelector('.comparison-overlay-frame');
+    if (chart) {
+      const controls = document.createElement('div'); controls.dataset.comparisonZoomControls = '';
+      chart.prepend(controls);
+      const hint = document.createElement('p'); hint.className = 'ratings-credit comparison-zoom-hint';
+      hint.textContent = 'Scroll or pinch to zoom · Drag to move'; chart.after(hint);
+    }
     const current = board.querySelector('.ratings-timeline'), next = replacement.querySelector('.ratings-timeline');
     if (current && next) {
       // Keep the SVG and its viewport as gesture targets throughout a touch or drag.
