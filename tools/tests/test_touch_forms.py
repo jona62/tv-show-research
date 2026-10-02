@@ -332,20 +332,26 @@ class TouchFormFonts(unittest.TestCase):
                                       label=f'{label} focused comparison', expected=1, rendered=True)
                     page.get_by_role('button', name='Comparison view: Episode matrix', exact=True).click()
                     page.get_by_role('option', name='Timeline', exact=True).click()
-                    timeline_controls = ('#compare select[data-compare-option], '
-                                         '#compare select[data-compare-season="1"]')
+                    timeline_controls = '#compare select[data-compare-season="1"]'
                     self.assert_floor(page, timeline_controls,
-                                      label=f'{label} timeline controls', expected=3, rendered=True)
-                    # Each arrangement and point style rebuilds the real controls;
-                    # font protection must survive those replacements and focus.
+                                      label=f'{label} timeline season', expected=1, rendered=True)
+                    # Arrangement and points use buttons that cannot invoke a native
+                    # form picker. The real season form must retain its font floor
+                    # through every custom-menu selection and focus transition.
                     for name, option, values in (('Timeline arrangement', 'timelineLayout', ('side', 'compact', 'row')),
                                                 ('Episode points', 'pointStyle', ('rating', 'none', 'show'))):
                         for value in values:
-                            field = page.locator(f'#compare select[data-compare-option="{option}"]')
-                            field.select_option(value)
+                            field = page.locator(f'#compare [data-compare-picker="{option}"]')
+                            field.click()
+                            page.locator(f'#compare [data-compare-choice="{option}"][data-value="{value}"]').click()
                             field.focus()
+                            self.assertEqual(field.get_attribute('aria-expanded'), 'false',
+                                             f'{label} {name} reopened after selection')
                             self.assert_floor(page, timeline_controls,
-                                              label=f'{label} {name} {value}', expected=3, rendered=True)
+                                              label=f'{label} {name} {value}', expected=1, rendered=True)
+                    page.locator(timeline_controls).focus()
+                    self.assert_floor(page, timeline_controls,
+                                      label=f'{label} focused timeline season', expected=1, rendered=True)
                     self.mount_title_ratings(page)
                     self.assert_floor(page, '#title .ratings-controls select',
                                       label=f'{label} title season', expected=1, rendered=True)

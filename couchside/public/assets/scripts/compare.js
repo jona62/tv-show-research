@@ -10,8 +10,15 @@ const validId = id => Number.isInteger(id) && id > 0 && id <= 2147483647;
 const validSeason = season => Number.isInteger(season) && season > 0 && season < 10000;
 const seasonNumbers = show => [...new Set(show.episodes.map(episode => episode.season))].sort((a, b) => a - b);
 const layouts = [['grid', 'Episode matrix'], ['timeline', 'Timeline']];
+const scopes = [['all', 'All seasons'], ['single', 'Single season']];
 const timelineLayouts = [['row', 'Posters in a row'], ['side', 'Posters on the side'], ['compact', 'Compact poster row']];
 const pointStyles = [['show', 'Match show lines'], ['rating', 'Rating colors'], ['none', 'Lines only']];
+const pickers = {
+  mode: { label: 'Comparison scope', choices: scopes },
+  view: { label: 'Comparison view', choices: layouts },
+  timelineLayout: { label: 'Timeline arrangement', choices: timelineLayouts },
+  pointStyle: { label: 'Episode points', choices: pointStyles },
+};
 const defaults = () => ({ ids: [], mode: 'all', inverted: true, averages: true, seasons: {},
   view: 'grid', timelineLayout: 'row', pointStyle: 'show' });
 
@@ -138,11 +145,16 @@ const paths = {
 };
 const actionIcon = name => `<svg class="ratings-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name]}</svg>`;
 const options = (seasons, selected) => seasons.map(season => `<option value="${season}"${season === selected ? ' selected' : ''}>${seasonName(season)}</option>`).join('');
-const choiceOptions = (choices, selected) => choices.map(([value, label]) => `<option value="${value}"${value === selected ? ' selected' : ''}>${label}</option>`).join('');
+
+function pickerHTML(key, selected) {
+  const { label, choices } = pickers[key], name = choices.find(([value]) => value === selected)[1];
+  const menuId = `comparison-${key}-options`, view = key === 'view';
+  return `<div class="ratings-picker compare-picker${view ? ' compare-view' : ''}" data-picker="${key}"><button type="button" class="ratings-view-button" data-compare-picker="${key}"${view ? ' data-action="view-picker"' : ''} aria-label="${label}: ${name}" aria-haspopup="listbox" aria-expanded="false" aria-controls="${menuId}">${view ? icon(selected) : ''}<span>${name}</span>${icon('down')}</button><div id="${menuId}" class="ratings-view-options" role="listbox" aria-label="${label}" hidden>${choices.map(([value, text]) => `<button type="button" role="option" tabindex="-1" aria-selected="${value === selected}" data-compare-choice="${key}" data-value="${value}"${view ? ` data-action="view" data-view="${value}"` : key === 'mode' ? ` data-action="mode" data-mode="${value}"` : ''}>${view ? icon(value) : ''}<span>${text}</span>${icon('check')}</button>`).join('')}</div></div>`;
+}
 
 function controlsHTML(state) {
-  const label = layouts.find(([id]) => id === state.view)[1], timeline = state.view === 'timeline';
-  return `<div class="ratings-controls compare-toolbar"><div class="ratings-card-choices compare-scope" role="group" aria-label="Comparison scope"><button type="button" data-action="mode" data-mode="all" aria-pressed="${state.mode === 'all'}">All seasons</button><button type="button" data-action="mode" data-mode="single" aria-pressed="${state.mode === 'single'}">Single season</button></div><div class="compare-view-controls"><div class="ratings-picker compare-view"><button type="button" class="ratings-view-button" data-action="view-picker" aria-label="Comparison view: ${label}" aria-haspopup="listbox" aria-expanded="false" aria-controls="comparison-view-options">${icon(state.view)}<span>${label}</span>${icon('down')}</button><div id="comparison-view-options" class="ratings-view-options" role="listbox" aria-label="Comparison view" hidden>${layouts.map(([id, name]) => `<button type="button" role="option" aria-selected="${id === state.view}" data-action="view" data-view="${id}">${icon(id)}<span>${name}</span>${icon('check')}</button>`).join('')}</div></div><button class="chip" type="button" data-action="invert" aria-pressed="${state.inverted}"${timeline ? ' disabled title="Applies to episode matrix" aria-describedby="comparison-invert-note"' : ''}>Inverted</button></div><button class="chip" type="button" data-action="averages" aria-pressed="${state.averages}">Show averages</button></div>${timeline ? `<p id="comparison-invert-note" class="ratings-credit">Inverted applies to the episode matrix.</p><div class="compare-timeline-settings"><label>Timeline arrangement<select data-compare-option="timelineLayout" aria-label="Timeline arrangement">${choiceOptions(timelineLayouts, state.timelineLayout)}</select></label><label>Episode points<select data-compare-option="pointStyle" aria-label="Episode points">${choiceOptions(pointStyles, state.pointStyle)}</select></label></div>` : ''}`;
+  const timeline = state.view === 'timeline';
+  return `<div class="ratings-controls compare-toolbar"><div class="compare-selector-controls" role="group" aria-label="Comparison scope and view">${pickerHTML('mode', state.mode)}${pickerHTML('view', state.view)}</div><div class="compare-toggle-controls" role="group" aria-label="Comparison display"><button class="chip" type="button" data-action="invert" aria-pressed="${state.inverted}"${timeline ? ' disabled title="Applies to episode matrix" aria-describedby="comparison-invert-note"' : ''}>Inverted</button><button class="chip" type="button" data-action="averages" aria-pressed="${state.averages}">Show averages</button></div></div>${timeline ? `<p id="comparison-invert-note" class="ratings-credit">Inverted applies to the episode matrix.</p><div class="compare-timeline-settings"><div class="compare-setting"><span class="compare-setting-label">Timeline arrangement</span>${pickerHTML('timelineLayout', state.timelineLayout)}</div><div class="compare-setting"><span class="compare-setting-label">Episode points</span>${pickerHTML('pointStyle', state.pointStyle)}</div></div>` : ''}`;
 }
 
 function cardHTML(id, index, state, entry, grabbed, colour) {
@@ -198,7 +210,7 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
     const active = document.activeElement;
     if (!content.contains(active)) return null;
     return active.dataset.compareSeason ? `[data-compare-season="${active.dataset.compareSeason}"]`
-      : active.dataset.compareOption ? `[data-compare-option="${active.dataset.compareOption}"]`
+      : active.closest('.compare-picker') ? `[data-compare-picker="${active.closest('.compare-picker').dataset.picker}"]`
         : active.dataset.episode && active.dataset.showId ? `.ratings-point-hit[data-show-id="${active.dataset.showId}"][data-episode="${active.dataset.episode}"]`
           : active.classList.contains('ratings-chart-wrap') ? '.ratings-chart-wrap'
             : active.dataset.action ? ['action', 'id', 'direction', 'mode', 'view'].filter(key => active.dataset[key] != null)
@@ -226,18 +238,26 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
     // Sampling must not replace cards or close a menu while someone is using it.
     if (state.view === 'timeline') paintTimeline();
   }
-  const closeView = (focus = false) => {
-    const trigger = content.querySelector('[data-action="view-picker"]'), menu = content.querySelector('#comparison-view-options');
+  const closePicker = (picker, focus = false) => {
+    const trigger = picker?.querySelector('[data-compare-picker]'), menu = picker?.querySelector('[role="listbox"]');
     if (menu) menu.hidden = true;
     if (trigger) { trigger.setAttribute('aria-expanded', 'false'); if (focus) trigger.focus({ preventScroll: true }); }
   };
-  const openView = () => {
-    const trigger = content.querySelector('[data-action="view-picker"]'), menu = content.querySelector('#comparison-view-options');
-    if (!menu) return;
+  const closePickers = () => content.querySelectorAll('.compare-picker').forEach(picker => closePicker(picker));
+  const openPicker = picker => {
+    closePickers();
+    const trigger = picker.querySelector('[data-compare-picker]'), menu = picker.querySelector('[role="listbox"]');
     menu.hidden = false; trigger.setAttribute('aria-expanded', 'true'); menu.querySelector('[aria-selected="true"]')?.focus({ preventScroll: true });
   };
-  function render() {
-    const focus = rememberFocus(), scroll = content.querySelector('.ratings-chart-wrap')?.scrollLeft || 0,
+  function choose(button) {
+    const key = button.dataset.compareChoice, value = button.dataset.value;
+    if (!pickers[key]?.choices.some(([choice]) => choice === value)) return;
+    closePickers(); state[key] = value;
+    // Restore the closed trigger, never a replacement option or native picker.
+    render(`[data-compare-picker="${key}"]`);
+  }
+  function render(focusOverride) {
+    const focus = focusOverride || rememberFocus(), scroll = content.querySelector('.ratings-chart-wrap')?.scrollLeft || 0,
       posterScroll = content.querySelector('.compare-cards')?.scrollLeft || 0;
     timelineCleanup(); timelineCleanup = () => {}; observer?.disconnect(); cancelAnimationFrame(resizeFrame);
     for (const id of state.ids) {
@@ -302,6 +322,13 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
   input.onfocus = () => { if (found.length) renderSearch(); };
   host.onclick = event => {
     const button = event.target.closest('button'); if (!button || !host.contains(button)) return;
+    if (button.dataset.compareChoice) { event.preventDefault(); event.stopPropagation(); choose(button); return; }
+    if (button.dataset.comparePicker) {
+      event.preventDefault(); event.stopPropagation();
+      const picker = button.closest('.compare-picker');
+      picker.querySelector('[role="listbox"]').hidden ? openPicker(picker) : closePicker(picker);
+      return;
+    }
     if (button.dataset.add) { add(Number(button.dataset.add)); return; }
     const id = Number(button.dataset.id);
     switch (button.dataset.action) {
@@ -310,9 +337,6 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
       case 'remove': state.ids = state.ids.filter(value => value !== id); delete state.seasons[id]; loader.remove(id); grabbed = null; render(); input.focus(); tell('Show removed.'); break;
       case 'move': move(id, state.ids.indexOf(id) + Number(button.dataset.direction)); break;
       case 'grab': grabbed = grabbed === id ? null : id; render(); content.querySelector(`[data-action="grab"][data-id="${id}"]`)?.focus(); tell(grabbed ? 'Show grabbed. Use arrow keys to move, Space to drop.' : 'Show position saved.'); break;
-      case 'mode': state.mode = button.dataset.mode; render(); break;
-      case 'view-picker': content.querySelector('#comparison-view-options')?.hidden ? openView() : closeView(); break;
-      case 'view': if (layouts.some(([value]) => value === button.dataset.view)) { state.view = button.dataset.view; render(); content.querySelector('[data-action="view-picker"]')?.focus({ preventScroll: true }); } break;
       case 'invert': if (state.view === 'grid') { state.inverted = !state.inverted; render(); } break;
       case 'averages': state.averages = !state.averages; render(); break;
     }
@@ -322,24 +346,34 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
     }
   };
   host.onchange = event => {
-    const key = event.target.dataset.compareOption, choices = key === 'timelineLayout' ? timelineLayouts : key === 'pointStyle' ? pointStyles : [];
-    if (choices.some(([value]) => value === event.target.value)) { state[key] = event.target.value; render(); return; }
     if (!event.target.dataset.compareSeason) return;
     const id = Number(event.target.dataset.compareSeason), selected = Number(event.target.value);
-    if (seasonNumbers(loader.entries.get(id)?.show || { episodes: [] }).includes(selected)) { state.seasons[id] = selected; render(); }
+    if (!seasonNumbers(loader.entries.get(id)?.show || { episodes: [] }).includes(selected)) return;
+    state.seasons[id] = selected;
+    // Keep Safari's just-dismissed select in place; refocusing a new select reopens it.
+    if (state.view === 'timeline') paintTimeline();
+    else {
+      matrix = compareMatrix(freezeComparison(state, loader.entries));
+      html(content.querySelector('.compare-board'), ratingTableHTML(matrix));
+    }
+    persist();
   };
   host.onkeydown = event => {
-    const target = event.target;
-    if (target.closest('.compare-view')) {
-      const menu = content.querySelector('#comparison-view-options');
-      if (target.dataset.action === 'view-picker' && ['ArrowDown', 'ArrowUp'].includes(event.key)) { event.preventDefault(); openView(); return; }
-      if (!menu.hidden && event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeView(true); return; }
+    const target = event.target, picker = target.closest('.compare-picker');
+    if (picker) {
+      const menu = picker.querySelector('[role="listbox"]');
+      if (target.dataset.comparePicker && ['ArrowDown', 'ArrowUp'].includes(event.key)) { event.preventDefault(); openPicker(picker); return; }
+      if (!menu.hidden && event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closePicker(picker, true); return; }
       if (!menu.hidden && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
         event.preventDefault();
         const buttons = [...menu.querySelectorAll('button')], index = buttons.indexOf(target);
         buttons[event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length]?.focus(); return;
       }
-      if (event.key === 'Tab') closeView();
+      if (target.dataset.compareChoice && ['Enter', ' '].includes(event.key)) {
+        // Prevent the browser's pending activation from clicking the restored trigger.
+        event.preventDefault(); event.stopPropagation(); choose(target); return;
+      }
+      if (!menu.hidden && event.key === 'Tab') closePicker(picker, true);
     }
     if (!results.hidden && ['ArrowDown', 'ArrowUp', 'Escape'].includes(event.key) && (target === input || results.contains(target))) {
       event.preventDefault(); event.stopPropagation();
@@ -362,6 +396,10 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
       event.preventDefault(); viewport.scrollLeft = event.key === 'Home' ? 0 : event.key === 'End' ? viewport.scrollWidth - viewport.clientWidth : viewport.scrollLeft + (event.key === 'ArrowRight' ? 1 : -1) * Math.min(160, viewport.clientWidth / 2);
     }
   };
+  host.onfocusout = event => {
+    const picker = event.target.closest('.compare-picker');
+    if (picker && !picker.contains(event.relatedTarget)) closePicker(picker);
+  };
   host.ondragstart = event => {
     const card = event.target.closest('[data-show]');
     if (!card || event.target.closest('input,select')) { event.preventDefault(); return; }
@@ -376,7 +414,7 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
   host.ondragend = () => { dragId = null; host.querySelectorAll('.is-dragging').forEach(card => card.classList.remove('is-dragging')); };
   const outside = event => {
     if (!host.querySelector('.compare-search').contains(event.target)) dismiss();
-    if (!content.querySelector('.compare-view')?.contains(event.target)) closeView();
+    content.querySelectorAll('.compare-picker').forEach(picker => { if (!picker.contains(event.target)) closePicker(picker); });
   };
   document.addEventListener('pointerdown', outside);
   save.onclick = async () => {
@@ -394,7 +432,7 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
   return () => {
     disposed = true; clearTimeout(timer); ++searchToken; loader.dispose(); observer?.disconnect(); cancelAnimationFrame(resizeFrame); timelineCleanup();
     document.removeEventListener('pointerdown', outside); window.removeEventListener('couchside-ratings', enriched);
-    host.onclick = host.onchange = host.onkeydown = host.ondragstart = host.ondragover = host.ondrop = host.ondragend = null;
+    host.onclick = host.onchange = host.onkeydown = host.onfocusout = host.ondragstart = host.ondragover = host.ondrop = host.ondragend = null;
     input.oninput = input.onfocus = save.onclick = null;
   };
 }

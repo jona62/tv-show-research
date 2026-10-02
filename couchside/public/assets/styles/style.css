@@ -1364,15 +1364,19 @@ dialog.peek::backdrop{background:#000000c7}
 .compare-card-scope{grid-row:6;display:flex;align-items:start;min-width:0;min-height:38px;width:100%}
 .compare-card-scope>span{font-size:12px;color:var(--muted);line-height:1.5;padding-block:10px}
 .compare-card select{width:100%;min-width:0;min-height:38px;background:#242424;border:1px solid #4d4d4d;border-radius:4px;padding:8px 10px}
-.compare-toolbar{gap:12px}
+.compare-toolbar{gap:12px 20px;align-items:start}
 .compare-toolbar button:disabled{opacity:.4;cursor:default}
-.compare-view{flex:none}
-.compare-view-controls{display:inline-flex;align-items:center;flex-wrap:nowrap;gap:12px;max-width:100%;min-width:0}
-.compare-view-controls .compare-view{flex:0 1 auto;min-width:0}
-.compare-view-controls .ratings-view-button{width:100%;min-width:0}
-.compare-view-controls .ratings-view-button>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.compare-view-controls>[data-action="invert"]{flex:none;white-space:nowrap}
-.compare-scope button{padding:8px 14px;font-size:13px;white-space:nowrap;min-width:112px}
+.compare-selector-controls,.compare-toggle-controls{display:inline-flex;align-items:stretch;flex-wrap:nowrap;gap:12px;max-width:100%;min-width:0}
+.compare-selector-controls{width:max-content}
+.compare-selector-controls .compare-picker{flex:0 1 auto;min-width:0}
+.compare-picker:has([aria-expanded="true"]){z-index:9}
+.compare-picker .ratings-view-button{width:100%;min-width:0;height:100%}
+.compare-picker .ratings-view-button>span{min-width:0;text-align:left}
+.compare-selector-controls .ratings-view-button>span{white-space:nowrap}
+.compare-picker .ratings-view-options{width:max(220px,100%);max-width:calc(100vw - 2 * var(--gutter))}
+.compare-picker .ratings-view-options button>span{min-width:0;overflow-wrap:anywhere}
+.compare-selector-controls .compare-picker:last-child .ratings-view-options{left:auto;right:0}
+.compare-toggle-controls>button{flex:none;white-space:nowrap;min-height:40px}
 .compare-board{border-top:1px solid var(--line);padding-top:20px}
 .compare-board .ratings-grid-scroll{padding:4px 3px 12px;margin-inline:-3px;overscroll-behavior-x:contain}
 .compare-board .rating-table th{min-width:104px}
@@ -1385,8 +1389,9 @@ dialog.peek::backdrop{background:#000000c7}
 
 /* Timeline choices use the title page's view menu and native chart typography. */
 .compare-timeline-settings{display:flex;flex-wrap:wrap;gap:16px 24px;margin:0 0 24px}
-.compare-timeline-settings label{display:flex;flex-direction:column;gap:8px;color:var(--muted);font-size:12px}
-.compare-timeline-settings select{min-width:160px;min-height:38px;padding:8px 10px;background:#242424;border:1px solid #4d4d4d;border-radius:4px;color:var(--ink);font:inherit;font-size:14px}
+.compare-setting{display:flex;flex-direction:column;gap:8px;min-width:220px;max-width:100%}
+.compare-setting-label{color:var(--muted);font-size:12px}
+.compare-setting:last-child .ratings-view-options{left:auto;right:0}
 .compare-timeline-layout{min-width:0;margin-top:24px}
 .compare-timeline-plots{min-width:0}
 .compare-timeline-posters{grid-auto-flow:column;grid-auto-columns:176px;grid-template-columns:none;column-gap:24px;row-gap:12px;justify-content:start;overflow-x:auto;margin:0 0 24px;padding:3px 3px 10px;overscroll-behavior-x:contain}
@@ -1414,6 +1419,10 @@ dialog.peek::backdrop{background:#000000c7}
 .comparison-overlay .ratings-point-hit{pointer-events:none}
 .comparison-overlay .ratings-point-hit:hover .comparison-overlay-point-hidden,.comparison-overlay .ratings-point-hit.is-hovered .comparison-overlay-point-hidden,.comparison-overlay .ratings-point-hit:focus .comparison-overlay-point-hidden{opacity:1}
 
+@media(hover:none),(pointer:coarse){
+  .compare-picker .ratings-view-button,.compare-picker .ratings-view-options button,.compare-toggle-controls>button{font-size:max(16px,var(--touch-form-font-floor,16px))}
+}
+
 @media(max-width:759px){
   .rating-cell,.rating-empty{height:40px}
   .compare-header{flex-wrap:wrap;gap:12px;margin-bottom:20px}
@@ -1428,10 +1437,14 @@ dialog.peek::backdrop{background:#000000c7}
     .compare-card-all{grid-template-rows:subgrid}
   }
   .compare-reorder-actions .round{width:44px;height:44px}
-  .compare-toolbar{gap:10px}
-  .compare-view-controls{gap:10px}
-  .compare-scope button,.ratings-invert{min-height:44px}
-  .compare-view .ratings-view-button,.compare-timeline-settings select{min-height:44px}
+  .compare-toolbar{gap:12px}
+  .compare-selector-controls,.compare-toggle-controls{gap:8px}
+  .compare-selector-controls .ratings-view-button{gap:6px;padding:8px}
+  .compare-selector-controls .ratings-view-button>span{white-space:normal}
+  .compare-selector-controls .ratings-view-button>.ratings-icon:last-child{margin-left:0;flex:none}
+  .compare-selector-controls .compare-view .ratings-view-button>.ratings-icon:first-child{display:none}
+  .compare-picker .ratings-view-button,.compare-picker .ratings-view-options button,.compare-toggle-controls>button{min-height:44px;font-size:max(16px,var(--touch-form-font-floor,16px))}
+  .compare-toggle-controls>button{padding-inline:14px}
   .compare-timeline-settings{gap:14px}
   .compare-timeline-layout.layout-side,.compare-timeline-layout.layout-side:has(.compare-card:nth-child(3)){display:block}
   .layout-side .compare-timeline-posters,.layout-side:has(.compare-card:nth-child(3)) .compare-timeline-posters{grid-auto-flow:column;grid-auto-columns:176px;grid-template-columns:none;overflow-x:auto;margin-bottom:24px}

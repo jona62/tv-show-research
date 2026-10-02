@@ -2,14 +2,15 @@ import {average, band, bands, ratingSources, score} from './ratings.js?v=2a0509d
 import {timelineModel, timelineAxis, smoothPath} from './episode-timeline.js?v=803e207689055be8';
 import {detailMatrix, compareMatrix, seasonName, episodeCode} from './rating-views.js?v=2168d19db732fbe1';
 import {loadSnapshotImages} from './snapshot-images.js?v=58ed772a708f7e6c';
-import {comparisonTimelineParts, drawComparisonTimeline} from './comparison-timeline-export.js?v=aae17b702da5dde2';
+import {comparisonTimelineParts, drawComparisonTimeline, COMPARISON_HEADER_HEIGHT} from './comparison-timeline-export.js?v=849ae6d7d91c88c9';
 
 // Every part stays below common mobile canvas limits, at twice its logical size.
 export const SNAPSHOT_LIMITS = Object.freeze({width:1600, height:1800, pixels:12_000_000, scale:2});
 const COLORS = {background:'#181818', text:'#ffffff', muted:'#a8a8a8', gold:'#ffb020', line:'#2e2e2e'};
 const POSTER = {width:160, height:240};
 const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-const headerOffset = model => model.kind === 'detail' ? 200 : 0;
+// Comparison headers need only the wordmark and scope; the show names belong to the posters.
+const headerOffset = model => model.kind === 'detail' ? 200 : COMPARISON_HEADER_HEIGHT - 190;
 const chunks = (items, size) => Array.from({length:Math.max(1, Math.ceil(items.length / size))},
   (_, index) => items.slice(index * size, (index + 1) * size));
 const formatScore = value => value == null ? '—' : score(value);
@@ -198,8 +199,8 @@ function drawHeader(surface, model, subtitle, images) {
     drawText(context, fitText(context, subtitle, textWidth), x, 180 + Math.max(0, lines - 1) * 44,
       {color:COLORS.muted});
   } else {
-    drawText(context, 'Compare shows', 36, 80, {size:30, weight:750});
-    drawText(context, fitText(context, subtitle, width - 72, 13), 36, 109, {size:13, color:COLORS.muted});
+    drawText(context, fitText(context, subtitle, width - 72, 13), 36, 109 + headerOffset(model),
+      {size:13, color:COLORS.muted});
   }
   context.fillStyle = COLORS.line; context.fillRect(36, 129 + headerOffset(model), width - 72, 1);
 }

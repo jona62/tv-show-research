@@ -122,6 +122,50 @@ test('the full portrait and landscape images are contained, never cropped', asyn
   }
 });
 
+test('comparison exports keep the brand, scopes and poster titles without a redundant generic heading', async () => {
+  const models=[];
+  for (const inverted of [false,true]) for (const mode of ['all','single'])
+    models.push({...compare(inverted,11,401),view:'grid',mode});
+  for (const timelineLayout of ['row','side','compact']) for (const averages of [false,true])
+    models.push(timelineCompare({...compare(false,40,16),view:'timeline',timelineLayout,averages}));
+  for (const model of models) {
+    const drawing=harness(), parts=planRatingSnapshot(model);
+    await renderRatingSnapshot(model,artFor(model),drawing);
+    const titles=new Set();
+    for (const [index,canvas] of drawing.canvases.entries()) {
+      assert.ok(!canvas.texts.some(text=>text.value==='Compare shows'));
+      const brand=canvas.texts.filter(text=>text.y===42).map(text=>text.value).join('');
+      assert.equal(brand,'COUCHSIDE','every continuation retains the native wordmark');
+      const scope=canvas.texts.find(text=>text.value.startsWith(model.mode==='all'?'All seasons ·':'Selected seasons ·'));
+      assert.ok(scope && scope.y>42 && scope.y<100,'scope follows the wordmark without an empty title row');
+      assert.ok(canvas.posters.every(poster=>poster.y>scope.y),'poster artwork follows the retained scope');
+      canvas.texts.forEach(text=>{if(model.shows.some(show=>show.name===text.value))titles.add(text.value);});
+      if (parts.length>1) assert.ok(canvas.texts.some(text=>text.value.startsWith(`Part ${index+1} of ${parts.length}`)));
+      assert.ok(canvas.logicalWidth<=1600&&canvas.logicalHeight<=1800);
+    }
+    assert.deepEqual([...titles].sort(),model.shows.map(show=>show.name).sort(),'show names remain in the poster captions');
+    if (model.view==='grid'&&model.mode==='single') checkCoverage(model,parts);
+    if (model.view==='grid'&&model.mode==='all') {
+      const represented=parts.reduce((sum,part)=>sum+part.rows.reduce((rowSum,row)=>rowSum+
+        row.cells.slice(part.columnStart,part.columnStart+part.headers.length)
+          .reduce((cellSum,cell)=>cellSum+(cell?.count||0),0),0),0);
+      assert.equal(represented,model.shows.reduce((sum,show)=>sum+show.episodes.length,0),
+        'each selected episode remains represented in its season average');
+    }
+  }
+});
+
+test('removing the comparison title preserves single-show snapshot header geometry', async () => {
+  for (const view of ['grid','wrapped','list','timeline']) {
+    const model=detail(view), drawing=harness();
+    await renderRatingSnapshot(model,artFor(model),drawing);
+    const canvas=drawing.canvases[0], poster=canvas.posters[0];
+    assert.deepEqual([poster.x,poster.y,poster.width,poster.height],[36,66,160,240]);
+    assert.ok(canvas.texts.some(text=>text.value==='Fleabag'&&text.left===220&&text.y===145));
+    assert.ok(canvas.rectangles.some(rect=>rect.x===36&&rect.y===329&&rect.height===1));
+  }
+});
+
 test('comparison poster arrangements repeat full art, ordered show colors and the captured scopes', async () => {
   for (const timelineLayout of ['row','side','compact']) {
     const model=timelineCompare({timelineLayout}), drawing=harness(), parts=planRatingSnapshot(model);

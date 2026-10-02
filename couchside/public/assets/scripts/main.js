@@ -1,5 +1,5 @@
 import { mountEpisodeRatings } from './episode-ratings.js?v=c4e6d874df401c35';
-import { mountCompare, comparisonURL } from './compare.js?v=892f0c068f6d7a6f';
+import { mountCompare, comparisonURL } from './compare.js?v=8ab129214554fa79';
 import { mountTitleSections } from './title-sections.js?v=c735de07fc7f1d99';
 import { enhanceShowCard,receiveMatrices,matrixPreference } from './show-cards.js?v=1e100102e3a68bf6';
 import { mountTaste } from './taste.js?v=94c80891be4e9edb';
@@ -2879,7 +2879,7 @@ async function shareTitle() {
 }
 async function saveRatingSnapshot(model) {
   const frozen = structuredClone(model);
-  const { downloadRatingSnapshot } = await import('./rating-snapshots.js?v=76c842552ae3761d');
+  const { downloadRatingSnapshot } = await import('./rating-snapshots.js?v=75d5e1e996fcebdd');
   const result = await downloadRatingSnapshot(frozen);
   toast(result.pages.length > 1 ? 'Images saved together in one ZIP.' : 'Image saved.');
   return result;

@@ -33,8 +33,8 @@ def source_document(unavailable=False, deferred_colours=False):
       const shows=SHOW_FIXTURE, unavailable=UNAVAILABLE_FIXTURE;
       window.pendingColours=new Map();
       window.resolveColour=(id,colour)=>{window.pendingColours.get(id)(colour);window.pendingColours.delete(id);};
-      const episodes=id=>[1,2].map(number=>({id:id*10+number,season:1,number,
-        rating:7+number,name:'Episode '+number}));
+      const episodes=id=>[1,2].flatMap(season=>[1,2].map(number=>({id:id*100+season*10+number,season,number,
+        rating:5+season+number,name:'Season '+season+' episode '+number})));
       window.disposeComparison=mountCompare(document.getElementById('host'),{
         search:'?compare='+shows.map(show=>show.id).join(',')+'&mode=single&compare-view=timeline',
         metadata:async id=>({...shows.find(show=>show.id===id),poster:'/poster.svg',art:'/poster.svg'}),
@@ -110,7 +110,7 @@ class ComparisonCardLayout(unittest.TestCase):
         return page, errors
 
     def check_rows(self, page, layout, zoom):
-        mode = page.locator('[data-action="mode"][aria-pressed="true"]').get_attribute('data-mode')
+        mode = page.locator('[data-compare-choice="mode"][aria-selected="true"]').get_attribute('data-value')
         result = page.locator('.compare-card').evaluate_all('''cards=>cards.map(card=>{
             const rect=selector=>{const node=card.querySelector(selector);if(!node)return null;const r=node.getBoundingClientRect();
                 return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height,
@@ -154,25 +154,30 @@ class ComparisonCardLayout(unittest.TestCase):
         font_floor = page.evaluate('parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--touch-form-font-floor")) || 16')
         self.assertGreaterEqual(font_floor, 16 * 100 / zoom)
         self.assertTrue(page.locator('[data-compare-season]').evaluate_all('nodes=>nodes.every(node=>parseFloat(getComputedStyle(node).fontSize)>='+str(font_floor)+')'))
-        group = page.locator('.compare-view-controls').bounding_box()
+        scope = page.locator('[data-compare-picker="mode"]').bounding_box()
         view = page.locator('[data-action="view-picker"]').bounding_box()
         invert = page.locator('[data-action="invert"]').bounding_box()
-        self.assertGreaterEqual(invert['x'], view['x'] + view['width'] + 9)
-        self.assertAlmostEqual(view['y'] + view['height'] / 2, invert['y'] + invert['height'] / 2, delta=.5)
-        self.assertGreaterEqual(group['width'], view['width'] + invert['width'])
+        averages = page.locator('[data-action="averages"]').bounding_box()
+        self.assertGreaterEqual(view['x'], scope['x'] + scope['width'] + 7)
+        self.assertAlmostEqual(scope['y'] + scope['height'] / 2, view['y'] + view['height'] / 2, delta=.5)
+        self.assertGreaterEqual(averages['x'], invert['x'] + invert['width'] + 7)
+        self.assertAlmostEqual(invert['y'] + invert['height'] / 2, averages['y'] + averages['height'] / 2, delta=.5)
         return result
 
     @staticmethod
-    def set_view(page, view):
-        page.locator('[data-action="view-picker"]').click()
-        page.locator(f'[data-action="view"][data-view="{view}"]').click()
+    def choose(page, key, value):
+        page.locator(f'[data-compare-picker="{key}"]').click()
+        page.locator(f'[data-compare-choice="{key}"][data-value="{value}"]').click()
+
+    def set_view(self, page, view):
+        self.choose(page, 'view', view)
 
     def test_common_rows_keep_full_titles_and_scope_aligned_in_both_views(self):
         for physical_width, zoom in ((1280, 100), (390, 100), (390, 85)):
             with self.subTest(width=physical_width, zoom=zoom):
                 page, errors = self.open_fixture(physical_width, zoom)
                 for layout in ('row', 'side', 'compact'):
-                    page.get_by_label('Timeline arrangement', exact=True).select_option(layout)
+                    self.choose(page, 'timelineLayout', layout)
                     self.check_rows(page, layout, zoom)
                     self.set_view(page, 'grid')
                     self.assertTrue(page.locator('.rating-table').is_visible())
@@ -188,7 +193,7 @@ class ComparisonCardLayout(unittest.TestCase):
 
     def test_missing_and_failed_shows_keep_card_slots_and_retry_accessible(self):
         page, errors = self.open_fixture(390, 85, unavailable=True)
-        page.get_by_label('Timeline arrangement', exact=True).select_option('compact')
+        self.choose(page, 'timelineLayout', 'compact')
         self.check_rows(page, 'compact', 85)
         self.assertTrue(page.locator('[data-show="999"] .compare-card-scope').text_content().strip() == 'No episodes yet')
         self.assertTrue(page.locator('[data-action="retry"][data-id="1000"]').is_visible())
@@ -203,12 +208,12 @@ class ComparisonCardLayout(unittest.TestCase):
                 page, errors = self.open_fixture(physical_width, zoom)
                 for layout in ('row', 'side', 'compact'):
                     self.set_view(page, 'timeline')
-                    page.get_by_label('Timeline arrangement', exact=True).select_option(layout)
+                    self.choose(page, 'timelineLayout', layout)
                     for view in ('timeline', 'grid'):
                         self.set_view(page, view)
-                        page.locator('[data-action="mode"][data-mode="single"]').click()
+                        self.choose(page, 'mode', 'single')
                         single = {card['id']: card for card in self.check_rows(page, layout, zoom)}
-                        page.locator('[data-action="mode"][data-mode="all"]').click()
+                        self.choose(page, 'mode', 'all')
                         all_seasons = self.check_rows(page, layout, zoom)
                         self.assertEqual(page.locator('[data-compare-season],.compare-card-scope').count(), 0)
                         for card in all_seasons:
@@ -219,6 +224,99 @@ class ComparisonCardLayout(unittest.TestCase):
                             self.assertTrue(page.locator('.compare-reorder-actions .round').evaluate_all(
                                 'buttons=>buttons.every(button=>button.getBoundingClientRect().width>=44&&button.getBoundingClientRect().height>=44)'))
                 self.assertFalse(errors, errors)
+
+    def test_toolbar_groups_wrap_together_and_share_one_selector_design(self):
+        for width, zoom in ((320,100),(390,100),(390,85),(740,100),(1280,100)):
+            with self.subTest(width=width, zoom=zoom):
+                page, errors = self.open_fixture(width, zoom)
+                for view in ('timeline','grid'):
+                    self.set_view(page,view)
+                    page.mouse.move(0,0)
+                    metrics=page.evaluate('''()=>{
+                        const rect=node=>{const r=node.getBoundingClientRect();return {x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height};};
+                        return {viewport:innerWidth,documentWidth:document.documentElement.scrollWidth,
+                            groups:[...document.querySelectorAll('.compare-selector-controls,.compare-toggle-controls')].map(rect),
+                            buttons:[...document.querySelectorAll('[data-compare-picker]')].map(button=>({
+                                ...rect(button),font:getComputedStyle(button).fontSize,border:getComputedStyle(button).border,
+                                background:getComputedStyle(button).backgroundColor,radius:getComputedStyle(button).borderRadius,
+                                pattern:button.classList.contains('ratings-view-button')}))};
+                    }''')
+                    self.assertLessEqual(metrics['documentWidth'],metrics['viewport']+1)
+                    first,second=metrics['groups']
+                    if width<=390:
+                        self.assertGreaterEqual(second['y'],first['bottom']+7)
+                    elif width>=740:
+                        self.assertAlmostEqual(first['y']+first['height']/2,second['y']+second['height']/2,delta=.5)
+                    for group in metrics['groups']:
+                        self.assertGreaterEqual(group['x'],0)
+                        self.assertLessEqual(group['right'],metrics['viewport']+.5)
+                    styles={(button['font'],button['border'],button['background'],button['radius']) for button in metrics['buttons']}
+                    self.assertEqual(len(styles),1,'Scope, view, arrangement and points use the same selector design')
+                    self.assertTrue(all(button['pattern'] for button in metrics['buttons']))
+                    if width<760:
+                        self.assertTrue(all(button['height']>=44 for button in metrics['buttons']))
+                self.assertFalse(errors,errors)
+
+    def test_touch_choices_close_once_and_menus_support_keyboard_and_outside_dismissal(self):
+        page,errors=self.open_fixture(390,85)
+        choices=[('mode','all'),('mode','single'),('view','grid'),('view','timeline'),
+                 ('timelineLayout','side'),('timelineLayout','compact'),('timelineLayout','row'),
+                 ('pointStyle','rating'),('pointStyle','none'),('pointStyle','show')]
+        for key,value in choices:
+            for _ in range(2):
+                trigger=page.locator(f'[data-compare-picker="{key}"]')
+                trigger.tap()
+                menu=page.locator(f'.compare-picker[data-picker="{key}"] [role="listbox"]')
+                self.assertTrue(menu.is_visible())
+                box=menu.bounding_box()
+                self.assertGreaterEqual(box['x'],-.5)
+                self.assertLessEqual(box['x']+box['width'],page.evaluate('innerWidth')+.5)
+                page.locator(f'[data-compare-choice="{key}"][data-value="{value}"]').tap()
+                self.assertEqual(trigger.get_attribute('aria-expanded'),'false')
+                self.assertEqual(page.locator('[role="listbox"]:visible').count(),0)
+                self.assertTrue(trigger.evaluate('node=>node===document.activeElement'))
+                self.assertEqual(page.locator(f'[data-compare-choice="{key}"][data-value="{value}"]').get_attribute('aria-selected'),'true')
+        scope=page.locator('[data-compare-picker="mode"]')
+        scope.focus();scope.press('ArrowDown');page.keyboard.press('Home');page.keyboard.press('Enter')
+        self.assertEqual(scope.get_attribute('aria-expanded'),'false')
+        self.assertEqual(page.locator('[data-compare-choice="mode"][aria-selected="true"]').get_attribute('data-value'),'all')
+        scope.press('Space');page.keyboard.press('End');page.keyboard.press('Space')
+        self.assertEqual(scope.get_attribute('aria-expanded'),'false')
+        self.assertEqual(page.locator('[data-compare-choice="mode"][aria-selected="true"]').get_attribute('data-value'),'single')
+        scope.click();page.keyboard.press('Escape')
+        self.assertEqual(scope.get_attribute('aria-expanded'),'false')
+        self.assertTrue(scope.evaluate('node=>node===document.activeElement'))
+        scope.click();page.locator('#compare-search').click()
+        self.assertEqual(page.locator('[role="listbox"]:visible').count(),0)
+        scope.click();page.locator('[data-compare-picker="view"]').click()
+        self.assertEqual(page.locator('[role="listbox"]:visible').count(),1)
+        self.assertEqual(scope.get_attribute('aria-expanded'),'false')
+        page.keyboard.press('Tab')
+        self.assertEqual(page.locator('[role="listbox"]:visible').count(),0)
+        self.assertFalse(errors,errors)
+
+    def test_season_change_preserves_native_selector_and_updates_the_compared_data(self):
+        page,errors=self.open_fixture(390,85)
+        for view in ('timeline','grid'):
+            self.set_view(page,view)
+            field=page.locator('[data-compare-season="42184"]')
+            field.focus()
+            field.select_option('1')
+            page.evaluate('''()=>{window.savedSeason=document.querySelector('[data-compare-season="42184"]');
+                window.savedSeasonCard=window.savedSeason.closest('.compare-card');}''')
+            field.select_option('2')
+            self.assertTrue(page.evaluate('''()=>document.querySelector('[data-compare-season="42184"]')===window.savedSeason
+                &&document.querySelector('[data-show="42184"]')===window.savedSeasonCard
+                &&document.activeElement===window.savedSeason'''))
+            self.assertEqual(field.input_value(),'2')
+            self.assertIn('42184%3A2',page.url)
+            if view=='timeline':
+                descriptions=page.locator('.comparison-overlay-series[data-show-id="42184"] [aria-label]').evaluate_all('nodes=>nodes.map(node=>node.getAttribute("aria-label"))')
+                self.assertTrue(descriptions and all('S2 E' in value for value in descriptions),descriptions)
+            else:
+                self.assertIn('Season 2',page.locator('.rating-table').text_content())
+            self.assertEqual(page.locator('[data-compare-season="563"]').input_value(),'1')
+        self.assertFalse(errors,errors)
 
     def test_late_poster_colours_preserve_menu_focus_and_active_card_interactions(self):
         for view in ('grid', 'timeline'):

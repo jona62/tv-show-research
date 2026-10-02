@@ -4,7 +4,8 @@ import { smoothPath } from './episode-timeline.js?v=803e207689055be8';
 import { band, score } from './ratings.js?v=2a0509d86dd759f5';
 
 const RAW = { top: 36, bottom: 244 }, TREND = { top: 338, bottom: 426 };
-const MARGIN = 36, GAP = 28, HEADER = 190, FOOTER = 140, AXIS = 46, MAX_PIXELS = 12000000;
+export const COMPARISON_HEADER_HEIGHT = 152;
+const MARGIN = 36, GAP = 28, HEADER = COMPARISON_HEADER_HEIGHT, FOOTER = 140, AXIS = 46, MAX_PIXELS = 12000000;
 const scopeName = (model, show) => model.mode === 'all' ? 'All seasons' : show.season == null ? 'No episodes yet'
   : Number(show.season) >= 1900 ? `${show.season} season` : `Season ${show.season}`;
 const ordinate = (rating, low, row) => row.bottom - (rating - low) * (row.bottom - row.top) / (10 - low);
@@ -184,11 +185,11 @@ export function drawComparisonTimeline(surface, model, page, thumbnails, helpers
   const { drawHeader, drawFooter, drawText, fitText, exportColors } = helpers;
   const subtitle = `${model.mode === 'all' ? 'All seasons' : 'Selected seasons'} · Timeline · Episode positions · ${model.shows.length} shows`;
   drawHeader(surface, model, subtitle, thumbnails);
-  drawText(surface.context, fitText(surface.context, page.label, page.width - 72, 12, 500), 36, 155,
+  drawText(surface.context, fitText(surface.context, page.label, page.width - 72, 12, 500), 36, HEADER - 35,
     { size: 12, color: exportColors.muted, weight: 500 });
   const caption = page.posterGroups > 1 ? 'Charts include every compared show · Poster groups continue in this download'
     : 'Each show ends at its last episode';
-  drawText(surface.context, caption, 36, 174, { size: 12, color: exportColors.muted });
+  drawText(surface.context, caption, 36, HEADER - 16, { size: 12, color: exportColors.muted });
   drawPosters(surface.context, page, model, thumbnails, helpers);
   drawGraphs(surface.context, page, page.pointStyle, helpers);
   drawFooter(surface, model, page.height - 91, { ratingLegend: page.pointStyle === 'rating' });
