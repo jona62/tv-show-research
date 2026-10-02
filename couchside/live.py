@@ -326,7 +326,7 @@ class Live:
 
     def _http(self, path):
         response = client().get(self.base + path, headers={'Accept': 'application/json'},
-                                ttl=self.ttl, stale=30 * 86400, budget=8, validate=json.loads)
+                                ttl=getattr(self.freshness, 'ttl', self.ttl), stale=30 * 86400, budget=8, validate=json.loads)
         self.freshness.stale = response.stale
         return json.loads(response.body)
 
@@ -404,6 +404,7 @@ class Live:
             self.sent.append(now)
         try:
             self.freshness.stale = False
+            self.freshness.ttl = ttl
             value = trim(self.fetch(path))
         except HTTPError as exc:
             if exc.code == 404 and missing is not None:

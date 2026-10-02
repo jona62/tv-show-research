@@ -4,11 +4,14 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from urllib.error import HTTPError
 from unittest import TestCase, main
+from unittest.mock import Mock, patch
+from http_client import Response
+import json
 import threading
 import time
 
 from episode_store import DAY, MAX_AGE, Store, Episodes, Tmdb, choose_rating, merge
-from live import Live, LiveError
+from live import Live, LiveError, SHOW
 
 EPISODES = [
     {'id': 1, 'season': 1, 'number': 1, 'name': 'Pilot', 'rating': 8.1,
@@ -27,6 +30,25 @@ class LiveDetailsTests(TestCase):
         self.store = Store(self.path, clock=lambda: self.now)
         self.addCleanup(self.store.db.close)
         self.raw = {'id': 169, 'name': 'A show', '_embedded': {'cast': [], 'seasons': []}}
+
+    def test_endpoint_cache_lifetime_reaches_the_shared_http_cache(self):
+        transport=Mock()
+        transport.get.return_value=Response(json.dumps(self.raw).encode(),{})
+        with patch('live.client',return_value=transport):
+            reader=Live()
+            reader.get('/updates/shows',lambda value:value,ttl=0)
+            reader.get('/updates/shows',lambda value:value,ttl=0)
+        self.assertEqual(transport.get.call_count,2)
+        self.assertTrue(all(call.kwargs['ttl']==0 for call in transport.get.call_args_list))
+
+    def test_stale_http_answers_do_not_renew_persistent_detail_dates(self):
+        transport=Mock()
+        transport.get.return_value=Response(json.dumps(self.raw).encode(),{},stale=True)
+        with patch('live.client',return_value=transport):
+            reader=Live(store=self.store)
+            self.assertEqual(reader.show(169)['about']['name'],'A show')
+        self.assertIsNone(self.store.get_live(SHOW.format(id=169)))
+        self.assertLessEqual(next(iter(reader.cache.values()))[0]-reader.clock(),30)
 
     def test_show_details_survive_restart_without_renewing_their_freshness(self):
         calls = []
