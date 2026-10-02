@@ -120,9 +120,20 @@ function tooltip(host) {
   const leave=()=>{clearTimeout(hideTimer);hideTimer=setTimeout(hide,150);};
   const position=()=>{
     if(!active)return;
-    const r=active.target.getBoundingClientRect(),width=tip.offsetWidth,height=tip.offsetHeight;
-    const left=Math.max(12,Math.min(window.innerWidth-width-12,r.left+r.width/2-width/2));
-    let top=r.top-height-12;if(top<12)top=Math.min(window.innerHeight-height-12,r.bottom+12);
+    tip.style.maxHeight='';
+    const r=active.target.getBoundingClientRect(),width=tip.offsetWidth;
+    let height=tip.offsetHeight,left=Math.max(12,Math.min(window.innerWidth-width-12,r.left+r.width/2-width/2));
+    let top=r.top-height-12;
+    if(top<12){
+      if(r.bottom+height+24<=window.innerHeight)top=r.bottom+12;
+      else if(r.right+width+24<=window.innerWidth){left=r.right+12;top=window.innerHeight-height-12;}
+      else if(r.left-width-24>=0){left=r.left-width-12;top=window.innerHeight-height-12;}
+      else {
+        const above=Math.max(0,r.top-24),below=Math.max(0,window.innerHeight-r.bottom-24);
+        tip.style.maxHeight=`${Math.max(1,above,below)}px`;height=tip.offsetHeight;
+        top=above>below?r.top-height-12:r.bottom+12;
+      }
+    }
     tip.style.left=`${left}px`;tip.style.top=`${Math.max(12,top)}px`;
   };
   const show=(target,e,showName='')=>{

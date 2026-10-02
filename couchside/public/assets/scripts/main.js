@@ -1,4 +1,4 @@
-import { mountEpisodeRatings } from './episode-ratings.js?v=61abecf650bd48fd';
+import { mountEpisodeRatings } from './episode-ratings.js?v=6acbf47e117c7d35';
 import { mountTitleSections } from './title-sections.js?v=c735de07fc7f1d99';
 import { enhanceShowCard,receiveMatrices,matrixPreference } from './show-cards.js?v=1e100102e3a68bf6';
 import { mountTaste } from './taste.js?v=e23081ea7e42ec26';
