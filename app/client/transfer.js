@@ -146,10 +146,12 @@ export function decode(code) {
   const profile = read(LIMITS.rated, true);
   const saved = read(LIMITS.saved, false);
   if (r.left > 0) throw new Error('This code is damaged.');
-  const seen = new Set();
-  for (const show of profile) {
-    if (seen.has(show.id)) throw new Error('This code lists the same show twice.');
-    seen.add(show.id);
+  for (const list of [profile, saved]) {
+    const seen = new Set();
+    for (const show of list) {
+      if (seen.has(show.id)) throw new Error('This code lists the same show twice.');
+      seen.add(show.id);
+    }
   }
-  return { profile, saved: saved.filter(show => !seen.has(show.id)), settings };
+  return { profile, saved, settings };
 }

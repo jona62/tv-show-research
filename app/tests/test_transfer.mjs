@@ -59,7 +59,11 @@ for (const [name, bad] of broken) {
 let dupThrew = false;
 try { decode(encode({ ...state, profile: [{ id: 5, weight: 1 }, { id: 5, weight: .7 }] })); } catch { dupThrew = true; }
 check('rejects a duplicate show', dupThrew);
-check('saved never shadows a rated show',
-  decode(encode({ ...state, saved: [{ id: 13417 }, { id: 527 }] })).saved.length === 1);
+check('a show can be both rated and saved after a transfer',
+  JSON.stringify(decode(encode({ ...state, saved: [{ id: 13417 }, { id: 527 }] })).saved)
+    === JSON.stringify([{ id: 13417 }, { id: 527 }]));
+let savedDupThrew = false;
+try { decode(encode({ ...state, saved: [{ id: 527 }, { id: 527 }] })); } catch { savedDupThrew = true; }
+check('rejects duplicates within My List', savedDupThrew);
 console.log(fails ? `\n${fails} failed` : '\nall codec checks passed');
 process.exit(fails ? 1 : 0);

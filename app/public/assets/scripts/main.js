@@ -1220,7 +1220,7 @@ $('do-replace').addEventListener('click', () => bringIn(true));
 
 // Titles are not in the code, so the catalog fills them back in on arrival.
 async function apply(incoming, replace) {
-  const ids = [...incoming.profile.map(s => s.id), ...incoming.saved.map(s => s.id)];
+  const ids = [...new Set([...incoming.profile.map(s => s.id), ...incoming.saved.map(s => s.id)])];
   const res = await fetch('/api/shows', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }),
   });
@@ -1237,9 +1237,12 @@ async function apply(incoming, replace) {
   } else {
     const mine = new Set(state.profile.map(s => s.id));
     // Your own ratings win, so merging twice never rewrites what you decided here.
-    state.profile = [...state.profile, ...rated.filter(s => !mine.has(s.id))].slice(0, LIMITS.rated);
-    const held = new Set([...state.profile.map(s => s.id), ...state.saved.map(s => s.id)]);
-    state.saved = [...state.saved, ...kept.filter(s => !held.has(s.id))].slice(0, LIMITS.saved);
+    const profile = [...state.profile, ...rated.filter(s => !mine.has(s.id))];
+    const held = new Set(state.saved.map(s => s.id));
+    const saved = [...state.saved, ...kept.filter(s => !held.has(s.id))];
+    if (profile.length > LIMITS.rated || saved.length > LIMITS.saved)
+      throw new Error('Together these lists exceed 3,000 ratings or 200 saved shows. Your current list has not changed. Remove a few shows before adding this copy.');
+    state = { ...state, profile, saved };
   }
   keepSimilar(); save(); renderList(); renderSaved(); renderPicks(); syncTune(); run(0);
   const dropped = ids.length - known.size;

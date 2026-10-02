@@ -151,23 +151,51 @@
 <dialog id="account" class="menu" aria-labelledby="account-h"><div class="menu-sheet">
   <div class="menu-head">
     <span class="avatar big" aria-hidden="true"></span>
-    <div><h2 id="account-h">Your profile</h2><p id="account-counts"></p></div>
+    <div><h2 id="account-h">Settings</h2><p id="account-counts">On this device</p></div>
     <button class="icon-btn close-btn" type="button" data-close aria-label="Close"></button>
   </div>
-  <div id="account-access" aria-live="polite"></div>
-  <a class="menu-item" href="/list" data-link>My List and ratings</a>
-  <a class="menu-item" href="/welcome" data-link>Pick shows you like</a>
+  <button class="menu-item" id="open-profile" type="button">Profile</button>
   <button class="menu-item" id="open-taste" type="button">Your taste</button>
-  <label class="menu-item menu-field" for="reach">What to recommend
+  <button class="menu-item" id="open-customization" type="button">Customization</button>
+  <button class="menu-item" id="open-about-2" type="button">How Couchside works</button>
+  <button class="menu-item danger" id="reset" type="button">Start over</button>
+</div></dialog>
+
+<dialog id="profile" class="modal small" aria-labelledby="profile-h"><div class="sheet pad">
+  <button class="icon-btn close-btn corner" type="button" data-close aria-label="Close"></button>
+  <h2 id="profile-h" class="sheet-h">Profile</h2>
+  <p id="profile-counts" class="note"></p>
+  <div id="account-access" aria-live="polite"></div>
+  <section class="profile-section" aria-labelledby="profile-devices-h">
+    <h3 id="profile-devices-h">Lists and devices</h3>
+    <p id="profile-transfer-note">Sign in on another device to keep your ratings and My List together. You can also transfer a copy without an account, or move it between Couchside and Next Watch.</p>
+    <button class="btn ghost" id="open-move" type="button">Move or back up your list</button>
+  </section>
+</div></dialog>
+
+<dialog id="customization" class="modal small" aria-labelledby="customization-h"><div class="sheet pad">
+  <button class="icon-btn close-btn corner" type="button" data-close aria-label="Close"></button>
+  <h2 id="customization-h" class="sheet-h">Customization</h2>
+  <p class="note">Choose how shows look and how far your recommendations explore.</p>
+  <div class="customization-cards"></div>
+  <label class="field customization-reach" for="reach">What to recommend
     <select id="reach">
       <option value="85">Well-known shows</option>
-      <option value="60">Fairly well known ones too</option>
+      <option value="60">Include less familiar shows</option>
       <option value="0">Anything in the catalogue</option>
     </select>
   </label>
-  <button class="menu-item" id="open-move" type="button">Move your list to another device</button>
-  <button class="menu-item" id="open-about-2" type="button">How Couchside works</button>
-  <button class="menu-item danger" id="reset" type="button">Start over</button>
+  <p class="note">Your account keeps this recommendation choice across devices. Card style is saved on this device.</p>
+</div></dialog>
+
+<dialog id="reset-confirm" class="modal small" aria-labelledby="reset-h"><div class="sheet pad">
+  <button class="icon-btn close-btn corner" type="button" data-close aria-label="Close"></button>
+  <h2 id="reset-h" class="sheet-h">Start over?</h2>
+  <p id="reset-scope">Clear your ratings, My List and recommendation settings on this device, then pick your first shows again.</p>
+  <div class="profile-actions">
+    <button class="btn ghost" type="button" data-close>Keep my list</button>
+    <button class="btn danger" id="confirm-reset" type="button">Clear and start over</button>
+  </div>
 </div></dialog>
 
 <dialog id="auth" class="modal small" aria-labelledby="auth-h"><div class="sheet pad">
@@ -178,7 +206,7 @@
 
 <dialog id="move" class="modal small" aria-labelledby="move-h"><div class="sheet pad">
   <button class="icon-btn close-btn corner" type="button" data-close aria-label="Close"></button>
-  <h2 id="move-h" class="sheet-h">Move your list to another device</h2>
+  <h2 id="move-h" class="sheet-h">Transfer your list</h2>
   <p id="move-count" class="note"></p>
   <label class="field" for="move-link">Open this on the other device
     <input id="move-link" type="text" readonly spellcheck="false">
@@ -194,7 +222,7 @@
     <figcaption id="qr-note"></figcaption>
   </figure>
   <p id="qr-none" class="note" hidden>This list is too long for a QR code. Send yourself the link and open it on the other device, or save it as a file and open that there.</p>
-  <p class="note">The list rides in the part of the address after the #, which browsers never send anywhere. A code from Next Watch works here too, and one from here works there.</p>
+  <p class="note">This link holds a copy of your ratings and My List. It also works in Next Watch. Share it only with someone you want to give that copy to.</p>
   <h3 class="move-h">Bring a list in</h3>
   <label class="field" for="move-paste">Paste a link or code
     <textarea id="move-paste" rows="3" spellcheck="false" autocomplete="off"></textarea>
@@ -208,7 +236,17 @@
   </div>
 </div></dialog>
 
-<dialog id="taste" class="modal small" aria-labelledby="taste-h"><div class="sheet pad">
+<dialog id="transfer-replace-confirm" class="modal small" aria-labelledby="transfer-replace-h"><div class="sheet pad">
+  <button class="icon-btn close-btn corner" type="button" data-close aria-label="Close"></button>
+  <h2 id="transfer-replace-h" class="sheet-h">Replace your list?</h2>
+  <p id="transfer-replace-scope"></p>
+  <div class="profile-actions">
+    <button class="btn ghost" type="button" data-close>Keep my list</button>
+    <button class="btn danger" id="confirm-transfer-replace" type="button">Replace my list</button>
+  </div>
+</div></dialog>
+
+<dialog id="taste" class="modal taste-dialog" aria-labelledby="taste-h"><div class="sheet pad">
   <button class="icon-btn close-btn corner" type="button" data-close aria-label="Close"></button>
   <h2 id="taste-h" class="sheet-h">Your taste</h2>
   <div id="taste-body"></div>
@@ -217,7 +255,7 @@
 <dialog id="about" class="modal small" aria-labelledby="about-h"><div class="sheet pad">
   <button class="icon-btn close-btn corner" type="button" data-close aria-label="Close"></button>
   <h2 id="about-h" class="sheet-h">How Couchside works</h2>
-  <p>Every row is built from the shows you rate. <b>Love this</b> pulls hardest, <b>I like this</b> pulls a little less, and anything close to what you marked <b>Not for me</b> is pushed back. Your ratings also teach it what your list leans toward, such as languages, networks, decades and kinds of show, and a list with more than one taste gets rows for each; <b>Your taste</b> in your profile shows what it has learned. Each interest gets rows in proportion to its weight, and rows called <i>Because you loved</i> follow its favourites, a different one leading from day to day. The page changes a little each time you open Couchside, and holds still while you use it: it leads with another of your best picks, <i>Top picks</i> turn among your strongest, the rows below the first few reorder, each row keeps its first two shows and freshens the rest, shows you have just seen or keep passing over give way to others, and a row you never open anything in rests for a week. What this browser has shown you stays in it.</p>
+  <p>Every row is built from the shows you rate. <b>Love this</b> pulls hardest, <b>I like this</b> pulls a little less, and anything close to what you marked <b>Not for me</b> is pushed back. Your ratings also teach it what your list leans toward, such as languages, networks, decades and kinds of show, and a list with more than one taste gets rows for each; <b>Your taste</b> in Settings shows what it has learned. Each interest gets rows in proportion to its weight, and rows called <i>Because you loved</i> follow its favourites, a different one leading from day to day. The page changes a little each time you open Couchside, and holds still while you use it: it leads with another of your best picks, <i>Top picks</i> turn among your strongest, the rows below the first few reorder, each row keeps its first two shows and freshens the rest, shows you have just seen or keep passing over give way to others, and a row you never open anything in rests for a week. What this browser has shown you stays in it.</p>
   <p>A match compares a show with your single best pick, so 99% is as close to your taste as anything gets. It measures how close a show sits to what you like and how well it fits your leanings, not a promise you will enjoy it.</p>
   <!--tmdb-->
   <p>For shows TMDB knows, the US age rating, trailers, backdrop and where to watch come from TMDB first. Where to watch lists the services that stream, rent or sell a show in the US and links to TMDB's page for it; that streaming data comes from JustWatch. Whatever TMDB lacks comes from the sources below.</p>

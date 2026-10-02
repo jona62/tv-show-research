@@ -41,7 +41,7 @@ def reset_public(folder):
         (folder / relative).mkdir(parents=True, exist_ok=True)
 
 
-def bundle_styles(source, destination):
+def bundle_styles(source, destination, *, extras=()):
     """Include the shared touch-control guard in every app's generated stylesheet.
 
     The first declared layer wins for important rules, including against later
@@ -49,5 +49,5 @@ def bundle_styles(source, destination):
     stylesheet to begin with @import; the guard rules themselves go last.
     """
     guard = Path(__file__).with_name('touch-forms.css').read_text(encoding='utf-8')
-    styles = Path(source).read_text(encoding='utf-8')
+    styles = '\n\n'.join(Path(path).read_text(encoding='utf-8').rstrip() for path in (source, *extras))
     Path(destination).write_text('@layer touch-forms;\n' + styles.rstrip() + '\n\n' + guard, encoding='utf-8')

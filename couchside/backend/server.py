@@ -13,6 +13,7 @@ import json
 import os
 import re
 import threading
+import time
 
 from .added import Added
 from .recommendation.engine import Engine, MAX_LIST
@@ -20,6 +21,7 @@ from .episode_store import Store as EpisodeStore, Episodes, Tmdb as EpisodeTmdb
 from .recommendation.discovery import Discovery, read_filters, fits, sort_key
 from .fallback import Remote, answer
 from .recommendation.library import Library, DESCRIPTION, MAX_SAVED
+from .recommendation.insights import Insights
 from .live import (Live, LiveError, Icons, KINOCHECK, ITUNES, trim_videos, trim_seasons,
                   match_rating, itunes_search)
 from .people import PERSON, GUESTS, WIKIDATA, WIKIPEDIA, Biographies, trim_person, trim_guests, credits, public
@@ -34,6 +36,8 @@ from .account_http import AccountRoutes
 HERE = Path(__file__).resolve().parents[1]
 PUBLIC = HERE / 'public'
 SLOTS = threading.BoundedSemaphore(3)
+BODY_SLOTS = threading.BoundedSemaphore(16)
+BODY_TIMEOUT = 10
 # A title page asks for details, trailers and a rating at once while the hero behind it
 # asks for its own, so this holds a dozen; each source still keeps its own rate limit.
 LIVE_SLOTS = threading.BoundedSemaphore(12)
@@ -56,7 +60,7 @@ ACCOUNT_ROUTES = AccountRoutes(accounts, https_only=os.environ.get('ACCOUNT_HTTP
                                origin=os.environ.get('ACCOUNT_ORIGIN'))
 # The app keeps its page in the path, so these are the page too and a refresh stays put.
 PAGES = ('/', '/index.html', '/new', '/list', '/search', '/browse', '/welcome')
-POSTS = ('/api/home', '/api/title', '/api/shows', '/api/browse')
+POSTS = ('/api/home', '/api/title', '/api/shows', '/api/browse', '/api/taste')
 # Every request carries the whole list: 3,000 ratings packed as ids and rating codes
 # (engine.CODES) are about 21 KB at most. A request for more of the home page carries
 # the rows it shows too (up to library.LONGEST, about 130 bytes each at most) and what
@@ -235,6 +239,7 @@ ENGINE = Engine(MODEL)
 NEWEST = max(ENGINE.by_id)
 NEWER_REACH = 5000
 LIBRARY = Library(ENGINE, art_file(MODEL))
+INSIGHTS = Insights(ENGINE)
 # A search's row of shows like it is the title page's own More like this for a show it
 # names, and a search for a film finds shows like it through the model's film index.
 RELATED = Related(LIBRARY, MODEL / 'films.json.gz')
@@ -488,6 +493,12 @@ def read_ids(payload):
     if any(type(i) is not int for i in ids):
         raise ValueError('Show ids must be whole numbers.')
     return ids
+
+
+class BodyError(ValueError):
+    def __init__(self, status, message):
+        super().__init__(message)
+        self.status = status
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -751,6 +762,45 @@ class Handler(SimpleHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError, TimeoutError):
             pass
 
+    def json_payload(self):
+        """Read a fixed-size body within one deadline and a bounded upload slot."""
+        lengths = self.headers.get_all('Content-Length', [])
+        if len(lengths) != 1 or self.headers.get('Transfer-Encoding'):
+            raise BodyError(400, 'Send a fixed-length JSON body.')
+        try:
+            length = int(lengths[0])
+        except ValueError:
+            length = 0
+        if not 0 < length <= MOST_BODY:
+            raise BodyError(413, f'Send a JSON body under {MOST_BODY // 1024}KB.')
+        if self.headers.get_content_type() != 'application/json':
+            raise BodyError(415, 'Send application/json.')
+        if not BODY_SLOTS.acquire(blocking=False):
+            raise BodyError(503, 'Uploads are busy. Try again in a moment.')
+        previous_timeout = self.connection.gettimeout()
+        try:
+            deadline, chunks, remaining = time.monotonic() + BODY_TIMEOUT, [], length
+            while remaining:
+                wait = deadline - time.monotonic()
+                if wait <= 0:
+                    raise TimeoutError()
+                self.connection.settimeout(wait)
+                chunk = self.rfile.read1(min(remaining, 65536))
+                if not chunk:
+                    raise ValueError()
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            return json.loads(b''.join(chunks), parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))
+        except TimeoutError:
+            raise BodyError(408, 'That request timed out. Please try again.') from None
+        except (ValueError, UnicodeDecodeError, RecursionError):
+            raise BodyError(400, 'Send valid JSON.') from None
+        finally:
+            try:
+                self.connection.settimeout(previous_timeout)
+            finally:
+                BODY_SLOTS.release()
+
     def do_POST(self):
         self.cache_control = None
         if not self.admitted():
@@ -759,22 +809,15 @@ class Handler(SimpleHTTPRequestHandler):
         if ACCOUNT_ROUTES.handle(self, route):
             return
         if route not in POSTS:
+            self.close_connection = True
             self.send_json({'error': 'Not found.'}, 404)
             return
         try:
-            length = int(self.headers.get('Content-Length', '0'))
-        except ValueError:
-            length = 0
-        if not 0 < length <= MOST_BODY:
-            self.send_json({'error': f'Send a JSON body under {MOST_BODY // 1024}KB.'}, 413)
-            return
-        if self.headers.get_content_type() != 'application/json':
-            self.send_json({'error': 'Send application/json.'}, 415)
-            return
-        try:
-            payload = json.loads(self.rfile.read(length))
-        except (json.JSONDecodeError, UnicodeDecodeError, RecursionError):
-            self.send_json({'error': 'Send valid JSON.'}, 400)
+            payload = self.json_payload()
+        except BodyError as exc:
+            # A partial/rejected body must never become the next HTTP/1.1 request.
+            self.close_connection = True
+            self.send_json({'error': str(exc)}, exc.status)
             return
         # A title newer than the catalogue waits on TVmaze, not on the engine, so it takes a
         # live source's slot rather than one of the engine's few.
@@ -789,6 +832,8 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json(decorate({'shows': LIBRARY.cards(read_ids(payload))}, payload.get('matrix') is True))
             elif not isinstance(payload, dict):
                 raise ValueError('Send your list and settings as an object.')
+            elif route == '/api/taste':
+                self.send_json(INSIGHTS.describe(payload))
             elif route == '/api/home':
                 # The first eight rows and the featured shows, the visit's hero first, or, for a
                 # request that says which rows it already shows, the next ones

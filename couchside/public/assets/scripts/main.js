@@ -1,14 +1,16 @@
 import { mountEpisodeRatings } from './episode-ratings.js?v=a3165ae91e694745';
 import { mountTitleSections } from './title-sections.js?v=47e93fa931aed0c8';
-import { enhanceShowCard,receiveMatrices,matrixPreference } from './show-cards.js?v=e6be684d2c9ea028';
+import { enhanceShowCard,receiveMatrices,matrixPreference } from './show-cards.js?v=453e6b6b815a6488';
+import { mountTaste } from './taste.js?v=e23081ea7e42ec26';
+import { mergeTransferredList } from './list-transfer.js?v=bf96d9f9d5d965e6';
 import { apiFetch } from './network.js?v=0e96ad7f2eaf4036';
-import { mountAccounts } from './accounts.js?v=ca6d2fd49655446e';
+import { mountAccounts } from './accounts.js?v=5eadc4519564f154';
 import {filtersFor,filterKey,selectShows,setFilters} from './filter-state.js?v=2a62eef7fd5aeeda';
 import {filterBar} from './filters.js?v=05473f9c8c0c3616';
 import { cachedRatings, ratings, seasons as ratingSeasons } from './ratings.js?v=54b0ed6f30577419';
-import { encode, decode, LIMITS, codeFrom } from './transfer.js?v=aca34fe2830e9d29';
+import { encode, decode, LIMITS, codeFrom } from './transfer.js?v=2bfd019beccdb78d';
 import { matrix, svgPath } from './qr.js?v=d7f92f94bb8911ea';
-import { tieText, leaning, leaningHeading } from './format.js?v=e565cc65c0882a95';
+import { tieText, leaning } from './format.js?v=e565cc65c0882a95';
 import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere, longDate, airs,
   whereToWatch, trailerSearch, searchNote } from './format.js?v=e565cc65c0882a95';
 import { pageKey, ongoing, resumable, keptText, shownRows, withoutCard, viewedStore, noteViewed, recentlyViewed }
@@ -27,7 +29,7 @@ import { daySeed, startersQuery, mergeStarters, browserLanguage, MAX_ROUND, MAX_
 import { sheets, closing, reveal, crossfade, peeks, edgeBack, speed } from './gestures.js?v=c2173468ef22c30e';
 import { REST, LOOP_WAIT, goesRound, loopCopies, copiesOf, lapHome, restPlace, toCard } from './gestures.js?v=c2173468ef22c30e';
 import { KEY, DEFAULTS, REACH, VERSION, MAX_RATED, fresh, tidy, stored, FRESH_KEY, readMemory, remembered, opened,
-  newVisit, keepVisit, tasteOf, homeBody, packed, PAGE_KEY, take, sanitize } from './start.js?v=6a0715a23a1035dd';
+  newVisit, keepVisit, tasteOf, homeBody, packed, PAGE_KEY, take, sanitize } from './start.js?v=71719d186b4b5de0';
 
 const boot = JSON.parse(document.getElementById('boot').textContent);
 const $ = id => document.getElementById(id);
@@ -74,8 +76,12 @@ const ICONS = {
 // has asked for the home page with them already).
 let state = stored;
 let accounts = null;
+let tastePanel = null;
+let accountOwner = '';
+let accountEpoch = 0;
 
 function save() {
+  tastePanel?.refresh();
   if (accounts) { accounts.changed(); return; }
   try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* private mode */ }
 }
@@ -434,7 +440,11 @@ function go(path) {
 // each above the one before. Back to a title or a person after a title opened from someone's
 // page builds it again, and it returns to where it was left (keepPlace).
 function route() {
-  const { page, q, show, episode, person } = where();
+  let { page, q, show, episode, person } = where();
+  if (page === 'welcome' && (state.onboarded || state.profile.length)) {
+    history.replaceState(history.state, '', '/');
+    page = 'home';
+  }
   const name = page === 'home' && !state.profile.length && !state.onboarded ? 'welcome' : page;
   if (name !== view) showView(name);
   else if (name === 'browse') renderBrowse();
@@ -773,8 +783,8 @@ function skelRow(tag = 'section', { kind = 'row', title = '10em' } = {}) {
 // Before anything is liked, the page opens with an invitation to pick a few shows.
 function inviteEl() {
   const invite = el('div', '', 'invite');
-  const go = el('a', 'Pick shows you like', 'btn primary');
-  go.href = '/welcome';
+  const go = el('a', 'Find a show to rate', 'btn primary');
+  go.href = '/browse';
   go.dataset.link = '';
   invite.append(el('p', 'Rate a few shows and every row starts leaning your way.'), go);
   return invite;
@@ -4396,19 +4406,22 @@ $('skip').addEventListener('click', () => {
 
 /* ---------------------------------------------------------- the profile */
 function updateCounts() {
-  $('account-counts').textContent = `${state.profile.length.toLocaleString()} rated · ${state.saved.length} in My List`;
-}
-let resetArmed = false;
-function armReset(on) {
-  resetArmed = on;
-  $('reset').textContent = on ? 'Tap again to clear your ratings and list' : 'Start over';
+  $('profile-counts').textContent = `${state.profile.length.toLocaleString()} rated · ${state.saved.length} in My List`;
 }
 for (const avatar of document.querySelectorAll('.avatar')) avatar.append(icon('smile'));
 $('account-open').addEventListener('click', () => {
   updateCounts();
-  $('reach').value = String(state.settings.known_min);
-  armReset(false);
   $('account').showModal();
+});
+$('open-profile').addEventListener('click', () => {
+  updateCounts();
+  $('account').close();
+  $('profile').showModal();
+});
+$('open-customization').addEventListener('click', () => {
+  $('reach').value = String(state.settings.known_min);
+  $('account').close();
+  $('customization').showModal();
 });
 $('reach').addEventListener('change', () => {
   state.settings.known_min = Number($('reach').value);
@@ -4417,69 +4430,39 @@ $('reach').addEventListener('change', () => {
   loadHome();
 });
 $('reset').addEventListener('click', () => {
-  if (!resetArmed) { armReset(true); return; }
+  $('reset-scope').textContent = accountOwner
+    ? 'Clear the ratings and My List shown here and reset your recommendation settings across your signed-in devices. Shows added elsewhere while you do this are kept. Your account and password stay in place.'
+    : 'Clear your ratings, My List and recommendation settings on this device, then pick your first shows again.';
+  $('account').close();
+  $('reset-confirm').showModal();
+});
+$('confirm-reset').addEventListener('click', () => {
+  const wasWelcome = view === 'welcome';
   state = fresh();
   save();
+  updateCounts();
   picked.clear();
+  clearFound();
+  opening.round = 0;
+  opening.asked = '';
+  ++opening.req;
   home = null;
   homeKey = '';
-  $('account').close();
+  $('reset-confirm').close();
   go('/');
+  if (wasWelcome) renderWelcome();
   loadHome();
-  toast('Everything is cleared. Pick a few shows to start again.');
+  toast('Your current list is cleared. Pick a few shows to start again.');
 });
 for (const b of document.querySelectorAll('[data-close]')) b.addEventListener('click', () => b.closest('dialog').close());
-for (const d of [$('account'), $('auth'), $('move'), $('about'), $('taste')]) {
+for (const d of [$('account'), $('profile'), $('customization'), $('reset-confirm'), $('transfer-replace-confirm'), $('auth'), $('move'), $('about'), $('taste')]) {
   d.addEventListener('click', e => { if (e.target === d) d.close(); });
 }
 $('open-about').addEventListener('click', () => $('about').showModal());
-$('open-taste').addEventListener('click', async () => {
+$('open-taste').addEventListener('click', () => {
   $('account').close();
-  paintTaste();
-  $('taste').showModal();
-  // Rated since the page was made: ask for the list's taste alone, with no rows.
-  if (!home?.personal || home.tasteKey === homeKey) return;
-  try {
-    const data = await post('/api/home', await moreBody(0));
-    Object.assign(home, { taste: data.taste, interests: data.interests, tasteKey: homeKey });
-    if ($('taste').open) paintTaste();
-  } catch { /* the sheet keeps what it had */ }
+  void tastePanel.open();
 });
-
-// What the list leans toward and away from, and its interests, from the last home answer.
-function paintTaste() {
-  const body = $('taste-body');
-  body.replaceChildren();
-  const taste = home?.personal ? home.taste : null;
-  const interests = home?.personal ? home.interests || [] : [];
-  if (!taste || (!taste.leans.length && !taste.avoids.length && interests.length < 2)) {
-    body.append(el('p', 'Rate a few more shows and what they lean toward will show up here.'));
-    return;
-  }
-  const section = (title, rows) => {
-    if (!rows.length) return;
-    body.append(el('h3', title, 'leanings-h'));
-    const list = el('ul', '', 'leanings');
-    for (const [head, detail] of rows) {
-      const item = el('li');
-      item.append(el('b', head), el('span', detail));
-      list.append(item);
-    }
-    body.append(list);
-  };
-  section('What your list leans toward',
-    taste.leans.map(f => [leaningHeading(f), `${f.shows} of your liked shows · ${f.base}% of all shows`]));
-  section('What you steer clear of',
-    taste.avoids.map(f => [leaningHeading(f), f.why === 'disliked' ? `You marked ${f.shows} not for you` : 'None on your list']));
-  if (interests.length > 1) {
-    // A long list's interests name a dozen of their shows each and say how many they hold.
-    const others = it => (it.size > it.names.length ? ` and ${(it.size - it.names.length).toLocaleString()} more` : '');
-    section('Your interests', interests.map(it => [
-      it.leans.length ? it.leans.map(l => leaningHeading({ family: '', label: l.split(' / ')[0] })).join(' · ') : `Like ${it.names[0]}`,
-      it.names.join(', ') + others(it)]));
-    body.append(el('p', 'Your rows are shared out across these, and each Because you loved row follows one of them.', 'leanings-note'));
-  }
-}
 $('open-about-2').addEventListener('click', () => { $('account').close(); $('about').showModal(); });
 
 /* ------------------------------------------------------- moving devices */
@@ -4515,8 +4498,7 @@ function openMove() {
   drawCode(code);
   $('move-link').value = code;
   $('move-count').textContent = code
-    ? `${state.profile.length.toLocaleString()} rated and ${state.saved.length} in My List, packed into ${
-      code.length.toLocaleString()} characters.`
+    ? `${state.profile.length.toLocaleString()} rated and ${state.saved.length} in My List. Signing in on the other device syncs them automatically; these tools transfer a separate copy.`
     : 'Nothing to move yet. Rate a show or add one to My List first.';
   for (const id of ['copy-link', 'copy-code', 'save-file']) $(id).disabled = !code;
   $('copy-said').textContent = '';
@@ -4524,7 +4506,7 @@ function openMove() {
   $('move-paste').value = '';
   $('move').showModal();
 }
-$('open-move').addEventListener('click', () => { $('account').close(); openMove(); });
+$('open-move').addEventListener('click', () => { $('profile').close(); openMove(); });
 
 async function copy(text, said) {
   try {
@@ -4554,11 +4536,13 @@ $('save-file').addEventListener('click', () => {
 });
 $('open-file').addEventListener('click', () => $('move-file').click());
 $('move-file').addEventListener('change', async () => {
+  const scope = accountEpoch;
   const file = $('move-file').files[0];
   $('move-file').value = '';
   if (!file) return;
   if (file.size > 200_000) { $('move-status').textContent = 'That file is too big to be a list.'; return; }
   const raw = codeFrom(await file.text());
+  if (scope !== accountEpoch) return;
   $('move-paste').value = raw;
   try {
     const found = decode(raw);
@@ -4569,41 +4553,72 @@ $('move-file').addEventListener('change', async () => {
   }
 });
 
-async function bringIn(replace) {
+let transferBusy = false;
+let replacement = null;
+const transferSnapshot = () => JSON.stringify([state.profile.map(({ id, weight }) => [id, weight]),
+  state.saved.map(({ id }) => id), state.settings]);
+
+async function bringIn(replace, incoming = null, expected = null) {
+  if (transferBusy) return;
   const raw = codeFrom($('move-paste').value);
-  if (!raw) { $('move-status').textContent = 'Paste the link or code first.'; return; }
+  if (!incoming && !raw) { $('move-status').textContent = 'Paste the link or code first.'; return; }
+  transferBusy = true;
+  for (const id of ['do-merge', 'do-replace']) $(id).disabled = true;
   $('move-status').textContent = 'Reading it…';
   try {
-    await apply(decode(raw), replace);
+    await apply(incoming || decode(raw), replace, expected);
     $('move').close();
   } catch (e) {
     $('move-status').textContent = e.message || 'That code could not be read.';
+  } finally {
+    transferBusy = false;
+    for (const id of ['do-merge', 'do-replace']) $(id).disabled = false;
   }
 }
 $('do-merge').addEventListener('click', () => bringIn(false));
-$('do-replace').addEventListener('click', () => bringIn(true));
+$('do-replace').addEventListener('click', () => {
+  try {
+    replacement = { incoming: decode(codeFrom($('move-paste').value)),
+      owner: accountOwner, scope: accountEpoch, snapshot: transferSnapshot() };
+    $('transfer-replace-scope').textContent = accountOwner
+      ? 'Replace the ratings and My List shown here with this copy, and use its recommendation settings across your signed-in devices. Shows missing from the copy are removed; shows added elsewhere while you do this are kept. Your account and password stay in place.'
+      : 'Replace your ratings, My List and recommendation settings on this device with this copy. Shows missing from the copy will be removed.';
+    $('transfer-replace-confirm').showModal();
+  } catch (e) {
+    $('move-status').textContent = e.message || 'Paste a valid link or code first.';
+  }
+});
+$('transfer-replace-confirm').addEventListener('close', () => { replacement = null; });
+$('confirm-transfer-replace').addEventListener('click', () => {
+  const pending = replacement;
+  replacement = null;
+  $('transfer-replace-confirm').close();
+  if (pending) void bringIn(true, pending.incoming, pending);
+});
 
 // Titles and posters are not in the code, so the catalogue fills them back in.
-async function apply(incoming, replace) {
-  const ids = [...incoming.profile.map(s => s.id), ...incoming.saved.map(s => s.id)];
+async function apply(incoming, replace, expected = null) {
+  const owner = expected ? expected.owner : accountOwner;
+  const scope = expected ? expected.scope : accountEpoch;
+  const snapshot = expected ? expected.snapshot : transferSnapshot();
+  if (owner !== accountOwner || scope !== accountEpoch) throw new Error('Your account changed. Open the transfer again to continue.');
+  const ids = [...new Set([...incoming.profile.map(s => s.id), ...incoming.saved.map(s => s.id)])];
   const { shows } = await post('/api/shows', { ids });
+  if (owner !== accountOwner || scope !== accountEpoch) throw new Error('Your account changed while reading this list. Open the transfer again to continue.');
+  if (replace && snapshot !== transferSnapshot()) throw new Error('Your list changed while reading this copy. Review the transfer again before replacing it.');
   const found = new Map(shows.map(s => [s.id, remember(s)]));
   const ratings = incoming.profile.filter(s => found.has(s.id)).map(s => ({ ...tidy(found.get(s.id)), weight: s.weight }));
   const kept = incoming.saved.filter(s => found.has(s.id)).map(s => tidy(found.get(s.id)));
   if (!ratings.length && !kept.length) throw new Error('None of those shows are in this catalogue.');
+  const previous = state;
   if (replace) {
     const reach = incoming.settings.known_min;
     state = {
-      version: VERSION, profile: ratings.slice(0, MAX_RATED), saved: kept.slice(0, LIMITS.saved),
+      version: VERSION, profile: ratings, saved: kept,
       settings: { ...DEFAULTS, known_min: REACH.includes(reach) ? reach : DEFAULTS.known_min }, onboarded: true,
     };
   } else {
-    // Your own ratings win, so bringing the same list in twice changes nothing.
-    const mine = new Set(state.profile.map(s => s.id));
-    state.profile = [...state.profile, ...ratings.filter(s => !mine.has(s.id))].slice(0, MAX_RATED);
-    const held = new Set([...state.profile.map(s => s.id), ...state.saved.map(s => s.id)]);
-    state.saved = [...state.saved, ...kept.filter(s => !held.has(s.id))].slice(0, LIMITS.saved);
-    state.onboarded = true;
+    state = mergeTransferredList(state, { profile: ratings, saved: kept });
   }
   save();
   updateCounts();
@@ -4611,7 +4626,9 @@ async function apply(incoming, replace) {
   loadHome();
   updateListRow();
   const dropped = ids.length - found.size;
-  toast(`Brought in ${ratings.length.toLocaleString()} rated and ${kept.length} saved`
+  const addedRatings = replace ? ratings.length : state.profile.length - previous.profile.length;
+  const addedSaved = replace ? kept.length : state.saved.length - previous.saved.length;
+  toast(`${replace ? 'Restored' : 'Added'} ${addedRatings.toLocaleString()} ratings and ${addedSaved} shows in My List`
     + `${dropped ? `, and skipped ${dropped} no longer in the catalogue` : ''}.`);
 }
 
@@ -4759,6 +4776,7 @@ function applyAccountState(incoming, context) {
   const next = sanitize({ ...incoming, profile: incoming.profile.map(describe), saved: incoming.saved.map(describe) });
   if (JSON.stringify(next) === JSON.stringify(state)) return;
   state = next;
+  tastePanel?.refresh();
   // A cached personalised page belongs to the list that produced it.
   homeAbort?.abort();
   ++homeReq;
@@ -4782,7 +4800,24 @@ function applyAccountState(incoming, context) {
   }
   if (view) { paintView(view); route(); loadHome(); }
 }
-accounts = mountAccounts({ getState: () => state, applyState: applyAccountState, fresh, sanitize, toast });
+tastePanel = mountTaste({ dialog: $('taste'), body: $('taste-body'),
+  getProfile: () => state.profile.map(({ id, weight }) => ({ id, weight })),
+  getSettings: () => state.settings, getOwner: () => accountOwner, request: post });
+accounts = mountAccounts({ getState: () => state, applyState: applyAccountState, fresh, sanitize, toast,
+  onStatus: ({ user }) => {
+    const owner = user?.id || '';
+    if (owner !== accountOwner) {
+      accountOwner = owner;
+      accountEpoch++;
+      tastePanel.refresh();
+      replacement = null;
+      for (const id of ['reset-confirm', 'transfer-replace-confirm', 'move']) if ($(id).open) $(id).close();
+      $('move-link').value = '';
+      $('move-paste').value = '';
+      $('qr').replaceChildren();
+    }
+    $('account-counts').textContent = user?.email || 'On this device';
+  } });
 renderHomeLoading();
 await accounts.ready();
 updateCounts();

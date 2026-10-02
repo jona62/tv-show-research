@@ -92,7 +92,7 @@ export function mountAccounts({ getState, applyState, fresh, sanitize, toast = (
   function openForm(kind) {
     if (formBusy) return;
     const version = ++formVersion;
-    document.getElementById('account').close();
+    for (const id of ['account', 'profile']) document.getElementById(id)?.close();
     heading.textContent = kind === 'signup' ? 'Create your account'
       : kind === 'password' ? 'Change your password' : 'Sign in to Couchside';
     body.replaceChildren();

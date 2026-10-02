@@ -2,10 +2,10 @@ import {matrixRatings,cachedMatrix,freshMatrix,ratingSources,compactMatrix,matri
 const KEY='couchside.show-cards';
 let matrix=true;
 try{matrix=localStorage.getItem(KEY)!=='standard';}catch{}
-const account=document.querySelector('#account .menu-sheet');
+const customization=document.querySelector('#customization .customization-cards');
 const preferences=document.createElement('fieldset');preferences.className='ratings-card-preference';
-html(preferences,`<legend>Show cards</legend><div class="ratings-card-choices"><button type="button" data-cards="standard" aria-pressed="${!matrix}">${icon('poster')}<span>Standard</span></button><button type="button" data-cards="matrix" aria-pressed="${matrix}">${icon('grid')}<span>Episode matrix</span></button></div><p>Saved on this device</p>`);
-account.querySelector('#reach').closest('label').before(preferences);
+html(preferences,`<legend>Show cards</legend><div class="ratings-card-choices"><button type="button" data-cards="standard" aria-pressed="${!matrix}">${icon('poster')}<span>Standard</span></button><button type="button" data-cards="matrix" aria-pressed="${matrix}">${icon('grid')}<span>Episode ratings</span></button></div><p>Keep cards focused on the show, or add its episode ratings below the poster.</p>`);
+customization.append(preferences);
 const pending=[];let running=false,pumpTimer;
 const tilesFor=id=>document.querySelectorAll(`.ratings-card-matrix[data-show="${id}"]`);
 const drawn=new WeakMap();

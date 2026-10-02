@@ -53,8 +53,8 @@ rebuilt every night. Nothing plays. It is for finding your next show.
   and shows its match with quick buttons for My List, *I like this*, *Love this*
   and more info. On a touch screen, a long press lifts it into a larger preview
   with just *More info* and My List, and a tap still opens it.
-  Episode matrix cards are the default. The settings menu offers Standard or Episode
-  matrix cards, saved on this device; an existing choice is kept.
+  Episode matrix cards are the default. Customization offers Standard or Episode
+  ratings cards, saved on this device; an existing choice is kept.
   Matrix applies across Home, Browse, New & Popular, My List, Search, and the title's
   More like this and Fans also like. These sections use the same compact poster,
   hover description and quick actions, with season rows and episode colours beneath
@@ -84,11 +84,32 @@ so Back from any episode returns to its title page. A person's page is a sheet o
 title or episode it came from, so Back finds that as it was left, and a title opened
 from their page leaves them out of its address and comes back to them, where they were
 left, on Back. Without an account your ratings and My List
-stay in the browser. *Move your list to another device* uses the same code as
+stay in the browser. Profile’s *Move or back up your list* uses the same code as
 Next Watch, so a list moves between the two apps as well as between devices: a
 link, the code alone, a QR code while the list fits one (a few hundred ratings),
 and *Save as a file* for any length, opened on the other device with *Open a saved
 file* (Next Watch's README says why).
+
+## Settings and your taste
+
+Settings keeps Profile, Your taste, Customization, How Couchside works and Start
+over together. Profile holds account access, sync status, password changes and
+list transfers. Customization selects standard or episode-rating cards and how
+far recommendations explore. First-time show picking appears on a new start;
+shows can always be rated from their cards and title pages. My List keeps its
+own navigation button.
+
+Your taste has three views: genre bars, a themes radar with exact values, and
+patterns that shape recommendation rows. Charts weight positive ratings and
+compare them with the recommender’s catalogue reference, explaining missing
+data and overlapping genres or themes. Leanings distinguish explicit dislikes
+from patterns missing in your likes and show separate interests when present.
+
+Start over and replacing a transferred list ask for confirmation. When signed
+in, they explain that changes to the current list apply across account devices,
+while shows added elsewhere at the same time are kept. Adding a copy
+keeps existing ratings, preserves shows that are both rated and saved, and
+refuses an oversized merge without dropping shows.
 
 ## Accounts and devices
 

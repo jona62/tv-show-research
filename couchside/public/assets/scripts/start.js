@@ -7,7 +7,7 @@ import { apiFetch } from './network.js?v=0e96ad7f2eaf4036';
 // takes the answer when it asks for the very same page (take). homeBody is the one place
 // that says what a request for the home page carries, so the two never differ; a field
 // added anywhere else would have main.js ask again.
-import { LIMITS, packList } from './transfer.js?v=aca34fe2830e9d29';
+import { LIMITS, packList } from './transfer.js?v=2bfd019beccdb78d';
 import { freshStore, today, prune, beginVisit, freshness } from './fresh.js?v=afcc972f76479400';
 import { pageKey, ongoing, resumable } from './format.js?v=e565cc65c0882a95';
 import {filtersFor,filterKey,wantsMatrices} from './filter-state.js?v=2a62eef7fd5aeeda';
