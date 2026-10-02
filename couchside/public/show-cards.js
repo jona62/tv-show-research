@@ -1,4 +1,4 @@
-import {matrixRatings,cachedMatrix,freshMatrix,ratingSources,compactMatrix,matrixSkeleton,icon,html,esc,acceptMatrices} from './ratings.js?v=bd9d1b3ac9a562f7';
+import {matrixRatings,cachedMatrix,freshMatrix,ratingSources,compactMatrix,matrixSkeleton,icon,html,esc,acceptMatrices} from './ratings.js?v=54b0ed6f30577419';
 const KEY='couchside.show-cards';
 let matrix=true;
 try{matrix=localStorage.getItem(KEY)!=='standard';}catch{}
@@ -106,3 +106,13 @@ preferences.querySelectorAll('[data-cards]').forEach(button=>button.onclick=()=>
 apply();
 
 window.addEventListener('storage',event=>{if(event.key===KEY){matrix=event.newValue!=='standard';apply();}});
+window.addEventListener('couchside-network',event=>{
+  if(event.detail.state!=='recover'||!matrix)return;
+  if(event.detail.paths?.length&&!event.detail.paths.some(path=>path.startsWith('/api/episode-matrices')))return;
+  document.querySelectorAll('.ratings-card-matrix[data-matrix-state="error"]').forEach(node=>{
+    node.dataset.matrixState='idle';delete node.dataset.matrixAsked;delete node.dataset.matrixRetries;
+    node.setAttribute('aria-busy','true');
+    html(node,`${matrixSkeleton()}<span class="ratings-mini-caption">Episode ratings</span>`);
+    if(!node.closest('[inert]'))visible.observe(node);
+  });
+});

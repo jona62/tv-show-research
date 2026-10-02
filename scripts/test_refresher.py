@@ -232,6 +232,11 @@ class FakeRunner:
         return next(call['env'] for call in reversed(self.calls) if call['name'] == name)
 
     def run(self, name, argv, env, cwd, timeout, log):
+        if name == 'warm cache':
+            if not hasattr(self, 'warming'):
+                self.warming = []
+            self.warming.append({'argv': list(argv), 'env': dict(env)})
+            return result(1 if self.fail == name else 0, ['cache warming'])
         self.calls.append({'name': name, 'argv': list(argv), 'env': dict(env)})
         if name == self.fail:
             return result(1, [f'{name} fell over'])
@@ -485,6 +490,9 @@ check('the steps run in order', runner.names() == ['validate', 'download', 'buil
                                                     'build_art', 'wikidata', 'build_facets', 'films', 'build_films',
                                                     'clickstream', 'build_cointerest', 'build_neighbours', 'validate'],
       runner.names())
+check('the published model warms the visitor cache on the shared volume',
+      runner.warming[-1]['argv'][-4:] == ['--model', str(r.current()['path']), '--cache', str(r.root / 'cache/episode-ratings.sqlite3')]
+      and runner.warming[-1]['env']['OUTBOUND_CACHE'] == str(r.root / 'cache/http.sqlite3'))
 env = runner.env_for('build_model')
 check('build steps write into the temporary version', env['TV_MODEL_OUT'].endswith(f"versions/{done['version']}.tmp")
       and env['TV_ART_OUT'] == env['TV_MODEL_OUT'] + '/art.bin.gz')
@@ -608,6 +616,14 @@ check('pruning keeps the newest three and the live one',
 check('pruning never touches what current points at', (r.root / 'current' / 'build.json').exists())
 
 # 5. Failures leave the live version alone -------------------------------------------------------------
+
+runner = FakeRunner(fail='warm cache')
+r = make('warm-fail', runner, seed=write_model(TMP / 'seed-warm-fail', 100))
+r.boot()
+done = run(r)
+check('failed cache warming leaves the published model available',
+      done['outcome'] == 'success' and live(r) == 'versions/' + done['version']
+      and any('Cache warming deferred' in warning for warning in done['warnings']), done)
 
 runner = FakeRunner(fail='build_model')
 r = make('fail', runner, seed=write_model(TMP / 'seed-fail', 100))
@@ -2309,6 +2325,20 @@ check('a seed with only the matrix leaves it behind', r.current() is not None
 # 15. download.py --out --------------------------------------------------------------------------------------------
 
 pages = {0: [{'id': 1}, {'id': 2}], 1: [{'id': 250}]}
+import http_client
+
+class FakeDownloadClient:
+    def __init__(self, fetch):
+        self.fetch = fetch
+    def get(self, url, **options):
+        # Download tests exercise filesystem/index behavior. Transport retries have
+        # their own tests against urllib3 responses and broken connections.
+        for attempt in range(2):
+            try:
+                return http_client.Response(self.fetch(url).read(), {})
+            except TimeoutError:
+                if attempt:
+                    raise
 
 
 def fake_urlopen(url, timeout=None):
@@ -2320,9 +2350,9 @@ def fake_urlopen(url, timeout=None):
 out = TMP / 'download-out'
 sentinel = TMP / 'must-stay-empty'
 saved_env = {k: os.environ.get(k) for k in ('TV_RAW_DIR', 'TV_MANIFEST')}
-saved_argv, real_urlopen = sys.argv, urllib.request.urlopen
+saved_argv, real_client = sys.argv, http_client.client
 os.environ.update(TV_RAW_DIR=str(sentinel / 'raw'), TV_MANIFEST=str(sentinel / 'manifest.json'))
-urllib.request.urlopen = fake_urlopen
+http_client.client = lambda: FakeDownloadClient(fake_urlopen)
 try:
     sys.argv = ['download.py', '--out', str(out)]
     with redirect_stdout(io.StringIO()):
@@ -2335,7 +2365,7 @@ try:
         except SystemExit as exc:
             combined = exc.code
 finally:
-    sys.argv, urllib.request.urlopen = saved_argv, real_urlopen
+    sys.argv, http_client.client = saved_argv, real_client
     for k, v in saved_env.items():
         if v is None:
             os.environ.pop(k, None)
@@ -2374,9 +2404,9 @@ def download_into(out, served, newest, flaky=(), shows=(), asked=None):
         if n not in served:
             raise HTTPError(url, 404, 'Not Found', None, None)
         return io.BytesIO(json.dumps(served[n]).encode())
-    saved = sys.argv, urllib.request.urlopen, time.sleep
+    saved = sys.argv, http_client.client, time.sleep
     said = io.StringIO()
-    sys.argv, urllib.request.urlopen, time.sleep = ['download.py', '--out', str(out)], fake, lambda _s: None
+    sys.argv, http_client.client, time.sleep = ['download.py', '--out', str(out)], lambda: FakeDownloadClient(fake), lambda _s: None
     try:
         with redirect_stdout(said):
             runpy.run_path(str(SCRIPTS / 'download.py'), run_name='__main__')
@@ -2384,7 +2414,7 @@ def download_into(out, served, newest, flaky=(), shows=(), asked=None):
     except SystemExit as exc:
         status = exc.code
     finally:
-        sys.argv, urllib.request.urlopen, time.sleep = saved
+        sys.argv, http_client.client, time.sleep = saved
     return status, said.getvalue()
 
 

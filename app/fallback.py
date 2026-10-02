@@ -19,7 +19,7 @@ call is simply no extra answer.
 from collections import OrderedDict, deque
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+from http_client import client, retry_after
 import json
 import re
 import threading
@@ -68,9 +68,8 @@ class Remote:
         self.lock = threading.Lock()
 
     def _http(self, path):
-        request = Request(self.base + path, headers={'User-Agent': AGENT, 'Accept': 'application/json'})
-        with urlopen(request, timeout=self.timeout) as response:
-            return json.load(response)
+        return client().json(self.base + path, headers={'Accept': 'application/json'},
+                             timeout=self.timeout, budget=min(5, self.timeout * 2), attempts=2, ttl=self.ttl, stale=86400)
 
     def search(self, q):
         """TVmaze's matches for q, or None when TVmaze could not be asked just now."""
@@ -91,7 +90,7 @@ class Remote:
         except HTTPError as exc:
             if exc.code == 429:
                 with self.lock:
-                    self.pause = self.clock() + 10
+                    self.pause = self.clock() + retry_after(exc.headers.get('Retry-After'))
             return held[1] if held else None
         except (URLError, OSError, ValueError, TypeError, RecursionError):
             return held[1] if held else None

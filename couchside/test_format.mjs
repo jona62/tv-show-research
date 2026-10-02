@@ -541,6 +541,20 @@ net = siteOf({}, { down: true });
 check('without a connection, a page that is not the app\'s is the offline page',
   (await (await sw.ask('/nope', { mode: 'navigate' })).text()) === 'offline page');
 const poster = n => `https://static.tvmaze.com/uploads/images/medium_portrait/0/${n}.jpg`;
+let fetching = 0, imagePeak = 0;
+const parallelImages = stubWorker({ files, network: async url => {
+  fetching++; imagePeak = Math.max(imagePeak, fetching);
+  await new Promise(done => setTimeout(done, 5));
+  fetching--;
+  return new Response(url);
+} });
+const simultaneous = await Promise.all([
+  ...Array.from({ length: 12 }, (_, n) => parallelImages.ask(poster(n), { destination: 'image' })),
+  parallelImages.ask(poster(0), { destination: 'image' }),
+]);
+check('image downloads share duplicates and never exceed six concurrent transfers',
+  imagePeak <= 6 && parallelImages.fetched.length === 12
+  && await simultaneous[0].text() === await simultaneous[12].text());
 const images = Object.fromEntries([1, 2, 3, 4, 5].map(n => [poster(n), `poster ${n}`]));
 net = siteOf({ ...images, [poster(9)]: undefined });
 sw = stubWorker({ files, network: url => net(url), mostSmall: 3 });
@@ -588,10 +602,10 @@ const starting = async (tag, { session = {}, list = storedList, remembered = nul
   Object.assign(globalThis, {
     document: {}, sessionStorage: storage(session),
     localStorage: storage({ 'couchside-v1': JSON.stringify(list), ...(remembered ? { 'couchside-fresh': remembered } : {}) }),
-    fetch: async (path, init) => { asked.push({ path, ...init }); return { ok: true, json: async () => ({ asked: asked.length }) }; },
+    fetch: async (path, init) => { asked.push({ path, ...init }); return new Response(JSON.stringify({asked:asked.length})); },
   });
   const start = await import(new URL(`./public/start.js?${tag}`, import.meta.url).href);
-  await new Promise(done => setTimeout(done, 20));
+  await new Promise(done => setTimeout(done, 150));
   return { start, asked };
 };
 const { start, asked: askedEarly } = await starting('early');

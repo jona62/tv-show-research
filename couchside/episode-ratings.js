@@ -1,3 +1,4 @@
+import { apiFetch } from './network.js';
 import {esc,score,code,average,seasons,band,icon,html,legend,ratings,ratingSource,ratingSources} from './ratings.js';
 const plain = value => new DOMParser().parseFromString(value||'', 'text/html').body.textContent||'';
 const layouts=[['list','Episode list'],['grid','Grid'],['wrapped','Wrapped'],['timeline','Timeline']];
@@ -120,7 +121,7 @@ function compareSearch(host,s,onPick) {
     clearTimeout(timer);const q=input.value.trim(),asked=++token;dismiss();if(q.length<2){status.textContent='';return;}
     status.textContent='Searching…';
     timer=setTimeout(async()=>{
-      try{const response=await fetch(`/api/search?q=${encodeURIComponent(q)}`),body=await response.json();if(asked!==token)return;if(!response.ok)throw Error(body.error||'Search is unavailable.');
+      try{const response=await apiFetch(`/api/search?q=${encodeURIComponent(q)}`),body=await response.json();if(asked!==token)return;if(!response.ok)throw Error(body.error||'Search is unavailable.');
         const shows=(body.shows||[]).filter(c=>c.id!==s.id).slice(0,8);
         html(results,shows.map(c=>`<button type="button" class="ratings-search-result" data-id="${c.id}">${c.poster?`<img src="${esc(c.poster)}" alt="">`:''}<span><b>${esc(c.name)}</b><small>${esc(c.year||'')}</small></span>${icon('down')}</button>`).join(''));
         results.querySelectorAll('button').forEach(b=>b.onclick=()=>choose(shows.find(c=>c.id===Number(b.dataset.id))));results.hidden=!shows.length;input.setAttribute('aria-expanded',String(Boolean(shows.length)));status.textContent=shows.length?'':'No matching shows.';

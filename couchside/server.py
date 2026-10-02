@@ -1,4 +1,4 @@
-"""Serve Couchside: the page, its rows, title pages, people and live details. Standard library only."""
+"""Serve Couchside with the standard HTTP server and a shared urllib3 outbound client."""
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as Unfinished
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -27,6 +27,7 @@ from related import Related
 import follow
 import starters
 import tmdb
+from request_limits import Requests
 
 HERE = Path(__file__).resolve().parent
 PUBLIC = HERE / 'public'
@@ -34,6 +35,7 @@ SLOTS = threading.BoundedSemaphore(3)
 # A title page asks for details, trailers and a rating at once while the hero behind it
 # asks for its own, so this holds a dozen; each source still keeps its own rate limit.
 LIVE_SLOTS = threading.BoundedSemaphore(12)
+REQUESTS = Requests()
 # The app keeps its page in the path, so these are the page too and a refresh stays put.
 PAGES = ('/', '/index.html', '/new', '/list', '/search', '/browse', '/welcome')
 POSTS = ('/api/home', '/api/title', '/api/shows', '/api/browse')
@@ -568,14 +570,28 @@ class Handler(SimpleHTTPRequestHandler):
         else:
             super().do_HEAD()
 
-    def send_json(self, value, status=200, validate=False):
+    def send_json(self, value, status=200, validate=False, retry_after=None):
         body = json.dumps(value, ensure_ascii=False, separators=(',', ':'), allow_nan=False).encode()
-        self.send_body(body, 'application/json; charset=utf-8', status, validate)
+        extra = (('Retry-After', str(retry_after or 2)),) if status in (429, 503) else ()
+        self.send_body(body, 'application/json; charset=utf-8', status, validate, extra=extra)
+
+    def admitted(self):
+        wait = REQUESTS.take(self.client_address[0], self.headers.get('X-Forwarded-For', ''))
+        if not wait:
+            return True
+        # A rejected POST body is left unread, so this connection must not be reused.
+        self.close_connection = True
+        self.send_body(json.dumps({'error': 'Requests are catching up. We will retry shortly.'}).encode(),
+                       'application/json; charset=utf-8', 429,
+                       extra=(('Retry-After', str(wait)), ('Connection', 'close')))
+        return False
 
     def do_GET(self):
         self.cache_control = None
         parts = urlsplit(self.path)
         path, query = parts.path, parse_qs(parts.query)
+        if path.startswith('/api/') and not self.admitted():
+            return
         if path == '/healthz':
             self.send_json({'status': 'ok'})
             return
@@ -661,7 +677,7 @@ class Handler(SimpleHTTPRequestHandler):
             else:
                 self.send_json(age(show_id))
         except LiveError as exc:
-            self.send_json({'error': str(exc)}, exc.status)
+            self.send_json({'error': str(exc)}, exc.status, retry_after=exc.retry_after)
         except (BrokenPipeError, ConnectionResetError, TimeoutError):
             pass
         finally:
@@ -684,7 +700,7 @@ class Handler(SimpleHTTPRequestHandler):
             else:
                 self.send_json({'biography': biography(person_id)})
         except LiveError as exc:
-            self.send_json({'error': str(exc)}, exc.status)
+            self.send_json({'error': str(exc)}, exc.status, retry_after=exc.retry_after)
         except (BrokenPipeError, ConnectionResetError, TimeoutError):
             pass
         finally:
@@ -700,7 +716,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json({'error': str(exc)}, 400)
             return
         except LiveError as exc:
-            self.send_json({'error': str(exc)}, exc.status)
+            self.send_json({'error': str(exc)}, exc.status, retry_after=exc.retry_after)
             return
         finally:
             LIVE_SLOTS.release()
@@ -716,6 +732,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         self.cache_control = None
+        if not self.admitted():
+            return
         route = urlsplit(self.path).path
         if route not in POSTS:
             self.send_json({'error': 'Not found.'}, 404)
@@ -797,7 +815,7 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             self.send_json(newer_title(show_id))
         except LiveError as exc:
-            self.send_json({'error': str(exc)}, exc.status)
+            self.send_json({'error': str(exc)}, exc.status, retry_after=exc.retry_after)
         except (BrokenPipeError, ConnectionResetError, TimeoutError):
             pass
         finally:

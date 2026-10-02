@@ -15,7 +15,7 @@ to what the apps show and kept in MODEL_ROOT/tmdb/cache.json.gz, and a version g
 tmdb.json.gz holding only the shows in its own catalog. TMDB allows caching for six
 months, so a record older than 180 days is dropped.
 
-Nothing here feeds the model or its vectors, or the ranking. Standard library only.
+Nothing here feeds the model or its vectors, or the ranking. Outbound reads use urllib3.
 
     TMDB_API_KEY=... python tmdb.py --root MODEL_ROOT --version DIR
     python tmdb.py --version DIR --carry OLD_VERSION/tmdb.json.gz
@@ -43,6 +43,8 @@ import threading
 import time
 import traceback
 import zlib
+from urllib.error import HTTPError, URLError
+from http_client import client
 
 HOST = 'api.themoviedb.org'
 REGION = 'US'
@@ -191,6 +193,8 @@ class Client:
     def get(self, path):
         """The JSON TMDB answers for a path, or None for a 404. Raises KeyRejected on a
         401, and TmdbError once the retries run out."""
+        if self.connect is connect_https:
+            return self._shared(path)
         problem = 'no answer'
         for attempt in range(self.attempts):
             if self.rejected.is_set():
@@ -225,6 +229,26 @@ class Client:
                 continue
             raise TmdbError(f'TMDB answered {status} for {where(path)}')
         raise TmdbError(f'TMDB gave up on {where(path)} ({problem})')
+
+    def _shared(self, path):
+        if self.rejected.is_set():
+            raise KeyRejected(REJECTED)
+        def attempted():
+            with self.lock:
+                self.calls += 1
+        try:
+            return client().json('https://' + HOST + self.auth.sign(path),
+                headers={'Accept': 'application/json', **self.auth.headers()},
+                ttl=20 * 3600, budget=90, timeout=20, max_bytes=MAX_JSON, on_attempt=attempted)
+        except HTTPError as error:
+            if error.code == 404:
+                return None
+            if error.code in (401, 403):
+                self.rejected.set()
+                raise KeyRejected(REJECTED) from None
+            raise TmdbError(f'TMDB answered {error.code} for {where(path)}') from None
+        except (URLError, ValueError):
+            raise TmdbError(f'TMDB could not refresh {where(path)}') from None
 
     def _send(self, path):
         conn = getattr(self.local, 'conn', None)

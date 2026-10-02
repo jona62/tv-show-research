@@ -1,3 +1,4 @@
+import { apiFetch } from './network.js';
 export const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export const score = n => n == null ? 'Unrated' : Number(n).toFixed(1);
 export const code = e => `S${e.season} E${e.number}`;
@@ -87,7 +88,7 @@ export const freshMatrix = id => {
   return full&&!full.refreshing?full:held&&Date.now()-held.at<CACHED_FOR&&!held.value.refreshing?held.value:null;
 };
 export async function matrixRatings(ids) {
-  const response = await fetch(`/api/episode-matrices?ids=${[...new Set(ids)].slice(0,40).join(',')}`);
+  const response = await apiFetch(`/api/episode-matrices?ids=${[...new Set(ids)].slice(0,40).join(',')}`);
   const body = await response.json();
   if (!response.ok || !Array.isArray(body.shows) || !Array.isArray(body.pending)) throw Error(body.error || 'Ratings are unavailable.');
   acceptMatrices(body);
@@ -128,9 +129,8 @@ export function ratings(id) {
   const held = cachedRatings(id);
   if (held) return Promise.resolve(held);
   if(!cache.has(id)) {
-    const request=async attempt=>{
-      const response=await fetch(`/api/episode-ratings?id=${id}`),body=await response.json();
-      if(response.status===503&&attempt<2){await new Promise(resolve=>setTimeout(resolve,10000));return request(attempt+1);}
+    const request=async()=>{
+      const response=await apiFetch(`/api/episode-ratings?id=${id}`),body=await response.json();
       if(!response.ok)throw Error(body.error||'Ratings are unavailable.');
       if(!Array.isArray(body.episodes))throw Error('Ratings are unavailable.');
       loaded.set(id,{at:Date.now(),value:body});
@@ -138,7 +138,7 @@ export function ratings(id) {
       if(body.refreshing)followEnrichment(id);
       return body;
     };
-    const pending=request(0).catch(error=>{cache.delete(id);throw error;});
+    const pending=request().catch(error=>{cache.delete(id);throw error;});
     cache.set(id,pending);
   }
   return cache.get(id);

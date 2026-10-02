@@ -1,3 +1,4 @@
+import { apiFetch } from './network.js';
 // Where a page starts: the list and what the browser remembers, read from storage as they
 // stand, the visit the tab is on (begun here when it is a new one), and the home page asked
 // for at once. The page loads this beside main.js, and it runs as soon as it and its few
@@ -151,7 +152,7 @@ let early = null;
 if (globalThis.document && !keptPage(stored, opened.visit)) {
   early = opened.ask.then(ask => {
     const text = packed(homeBody(stored, ask));
-    return { text, answer: fetch('/api/home', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: text, priority: 'high' }) };
+    return { text, answer: apiFetch('/api/home', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: text, priority: 'high' }) };
   });
   // A failure is main.js's to report, once it takes the answer.
   early.then(({ answer }) => answer.catch(() => {}), () => {});

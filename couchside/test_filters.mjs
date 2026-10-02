@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
-import {matches,selectShows,setFilters,filtersFor,filterKey} from './filter-state.js';
+import {matches,selectShows,setFilters,filtersFor,filterKey,wantsMatrices} from './filter-state.js';
+assert.equal(wantsMatrices(),true,'matrix defaults remain available with storage disabled');
+globalThis.localStorage={getItem:()=>null};assert.equal(wantsMatrices(),true);
+globalThis.localStorage={getItem:()=>'standard'};assert.equal(wantsMatrices(),false);
+delete globalThis.localStorage;
 const short={id:1,name:'Alpha',genres:['Drama'],rating:8.1,runtime:25,status:'Ended',episodes:6,seasons:1,total_minutes:150,year:2020};
 const long={...short,id:2,name:'Beta',episodes:60,seasons:5,total_minutes:1500,rating:9};
 const unknown={id:3,name:'Unknown',genres:['Drama'],rating:null,runtime:null};

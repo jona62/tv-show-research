@@ -808,15 +808,53 @@ leaves Wikidata's facts. Photos stay TVmaze's, so the image policy is unchanged.
 ## Run it
 
 ```sh
+.venv/bin/pip install -r scripts/requirements-runtime.txt
 .venv/bin/python couchside/build.py     # copies the engine, its search and the follower, writes public/
 .venv/bin/python couchside/server.py    # http://localhost:8082
 .venv/bin/python couchside/brand/make.py    # only when the icon or share image changes
 ```
 
-Python 3.10+ and no packages. The model is read from `MODEL_DIR`, or from
+Python 3.10+ and urllib3, pinned in the runtime requirements. The model is read from `MODEL_DIR`, or from
 `model/` beside this directory. The build needs no model: the page's count,
 snapshot date and first-visit posters are filled in by the server at startup,
 from whichever model it loaded.
+
+## Connectivity and recovery
+
+Outbound reads use the shared `scripts/http_client.py`, copied into each app by the
+build. urllib3 provides pooled TLS connections and retry classification. There are
+at most three attempts, with exponential backoff and jitter, a total deadline, and
+no adaptive rate control. Every physical attempt, including retries and nightly
+downloads, takes a turn in the same SQLite provider budget. TVmaze is paced at
+18 requests per ten seconds, TMDB at three per second; trailers and biography
+sources have separate fixed limits. A provider's `Retry-After` pauses its budget
+across processes, including when the pause outlasts the visitor's request deadline.
+
+`OUTBOUND_CACHE` names a compressed public-response cache, capped at 64 MB with
+30-day retention. Deployed it is `/home/developer/tv-model/cache/http.sqlite3`,
+on the same persistent volume as the episode and details cache. Cache lifetimes
+depend on the endpoint; eligible stale answers cover temporary outages without
+being marked fresh. Missing records and rejected credentials are not retried.
+The nightly job publishes the model first, then spends up to fifteen minutes
+refreshing episodes and details for up to 200 popular and 200 recently used shows
+directly in the visitor cache. Existing TMDB episode scores are retained. A warming
+failure leaves the published model and saved visitor data intact.
+
+The browser shares duplicate API lookups, starts requests at least 75 ms apart,
+and allows four active calls, at most two to computation endpoints. Cancelled queued
+requests never start. Temporary connection and server failures get up to three
+attempts, respecting `Retry-After`; provider cooldowns do not block unrelated routes.
+The server also admits a fixed eight API requests per second per visitor (burst 40),
+and 24 per second globally (burst 120), returning JSON and `Retry-After` when busy.
+Existing computation and live-lookup concurrency caps remain in force.
+
+The existing toast reports interruption, retrying and recovery. Saved content stays
+visible. Failed visible sections retry after about 15, 30 and 60 seconds, with three
+recovery rounds; returning online also retries them. Title sections recover in place
+so their scroll position is kept. Manual retry remains available after the bounded
+automatic attempts. Poster and thumbnail downloads share an image queue of six,
+deduplicate simultaneous reads, and use the existing bounded browser image cache
+across deploys. Images are not copied into the server's public-response cache.
 
 ## Check it
 
@@ -826,6 +864,10 @@ node couchside/test_format.mjs
 node couchside/test_gestures.mjs
 node couchside/test_ratings.mjs
 .venv/bin/python couchside/test_episode_store.py
+.venv/bin/python scripts/test_http_client.py
+.venv/bin/python scripts/test_warm_cache.py
+.venv/bin/python couchside/test_request_limits.py
+node couchside/test_network.mjs
 .venv/bin/python couchside/test_related.py
 .venv/bin/python couchside/test_long_lists.py
 ```

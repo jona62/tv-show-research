@@ -191,11 +191,12 @@ re-checking with a real scanner.
 ## Run it
 
 ```sh
+python3 -m pip install -r scripts/requirements-runtime.txt
 python3 app/build.py      # writes app/public, links the model from model/
 python3 app/server.py     # http://localhost:8080
 ```
 
-Python 3.10+ and no packages. `build.py` fails the build if the first load ever
+Python 3.10+ and urllib3 for the shared outbound search client. `build.py` fails the build if the first load ever
 crosses 512 KB.
 
 ## Check it

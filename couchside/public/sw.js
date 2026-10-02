@@ -15,8 +15,8 @@
 // CORS so every copy is readable (Chrome counts an opaque one as about 7 MB of quota),
 // and the least recently used go once there are more than 1,000 small images or 40
 // large ones, about 30 MB in all. One long scroll down the home page shows 350 posters.
-const VERSION = 'a34a7099fa8f';
-const FILES = {"/style.css": "88c94422136e3262", "/main.js": "38598ca14af27c8b", "/format.js": "e565cc65c0882a95", "/gestures.js": "c2173468ef22c30e", "/start.js": "5402c4619b384072", "/ratings.js": "bd9d1b3ac9a562f7", "/episode-ratings.js": "a6849b3dcf8c367f", "/show-cards.js": "0d3c0b29c4aff4c2", "/title-sections.js": "47e93fa931aed0c8", "/filter-state.js": "a30d1a4517a72575", "/filters.js": "7194f66a7f854167", "/transfer.js": "aca34fe2830e9d29", "/qr.js": "d7f92f94bb8911ea", "/fresh.js": "afcc972f76479400", "/starters.js": "d559e3a61414a450", "/offline.html": "ba13942a61d9aa1f", "/favicon.svg": "ec98a59b577360e9", "/icon-192.png": "badf05b3c8dbb5e7", "/tmdb.svg": "8e7b30f73a402069"};
+const VERSION = '886c9edba993';
+const FILES = {"/style.css": "88c94422136e3262", "/main.js": "7fc4c78a4d8bbb13", "/format.js": "e565cc65c0882a95", "/gestures.js": "c2173468ef22c30e", "/start.js": "6a0715a23a1035dd", "/ratings.js": "54b0ed6f30577419", "/episode-ratings.js": "a3165ae91e694745", "/show-cards.js": "e6be684d2c9ea028", "/title-sections.js": "47e93fa931aed0c8", "/filter-state.js": "2a62eef7fd5aeeda", "/filters.js": "05473f9c8c0c3616", "/network.js": "0e96ad7f2eaf4036", "/transfer.js": "aca34fe2830e9d29", "/qr.js": "d7f92f94bb8911ea", "/fresh.js": "afcc972f76479400", "/starters.js": "d559e3a61414a450", "/offline.html": "ba13942a61d9aa1f", "/favicon.svg": "ec98a59b577360e9", "/icon-192.png": "badf05b3c8dbb5e7", "/tmdb.svg": "8e7b30f73a402069"};
 const SHELL = `couchside-${VERSION}`;
 const IMAGES = 'couchside-images';
 // The app's own pages (PAGES in server.py): each is the one page, which routes itself.
@@ -103,12 +103,32 @@ async function file(request, path) {
 // When each image was last shown while this worker has been running; those it has not
 // shown count as older still, oldest kept first.
 const used = new Map();
+const arriving = new Map();
+const imageQueue = [];
+let imageActive = 0;
+function imageTurn(send) {
+  return new Promise((resolve,reject)=>{imageQueue.push({send,resolve,reject});drainImages();});
+}
+function drainImages() {
+  while(imageActive<6&&imageQueue.length){
+    const job=imageQueue.shift();imageActive++;
+    Promise.resolve().then(job.send).then(job.resolve,job.reject).finally(()=>{imageActive--;drainImages();});
+  }
+}
 
 async function image(event, url) {
   used.set(url, Date.now());
   const cache = await caches.open(IMAGES);
   const hit = await cache.match(url, { ignoreVary: true });
   if (hit) return hit;
+  if(!arriving.has(url)) {
+    const pending=imageTurn(()=>fetchImage(event,url,cache)).finally(()=>arriving.delete(url));
+    arriving.set(url,pending);
+  }
+  return (await arriving.get(url)).clone();
+}
+
+async function fetchImage(event,url,cache) {
   const { request } = event;
   let response;
   try {
@@ -118,7 +138,7 @@ async function image(event, url) {
     // A host that refuses CORS, or no connection: the page's own request, and nothing kept.
     return fetch(request);
   }
-  if (response.status === 200) event.waitUntil(cache.put(url, response.clone()).then(trimSoon));
+  if (response.status === 200) event.waitUntil(cache.put(url, response.clone()).then(trimSoon).catch(()=>{}));
   return response;
 }
 

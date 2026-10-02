@@ -1,3 +1,4 @@
+import { apiFetch } from './network.js?v=0e96ad7f2eaf4036';
 // Where a page starts: the list and what the browser remembers, read from storage as they
 // stand, the visit the tab is on (begun here when it is a new one), and the home page asked
 // for at once. The page loads this beside main.js, and it runs as soon as it and its few
@@ -9,7 +10,7 @@
 import { LIMITS, packList } from './transfer.js?v=aca34fe2830e9d29';
 import { freshStore, today, prune, beginVisit, freshness } from './fresh.js?v=afcc972f76479400';
 import { pageKey, ongoing, resumable } from './format.js?v=e565cc65c0882a95';
-import {filtersFor,filterKey,wantsMatrices} from './filter-state.js?v=a30d1a4517a72575';
+import {filtersFor,filterKey,wantsMatrices} from './filter-state.js?v=2a62eef7fd5aeeda';
 
 /* ------------------------------------------------------------- the list */
 export const KEY = 'couchside-v1';
@@ -151,7 +152,7 @@ let early = null;
 if (globalThis.document && !keptPage(stored, opened.visit)) {
   early = opened.ask.then(ask => {
     const text = packed(homeBody(stored, ask));
-    return { text, answer: fetch('/api/home', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: text, priority: 'high' }) };
+    return { text, answer: apiFetch('/api/home', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: text, priority: 'high' }) };
   });
   // A failure is main.js's to report, once it takes the answer.
   early.then(({ answer }) => answer.catch(() => {}), () => {});

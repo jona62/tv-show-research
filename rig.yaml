@@ -42,11 +42,14 @@ apps:
     path: ./app
     port: 8081
     visibility: public
-    start: mountpoint -q /home/developer/data && test -L /home/developer/tv-model && python3 server.py
+    install: python3 -m venv --copies .venv && .venv/bin/pip install --no-cache-dir -r requirements-runtime.txt
+    dependencyInputs: [ requirements-runtime.txt ]
+    start: mountpoint -q /home/developer/data && test -L /home/developer/tv-model && .venv/bin/python server.py
     env:
       PORT: "8081"
       MODEL_DIR: /home/developer/tv-model/current
       RELOAD_DELAY_SECONDS: "30"
+      OUTBOUND_CACHE: /home/developer/tv-model/cache/http.sqlite3
     health:
       path: /healthz
       timeoutSeconds: 90
@@ -59,12 +62,15 @@ apps:
     path: ./couchside
     port: 8082
     visibility: public
-    start: mountpoint -q /home/developer/data && test -L /home/developer/tv-model && python3 server.py
+    install: python3 -m venv --copies .venv && .venv/bin/pip install --no-cache-dir -r requirements-runtime.txt
+    dependencyInputs: [ requirements-runtime.txt ]
+    start: mountpoint -q /home/developer/data && test -L /home/developer/tv-model && .venv/bin/python server.py
     env:
       PORT: "8082"
       MODEL_DIR: /home/developer/tv-model/current
       RELOAD_DELAY_SECONDS: "150"
       RATINGS_CACHE: /home/developer/tv-model/cache/episode-ratings.sqlite3
+      OUTBOUND_CACHE: /home/developer/tv-model/cache/http.sqlite3
     secrets:
       - name: TMDB_API_KEY
         from: TMDB_READ_API
@@ -107,6 +113,7 @@ apps:
       MODEL_ROOT: /home/developer/tv-model
       SEED_MODEL_DIR: /home/developer/model
       REFRESH_AT_UTC: "04:30"
+      OUTBOUND_CACHE: /home/developer/tv-model/cache/http.sqlite3
     source:
       kind: git
       repo: https://github.com/jona62/tv-show-research.git

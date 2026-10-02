@@ -103,12 +103,32 @@ async function file(request, path) {
 // When each image was last shown while this worker has been running; those it has not
 // shown count as older still, oldest kept first.
 const used = new Map();
+const arriving = new Map();
+const imageQueue = [];
+let imageActive = 0;
+function imageTurn(send) {
+  return new Promise((resolve,reject)=>{imageQueue.push({send,resolve,reject});drainImages();});
+}
+function drainImages() {
+  while(imageActive<6&&imageQueue.length){
+    const job=imageQueue.shift();imageActive++;
+    Promise.resolve().then(job.send).then(job.resolve,job.reject).finally(()=>{imageActive--;drainImages();});
+  }
+}
 
 async function image(event, url) {
   used.set(url, Date.now());
   const cache = await caches.open(IMAGES);
   const hit = await cache.match(url, { ignoreVary: true });
   if (hit) return hit;
+  if(!arriving.has(url)) {
+    const pending=imageTurn(()=>fetchImage(event,url,cache)).finally(()=>arriving.delete(url));
+    arriving.set(url,pending);
+  }
+  return (await arriving.get(url)).clone();
+}
+
+async function fetchImage(event,url,cache) {
   const { request } = event;
   let response;
   try {
@@ -118,7 +138,7 @@ async function image(event, url) {
     // A host that refuses CORS, or no connection: the page's own request, and nothing kept.
     return fetch(request);
   }
-  if (response.status === 200) event.waitUntil(cache.put(url, response.clone()).then(trimSoon));
+  if (response.status === 200) event.waitUntil(cache.put(url, response.clone()).then(trimSoon).catch(()=>{}));
   return response;
 }
 

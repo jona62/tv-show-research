@@ -17,3 +17,4 @@ scipy==1.17.1
     # via scikit-learn
 threadpoolctl==3.7.0
     # via scikit-learn
+urllib3==2.7.0

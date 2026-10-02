@@ -35,7 +35,7 @@ HERE = Path(__file__).resolve().parent
 APP = HERE.parent / 'app'
 PUBLIC = HERE / 'public'
 OWN = ('style.css', 'main.js', 'format.js', 'gestures.js', 'start.js', 'ratings.js',
-       'episode-ratings.js', 'show-cards.js', 'title-sections.js', 'filter-state.js', 'filters.js')
+       'episode-ratings.js', 'show-cards.js', 'title-sections.js', 'filter-state.js', 'filters.js', 'network.js')
 SHARED = ('transfer.js', 'qr.js', 'fresh.js', 'starters.js')
 # Next Watch's server modules, copied beside this server so it deploys by itself.
 MODULES = ('engine.py', 'taste.py', 'titles.py', 'fallback.py', 'follow.py', 'facets.py', 'neighbours.py', 'fresh.py',
@@ -140,6 +140,13 @@ def graph(start, needs):
 
 
 def main():
+    scripts = HERE.parent / 'scripts'
+    for folder in (APP, HERE):
+        for name in ('http_client.py', 'requirements-runtime.txt'):
+            shutil.copyfile(scripts / name, folder / name)
+    # The nightly warmer uses the exact same episode codec and durable store as the app.
+    for name in ('live.py', 'episode_store.py'):
+        shutil.copyfile(HERE / name, scripts / name)
     for name in MODULES:
         shutil.copyfile(APP / name, HERE / name)
     sys.path.insert(0, str(HERE))

@@ -42,6 +42,8 @@ def ensure_model():
 
 
 def main():
+    for name in ('http_client.py', 'requirements-runtime.txt'):
+        shutil.copyfile(HERE.parent / 'scripts' / name, HERE / name)
     ensure_model()
     sys.path.insert(0, str(HERE))
     from engine import Engine

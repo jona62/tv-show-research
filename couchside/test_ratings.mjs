@@ -38,24 +38,25 @@ let calls = 0;
 let answer;
 globalThis.fetch = () => { calls++; return new Promise(resolve => { answer = resolve; }); };
 const first = ratings(169), second = ratings(169);
+await new Promise(done=>setTimeout(done,0));
 assert.equal(calls, 1, 'concurrent cards and title views share one request');
-answer({ ok: true, json: async () => ({ id: 169, episodes }) });
+answer(new Response(JSON.stringify({id:169,episodes})));
 assert.equal(await first, await second);
-assert.equal(cachedRatings(169).episodes, episodes);
+assert.deepEqual(cachedRatings(169).episodes, episodes);
 await ratings(169);
 assert.equal(calls, 1, 'completed data is reused by new cards');
 
-globalThis.fetch = async () => ({ ok: false, status: 502, json: async () => ({ error: 'Unavailable' }) });
+globalThis.fetch = async () => new Response(JSON.stringify({error:'Unavailable'}),{status:502});
 await assert.rejects(ratings(82), /Unavailable/);
 assert.equal(cachedRatings(82), undefined);
-globalThis.fetch = async () => ({ ok: true, json: async () => ({ id: 82, episodes: [] }) });
+globalThis.fetch = async () => new Response(JSON.stringify({id:82,episodes:[]}));
 assert.deepEqual((await ratings(82)).episodes, [], 'a failed request can be retried');
 let batchUrl;
 globalThis.fetch = async url => {
   batchUrl=url;
-  return {ok:true,json:async()=>({shows:[{id:169,sources:'TMDB',episodes:[
+  return new Response(JSON.stringify({shows:[{id:169,sources:'TMDB',episodes:[
     {season:1,number:1,name:'<Pilot>',rating:9.1,rating_source:'TMDB',rating_votes:100},
-  ]}],pending:[526]})};
+  ]}],pending:[526]}));
 };
 const batch=await matrixRatings([169,526,169]);
 assert.equal(batchUrl,'/api/episode-matrices?ids=169,526');

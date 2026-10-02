@@ -1,9 +1,10 @@
-import { mountEpisodeRatings } from './episode-ratings.js?v=a6849b3dcf8c367f';
+import { mountEpisodeRatings } from './episode-ratings.js?v=a3165ae91e694745';
 import { mountTitleSections } from './title-sections.js?v=47e93fa931aed0c8';
-import { enhanceShowCard,receiveMatrices,matrixPreference } from './show-cards.js?v=0d3c0b29c4aff4c2';
-import {filtersFor,filterKey,selectShows,setFilters} from './filter-state.js?v=a30d1a4517a72575';
-import {filterBar} from './filters.js?v=7194f66a7f854167';
-import { cachedRatings, ratings, seasons as ratingSeasons } from './ratings.js?v=bd9d1b3ac9a562f7';
+import { enhanceShowCard,receiveMatrices,matrixPreference } from './show-cards.js?v=e6be684d2c9ea028';
+import { apiFetch } from './network.js?v=0e96ad7f2eaf4036';
+import {filtersFor,filterKey,selectShows,setFilters} from './filter-state.js?v=2a62eef7fd5aeeda';
+import {filterBar} from './filters.js?v=05473f9c8c0c3616';
+import { cachedRatings, ratings, seasons as ratingSeasons } from './ratings.js?v=54b0ed6f30577419';
 import { encode, decode, LIMITS, codeFrom } from './transfer.js?v=aca34fe2830e9d29';
 import { matrix, svgPath } from './qr.js?v=d7f92f94bb8911ea';
 import { tieText, leaning, leaningHeading } from './format.js?v=e565cc65c0882a95';
@@ -25,7 +26,7 @@ import { daySeed, startersQuery, mergeStarters, browserLanguage, MAX_ROUND, MAX_
 import { sheets, closing, reveal, crossfade, peeks, edgeBack, speed } from './gestures.js?v=c2173468ef22c30e';
 import { REST, LOOP_WAIT, goesRound, loopCopies, copiesOf, lapHome, restPlace, toCard } from './gestures.js?v=c2173468ef22c30e';
 import { KEY, DEFAULTS, REACH, VERSION, MAX_RATED, fresh, tidy, stored, FRESH_KEY, readMemory, remembered, opened,
-  newVisit, keepVisit, tasteOf, homeBody, packed, PAGE_KEY, take } from './start.js?v=5402c4619b384072';
+  newVisit, keepVisit, tasteOf, homeBody, packed, PAGE_KEY, take } from './start.js?v=6a0715a23a1035dd';
 
 const boot = JSON.parse(document.getElementById('boot').textContent);
 // iOS zooms into a field it judges small and stays zoomed. maximum-scale=1 in the page's
@@ -318,7 +319,7 @@ function skelGrid(n, titled = false) {
 
 const POPOVER = 'showPopover' in HTMLElement.prototype;
 let toastTimer = 0;
-function toast(text) {
+function toast(text, duration=2800) {
   const t = $('toast');
   t.textContent = text;
   // As a popover the toast sits in the top layer, above an open title page.
@@ -330,7 +331,7 @@ function toast(text) {
   toastTimer = setTimeout(() => {
     if (!POPOVER) t.hidden = true;
     else if (t.matches(':popover-open')) t.hidePopover();
-  }, 2800);
+  }, duration);
 }
 if (!POPOVER) $('toast').hidden = true;
 
@@ -339,7 +340,7 @@ if (!POPOVER) $('toast').hidden = true;
 async function request(path, options = {}, started = null) {
   let res;
   try {
-    res = await (started || fetch(path, options));
+    res = await (started || apiFetch(path, options));
   } catch (e) {
     if (e.name === 'AbortError') throw e;
     const error = new Error(navigator.onLine === false
@@ -397,7 +398,7 @@ function call(path, options) {
 }
 const wait = ms => new Promise(done => setTimeout(done, ms));
 // Live lookups can find the server busy for a moment; one quiet retry covers that.
-const patient = path => call(path).catch(e => (e.status === 503 ? wait(1500).then(() => call(path)) : Promise.reject(e)));
+const patient = path => call(path);
 // A title's page and a genre's rows follow your list, your settings and what is asked,
 // not what this browser has seen since, so they are kept by those alone. The list goes
 // packed (start.js).
@@ -3893,7 +3894,8 @@ function hydrateList(){
   const ids=[...new Set([...state.saved,...state.profile].map(s=>s.id))].filter(id=>!listLoaded.has(id));
   if(listHydrating||!ids.length)return;
   listHydrating=true;
-  post('/api/shows',{ids:ids.slice(0,200),matrix:matrixPreference()}).then(data=>{data.shows.forEach(remember);ids.slice(0,200).forEach(id=>listLoaded.add(id));if(view==='list')renderList();},()=>{}).finally(()=>{listHydrating=false;if(ids.length>200)hydrateList();});
+  let more=false;
+  post('/api/shows',{ids:ids.slice(0,200),matrix:matrixPreference()}).then(data=>{data.shows.forEach(remember);ids.slice(0,200).forEach(id=>listLoaded.add(id));more=ids.length>200;if(view==='list')renderList();},()=>{}).finally(()=>{listHydrating=false;if(more)hydrateList();});
 }
 function renderList() {
   hydrateList();
@@ -4649,6 +4651,53 @@ async function readLink() {
 }
 
 /* ------------------------------------------------------------ connection */
+let networkNoticeAt=0,networkNotice='';
+function recoverVisible(paths=[]) {
+  const affected=route=>!paths.length||paths.some(path=>path.split('?')[0]===route);
+  if((!home||homeFailed)&&affected('/api/home'))loadHome();
+  if(view==='browse'&&paths.some(path=>path.startsWith('/api/browse'))){browseKey=null;renderBrowse();}
+  if(view==='search'&&paths.some(path=>path.startsWith('/api/search'))){searchShown=null;search($('q').value,false);}
+  if(view==='new'&&affected('/api/home')&&!newData){newKey='';renderNew();}
+  if(view==='list'&&affected('/api/shows'))hydrateList();
+  const t=T;
+  if(t) {
+    if(t.error&&affected('/api/title'))titleOf(t.id).then(data=>{
+      if(T!==t)return;t.error='';t.data=data;remember(data.show);
+      [...data.more,...(data.fans||[])].forEach(remember);paintTitle();paintBackdrop();paintMore();
+    }).catch(()=>{});
+    if(t.liveFailed&&affected('/api/extra'))details(t.id).then(live=>{
+      if(T!==t||!live)return;t.liveFailed=false;t.live=live;paintTitle();paintBackdrop();paintEpisodes();
+    });
+    if(t.ratingsFailed&&affected('/api/episode-ratings'))ratings(t.id).then(data=>{
+      if(T!==t)return;t.ratingsFailed=false;t.episodeData=data;paintEpisodes();
+    }).catch(()=>{});
+    if(paths.includes(`/api/trailer?id=${t.id}`))videosOf(t.id,t.data?.tmdb).then(videos=>{
+      if(T!==t)return;t.videos=videos;paintTrailerButton();paintVideos();
+    });
+    if(paths.includes(`/api/rating?id=${t.id}`))ratingOf(t.id,t.data?.tmdb,true).then(age=>{
+      if(T!==t)return;t.age=age;paintTitle();
+    });
+  }
+  if(E?.retry&&affected('/api/episode'))loadEpisode(episodeToken);
+  const person=P;
+  if(person?.error&&affected('/api/person'))personOf(personId).then(data=>{
+    if(P!==person)return;person.error=null;person.data=data;paintPerson();
+  }).catch(()=>{});
+  if(person&&paths.includes(`/api/biography?id=${personId}`))biographyOf(personId).then(bio=>{
+    if(P!==person)return;person.bio=bio;paintAbout();
+  });
+}
+window.addEventListener('couchside-network',event=>{
+  const {state,paths=[]}=event.detail;
+  if(state==='recover'){recoverVisible(paths);return;}
+  const now=Date.now();
+  if(now-networkNoticeAt<10000&&(state!=='restored'||networkNotice==='restored'))return;
+  const message={retrying:'Connection interrupted. Retrying automatically…',
+    failed:'Still having trouble loading data. We will try again shortly.',
+    offline:'You are offline. We will retry when your connection returns.',
+    restored:'Data is loading again.'}[state];
+  if(message){networkNotice=state;networkNoticeAt=now;toast(message,4500);}
+});
 window.addEventListener('offline', () => toast('You are offline. Couchside will catch up when you are back.'));
 window.addEventListener('online', () => {
   toast('Back online.');

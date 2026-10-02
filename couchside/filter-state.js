@@ -8,7 +8,7 @@ export function setFilters(page, value) {
   try { sessionStorage.setItem(KEY, JSON.stringify(pages)); } catch {}
 }
 export const filterKey = page => Object.keys(filtersFor(page)).length ? '|' + JSON.stringify(filtersFor(page)) : '';
-export const wantsMatrices = () => { try { return localStorage.getItem('couchside.show-cards') === 'matrix'; } catch { return false; } };
+export const wantsMatrices = () => { try { return localStorage.getItem('couchside.show-cards') !== 'standard'; } catch { return true; } };
 export const formats = {scripted:['Scripted'],animation:['Animation'],documentary:['Documentary'],unscripted:['Reality','Variety','Talk Show','Game Show','Panel Show','Award Show','Sports','News']};
 export function matches(show, f) {
   if (f.genres?.length && !f.genres.some(g => show.genres?.includes(g))) return false;

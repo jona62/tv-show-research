@@ -19,16 +19,14 @@ TVmaze's additions; the rest wait for the index to catch up.
 import concurrent.futures
 import datetime
 import hashlib
-import http.client
 import json
 import os
 import pathlib
 import threading
-import time
-import urllib.request
 import urllib.error
 import argparse
 import shutil
+from http_client import client
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 RAW = pathlib.Path(os.environ.get('TV_RAW_DIR') or ROOT / 'data/raw')
@@ -36,31 +34,16 @@ MANIFEST = pathlib.Path(os.environ.get('TV_MANIFEST') or ROOT / 'data/manifest.j
 # The shows newer than the cached index, as TVmaze answers for each on its own.
 NEWER = 'page-newer.json'
 MOST_NEWER = 1000
-lock = threading.Lock()
-last = 0.0
 
 def get(url, missing_ok=False):
     """The body at url, tried again through rate limits, server errors, timeouts and
     dropped connections. With missing_ok, None when the answer is 404."""
-    global last
-    for attempt in range(6):
-        with lock:
-            time.sleep(max(0, .55 - (time.monotonic() - last)))
-            last = time.monotonic()
-        try:
-            with urllib.request.urlopen(url, timeout=45) as response:
-                return response.read()
-        except urllib.error.HTTPError as e:
-            if e.code == 404 and missing_ok:
-                return None
-            if e.code not in (429, 500, 502, 503, 504):
-                raise
-            error = e
-        except (OSError, http.client.HTTPException) as e:
-            # One of some 380 requests timing out should not cost the night's build.
-            error = e
-        time.sleep(2 ** (attempt + 1))
-    raise RuntimeError(f'{url}: {error}')
+    try:
+        return client().get(url, timeout=45, budget=180, max_bytes=10 * 1024 * 1024).body
+    except urllib.error.HTTPError as error:
+        if error.code == 404 and missing_ok:
+            return None
+        raise
 
 def write_atomic(path, body):
     """Write to a temporary name beside the file, then rename it into place."""

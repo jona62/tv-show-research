@@ -1,6 +1,6 @@
 """Keep the shared model fresh: fetch TVmaze each night, rebuild, and swap it in.
 
-A service of its own beside the three apps, standard library only. The build steps run
+A service of its own beside the three apps. The build steps run
 one at a time as niced child processes of this same interpreter, whose virtual
 environment carries numpy and scikit-learn (requirements-refresher.txt). A version is
 built beside the live one and goes live only once it checks out, so a failed night
@@ -132,7 +132,7 @@ SECRETS = ('TMDB_API_KEY',)
 TIMEOUTS = {'download': 3 * 3600, 'build_model': 2 * 3600, 'build_popularity': 1800, 'build_art': 1800,
             'wikidata': 3600, 'build_facets': 1800, 'films': 3600, 'build_films': 600, 'clickstream check': 300,
             'clickstream': 2 * 3600, 'build_cointerest': 1800, 'build_neighbours': 2 * 3600, 'tmdb': 3 * 3600,
-            'tmdb carry': 1800, 'validate': 1800}
+            'tmdb carry': 1800, 'validate': 1800, 'warm cache': 960}
 AUTOMATIC = ('daily', 'catch-up', 'retry', 'tmdb')
 CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; "
        "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
@@ -1026,6 +1026,7 @@ class Refresher:
         env = {k: v for k, v in os.environ.items() if k not in SECRETS}
         env.update({name: '1' for name in THREAD_VARS})
         env.update(PYTHONUNBUFFERED='1', PYTHONDONTWRITEBYTECODE='1', PYTHONUTF8='1')
+        env['OUTBOUND_CACHE'] = str(self.root / 'cache/http.sqlite3')
         if tmdb:
             env.update(TMDB_API_KEY=self.config.tmdb_key, TMDB_REGION=self.config.tmdb_region,
                        TMDB_MIN_POPULARITY=str(self.config.tmdb_min_popularity),
@@ -1402,6 +1403,12 @@ class Refresher:
         with self.guard:
             ctx.run['version'] = ctx.stamp
         ctx.log(f'current -> versions/{ctx.stamp} ({build["shows"]:,} shows, snapshot {build["snapshot_date"]})')
+        # Warm the visitor cache directly. Provider trouble never undoes a valid model.
+        try:
+            ctx.run_step('warm cache', self.script('warm_cache.py') + ['--model', final,
+                         '--cache', self.root / 'cache/episode-ratings.sqlite3'], self.child_env())
+        except StepFailed as exc:
+            ctx.warn(f'Cache warming deferred; saved visitor data is kept: {exc}')
         try:
             self.prune(ctx.log)
         except OSError as exc:

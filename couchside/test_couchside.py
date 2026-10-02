@@ -99,6 +99,9 @@ os.environ['MODEL_DIR'] = str(TMP / 'current')
 os.environ['RATINGS_CACHE'] = str(TMP / 'cache/episodes.sqlite3')
 
 import server                                                    # noqa: E402
+from request_limits import Requests, Budget
+# Endpoint contracts run independently of admission; real HTTP rejection is checked below.
+server.REQUESTS = Requests(Budget(rate=100000, burst=100000), Budget(rate=100000, burst=100000))
 import follow                                                    # noqa: E402
 from added import Added, Search, current, read, trim_updates, NAMED  # noqa: E402
 from titles import forms                                         # noqa: E402
@@ -2404,6 +2407,18 @@ check('the new sources and model files are not served',
       all(fetch(path)[0] == 404 for path in ('/tmdb.py', '/follow.py', '/facets.py', '/titles.py', '/fallback.py',
                                              '/tmdb.json.gz', '/build.json', '/facets.bin.gz', '/facets.json.gz',
                                              '/search.json.gz', '/starters.py')))
+original_requests = server.REQUESTS
+server.REQUESTS = Requests(Budget(rate=1, burst=1, clock=lambda: 0), Budget(rate=100000, burst=100000))
+check('API request budgets admit an initial request', fetch('/api/search?q=breaking%20bad')[0] == 200)
+status, headers, body = fetch('/api/extra?id=169')
+check('excess API calls return recoverable JSON with Retry-After and no caching',
+      status == 429 and headers['Retry-After'] == '1' and headers['Cache-Control'] == 'no-store'
+      and 'retry' in json.loads(body)['error'])
+check('a rejected POST closes its unread connection safely',
+      fetch('/api/home', {'profile': []})[0] == 429)
+check('health and static assets remain available under API throttling',
+      fetch('/healthz')[0] == 200 and fetch('/style.css')[0] == 200)
+server.REQUESTS = original_requests
 httpd.shutdown()
 
 # 8. Following the model: leave for a complete new one, and for nothing else.
