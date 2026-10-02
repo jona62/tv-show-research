@@ -1119,7 +1119,16 @@ dialog.peek::backdrop{background:#000000c7}
 .ratings-timeline{display:block;width:auto;height:auto;min-width:0;max-width:none}
 .ratings-timeline text{font-size:12px;fill:var(--muted)}
 .ratings-chart-grid{fill:none;stroke:#ffffff12;stroke-width:1}
-.ratings-raw-line{opacity:.65}
+.ratings-season-bands,.ratings-x-axis,.ratings-season-guides,.ratings-episode-guides{pointer-events:none}
+.ratings-season-band{fill:var(--ink);opacity:.025}
+.ratings-x-baseline{stroke:var(--muted);stroke-width:1;opacity:.4}
+.ratings-season-guide{stroke:var(--muted);stroke-width:1;opacity:.19}
+.ratings-episode-guide{stroke:var(--muted);stroke-width:1;opacity:.055}
+.ratings-season-tick{stroke:var(--ink-2);stroke-width:1.5;opacity:.8}
+.ratings-episode-tick{stroke:var(--muted);stroke-width:1;opacity:.35}
+.ratings-timeline .ratings-season-label{fill:var(--ink-2);font-weight:650;font-variant-numeric:tabular-nums}
+.ratings-timeline .ratings-episode-label{font-variant-numeric:tabular-nums}
+.ratings-raw-line{opacity:.65;stroke-linecap:round;stroke-linejoin:round}
 .ratings-chart-frame-comparison .ratings-raw-line{opacity:.85}
 .ratings-trend{fill:none;stroke:var(--brand);stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
 .ratings-trend-single{fill:var(--brand)}

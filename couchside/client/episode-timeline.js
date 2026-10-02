@@ -14,13 +14,19 @@ function scale(points) {
   return {low,ticks};
 }
 
-function ratedRuns(points,comparison) {
+function adjacentRatings(previous,point,comparison,acrossSeasons) {
+  if(comparison)return point.season===previous.season+1;
+  if(point.season===previous.season)return point.number===previous.number+1;
+  return acrossSeasons&&point.season===previous.season+1&&
+    (point.number===1||point.number===previous.number+1);
+}
+
+function ratedRuns(points,comparison,acrossSeasons=true) {
   const runs=[];
   let run=[];
   for(const point of points){
     const previous=run.at(-1);
-    const follows=previous&&(comparison?point.season===previous.season+1:
-      point.season===previous.season&&point.number===previous.number+1);
+    const follows=previous&&adjacentRatings(previous,point,comparison,acrossSeasons);
     if(point.rating==null||previous&&!follows){if(run.length)runs.push(run);run=[];}
     if(point.rating!=null)run.push(point);
   }
@@ -45,10 +51,13 @@ export function timelineModel(episodes,other=null,availableWidth=780) {
     points=points.map((p,i)=>({...p,x:count===1?width/2:20+i*(width-64)/(count-1),
       y:p.rating==null?null:ordinate(p.rating,low,RAW)}));
     const runs=ratedRuns(points,comparison);
-    const trend=comparison?[]:runs.map(run=>run.map((p,i)=>({...p,
+    // Season boundaries do not interrupt the episode curve, but averages stay
+    // inside one season and never cross a missing episode or an unrated score.
+    const trendRuns=comparison?[]:ratedRuns(points,false,false);
+    const trend=trendRuns.map(run=>run.map((p,i)=>({...p,
       rating:average(run.slice(Math.max(0,i-2),i+3)),
       y:ordinate(average(run.slice(Math.max(0,i-2),i+3)),low,TREND)})));
-    return {points,runs,trend};
+    return {points,runs,trendRuns,trend};
   });
   return {comparison,low,ticks,count,width,spacing,viewport,height:comparison?300:444,series};
 }
@@ -67,7 +76,7 @@ export function nearestRatingPoint(points,x,y,radius=12) {
   return nearest;
 }
 
-// Bound the cubic controls to their neighbouring samples so a trend never invents peaks.
+// Bound the cubic controls to their neighbouring samples so curves never invent peaks.
 export function smoothPath(points) {
   if(!points.length)return '';
   let d=`M${points[0].x},${points[0].y}`;
@@ -98,37 +107,61 @@ function rowGrid(model,row) {
 }
 
 function seriesMarkup(series,model,colour,index,names) {
-  const line=series.runs.map(run=>run.map((p,i)=>`${i?'L':'M'}${p.x},${p.y}`).join(' ')).join(' ');
+  const line=series.runs.map(smoothPath).join(' ');
   return `<path class="ratings-raw-line" d="${line}" fill="none" stroke="${model.comparison?colour:'var(--muted)'}" stroke-width="${model.comparison?2:1.25}"/>`+
     series.points.map(p=>p.rating==null?'':`<g class="ratings-point-hit" ${model.comparison?`data-season="${p.season}" data-show-index="${index}"`:`data-episode="${p.id}"`} tabindex="0" role="${model.comparison?'img':'button'}" aria-label="${model.comparison?esc(names[index]||'Show')+', ':''}${p.label}${p.name?': '+esc(p.name):''}, ${score(p.rating)} out of 10, ${band(p.rating).name}"><circle class="ratings-point-target" cx="${p.x}" cy="${p.y}" r="12" fill="transparent"/><circle class="ratings-point" cx="${p.x}" cy="${p.y}" r="${model.comparison?4.5:Math.max(1.75,Math.min(4,model.spacing*.45))}" fill="${model.comparison?colour:band(p.rating).colour}"/></g>`).join('');
 }
 
-function chartLabels(model) {
-  const starts=model.series[0].points.filter((p,i,points)=>model.comparison||i===0||p.season!==points[i-1].season);
-  const rows=[[],[]],labels=[];
-  const overlaps=(row,left,right)=>row.some(label=>left<label.right+8&&right>label.left-8);
-  for(const p of starts){
-    const text=`S${p.season}`,left=p.x,right=left+text.length*8;
-    const row=rows.findIndex(items=>!overlaps(items,left,right));
-    if(row<0||right>model.width-4)continue;
-    rows[row].push({left,right});labels.push({text,x:p.x,y:270+row*16,kind:'season',anchor:'start'});
+// Coordinates stay in CSS pixels: a long chart scrolls instead of shrinking its
+// labels. Season starts keep their real positions even when text cannot fit.
+export function timelineAxis(model) {
+  const points=model.series[0].points,seasonTicks=[],episodeTicks=[],labels=[];
+  for(const [i,p] of points.entries()){
+    if(model.comparison||i===0||p.season!==points[i-1].season)
+      seasonTicks.push({x:p.x,season:p.season,number:p.number});
   }
-  if(!model.comparison){
-    for(const p of model.series[0].points){
-      if(model.count>24&&p.number%5!==0)continue;
-      const text=`E${p.number}`,half=text.length*4,left=p.x-half,right=p.x+half;
-      if(left<4||right>model.width-4||overlaps(rows[1],left,right))continue;
-      rows[1].push({left,right});labels.push({text,x:p.x,y:286,kind:'episode',anchor:'middle'});
-    }
+  const bands=seasonTicks.map((p,i)=>({season:p.season,start:p.x,
+    end:seasonTicks[i+1]?.x??points.at(-1).x}));
+  let seasonIndex=0,lastTick=-Infinity;
+  if(!model.comparison)for(const p of points){
+    if(p.x===seasonTicks[seasonIndex].x){lastTick=p.x;continue;}
+    const nextSeason=seasonTicks[seasonIndex+1];
+    if(nextSeason&&p.x>=nextSeason.x){seasonIndex++;lastTick=p.x;continue;}
+    if(p.x-lastTick<8||nextSeason&&nextSeason.x-p.x<4)continue;
+    episodeTicks.push({x:p.x,season:p.season,number:p.number});lastTick=p.x;
   }
-  return labels.sort((a,b)=>a.y-b.y||a.x-b.x).map(p=>
-    `<text class="ratings-${p.kind}-label" x="${p.x}" y="${p.y}" text-anchor="${p.anchor}">${p.text}</text>`).join('');
+  const labelY=268;
+  const addLabel=(p,kind)=>{
+    const text=kind==='season'?'S'+p.season:'E'+p.number;
+    // A conservative width at the chart's 12px type leaves a readable gutter.
+    const size=text.length*8,left=kind==='season'?p.x:p.x-size/2,right=left+size;
+    if(left<4||right>model.width-4||labels.some(label=>left<label.right+8&&right>label.left-8))return;
+    labels.push({kind,text,x:p.x,y:labelY,anchor:kind==='season'?'start':'middle',left,right});
+  };
+  seasonTicks.forEach(p=>addLabel(p,'season'));
+  episodeTicks.forEach(p=>addLabel(p,'episode'));
+  labels.sort((a,b)=>a.x-b.x);
+  return {baseline:RAW.bottom,labelY,bands,seasonTicks,episodeTicks,labels};
+}
+
+function axisMarkup(axis,model) {
+  const guide=p=>`x1="${p.x}" x2="${p.x}" y1="${RAW.top}" y2="${axis.baseline}"`;
+  const tick=(p,size)=>`x1="${p.x}" x2="${p.x}" y1="${axis.baseline}" y2="${axis.baseline+size}"`;
+  return `<g class="ratings-x-axis" aria-hidden="true" pointer-events="none">
+    <g class="ratings-season-guides">${axis.seasonTicks.map(p=>`<line class="ratings-season-guide" ${guide(p)}/>`).join('')}</g>
+    <g class="ratings-episode-guides">${axis.episodeTicks.map(p=>`<line class="ratings-episode-guide" ${guide(p)}/>`).join('')}</g>
+    <line class="ratings-x-baseline" x1="0" x2="${model.width}" y1="${axis.baseline}" y2="${axis.baseline}"/>
+    ${axis.seasonTicks.map(p=>`<line class="ratings-season-tick" ${tick(p,8)}/>`).join('')}
+    ${axis.episodeTicks.map(p=>`<line class="ratings-episode-tick" ${tick(p,4)}/>`).join('')}
+    ${axis.labels.map(p=>`<text class="ratings-${p.kind}-label" x="${p.x}" y="${p.y}" text-anchor="${p.anchor}">${p.text}</text>`).join('')}
+  </g>`;
 }
 
 export function chart(episodes,other=null,names=[],availableWidth=780) {
   const model=timelineModel(episodes,other,availableWidth);
   if(!model)return '<p class="ratings-empty">These episodes have not been rated yet.</p>';
   const {comparison,low,width,height,series}=model;
+  const axis=timelineAxis(model);
   const trend=series[0].trend.map(run=>`<path class="ratings-trend" d="${smoothPath(run)}"/>`+
     (run.length===1?`<circle class="ratings-trend-single" cx="${run[0].x}" cy="${run[0].y}" r="3"/>`:'')).join('');
   const scrolls=width>model.viewport;
@@ -138,9 +171,10 @@ export function chart(episodes,other=null,names=[],availableWidth=780) {
     <svg class="ratings-chart-axis" width="46" height="${height}" viewBox="0 0 46 ${height}" aria-hidden="true">${rowAxis(model,RAW)}${comparison?'':rowAxis(model,TREND)}</svg>
     <div class="ratings-chart-wrap" tabindex="0" role="region" aria-label="${comparison?'Season averages':'Episode ratings'} timeline${scrolls?'; scroll horizontally to explore':''}">
       <svg class="ratings-timeline" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="group" aria-label="${comparison?'Season averages':'Episode ratings'}, scale ${low} to 10${comparison?'':', with a separate five-episode average below'}" data-min="${low}" style="--ratings-point-stroke:${comparison||model.spacing>=6?1.5:.65}">
+        <g class="ratings-season-bands" aria-hidden="true" pointer-events="none">${axis.bands.filter((p,i)=>i%2===1).map(p=>`<rect class="ratings-season-band" x="${p.start}" y="${RAW.top}" width="${p.end-p.start}" height="${RAW.bottom-RAW.top}"/>`).join('')}</g>
         <g class="ratings-chart-grid">${rowGrid(model,RAW)}${comparison?'':rowGrid(model,TREND)}</g>
         <g class="ratings-episode-plot">${seriesMarkup(series[0],model,'#ffb020',0,names)}${comparison?seriesMarkup(series[1],model,'#91b9dc',1,names):''}</g>
-        ${chartLabels(model)}${comparison?'':`<g class="ratings-trend-plot" aria-hidden="true">${trend}</g>`}
+        ${axisMarkup(axis,model)}${comparison?'':`<g class="ratings-trend-plot" aria-hidden="true">${trend}</g>`}
       </svg>
     </div>
   </div>${scrolls?`<p class="ratings-scroll-hint">Scroll to explore all ${model.count.toLocaleString('en-US')} ${comparison?'seasons':'episodes'}</p>`:''}`;
