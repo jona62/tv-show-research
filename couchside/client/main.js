@@ -4665,6 +4665,7 @@ async function readLink() {
 let networkNoticeAt=0,networkNotice='';
 function recoverVisible(paths=[]) {
   const affected=route=>!paths.length||paths.some(path=>path.split('?')[0]===route);
+  if($('taste').open&&affected('/api/taste'))tastePanel?.refresh(true);
   if((!home||homeFailed)&&affected('/api/home'))loadHome();
   if(view==='browse'&&paths.some(path=>path.startsWith('/api/browse'))){browseKey=null;renderBrowse();}
   if(view==='search'&&paths.some(path=>path.startsWith('/api/search'))){searchShown=null;search($('q').value,false);}

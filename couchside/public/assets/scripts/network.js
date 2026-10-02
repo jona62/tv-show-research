@@ -1,6 +1,6 @@
 // All API reads share a small queue, fixed pacing and capped retries. POST routes
 // here compute answers from the supplied list; they do not mutate server data.
-const READ_POSTS = new Set(['/api/home','/api/title','/api/browse','/api/shows']);
+const READ_POSTS = new Set(['/api/home','/api/title','/api/browse','/api/shows','/api/taste']);
 const TRANSIENT = new Set([408,429,500,502,503,504]);
 const abortError = () => new DOMException('The request was cancelled.','AbortError');
 export function retryDelay(value, now=Date.now()) {

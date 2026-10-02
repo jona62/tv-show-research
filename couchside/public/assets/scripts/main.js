@@ -1,13 +1,13 @@
-import { mountEpisodeRatings } from './episode-ratings.js?v=a3165ae91e694745';
+import { mountEpisodeRatings } from './episode-ratings.js?v=22d75171dc1686b0';
 import { mountTitleSections } from './title-sections.js?v=47e93fa931aed0c8';
-import { enhanceShowCard,receiveMatrices,matrixPreference } from './show-cards.js?v=453e6b6b815a6488';
+import { enhanceShowCard,receiveMatrices,matrixPreference } from './show-cards.js?v=1e100102e3a68bf6';
 import { mountTaste } from './taste.js?v=e23081ea7e42ec26';
 import { mergeTransferredList } from './list-transfer.js?v=bf96d9f9d5d965e6';
-import { apiFetch } from './network.js?v=0e96ad7f2eaf4036';
+import { apiFetch } from './network.js?v=4038b4a1107593ef';
 import { mountAccounts } from './accounts.js?v=5eadc4519564f154';
 import {filtersFor,filterKey,selectShows,setFilters} from './filter-state.js?v=2a62eef7fd5aeeda';
-import {filterBar} from './filters.js?v=05473f9c8c0c3616';
-import { cachedRatings, ratings, seasons as ratingSeasons } from './ratings.js?v=54b0ed6f30577419';
+import {filterBar} from './filters.js?v=d657b07fba74e1f3';
+import { cachedRatings, ratings, seasons as ratingSeasons } from './ratings.js?v=2a0509d86dd759f5';
 import { encode, decode, LIMITS, codeFrom } from './transfer.js?v=2bfd019beccdb78d';
 import { matrix, svgPath } from './qr.js?v=d7f92f94bb8911ea';
 import { tieText, leaning } from './format.js?v=e565cc65c0882a95';
@@ -29,7 +29,7 @@ import { daySeed, startersQuery, mergeStarters, browserLanguage, MAX_ROUND, MAX_
 import { sheets, closing, reveal, crossfade, peeks, edgeBack, speed } from './gestures.js?v=c2173468ef22c30e';
 import { REST, LOOP_WAIT, goesRound, loopCopies, copiesOf, lapHome, restPlace, toCard } from './gestures.js?v=c2173468ef22c30e';
 import { KEY, DEFAULTS, REACH, VERSION, MAX_RATED, fresh, tidy, stored, FRESH_KEY, readMemory, remembered, opened,
-  newVisit, keepVisit, tasteOf, homeBody, packed, PAGE_KEY, take, sanitize } from './start.js?v=71719d186b4b5de0';
+  newVisit, keepVisit, tasteOf, homeBody, packed, PAGE_KEY, take, sanitize } from './start.js?v=52d42fe7e492c25a';
 
 const boot = JSON.parse(document.getElementById('boot').textContent);
 const $ = id => document.getElementById(id);
@@ -4665,6 +4665,7 @@ async function readLink() {
 let networkNoticeAt=0,networkNotice='';
 function recoverVisible(paths=[]) {
   const affected=route=>!paths.length||paths.some(path=>path.split('?')[0]===route);
+  if($('taste').open&&affected('/api/taste'))tastePanel?.refresh(true);
   if((!home||homeFailed)&&affected('/api/home'))loadHome();
   if(view==='browse'&&paths.some(path=>path.startsWith('/api/browse'))){browseKey=null;renderBrowse();}
   if(view==='search'&&paths.some(path=>path.startsWith('/api/search'))){searchShown=null;search($('q').value,false);}

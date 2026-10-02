@@ -1,4 +1,4 @@
-import {matrixRatings,cachedMatrix,freshMatrix,ratingSources,compactMatrix,matrixSkeleton,icon,html,esc,acceptMatrices} from './ratings.js?v=54b0ed6f30577419';
+import {matrixRatings,cachedMatrix,freshMatrix,ratingSources,compactMatrix,matrixSkeleton,icon,html,esc,acceptMatrices} from './ratings.js?v=2a0509d86dd759f5';
 const KEY='couchside.show-cards';
 let matrix=true;
 try{matrix=localStorage.getItem(KEY)!=='standard';}catch{}

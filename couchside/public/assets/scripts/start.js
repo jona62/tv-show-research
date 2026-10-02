@@ -1,4 +1,4 @@
-import { apiFetch } from './network.js?v=0e96ad7f2eaf4036';
+import { apiFetch } from './network.js?v=4038b4a1107593ef';
 // Where a page starts: the list and what the browser remembers, read from storage as they
 // stand, the visit the tab is on (begun here when it is a new one), and the home page asked
 // for at once. The page loads this beside main.js, and it runs as soon as it and its few

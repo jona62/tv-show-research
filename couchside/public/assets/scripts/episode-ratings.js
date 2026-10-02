@@ -1,5 +1,5 @@
-import { apiFetch } from './network.js?v=0e96ad7f2eaf4036';
-import {esc,score,code,average,seasons,band,icon,html,legend,ratings,ratingSource,ratingSources} from './ratings.js?v=54b0ed6f30577419';
+import { apiFetch } from './network.js?v=4038b4a1107593ef';
+import {esc,score,code,average,seasons,band,icon,html,legend,ratings,ratingSource,ratingSources} from './ratings.js?v=2a0509d86dd759f5';
 const plain = value => new DOMParser().parseFromString(value||'', 'text/html').body.textContent||'';
 const layouts=[['list','Episode list'],['grid','Grid'],['wrapped','Wrapped'],['timeline','Timeline']];
 const ep = e => ({...e,still:e.image,summary:plain(e.summary)});

@@ -1,4 +1,4 @@
-import { apiFetch } from './network.js?v=0e96ad7f2eaf4036';
+import { apiFetch } from './network.js?v=4038b4a1107593ef';
 export const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export const score = n => n == null ? 'Unrated' : Number(n).toFixed(1);
 export const code = e => `S${e.season} E${e.number}`;

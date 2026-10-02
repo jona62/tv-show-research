@@ -26,6 +26,16 @@ calls=0;
 const permanent=createClient({gap:0,notify:()=>{},send:async()=>{calls++;return answer(400);}});
 assert.equal((await permanent.request('/api/title',{method:'POST',body:'{}'})).status,400);
 assert.equal(calls,1);
+calls=0;
+const tasteRetry=createClient({gap:0,notify:()=>{},sleep:async()=>{},send:async()=>{
+  calls++;return calls===1?answer(503):answer();
+}});
+assert.equal((await tasteRetry.request('/api/taste',{method:'POST',body:'{}'})).status,200);
+assert.equal(calls,2,'taste reads must recover from a transient busy server');
+calls=0;
+const accountWrite=createClient({gap:0,notify:()=>{},send:async()=>{calls++;return answer(503);}});
+assert.equal((await accountWrite.request('/api/account/state',{method:'POST',body:'{}'})).status,503);
+assert.equal(calls,1,'adding taste reads must not enable automatic write retries');
 let active=0,peak=0,engines=0,enginePeak=0;
 const queue=createClient({gap:0,notify:()=>{},send:async(path,options)=>{
   active++;peak=Math.max(peak,active);
@@ -35,7 +45,7 @@ const queue=createClient({gap:0,notify:()=>{},send:async(path,options)=>{
   return answer();
 }});
 await Promise.all([...Array.from({length:8},(_,id)=>queue.request(`/api/extra?id=${id}`)),
-  ...Array.from({length:6},(_,id)=>queue.request('/api/title',{method:'POST',body:JSON.stringify({id})}))]);
+  ...Array.from({length:6},(_,id)=>queue.request(id%2?'/api/taste':'/api/title',{method:'POST',body:JSON.stringify({id})}))]);
 assert(peak<=4);assert(enginePeak<=2);
 calls=0;
 const sharing=createClient({gap:0,notify:()=>{},send:async()=>{calls++;await new Promise(done=>setTimeout(done,5));return answer();}});
