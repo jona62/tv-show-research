@@ -7,7 +7,7 @@ image, which lays real posters out as HTML. The outputs are
 committed, and couchside/build.py copies them into public/, so neither the
 server nor a deploy needs any of these tools.
 
-- icon-master.png is the selected Afterglow Ember artwork; icon-prompt.txt
+- icon-master.png is the selected Sculpted C artwork; icon-prompt.txt
   preserves its ImageGen prompt. Every platform uses the same full-bleed,
   opaque composition, with the operating system applying its own mask.
 - The SVGs are self-contained wrappers of the same artwork, retained for
@@ -65,7 +65,7 @@ def share_image():
     engine = Engine(ROOT / 'data/model')
     library = Library(engine, ROOT / 'couchside/assets/model/art.bin.gz')
     posters = [library.poster(i) for i in library.shelf[:40]]
-    sofa = (HERE / 'icon.svg').read_text()
+    icon = (HERE / 'icon.svg').read_text()
     tiles = ''.join(f'<img src="{url}" alt="">' for url in posters)
     page = f"""<!doctype html><meta charset="utf-8"><style>
     html,body{{margin:0;width:1200px;height:630px;overflow:hidden;background:#141414}}
@@ -82,7 +82,7 @@ def share_image():
     p{{margin:22px 0 0;font-size:34px;line-height:1.25;font-weight:700;text-wrap:balance}}
     small{{display:block;margin-top:18px;font-size:23px;color:#b8b8b8;font-weight:500}}
     </style><div class="wall">{tiles}</div><div class="shade"></div>
-    <div class="copy">{sofa}<h1>Couchside</h1><p>Your next show, picked for your taste.</p>
+    <div class="copy">{icon}<h1>Couchside</h1><p>Your next show, picked for your taste.</p>
     <small>{engine.n:,} series · trailers · where to watch · My List</small></div>"""
     with tempfile.TemporaryDirectory() as tmp:
         html, png = Path(tmp) / 'share.html', Path(tmp) / 'share.png'

@@ -22,7 +22,7 @@ All formats use the same artwork. The artwork fits within the central
 80%-diameter safe circle for maskable icons; platforms supply the outer crop.
 
 `sh designs/app-icons/export.sh` regenerates the platform files with ImageMagick.
-The originals and exact prompts are preserved. Afterglow Ember, option 06 from
+The originals and exact prompts are preserved. Sculpted C, option 07 from
 Round 2, was selected for production on October 1, 2026. Its production copies
-and icon generator live in `couchside/brand`. All eight concepts remain available
+and icon generator live in `couchside/assets/brand`. All eight concepts remain available
 for comparison.

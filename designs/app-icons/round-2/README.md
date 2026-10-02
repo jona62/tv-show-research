@@ -22,7 +22,7 @@ Seat Studio has a small extra safety margin in its maskable export; the other
 marks already fit inside the required central circle.
 
 Run `sh designs/app-icons/round-2/export.sh` to recreate the exports with ImageMagick.
-All icon sizes share each concept's artwork. Afterglow Ember was selected for
+All icon sizes share each concept's artwork. Sculpted C, option 07, was selected for
 production on October 1, 2026; its production copies and icon generator live in
-`couchside/brand`. All four second-round concepts remain available for comparison,
+`couchside/assets/brand`. All four second-round concepts remain available for comparison,
 alongside the first-round originals.

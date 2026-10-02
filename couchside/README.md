@@ -301,7 +301,7 @@ the page and is pushed away. The skeletons shimmer, and hold still under reduced
 motion; the rows still to come at the foot of the home page shimmer only while they
 are on screen.
 
-`assets/brand/icon-master.png` holds the selected Afterglow Ember sofa artwork, with its
+`assets/brand/icon-master.png` holds the selected Sculpted C artwork, with its
 ImageGen prompt in `assets/brand/icon-prompt.txt`. The favicon and home-screen icons use
 the same opaque, full-bleed composition; each platform applies its own corners or
 mask. `assets/brand/make.py` derives every icon size from the raster master with
