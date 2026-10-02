@@ -20,34 +20,38 @@ SHOWS = [
 ]
 
 
-def source_document(unavailable=False, deferred_colours=False):
+def source_document(unavailable=False, deferred_colours=False, search_payload=None, deferred_search=False):
     shows = [*SHOWS[:2], {'id': 999, 'name': 'No episodes yet', 'year': 2025},
              {'id': 1000, 'name': 'Unavailable show', 'year': 2025}] if unavailable else SHOWS
     return '''<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="/touch-forms.js"></script>
     <link rel="stylesheet" href="/client/style.css">
     <link rel="stylesheet" href="/client/compare.css">
-    <link rel="stylesheet" href="/touch-forms.css"><div id="host"></div>
+    <link rel="stylesheet" href="/touch-forms.css"><main id="page" tabindex="-1"><div id="host"></div></main>
     <script type="module">
       import {mountCompare} from '/client/compare.js';
       const shows=SHOW_FIXTURE, unavailable=UNAVAILABLE_FIXTURE;
       window.pendingColours=new Map();
       window.resolveColour=(id,colour)=>{window.pendingColours.get(id)(colour);window.pendingColours.delete(id);};
+      window.pendingSearch=new Map();window.requestedSearches=[];
+      window.resolveSearch=(query,body)=>{window.pendingSearch.get(query)(body);window.pendingSearch.delete(query);};
       const episodes=id=>[1,2].flatMap(season=>[1,2].map(number=>({id:id*100+season*10+number,season,number,
         rating:5+season+number,name:'Season '+season+' episode '+number})));
       window.disposeComparison=mountCompare(document.getElementById('host'),{
         search:'?compare='+shows.map(show=>show.id).join(',')+'&mode=single&compare-view=timeline',
-        metadata:async id=>({...shows.find(show=>show.id===id),poster:'/poster.svg',art:'/poster.svg'}),
+        metadata:async id=>({...shows.find(show=>show.id===id)||{id,name:'Fixture show '+id,year:2026},poster:'/poster.svg',art:'/poster.svg'}),
         loadRatings:async id=>{
           if(unavailable&&id===1000)throw Error('This show could not be loaded.');
           return {episodes:unavailable&&id===999?[]:episodes(id),sources:'TVmaze'};
         },
         colourLoader:show=>DEFERRED_COLOURS_FIXTURE
           ? new Promise(resolve=>window.pendingColours.set(show.id,resolve)) : Promise.resolve('#db9669'),
+        searchShows:query=>{window.requestedSearches.push(query);return DEFERRED_SEARCH_FIXTURE
+          ? new Promise(resolve=>window.pendingSearch.set(query,resolve)) : Promise.resolve(SEARCH_PAYLOAD_FIXTURE);},
         replaceURL:url=>history.replaceState({},'',url),
         openShow:id=>{window.openedShow=id;}
       });
-    </script>'''.replace('SHOW_FIXTURE', json.dumps(shows)).replace('UNAVAILABLE_FIXTURE', json.dumps(unavailable)).replace('DEFERRED_COLOURS_FIXTURE', json.dumps(deferred_colours))
+    </script>'''.replace('SHOW_FIXTURE', json.dumps(shows)).replace('UNAVAILABLE_FIXTURE', json.dumps(unavailable)).replace('DEFERRED_COLOURS_FIXTURE', json.dumps(deferred_colours)).replace('DEFERRED_SEARCH_FIXTURE', json.dumps(deferred_search)).replace('SEARCH_PAYLOAD_FIXTURE', json.dumps(search_payload or {'shows': []}))
 
 
 class ComparisonCardLayout(unittest.TestCase):
@@ -62,7 +66,7 @@ class ComparisonCardLayout(unittest.TestCase):
         cls.browser.close()
         cls.playwright.stop()
 
-    def open_fixture(self, physical_width=1280, zoom=100, unavailable=False, deferred_colours=False):
+    def open_fixture(self, physical_width=1280, zoom=100, unavailable=False, deferred_colours=False, search_payload=None, deferred_search=False):
         width = round(physical_width * 100 / zoom)
         mobile = physical_width < 760
         options = {'viewport': {'width': width, 'height': 1200}, 'has_touch': mobile,
@@ -85,7 +89,7 @@ class ComparisonCardLayout(unittest.TestCase):
             if url.netloc != urlsplit(ORIGIN).netloc:
                 return route.fulfill(status=404, body='External networking is blocked.')
             if url.path == '/':
-                return route.fulfill(content_type='text/html', body=source_document(unavailable, deferred_colours))
+                return route.fulfill(content_type='text/html', body=source_document(unavailable, deferred_colours, search_payload, deferred_search))
             if url.path.startswith('/client/'):
                 file = CLIENT / url.path.removeprefix('/client/')
                 if file.is_file() and file.parent == CLIENT:
@@ -158,9 +162,9 @@ class ComparisonCardLayout(unittest.TestCase):
         view = page.locator('[data-action="view-picker"]').bounding_box()
         invert = page.locator('[data-action="invert"]').bounding_box()
         averages = page.locator('[data-action="averages"]').bounding_box()
-        self.assertGreaterEqual(view['x'], scope['x'] + scope['width'] + 7)
+        self.assertGreaterEqual(view['x'], scope['x'] + scope['width'] + 5)
         self.assertAlmostEqual(scope['y'] + scope['height'] / 2, view['y'] + view['height'] / 2, delta=.5)
-        self.assertGreaterEqual(averages['x'], invert['x'] + invert['width'] + 7)
+        self.assertGreaterEqual(averages['x'], invert['x'] + invert['width'] + 5)
         self.assertAlmostEqual(invert['y'] + invert['height'] / 2, averages['y'] + averages['height'] / 2, delta=.5)
         return result
 
@@ -202,6 +206,117 @@ class ComparisonCardLayout(unittest.TestCase):
         self.check_rows(page, 'compact', 85)
         self.assertFalse(errors, errors)
 
+    def test_search_keeps_ranked_results_new_titles_aliases_and_keyboard_addition(self):
+        matches=[{'id':42184,'name':'Primal'}, *[{'id':5000+i,'name':f'Match {i}', 'year':2025} for i in range(1,12)]]
+        matches[1]['aka']='Alternate title'
+        payload={'shows':matches,'missing':[{'id':6000,'name':'New show'}],
+                 'related':{'title':'More like Primal','shows':[matches[1],{'id':7000,'name':'Related show'}]}}
+        page,errors=self.open_fixture(390,85,search_payload=payload)
+        field=page.locator('#compare-search')
+        self.assertEqual(field.get_attribute('maxlength'),'100')
+        field.fill('V')
+        page.locator('#compare-results:not([hidden])').wait_for()
+        rows=page.locator('#compare-results [data-add]')
+        self.assertEqual(rows.count(),14,'all12 ranked matches plus new and distinct related titles remain available')
+        self.assertEqual(rows.evaluate_all('rows=>rows.map(row=>+row.dataset.add)'),[42184,*range(5001,5012),6000,7000])
+        self.assertTrue(page.locator('[data-add="42184"]').is_disabled())
+        self.assertIn('Also known as Alternate title',page.locator('[data-add="5001"]').text_content())
+        self.assertEqual(page.locator('.compare-search-group').all_text_contents(),['Matches','Just added to TVmaze','More like Primal'])
+        field.press('ArrowDown')
+        self.assertTrue(page.locator('[data-add="5001"]').evaluate('node=>node===document.activeElement'))
+        field.focus();field.press('ArrowUp')
+        self.assertTrue(page.locator('[data-add="7000"]').evaluate('node=>node===document.activeElement'))
+        field.focus();field.press('Enter')
+        page.locator('.compare-save:not(:disabled)').wait_for()
+        self.assertEqual(page.locator('.compare-card').evaluate_all('cards=>cards.map(card=>+card.dataset.show)'),[42184,563,999,5001])
+        self.assertEqual(field.input_value(),'')
+        self.assertEqual(field.get_attribute('aria-expanded'),'false')
+        self.assertFalse(page.locator('#compare-results').is_visible())
+        self.assertFalse(errors,errors)
+
+    def test_search_dismissal_survives_late_responses_and_older_queries_cannot_replace_newer_ones(self):
+        page,errors=self.open_fixture(390,85,deferred_search=True)
+        field=page.locator('#compare-search')
+        answer={'shows':[{'id':5001,'name':'Result'}]}
+        for action in ('outside','escape','tab'):
+            field.fill(action)
+            page.wait_for_function('query=>window.pendingSearch.has(query)',arg=action)
+            if action=='outside': page.locator('[data-compare-picker="mode"]').click()
+            elif action=='escape': field.press('Escape')
+            else: field.press('Tab')
+            page.evaluate('args=>window.resolveSearch(...args)',[action,answer])
+            page.wait_for_function('window.pendingSearch.size===0')
+            self.assertFalse(page.locator('#compare-results').is_visible(),f'{action} dismissal persists after response')
+            self.assertEqual(field.get_attribute('aria-expanded'),'false')
+            page.locator('[data-compare-picker="mode"]').press('Escape')
+        field.fill('older')
+        page.wait_for_function('window.pendingSearch.has("older")')
+        field.fill('newer')
+        page.wait_for_function('window.pendingSearch.has("newer")')
+        page.evaluate('args=>window.resolveSearch(...args)',['newer',{'shows':[{'id':5002,'name':'Newer result'}]}])
+        page.locator('[data-add="5002"]').wait_for()
+        page.evaluate('args=>window.resolveSearch(...args)',['older',answer])
+        page.wait_for_function('window.pendingSearch.size===0')
+        self.assertEqual(page.locator('#compare-results [data-add]').evaluate_all('rows=>rows.map(row=>+row.dataset.add)'),[5002])
+        field.press('Escape')
+        self.assertFalse(page.locator('#compare-results').is_visible())
+        field.focus();field.press('Tab')
+        field.focus()
+        self.assertTrue(page.locator('#compare-results').is_visible(),'explicit refocus can reopen the current suggestions')
+        self.assertFalse(errors,errors)
+
+    def test_search_icon_stays_centered_with_large_protected_input_fonts_and_visible_results(self):
+        payload={'shows':[{'id':5000+i,'name':f'A long matching title {i}'} for i in range(40)]}
+        for width,zoom in ((320,100),(390,85),(390,50),(1280,100)):
+            with self.subTest(width=width,zoom=zoom):
+                page,errors=self.open_fixture(width,zoom,search_payload=payload)
+                for opened in (False,True):
+                    if opened:
+                        page.locator('#compare-search').fill('title')
+                        page.locator('#compare-results:not([hidden])').wait_for()
+                    metrics=page.evaluate('''()=>{
+                        const field=document.getElementById('compare-search'),icon=document.querySelector('.compare-search>.ratings-icon'),results=document.getElementById('compare-results');
+                        const f=field.getBoundingClientRect(),i=icon.getBoundingClientRect(),p=results.getBoundingClientRect();
+                        return {fieldCenter:f.y+f.height/2,iconCenter:i.y+i.height/2,font:+getComputedStyle(field).fontSize.replace('px',''),
+                            resultHeight:results.clientHeight,resultScrollHeight:results.scrollHeight,viewport:innerWidth,documentWidth:document.documentElement.scrollWidth,
+                            visibleResultHits:[...results.querySelectorAll('[data-add]')].flatMap(row=>{
+                                const r=row.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;
+                                return y>p.top&&y<p.bottom ? [row.contains(document.elementFromPoint(x,y))] : [];
+                            })};
+                    }''')
+                    self.assertAlmostEqual(metrics['fieldCenter'],metrics['iconCenter'],delta=.5)
+                    if width<760:self.assertGreaterEqual(metrics['font'],16*100/zoom)
+                    self.assertLessEqual(metrics['documentWidth'],metrics['viewport']+1)
+                    if opened:
+                        self.assertLessEqual(metrics['resultHeight'],310)
+                        self.assertGreater(metrics['resultScrollHeight'],metrics['resultHeight'])
+                        self.assertTrue(metrics['visibleResultHits'] and all(metrics['visibleResultHits']),
+                                        'Visible search results must receive taps above the toolbar and settings')
+                if width<760: page.locator('[data-add="5000"]').tap()
+                else: page.locator('[data-add="5000"]').click()
+                page.locator('.compare-save:not(:disabled)').wait_for()
+                self.assertIn(5000,page.locator('.compare-card').evaluate_all('cards=>cards.map(card=>+card.dataset.show)'))
+                self.assertEqual(page.locator('[data-compare-picker][aria-expanded="true"]').count(),0)
+                self.assertFalse(errors,errors)
+
+    def test_search_panel_follows_the_keyboard_visible_viewport_and_scroll_offset(self):
+        payload={'shows':[{'id':5000+i,'name':f'Matching title {i}'} for i in range(30)]}
+        page,errors=self.open_fixture(390,85,search_payload=payload)
+        page.locator('#compare-search').fill('title')
+        page.locator('#compare-results:not([hidden])').wait_for()
+        for height,offset,event in ((260,0,'resize'),(220,80,'scroll'),(380,0,'resize')):
+            page.evaluate('''args=>{
+                Object.defineProperty(visualViewport,'height',{configurable:true,value:args.height});
+                Object.defineProperty(visualViewport,'offsetTop',{configurable:true,value:args.offset});
+                visualViewport.dispatchEvent(new Event(args.event));
+            }''',{'height':height,'offset':offset,'event':event})
+            panel=page.locator('#compare-results').bounding_box()
+            self.assertLessEqual(panel['y']+panel['height'],height+offset-11,
+                                 'Suggestions remain fully above the software keyboard with a bottom gap')
+            self.assertGreater(panel['height'],40)
+        self.assertEqual(page.locator('#compare-search').get_attribute('aria-expanded'),'true')
+        self.assertFalse(errors,errors)
+
     def test_all_seasons_shares_arrow_row_and_removes_extra_scope_height(self):
         for physical_width, zoom in ((1280, 100), (390, 100), (390, 85)):
             with self.subTest(width=physical_width, zoom=zoom):
@@ -225,8 +340,8 @@ class ComparisonCardLayout(unittest.TestCase):
                                 'buttons=>buttons.every(button=>button.getBoundingClientRect().width>=44&&button.getBoundingClientRect().height>=44)'))
                 self.assertFalse(errors, errors)
 
-    def test_toolbar_groups_wrap_together_and_share_one_selector_design(self):
-        for width, zoom in ((320,100),(390,100),(390,85),(740,100),(1280,100)):
+    def test_primary_controls_and_timeline_settings_each_share_one_compact_row(self):
+        for width, zoom in ((320,100),(390,100),(430,100),(390,85),(390,50),(740,100),(1280,100)):
             with self.subTest(width=width, zoom=zoom):
                 page, errors = self.open_fixture(width, zoom)
                 for view in ('timeline','grid'):
@@ -236,6 +351,7 @@ class ComparisonCardLayout(unittest.TestCase):
                         const rect=node=>{const r=node.getBoundingClientRect();return {x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height};};
                         return {viewport:innerWidth,documentWidth:document.documentElement.scrollWidth,
                             groups:[...document.querySelectorAll('.compare-selector-controls,.compare-toggle-controls')].map(rect),
+                            settings:[...document.querySelectorAll('.compare-setting')].map(rect),
                             buttons:[...document.querySelectorAll('[data-compare-picker]')].map(button=>({
                                 ...rect(button),font:getComputedStyle(button).fontSize,border:getComputedStyle(button).border,
                                 background:getComputedStyle(button).backgroundColor,radius:getComputedStyle(button).borderRadius,
@@ -243,10 +359,13 @@ class ComparisonCardLayout(unittest.TestCase):
                     }''')
                     self.assertLessEqual(metrics['documentWidth'],metrics['viewport']+1)
                     first,second=metrics['groups']
-                    if width<=390:
-                        self.assertGreaterEqual(second['y'],first['bottom']+7)
-                    elif width>=740:
-                        self.assertAlmostEqual(first['y']+first['height']/2,second['y']+second['height']/2,delta=.5)
+                    self.assertAlmostEqual(first['y']+first['height']/2,second['y']+second['height']/2,delta=.5)
+                    self.assertGreaterEqual(second['x'],first['right']+3)
+                    if metrics['settings']:
+                        left,right=metrics['settings']
+                        self.assertAlmostEqual(left['y'],right['y'],delta=.5)
+                        self.assertGreaterEqual(right['x'],left['right']+3)
+                        self.assertLessEqual(right['right'],metrics['viewport']+.5)
                     for group in metrics['groups']:
                         self.assertGreaterEqual(group['x'],0)
                         self.assertLessEqual(group['right'],metrics['viewport']+.5)
@@ -255,6 +374,9 @@ class ComparisonCardLayout(unittest.TestCase):
                     self.assertTrue(all(button['pattern'] for button in metrics['buttons']))
                     if width<760:
                         self.assertTrue(all(button['height']>=44 for button in metrics['buttons']))
+                    if metrics['viewport']<760:
+                        self.assertTrue(all(float(button['font'].removesuffix('px'))<=13 for button in metrics['buttons']),
+                                        'Custom button text stays compact independently of the editable font floor')
                 self.assertFalse(errors,errors)
 
     def test_touch_choices_close_once_and_menus_support_keyboard_and_outside_dismissal(self):

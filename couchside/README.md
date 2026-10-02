@@ -43,9 +43,11 @@ rebuilt every night. Nothing plays. It is for finding your next show.
 - **Compare shows** opens from **Add to compare** beside a title's Share and
   TVmaze actions. Search for multiple shows and reorder them. The season scope menu
   selects All seasons or Single season, beside the view menu for Episode matrix and
-  Timeline. Inverted and Show averages share that row when space permits, or form a
-  second row on smaller screens. Timeline arrangement and Episode points use the same
-  menu design. Matrix shows season averages
+  Timeline. Inverted and Show averages stay beside those menus on one mobile row;
+  Timeline arrangement and Episode points share the next row, using the same menu
+  design and compact text. Comparison search uses the app's title matching, with
+  ranked matches, alternate titles, newly added shows and related suggestions.
+  Suggestions remain scrollable above the software keyboard. Matrix shows season averages
   across all seasons or episode ratings from an independently selected season for each
   show. Timeline overlays each show's episode ratings and its five-episode average on
   separate shared graphs; shorter shows end at their final episode. Choose a full

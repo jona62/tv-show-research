@@ -85,10 +85,13 @@ SHOWS = [
     show(32, 'Bob Hearts Abishola', 2019), show(33, 'Popular Show', 2010, 9.9), show(34, 'Popular Show', 2012, 5.0),
     show(35, 'Popular Show', 2014, 5.0), show(36, '!!!', 2000), show(37, 'Shogun', 1980), show(38, 'Shōgun', 2024),
     show(39, 'Hi! My Mr. Right', 2023),
+    show(81, 'Criminal Minds', 2005, 8.7), show(3032, 'Criminal Minds: Beyond Borders', 2016),
+    show(1020, 'Criminal Minds: Suspect Behavior', 2011), show(50417, 'The Real Criminal Minds', 2019),
 ]
 KNOWN = {1: 99, 2: 97, 3: 40, 4: 60, 5: 98, 6: 99, 7: 70, 8: 100, 9: 99, 10: 99, 11: 100, 12: 95, 13: 99, 14: 100,
          15: 100, 16: 99, 17: 98, 18: 99, 19: 98, 20: 99, 21: 100, 22: 80, 23: 50, 24: 99, 25: 98, 26: 99, 27: 100,
-         28: 100, 29: 97, 30: 98, 31: 99, 32: 90, 33: 60, 34: 60, 35: 60, 36: 10, 37: 85, 38: 100, 39: 70}
+         28: 100, 29: 97, 30: 98, 31: 99, 32: 90, 33: 60, 34: 60, 35: 60, 36: 10, 37: 85, 38: 100, 39: 70,
+         81: 99, 3032: 100, 1020: 95, 50417: 70}
 ALIASES = {18: ['Money Heist', 'La casa de papel', 'LA CASA DE PAPEL', 'Haus des Geldes'],
            19: ['Shingeki no Kyojin', '進撃の巨人'], 11: ['Law & Order: SVU'], 6: ['Breaking Bad', 'Во все тяжкие'],
            3: ['The Office'], 23: ['The', 'La'], 999: ['Nowhere']}
@@ -119,6 +122,21 @@ check('numbers match as digits or words', ids('brooklyn 99') == [13] and ids('br
       and ids('911', 1) == [14] and ids('nine one one', 1) == [14] and ids('thirteen reasons why') == [30])
 check('typos are forgiven', ids('breaking bda', 1) == [6] and ids('stranger thigns') == [8]
       and ids('sucession') == [9] and ids('sucesion') == [9] and ids('the wirre', 1) == [10])
+criminal_family = {81, 3032, 1020, 50417}
+check('an exact title leads its more popular franchise matches', ids('Criminal Minds')[0] == 81
+      and criminal_family <= set(ids('Criminal Minds')))
+check('reversed title words and an extra conjunction retain the franchise',
+      criminal_family <= set(ids('Minds Criminal')) and ids('Minds and Criminal')[0] == 81)
+check('commas are separators and apostrophes are optional',
+      ids('Criminal,Minds') == ids('Criminal Minds') == ids('Criminal, Minds')
+      and ids('Grey’s Anatomy') == ids('Greys Anatomy') == ids("Grey's Anatomy"))
+check('substrings and typo variants retain related titles', all(criminal_family <= set(ids(query))
+      for query in ('riminal Mind', 'Crimnal Minds', 'Criminal Mnds', 'Criminal Midns')))
+check('only a complete one-slip title is protected from remote partial matches',
+      all(index.find(query).preferred == [(at[81], None)]
+          for query in ('Crimnal Minds', 'Criminal Mnds', 'Criminal Midns'))
+      and not index.find('riminal Mind').preferred and not index.find('Minds and Criminal').preferred
+      and not index.find('Crimnal Minds 2005').preferred)
 check('a slip in the word being typed', ids('stranger thign') == [8])
 check('initials stand for words', ids('law and order svu', 1) == [11] and ids('himym') == [39, 31])
 check('a title the letters happen to start does not hide the one they stand for', ids('himym')[1:] == [31])
@@ -281,13 +299,28 @@ out = answer(engine, 'money heist', tvmaze)
 check('a strong local answer does not ask TVmaze', said == [] and out == {
     'shows': [{'id': 18, 'name': 'La Casa de Papel', 'aka': 'Money Heist'}], 'missing': [], 'missing_first': False})
 out = answer(engine, 'sucession', tvmaze)
-check('a weak one does, and TVmaze\'s shows in the catalogue lead',
-      said == ['sucession'] and [c['id'] for c in out['shows']] == [19, 9])
+check('a weak one still asks TVmaze, but a whole-title typo correction leads unrelated results',
+      said == ['sucession'] and [c['id'] for c in out['shows']] == [9, 19])
 check('shows TVmaze has and the catalogue does not are missing, with their page', out['missing'] == [new])
 check('they follow the results when TVmaze ranks a catalogue show first', out['missing_first'] is False)
-out = answer(engine, 'sucession', Stub([new, tvmaze.found[0]]))
-check('and lead them when TVmaze ranks a missing show first', out['missing_first'] is True
+out = answer(engine, 'unrecognized title', Stub([new, tvmaze.found[0]]))
+check('and lead them when an uncertain query has a missing show first', out['missing_first'] is True
       and out['missing'] == [new] and out['shows'][0]['id'] == 19)
+out = answer(engine, 'sucession', Stub([new, tvmaze.found[0]]))
+check('an unrelated remote missing show cannot precede a whole-title typo correction',
+      out['missing_first'] is False and out['missing'] == [new] and out['shows'][0]['id'] == 9)
+remote_family = [{'id': show_id, 'name': SHOWS[at[show_id]]['name']} for show_id in (3032, 1020, 81, 50417)]
+for query in ('Crimnal Minds', 'Criminal Mnds', 'Criminal Midns'):
+    out = answer(engine, query, Stub(remote_family))
+    check(f'{query} keeps the corrected primary ahead of remote spinoffs',
+          out['shows'][0]['id'] == 81 and criminal_family <= {show['id'] for show in out['shows']})
+out = answer(engine, 'sucession', Stub([{'id': 19, 'name': 'Sucession'}, new]))
+check('a remote exact title remains ahead of a local typo correction', [show['id'] for show in out['shows']] == [19, 9])
+exact_missing = {**new, 'name': 'Sucession'}
+out = answer(engine, 'sucession', Stub([new, exact_missing, tvmaze.found[0]]))
+check('a remote exact missing title leads and is offered once',
+      out['missing_first'] is True and out['missing'][0] == exact_missing and len(out['missing']) == 1
+      and out['shows'][0]['id'] == 9)
 said.clear()
 out = answer(engine, 'shingeki no kyojim', tvmaze)
 check('a show both found keeps the title it was found by', out['shows'][0] == {

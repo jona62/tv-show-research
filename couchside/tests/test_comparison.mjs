@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { comparisonStateURL, comparisonURL, createComparisonLoader, freezeComparison, moveComparison, parseComparison, validateComparison } from '../client/compare.js';
+import { comparisonSearchResults, comparisonStateURL, comparisonURL, createComparisonLoader, freezeComparison, moveComparison, parseComparison, validateComparison } from '../client/compare.js';
 import { compareMatrix, detailMatrix, episodeCode, ratingTableHTML, seasonCode, seasonName } from '../client/rating-views.js';
 import { comparisonPointerSamples } from '../client/compare-timeline-interactions.js';
 import { nearestRatingPoint } from '../client/episode-timeline.js';
@@ -12,6 +12,21 @@ const displayDefaults = { view: 'grid', timelineLayout: 'row', pointStyle: 'show
 const state = { ids: [1, 2], mode: 'all', inverted: true, averages: true, seasons: { 1: 2, 2: 1 }, ...displayDefaults };
 const settle = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
+
+test('comparison search preserves all ranked matches, aliases, new titles and distinct related suggestions', () => {
+  const matches = Array.from({ length: 12 }, (_, i) => ({ id: i + 1, name: `Match ${i + 1}`, ...(i === 0 ? { aka: 'Another title' } : {}) }));
+  const body = { shows: [...matches, matches[0], { id: -1, name: 'Invalid' }, { id: 70 }],
+    missing: [{ id: 30, name: 'New exact title' }], missing_first: true,
+    related: { title: 'More like Match 1', shows: [matches[0], { id: 40, name: 'Related title' }] } };
+  const groups = comparisonSearchResults(body);
+  assert.deepEqual(groups.map(group => group.title), ['Just added to TVmaze', 'Matches', 'More like Match 1']);
+  assert.deepEqual(groups[1].shows, matches, 'keep the server ranking and matches past the old eight-result cutoff');
+  assert.equal(groups[1].shows[0].aka, 'Another title');
+  assert.deepEqual(groups.flatMap(group => group.shows.map(show => show.id)), [30, ...matches.map(show => show.id), 40]);
+  assert.equal(comparisonSearchResults({ ...body, missing_first: false })[0].title, 'Matches');
+  assert.deepEqual(comparisonSearchResults({ shows: [] }), []);
+  assert.throws(() => comparisonSearchResults({ error: 'Unavailable' }), /Search is unavailable/);
+});
 
 test('season labels retain year-valued seasons and inversion preserves every position', () => {
   assert.equal(seasonName(1999), '1999 season'); assert.equal(seasonCode(1999), '1999');

@@ -87,6 +87,22 @@ export function moveComparison(ids, id, destination) {
   return result;
 }
 
+export function comparisonSearchResults(body) {
+  if (!Array.isArray(body?.shows)) throw Error('Search is unavailable. Try again.');
+  const seen = new Set();
+  const unique = items => (Array.isArray(items) ? items : []).filter(show => {
+    if (!show || !validId(show.id) || typeof show.name !== 'string' || seen.has(show.id)) return false;
+    seen.add(show.id); return true;
+  });
+  // Keep the shared search's ranking, including titles too new for the catalogue.
+  const matches = { title: 'Matches', shows: unique(body.shows) };
+  const missing = { title: 'Just added to TVmaze', shows: unique(body.missing) };
+  const related = { title: typeof body.related?.title === 'string' ? body.related.title : 'Related shows',
+    shows: unique(body.related?.shows) };
+  return (body.missing_first ? [missing, matches, related] : [matches, missing, related])
+    .filter(group => group.shows.length);
+}
+
 async function answer(path, options = {}) {
   const response = await apiFetch(path, options), body = await response.json();
   if (!response.ok) throw Error(body.error || 'Shows are unavailable. Try again.');
@@ -195,17 +211,29 @@ export function freezeComparison(state, entries) {
 export function mountCompare(host, { search = '', replaceURL = () => {}, openShow = () => {}, saveSnapshot = async () => {},
   announce = () => {}, metadata, loadRatings, colourLoader, searchShows = query => answer(`/api/search?q=${encodeURIComponent(query)}`) } = {}) {
   const state = parseComparison(search, storedComparison());
-  let disposed = false, grabbed = null, dragId = null, timer, searchToken = 0, saving = false, query = '', found = [], searchMessage = '';
+  let disposed = false, grabbed = null, dragId = null, timer, searchToken = 0, saving = false, query = '', found = [], searchGroups = [], searchMessage = '', searchOpen = false;
   let matrix, timelineCleanup = () => {}, resizeFrame, observedWidth = 0;
-  html(host, `<section class="compare-page page"><div class="compare-header"><h1 class="page-h">Compare shows</h1><button class="btn primary compare-save" type="button" disabled>${actionIcon('save')}Save image</button></div><div class="ratings-search-wrap compare-search">${icon('search')}<input type="search" id="compare-search" placeholder="Search any show…" aria-label="Find a show to compare" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="compare-results" aria-expanded="false"><div class="ratings-compare-results" id="compare-results" hidden></div></div><p class="ratings-search-status compare-search-status" role="status"></p><div class="compare-content"></div><p class="compare-status" role="status" aria-live="polite"></p></section>`);
+  html(host, `<section class="compare-page page"><div class="compare-header"><h1 class="page-h">Compare shows</h1><button class="btn primary compare-save" type="button" disabled>${actionIcon('save')}Save image</button></div><div class="ratings-search-wrap compare-search">${icon('search')}<input type="search" id="compare-search" placeholder="Search any show…" aria-label="Find a show to compare" autocomplete="off" maxlength="100" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-controls="compare-results" aria-expanded="false"><div class="ratings-compare-results" id="compare-results" role="listbox" aria-label="Shows to compare" hidden></div></div><p class="ratings-search-status compare-search-status" role="status"></p><div class="compare-content"></div><p class="compare-status" role="status" aria-live="polite"></p></section>`);
   const input = host.querySelector('#compare-search'), results = host.querySelector('#compare-results'), searchStatus = host.querySelector('.compare-search-status');
   const content = host.querySelector('.compare-content'), save = host.querySelector('.compare-save'), live = host.querySelector('.compare-status');
+  const searchViewport = window.visualViewport;
+  function sizeSearchResults() {
+    if (results.hidden) return;
+    // iOS keyboard height is reflected in visualViewport, not CSS dvh units.
+    const bottom = searchViewport ? searchViewport.offsetTop + searchViewport.height : window.innerHeight;
+    const available = Math.max(0, Math.floor(bottom - results.getBoundingClientRect().top - 12));
+    results.style.setProperty('--compare-search-height', `${available}px`);
+  }
+  window.addEventListener('resize', sizeSearchResults);
+  window.addEventListener('scroll', sizeSearchResults, { passive: true });
+  searchViewport?.addEventListener('resize', sizeSearchResults);
+  searchViewport?.addEventListener('scroll', sizeSearchResults, { passive: true });
   const tell = message => { live.textContent = message; announce(message); };
   const persist = () => { rememberComparison(state); replaceURL(comparisonStateURL(state)); };
   const loader = createComparisonLoader({ metadata, loadRatings, colourLoader, changed: (id, reason) => {
     if (!disposed) { if (reason === 'colour') refreshPosterColours(); else render(); }
   } });
-  const dismiss = () => { results.hidden = true; input.setAttribute('aria-expanded', 'false'); };
+  const dismiss = () => { searchOpen = false; results.hidden = true; input.setAttribute('aria-expanded', 'false'); };
   const rememberFocus = () => {
     const active = document.activeElement;
     if (!content.contains(active)) return null;
@@ -289,14 +317,15 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
     persist();
   }
   function renderSearch() {
-    html(results, found.map(show => `<button type="button" class="ratings-search-result" data-add="${show.id}"${state.ids.includes(show.id) ? ' disabled' : ''}>${show.poster ? `<img src="${esc(show.poster)}" alt="">` : ''}<span><b>${esc(show.name)}</b><small>${esc(show.year || '')}</small></span><span class="compare-result-action">${state.ids.includes(show.id) ? 'Added' : 'Add'}</span></button>`).join(''));
-    const visible = Boolean(found.length && query.length >= 2);
+    html(results, searchGroups.map(group => `<div role="group" aria-label="${esc(group.title)}">${searchGroups.length > 1 || group.title !== 'Matches' ? `<p class="compare-search-group" aria-hidden="true">${esc(group.title)}</p>` : ''}${group.shows.map(show => `<button type="button" role="option" aria-selected="false" class="ratings-search-result" data-add="${show.id}"${state.ids.includes(show.id) ? ' disabled aria-disabled="true"' : ''}>${show.poster ? `<img src="${esc(show.poster)}" alt="" loading="lazy">` : ''}<span class="compare-result-label"><b>${esc(show.name)}</b><small>${esc([show.year, typeof show.aka === 'string' && show.aka ? `Also known as ${show.aka}` : ''].filter(Boolean).join(' · '))}</small></span><span class="compare-result-action">${state.ids.includes(show.id) ? 'Added' : 'Add'}</span></button>`).join('')}</div>`).join(''));
+    const visible = Boolean(searchOpen && found.length && query.length);
     results.hidden = !visible; input.setAttribute('aria-expanded', String(visible)); searchStatus.textContent = searchMessage;
+    sizeSearchResults();
   }
   function add(id) {
     if (state.ids.includes(id)) { tell('This show is already in your comparison.'); return; }
     if (state.ids.length >= MAX_SHOWS) { tell('Compare up to 40 shows at once. Remove one to add another.'); return; }
-    state.ids.push(id); query = ''; input.value = ''; ++searchToken; found = []; searchMessage = ''; renderSearch();
+    state.ids.push(id); query = ''; input.value = ''; ++searchToken; found = []; searchGroups = []; searchOpen = false; searchMessage = ''; renderSearch();
     render(); loader.ensure(id); input.focus(); tell('Show added to comparison.');
   }
   function move(id, destination) {
@@ -305,21 +334,24 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
     tell(`${loader.entries.get(id)?.show?.name || 'Show'} moved to position ${state.ids.indexOf(id) + 1} of ${state.ids.length}.`);
   }
   input.oninput = () => {
-    clearTimeout(timer); const asked = ++searchToken; query = input.value.trim(); found = [];
-    searchMessage = query.length < 2 ? '' : 'Searching…'; renderSearch();
-    if (query.length < 2) return;
+    clearTimeout(timer); const asked = ++searchToken; query = input.value.trim(); found = []; searchGroups = []; searchOpen = Boolean(query);
+    searchMessage = query ? 'Searching…' : ''; renderSearch();
+    if (!query) return;
     const requested = query;
     timer = setTimeout(async () => {
       try {
         const body = await searchShows(requested);
         if (disposed || asked !== searchToken) return;
-        if (!Array.isArray(body.shows)) throw Error('Search is unavailable. Try again.');
-        found = body.shows.filter(show => show && validId(show.id) && typeof show.name === 'string').slice(0, 8);
+        searchGroups = comparisonSearchResults(body); found = searchGroups.flatMap(group => group.shows);
         searchMessage = found.length ? '' : 'No matching shows.'; renderSearch();
       } catch (error) { if (!disposed && asked === searchToken) { searchMessage = error.message || 'Search is unavailable. Try again.'; renderSearch(); } }
     }, 250);
   };
-  input.onfocus = () => { if (found.length) renderSearch(); };
+  input.onfocus = () => { searchOpen = Boolean(query); if (found.length) renderSearch(); };
+  results.onmousedown = event => {
+    // Match the app's recent-search buttons: keep focus until the suggestion click.
+    if (event.target.closest('button[data-add]')) event.preventDefault();
+  };
   host.onclick = event => {
     const button = event.target.closest('button'); if (!button || !host.contains(button)) return;
     if (button.dataset.compareChoice) { event.preventDefault(); event.stopPropagation(); choose(button); return; }
@@ -375,11 +407,18 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
       }
       if (!menu.hidden && event.key === 'Tab') closePicker(picker, true);
     }
-    if (!results.hidden && ['ArrowDown', 'ArrowUp', 'Escape'].includes(event.key) && (target === input || results.contains(target))) {
+    if (query && event.key === 'Escape' && (target === input || results.contains(target))) {
+      event.preventDefault(); event.stopPropagation(); input.focus(); dismiss(); return;
+    }
+    if (event.key === 'Tab' && (target === input || results.contains(target))) dismiss();
+    if (!results.hidden && ['ArrowDown', 'ArrowUp', 'Enter'].includes(event.key) && (target === input || results.contains(target))) {
+      if (event.key === 'Enter' && target !== input) return;
       event.preventDefault(); event.stopPropagation();
-      if (event.key === 'Escape') { input.focus(); dismiss(); return; }
       const buttons = [...results.querySelectorAll('button:not(:disabled)')], index = buttons.indexOf(target);
-      buttons[(index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length]?.focus(); return;
+      if (event.key === 'Enter') { buttons[0]?.click(); return; }
+      const next = target === input ? (event.key === 'ArrowDown' ? 0 : buttons.length - 1)
+        : (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+      buttons[next]?.focus(); return;
     }
     if (target.dataset.action === 'grab' && grabbed === Number(target.dataset.id)) {
       if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
@@ -399,6 +438,10 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
   host.onfocusout = event => {
     const picker = event.target.closest('.compare-picker');
     if (picker && !picker.contains(event.relatedTarget)) closePicker(picker);
+    const search = host.querySelector('.compare-search');
+    // Safari suggestion taps blur to no element before the click. Outside
+    // pointerdown and Tab already dismiss; keep this click target available.
+    if (search.contains(event.target) && event.relatedTarget && !search.contains(event.relatedTarget)) dismiss();
   };
   host.ondragstart = event => {
     const card = event.target.closest('[data-show]');
@@ -432,7 +475,9 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
   return () => {
     disposed = true; clearTimeout(timer); ++searchToken; loader.dispose(); observer?.disconnect(); cancelAnimationFrame(resizeFrame); timelineCleanup();
     document.removeEventListener('pointerdown', outside); window.removeEventListener('couchside-ratings', enriched);
+    window.removeEventListener('resize', sizeSearchResults); window.removeEventListener('scroll', sizeSearchResults);
+    searchViewport?.removeEventListener('resize', sizeSearchResults); searchViewport?.removeEventListener('scroll', sizeSearchResults);
     host.onclick = host.onchange = host.onkeydown = host.onfocusout = host.ondragstart = host.ondragover = host.ondrop = host.ondragend = null;
-    input.oninput = input.onfocus = save.onclick = null;
+    input.oninput = input.onfocus = results.onmousedown = save.onclick = null;
   };
 }

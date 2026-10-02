@@ -5,7 +5,9 @@ The model is rebuilt from TVmaze every night, so a show added since is missing u
 the next build, and some phrasings still miss. When the catalogue finds nothing, or
 only guesses (typos, initials, part of a title), the server asks TVmaze's search,
 which is fuzzy and knows other names. Its matches that are in the catalogue lead the
-results, since it knew what the guesses did not; those that are not come back as
+results unless the local search corrects one slip in a complete title; that precise
+match stays ahead of remote partial matches, while a remote exact title still wins.
+Those that are not in the catalogue come back as
 missing, with their TVmaze page and poster, so the page can say they arrive with the
 nightly refresh (Couchside opens each as a title page from TVmaze meanwhile), and put
 them first when TVmaze ranks one of them first. The browser never
@@ -25,7 +27,7 @@ import re
 import threading
 import time
 
-from .recommendation.titles import LIMIT
+from .recommendation.titles import LIMIT, forms, normalize
 
 API = 'https://api.tvmaze.com'
 AGENT = 'TV Taste/1.0 (+https://github.com/jona62/tv-show-research)'
@@ -114,11 +116,23 @@ def answer(engine, q, remote=None, card=None):
     if not found.strong and not found.typing and remote and len(''.join(q.split())) >= SHORTEST:
         wider = remote.search(q) or []
         aka = dict(hits)
+        preferred = found.preferred
+        shapes = forms([word.encode() for word in normalize([q.replace('\n', ' ')])[0].split()])
+        exact = [show for show in wider if shapes.keys() & forms(
+            [word.encode() for word in normalize([show['name']])[0].split()]).keys()] if preferred else []
+        # A remote exact title still wins. Otherwise a local whole-title typo
+        # correction must not fall behind a remote franchise or partial title.
+        remote_hits = lambda shows: [(engine.by_id[s['id']], None) for s in shows if s['id'] in engine.by_id]
         merged = {}
-        for i, also in [(engine.by_id[s['id']], None) for s in wider if s['id'] in engine.by_id] + hits:
+        for i, also in remote_hits(exact) + list(preferred) + remote_hits(wider) + hits:
             merged.setdefault(i, also or aka.get(i))
         hits = list(merged.items())[:LIMIT]
-        missing = [s for s in wider if s['id'] not in engine.by_id][:MISSING]
-        first = bool(wider) and wider[0]['id'] not in engine.by_id
+        missing = {}
+        for show in exact + wider:
+            if show['id'] not in engine.by_id:
+                missing.setdefault(show['id'], show)
+        missing = list(missing.values())[:MISSING]
+        leaders = exact if preferred else wider
+        first = bool(leaders) and leaders[0]['id'] not in engine.by_id
     return {'shows': [{**card(i), 'aka': also} if also else card(i) for i, also in hits], 'missing': missing,
             'missing_first': first}

@@ -19,6 +19,7 @@ recommender = importlib.util.module_from_spec(reference_spec)
 reference_spec.loader.exec_module(recommender)
 from backend.recommendation import taste as taste_module                                     # noqa: E402
 from backend.recommendation.titles import normalize                                     # noqa: E402
+from backend.fallback import answer                                                     # noqa: E402
 
 PROFILE = [{'id': 13417, 'weight': 1}, {'id': 169, 'weight': 1}, {'id': 618, 'weight': 1},
            {'id': 42062, 'weight': .7}, {'id': 182, 'weight': 1}, {'id': 82, 'weight': .35},
@@ -159,6 +160,9 @@ SEARCHES = {
     'a year at the end': [('the office 2005', 526), ('the office 2001', 1292), ('doctor who 2005', 210),
                           ('doctor who 1963', 766), ('doctor who 2023', 72724), ('shogun 2024', 37336),
                           ('shogun 1980', 10460), ('space 1999', 5920)],
+    'Criminal Minds query variants': [('Criminal Minds', 81), ('Minds Criminal', 81), ('Minds and Criminal', 81),
+                                      ('Crimnal Minds', 81), ('Criminal Mnds', 81), ('Criminal Midns', 81),
+                                      ('Criminal,Minds', 81), ('Criminal, Minds', 81), ('riminal Mind', 81)],
 }
 slowest = 0.0
 for kind, cases in SEARCHES.items():
@@ -182,6 +186,22 @@ check('nothing to search for finds nothing', app.search('') == [] and app.search
 check('search keeps the card shape', set(app.search('lost')[0]) == {'id', 'name', 'year', 'channel', 'rating',
                                                                     'language', 'type', 'known'})
 check('every search here answers in well under a second', slowest < .25, f'{slowest * 1000:.0f} ms')
+criminal_family = {81, 3032, 1020, 50417}
+check('Criminal Minds variants retain related series in the real catalogue', all(
+    criminal_family <= {card['id'] for card in app.search(query)}
+    for query, _want in SEARCHES['Criminal Minds query variants']))
+
+
+class FranchiseRemote:
+    def search(self, _query):
+        # TVmaze's observed misspelling ranking puts spinoffs ahead of the primary.
+        return [{'id': show_id, 'name': app.shows[app.by_id[show_id]]['name']}
+                for show_id in (3032, 1020, 81, 50417)]
+
+
+check('remote typo ranking cannot demote the real catalogue primary', all(
+    answer(app, query, FranchiseRemote())['shows'][0]['id'] == 81
+    for query in ('Crimnal Minds', 'Criminal Mnds', 'Criminal Midns')))
 
 # 10. Character names stay out of the plot terms.
 gangs = app.shows[app.by_id[next(h['id'] for h in app.search('Gangs of London') if h['name'] == 'Gangs of London')]]

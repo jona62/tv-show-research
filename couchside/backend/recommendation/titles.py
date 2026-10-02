@@ -236,8 +236,11 @@ class Found:
     whether its last word is plainly still being typed, too short yet or the start of
     a longer word, so looking further afield can wait."""
 
-    def __init__(self, hits, strong, typing=False):
+    def __init__(self, hits, strong, typing=False, preferred=()):
         self.hits, self.strong, self.typing = hits, strong, typing
+        # A complete title one slip away is more precise than a remote partial
+        # match, even though it still asks the remote for additional results.
+        self.preferred = preferred
 
 
 class Titles:
@@ -400,7 +403,16 @@ class Titles:
         top = sorted(best.values())[:limit]
         lo, hi = self.span(tokens[-1])
         typing = len(words[-1]) < 3 or (hi > lo and self.vocab[lo] != tokens[-1])
-        return Found([(self.owner[d], self.aka_of(d)) for _key, d in top], bool(top) and top[0][0][0] <= STRONG, typing)
+        preferred = []
+        complete = [(key, d) for key, d in top if key[0] == 5 and key[2] == 1]
+        # Leave the existing year-disambiguation and partial-query ranking alone.
+        if complete and not (len(words) > 1 and YEAR.fullmatch(words[-1])):
+            guesses = set().union(*(edits(shape.decode()) for shape in forms(tokens)))
+            for _key, d in complete:
+                if any(shape.decode() in guesses for shape in forms(self.line(d).split())):
+                    preferred.append((self.owner[d], self.aka_of(d)))
+        return Found([(self.owner[d], self.aka_of(d)) for _key, d in top], bool(top) and top[0][0][0] <= STRONG,
+                     typing, preferred)
 
     def match(self, words, tokens, year, best, limit, deep):
         """Add the shows the tokens match to best, tier by tier, until a page is full."""
