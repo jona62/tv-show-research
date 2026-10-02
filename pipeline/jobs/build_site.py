@@ -10,7 +10,7 @@ import pandas as pd
 
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT))
-from tools.public_bundle import output_path, reset_public
+from tools.public_bundle import bundle_styles, output_path, reset_public
 
 SITE=ROOT/'site'
 PUBLIC=SITE/'public'
@@ -19,7 +19,10 @@ OUT=ROOT/'research/output'
 (OUT/'site-qa').mkdir(parents=True,exist_ok=True)
 esc=html.escape
 for name in ('style.css','app.js','chart.js','radar.js'):
-    shutil.copyfile(SITE/'client'/name,PUBLIC/output_path(name))
+    if name.endswith('.css'):
+        bundle_styles(SITE/'client'/name,PUBLIC/output_path(name))
+    else:
+        shutil.copyfile(SITE/'client'/name,PUBLIC/output_path(name))
 shutil.copyfile(SITE/'assets/brand/favicon.svg',PUBLIC/output_path('favicon.svg'))
 for name in ('recommendations.csv','theme_correlations.csv','numeric_correlations.csv','numeric_pair_counts.csv','feature_prevalence.csv','audit.json','theme_rules.json','expanded_theme_rules.json','catalog-audit.json'):
     shutil.copyfile(OUT/name,PUBLIC/output_path(name))

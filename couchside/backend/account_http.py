@@ -99,7 +99,7 @@ class AccountRoutes:
             length = int(lengths[0])
         except ValueError:
             length = 0
-        limit = 262144 if route in ('signup', 'state') else 4096
+        limit = 262144 if route in ('signup', 'login', 'state') else 4096
         if not 0 < length <= limit:
             raise AccountError(413, 'That account request is too large.')
         if not self.read_slots.acquire(blocking=False):
@@ -138,7 +138,11 @@ class AccountRoutes:
         try:
             origin, cookie, secure = self.context(handler)
             if handler.command == 'GET' and route == 'session':
-                self.reply(handler, self.service().session(self.token(handler, cookie)))
+                revisions, owners = handler.headers.get_all('X-Account-Revision', []), handler.headers.get_all('X-Account-Owner', [])
+                if len(revisions) > 1 or len(owners) > 1 or (revisions and not re.fullmatch(r'[0-9]{1,16}', revisions[0])):
+                    raise AccountError(400, 'The list revision is invalid.')
+                since = int(revisions[0]) if revisions else 0
+                self.reply(handler, self.service().session(self.token(handler, cookie), since, owners[0] if owners else None))
                 return True
             if handler.command != 'POST' or route not in POSTS:
                 raise AccountError(404, 'Not found.')
@@ -153,11 +157,14 @@ class AccountRoutes:
             if route == 'signup':
                 new, response = service.signup(payload.get('email'), payload.get('password'), payload.get('state'))
             elif route == 'login':
-                new, response = service.login(payload.get('email'), payload.get('password'))
+                new, response = service.login(payload.get('email'), payload.get('password'), payload.get('guest_state'))
             elif route == 'password':
                 new, response = service.change_password(token, csrf, payload.get('current_password'), payload.get('password'))
             elif route == 'state':
-                response = service.save(token, csrf, payload.get('state'), payload.get('revision'))
+                if type(payload.get('sync_version')) is not int or payload['sync_version'] != 2:
+                    raise AccountError(409, 'Couchside was updated. Refresh this page to finish syncing. '
+                                       'Your changes are safe on this device.', data={'upgrade': True})
+                response = service.save(token, csrf, payload.get('state'), payload.get('revision'), payload.get('removed'))
                 self.reply(handler, response)
                 return True
             else:

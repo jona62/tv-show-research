@@ -33,7 +33,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
-from tools.public_bundle import output_path, reset_public
+from tools.public_bundle import bundle_styles, output_path, reset_public
 
 APP = HERE.parent / 'app'
 PUBLIC = HERE / 'public'
@@ -174,7 +174,10 @@ def main():
 
     reset_public(PUBLIC)
     for name in OWN:
-        shutil.copyfile(CLIENT / name, built(name))
+        if name.endswith('.css'):
+            bundle_styles(CLIENT / name, built(name))
+        else:
+            shutil.copyfile(CLIENT / name, built(name))
     for name in SHARED:
         shutil.copyfile(APP / 'client' / name, built(name))
     for name in BRAND:

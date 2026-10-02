@@ -100,3 +100,24 @@ def compact_state(value):
         'settings': {'known_min': settings['known_min']},
         'onboarded': value['onboarded'],
     }
+
+
+def compact_removed(value, state):
+    """Validate explicit cancellations that a full-state snapshot cannot express."""
+    if value is None:
+        return {'profile': [], 'saved': []}
+    invalid = AccountError(400, 'The list contains invalid removals.')
+    if not isinstance(value, dict) or set(value) != {'profile', 'saved'}:
+        raise invalid
+    clean = {}
+    for kind, limit in (('profile', MAX_RATED), ('saved', MAX_SAVED)):
+        raw = value[kind]
+        if not isinstance(raw, list) or len(raw) > limit:
+            raise invalid
+        present, seen = {item['id'] for item in state[kind]}, set()
+        for show_id in raw:
+            if type(show_id) is not int or not 0 < show_id <= MAX_ID or show_id in seen or show_id in present:
+                raise invalid
+            seen.add(show_id)
+        clean[kind] = list(raw)
+    return clean

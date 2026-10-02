@@ -1830,15 +1830,14 @@ check('the page links its icons and manifest', all(tag in page_root for tag in (
     and re.search(rb'rel="apple-touch-icon" href="/assets/icons/apple-touch-icon\.png\?v=[0-9a-f]{16}" sizes="180x180"', page_root)
     and re.search(rb'href="/assets/icons/favicon\.ico\?v=[0-9a-f]{16}"', page_root))
 check('no build placeholder survives', not re.search(rb'__[A-Z_]+__', page_root))
-check('the page keeps pinch zoom available and runs under the notch',
-      b'initial-scale=1, viewport-fit=cover' in page_root
-      and b'maximum-scale' not in page_root and b'user-scalable' not in page_root)
-check('the client does not add or remove viewport scale restrictions',
-      b'maximum-scale' not in fetch('/assets/scripts/main.js')[2]
-      and b'const IOS =' not in fetch('/assets/scripts/main.js')[2])
-check('native fields and inherited editable text stay 16px on every touch screen',
-      b'@media(any-pointer:coarse){\n  input,select,textarea,[contenteditable]:read-write,[contenteditable] :read-write{font-size:16px!important}\n}'
-      in fetch('/assets/styles/style.css')[2])
+check('the viewport preserves pinch zoom and runs under the notch',
+      b'initial-scale=1, viewport-fit=cover' in page_root and b'maximum-scale' not in page_root and b'user-scalable' not in page_root)
+check('scripts do not restrict or rewrite the viewport scale',
+      b'maximum-scale' not in fetch('/assets/scripts/main.js')[2] and b'user-scalable' not in fetch('/assets/scripts/main.js')[2])
+touch_guard = (ROOT / 'tools/touch-forms.css').read_bytes()
+touch_styles = fetch('/assets/styles/style.css')[2]
+check('touch controls share the priority guard, including editable descendants and dialogs',
+      touch_guard in touch_styles and touch_styles.startswith(b'@layer touch-forms;\n'))
 check('the home preview uses the share image at this address',
       f'content="{base}/assets/images/og.jpg"'.encode() in page_root and b'content="summary_large_image"' in page_root)
 status, _headers, titled = fetch('/?show=169')

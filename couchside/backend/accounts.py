@@ -14,7 +14,8 @@ from argon2.exceptions import VerificationError
 from argon2.low_level import Type
 
 from .account_store import AccountStore
-from .account_validation import AccountError, compact_state, email_address, email_domain
+from .account_merge import merge_guest, record_removals
+from .account_validation import AccountError, compact_removed, compact_state, email_address, email_domain
 from .account_validation import password as validate_password, revision as validate_revision
 
 
@@ -82,13 +83,23 @@ class AccountService:
         return row
 
     @staticmethod
-    def _response(row, csrf):
+    def _response(row, csrf, removals):
         return {
             'user': {'id': row['id'], 'email': row['email']},
             'csrf': csrf,
             'state': json.loads(row['state_json']),
             'revision': row['revision'],
+            'removals': removals,
         }
+
+    @staticmethod
+    def _removals(connection, account_id, since=0):
+        removed = {'profile': [], 'saved': []}
+        for item in connection.execute(
+                'SELECT kind, show_id, revision FROM account_removals WHERE account_id=? AND revision>? '
+                'ORDER BY revision, kind, show_id', (account_id, since)):
+            removed[item['kind']].append({'id': item['show_id'], 'revision': item['revision']})
+        return removed
 
     def _new_session(self, connection, account_id):
         token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
@@ -102,7 +113,7 @@ class AccountService:
             (account_id, account_id, MAX_SESSIONS),
         )
         row = connection.execute('SELECT * FROM accounts WHERE id=?', (account_id,)).fetchone()
-        return token, self._response(row, csrf)
+        return token, self._response(row, csrf, self._removals(connection, account_id))
 
     def signup(self, email, password, initial_state):
         info, email_key = email_address(email)
@@ -122,7 +133,8 @@ class AccountService:
         except sqlite3.IntegrityError:
             raise AccountError(400, 'Unable to create this account. Try signing in or use a different email address.') from None
 
-    def login(self, email, password):
+    def login(self, email, password, guest_state=None):
+        guest = compact_state(guest_state) if guest_state is not None else None
         try:
             _, email_key = email_address(email)
         except AccountError:
@@ -137,28 +149,46 @@ class AccountService:
         if not valid or row is None:
             raise AccountError(401, INVALID_LOGIN)
         with self.store.connection(write=True) as connection:
-            current = connection.execute('SELECT password_hash FROM accounts WHERE id=?', (row['id'],)).fetchone()
+            current = connection.execute('SELECT * FROM accounts WHERE id=?', (row['id'],)).fetchone()
             # A password change between verification and session creation revokes
             # the old credentials even when these requests run concurrently.
             if current is None or current['password_hash'] != row['password_hash']:
                 raise AccountError(401, INVALID_LOGIN)
+            if guest is not None:
+                before = json.loads(current['state_json'])
+                removals = {(item['kind'], item['show_id']) for item in connection.execute(
+                    'SELECT kind, show_id FROM account_removals WHERE account_id=?', (row['id'],))}
+                merged = merge_guest(before, guest, removals)
+                if merged != before:
+                    connection.execute('UPDATE accounts SET state_json=?, revision=revision+1 WHERE id=?',
+                                       (json.dumps(merged, separators=(',', ':'), allow_nan=False), row['id']))
             return self._new_session(connection, row['id'])
 
-    def session(self, token):
+    def session(self, token, since=0, owner=None):
+        since = validate_revision(since)
+        if owner is not None and (not isinstance(owner, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', owner)):
+            raise AccountError(400, 'The account owner is invalid.')
         with self.store.connection() as connection:
+            # State and its removal history must come from the same snapshot
+            # while another device may be committing a save through WAL.
+            connection.execute('BEGIN')
             row = self._session_row(connection, token)
-            return self._response(row, row['csrf'])
+            return self._response(row, row['csrf'], self._removals(connection, row['id'], since if owner == row['id'] else 0))
 
-    def save(self, token, csrf, state, revision):
+    def save(self, token, csrf, state, revision, removed=None):
         state, expected_revision = compact_state(state), validate_revision(revision)
+        removed = compact_removed(removed, state)
         with self.store.connection(write=True) as connection:
             row = self._session_row(connection, token, csrf)
             if row['revision'] != expected_revision:
                 raise AccountError(409, 'Your list changed on another device. Review its latest version and try again.',
-                                   data={'state': json.loads(row['state_json']), 'revision': row['revision']})
+                                   data={'state': json.loads(row['state_json']), 'revision': row['revision'],
+                                         'removals': self._removals(connection, row['id'], expected_revision)})
+            record_removals(connection, row['id'], json.loads(row['state_json']), state, expected_revision + 1, removed)
             connection.execute('UPDATE accounts SET state_json=?, revision=revision+1 WHERE id=?',
                                (json.dumps(state, separators=(',', ':'), allow_nan=False), row['id']))
-            return {'state': state, 'revision': expected_revision + 1}
+            return {'state': state, 'revision': expected_revision + 1,
+                    'removals': self._removals(connection, row['id'], expected_revision)}
 
     def logout(self, token, csrf):
         with self.store.connection(write=True) as connection:

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { AccountSync, AccountRequestError, accountRequest, toWire, sameState, mergeStates,
-  mergeGuest, GUEST_KEY, ACTIVE_KEY, accountKey } from '../client/account-state.js';
+  GUEST_KEY, ACTIVE_KEY, accountKey } from '../client/account-state.js';
 
 const fresh = () => ({ version: 3, profile: [], saved: [], settings: { known_min: 85 }, onboarded: false });
 const sanitize = raw => ({ ...fresh(), ...raw,
@@ -32,17 +32,14 @@ function setup(request, storage = memory(), initial = fresh()) {
   return { sync, storage, statuses, get: () => current, change(next) { current = next; sync.changed(); } };
 }
 
-// Local deletions, remote additions, and conflicting ratings all survive merging.
+// Independent edits survive; removals and acknowledged account ratings win conflicts.
 {
   const base = state([[1, .7], [4, .7]], [1, 4]);
   const local = state([[2, 1], [4, -1]], [2, 4]);
   const remote = state([[1, 1], [3, .35], [4, 1]], [1, 3, 4]);
   const result = mergeStates(base, local, remote);
-  assert.deepEqual(result.profile.map(({ id, weight }) => [id, weight]), [[2, 1], [4, -1], [3, .35]]);
+  assert.deepEqual(result.profile.map(({ id, weight }) => [id, weight]), [[2, 1], [4, 1], [3, .35]]);
   assert.deepEqual(result.saved.map(({ id }) => id), [2, 4, 3]);
-  const mergedGuest = mergeGuest(state([[1, .7]], [1]), state([[1, -1], [2, 1]], [2, 1]));
-  assert.deepEqual(mergedGuest.profile.map(({ id, weight }) => [id, weight]), [[1, -1], [2, 1]]);
-  assert.deepEqual(mergedGuest.saved.map(({ id }) => id), [1, 2]);
   assert.equal(sameState(state([[1, .7]], [1]), sanitize(toWire(state([[1, .7]], [1])))), true);
   assert.equal(JSON.stringify(toWire(state([[1, .7]], [1]))).includes('Show'), false);
 }
@@ -117,7 +114,7 @@ function setup(request, storage = memory(), initial = fresh()) {
   await device.sync.authenticate('login', { email: 'alice@example.com', password: 'a long passphrase' });
   await device.sync.flush();
   assert.equal(lastSave.revision, 8);
-  assert.deepEqual(lastSave.state.profile, [{ id: 1, weight: -1 }, { id: 2, weight: .7 }]);
+  assert.deepEqual(lastSave.state.profile, [{ id: 1, weight: 1 }, { id: 2, weight: .7 }]);
   assert.deepEqual(lastSave.state.saved, [{ id: 2 }]);
   assert.equal(device.sync.pending, false);
   device.sync.destroy();
@@ -239,7 +236,7 @@ function setup(request, storage = memory(), initial = fresh()) {
   device.change(state([[1, 1]], [1]));
   await device.sync.flush();
   assert.equal(saves, 1);
-  await assert.rejects(device.sync.logout(), /Sync your changes before signing out/);
+  await assert.rejects(device.sync.logout(), /Finish syncing before signing out/);
   assert.equal(logouts, 0);
   assert.equal(device.sync.user.id, 'alice');
   assert.equal(JSON.parse(device.storage.getItem(accountKey('alice'))).pending, true);

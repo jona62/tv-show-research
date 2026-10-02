@@ -3,10 +3,11 @@ import { AccountSync } from './account-state.js';
 const STATUS = {
   checking: 'Checking your account…',
   guest: 'Save your ratings and My List across devices.',
-  saved: 'Your ratings and My List are synced.',
-  pending: 'Changes saved on this device. Waiting to sync…',
-  saving: 'Syncing your changes…',
-  offline: 'Changes stay on this device until you reconnect.',
+  saved: 'Up to date. Your ratings and My List sync automatically.',
+  pending: 'Your changes are saved on this device and will sync automatically.',
+  saving: 'Syncing your changes automatically…',
+  retry: 'Couldn’t sync yet. Your changes are saved on this device.',
+  offline: 'Your changes are saved on this device. They’ll sync when you reconnect.',
   expired: 'Sign in again to sync. Your changes are saved on this device.',
 };
 
@@ -44,10 +45,17 @@ export function mountAccounts({ getState, applyState, fresh, sanitize, toast = (
     section.append(note);
     const actions = element('div', 'account-actions');
     if (user) {
-      if (!connected) actions.append(button('Sign in again', () => openForm('login'), 'btn primary'));
-      actions.append(button('Sync now', async () => {
-        await sync.refresh();
-        await sync.flush();
+      if (status === 'expired') actions.append(button('Sign in again', () => openForm('login'), 'btn primary'));
+      if (status === 'retry' || status === 'offline') actions.append(button('Try again', async event => {
+        event.currentTarget.disabled = true;
+        try {
+          await sync.refresh();
+          await sync.flush();
+        } catch (error) {
+          toast(error.message);
+        } finally {
+          renderPanel();
+        }
       }));
       if (connected) actions.append(button('Change password', () => openForm('password')));
       actions.append(button('Sign out', async event => {
@@ -95,7 +103,7 @@ export function mountAccounts({ getState, applyState, fresh, sanitize, toast = (
         : 'Use your email and password to pick up where you left off.'));
     const form = element('form', 'auth-form');
     const isNewPassword = kind !== 'login';
-    let email = null, current = null, confirm = null, merge = null;
+    let email = null, current = null, confirm = null;
     if (kind !== 'password') {
       email = field(form, 'Email address', 'email', { type: 'email', autocomplete: 'username', maxLength: 254,
         value: kind === 'login' ? sync.user?.email || '' : '' });
@@ -122,13 +130,7 @@ export function mountAccounts({ getState, applyState, fresh, sanitize, toast = (
       password.addEventListener('input', () => confirm.setCustomValidity(''));
     }
     if (kind === 'login' && !sync.user && (getState().profile.length || getState().saved.length)) {
-      const option = element('label', 'auth-options');
-      merge = element('input');
-      merge.type = 'checkbox';
-      merge.checked = true;
-      option.append(merge, document.createTextNode('Add this device’s ratings and list'));
-      form.append(option);
-      form.append(element('p', 'note', 'Your choices on this device take priority when the same show is already rated in your account.'));
+      form.append(element('p', 'note', 'This device’s shows will join your account. Shows already there stay once, with your account’s ratings.'));
     }
     const error = element('p', 'auth-error');
     error.setAttribute('role', 'alert');
@@ -157,7 +159,7 @@ export function mountAccounts({ getState, applyState, fresh, sanitize, toast = (
       formBusy = true;
       submit.textContent = kind === 'signup' ? 'Creating account…' : kind === 'password' ? 'Saving password…' : 'Signing in…';
       const payload = { email: email?.value.trim(), password: password.value,
-        current_password: current?.value, merge: merge?.checked === true };
+        current_password: current?.value };
       for (const input of form.querySelectorAll('input,button')) input.disabled = true;
       try {
         await sync.authenticate(kind, payload);

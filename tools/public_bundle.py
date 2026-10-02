@@ -39,3 +39,15 @@ def reset_public(folder):
         shutil.rmtree(folder)
     for relative in ('', *DIRECTORIES):
         (folder / relative).mkdir(parents=True, exist_ok=True)
+
+
+def bundle_styles(source, destination):
+    """Include the shared touch-control guard in every app's generated stylesheet.
+
+    The first declared layer wins for important rules, including against later
+    component-important overrides. A layer declaration also permits a source
+    stylesheet to begin with @import; the guard rules themselves go last.
+    """
+    guard = Path(__file__).with_name('touch-forms.css').read_text(encoding='utf-8')
+    styles = Path(source).read_text(encoding='utf-8')
+    Path(destination).write_text('@layer touch-forms;\n' + styles.rstrip() + '\n\n' + guard, encoding='utf-8')

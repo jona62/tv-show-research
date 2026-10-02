@@ -25,6 +25,14 @@ CREATE TABLE IF NOT EXISTS account_sessions (
 );
 CREATE INDEX IF NOT EXISTS account_sessions_user ON account_sessions(account_id);
 CREATE INDEX IF NOT EXISTS account_sessions_expiry ON account_sessions(expires_at);
+CREATE TABLE IF NOT EXISTS account_removals (
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ('profile', 'saved')),
+    show_id INTEGER NOT NULL CHECK (show_id > 0 AND show_id <= 9007199254740991),
+    revision INTEGER NOT NULL CHECK (revision > 0 AND revision <= 9007199254740991),
+    PRIMARY KEY (account_id, kind, show_id)
+);
+CREATE INDEX IF NOT EXISTS account_removals_revision ON account_removals(account_id, revision);
 CREATE TABLE IF NOT EXISTS account_attempts (
     email_hash TEXT PRIMARY KEY,
     tokens REAL NOT NULL,

@@ -84,9 +84,9 @@ class AccountHttpTests(unittest.TestCase):
         self.assertNotIn('Content-Encoding', headers)
         self.assertEqual(body['state'], STATE)
         csrf = {'Cookie': cookie, 'X-CSRF-Token': account['csrf']}
-        status, _, body = self.call('state', {'state': STATE, 'revision': 0}, csrf)
+        status, _, body = self.call('state', {'state': STATE, 'revision': 0, 'sync_version': 2}, csrf)
         self.assertEqual((status, body['revision']), (200, 1))
-        status, _, conflict = self.call('state', {'state': STATE, 'revision': 0}, csrf)
+        status, _, conflict = self.call('state', {'state': STATE, 'revision': 0, 'sync_version': 2}, csrf)
         self.assertEqual((status, conflict['revision']), (409, 1))
         status, headers, _ = self.call('logout', {}, csrf)
         self.assertEqual(status, 200)
@@ -101,7 +101,7 @@ class AccountHttpTests(unittest.TestCase):
 
     def test_mutations_need_csrf_and_session(self):
         cookie, _ = self.signup()
-        self.assertEqual(self.call('state', {'state': STATE, 'revision': 0})[0], 401)
+        self.assertEqual(self.call('state', {'state': STATE, 'revision': 0, 'sync_version': 2})[0], 401)
         self.assertEqual(self.call('logout', {}, {'Cookie': cookie})[0], 403)
         self.assertEqual(self.call('logout', {}, {'Cookie': cookie, 'X-CSRF-Token': 'wrong'})[0], 403)
 
@@ -118,9 +118,100 @@ class AccountHttpTests(unittest.TestCase):
                                    {'Origin': 'http://' + self.host})[0], 403)
 
     def test_oversized_malformed_and_nonfinite_json(self):
-        for raw, expected in ((b'{"password":"' + b'x' * 5000 + b'"}', 413),
+        for raw, expected in ((b'{"password":"' + b'x' * 262144 + b'"}', 413),
                               (b'{"password":NaN}', 400), (b'[]', 400), (b'{', 400)):
             self.assertEqual(self.call('login', raw=raw)[0], expected)
+
+    def test_login_import_accepts_a_full_guest_list_and_keeps_account_ratings(self):
+        cookie, account = self.signup()
+        guest = {**STATE, 'profile': [{'id': i + 1, 'weight': .7} for i in range(3000)],
+                 'saved': [{'id': 83}], 'settings': {'known_min': 0}}
+        payload = {'email': 'viewer@gmail.com', 'password': PASSWORD, 'guest_state': guest}
+        self.assertGreater(len(json.dumps(payload).encode()), 4096)
+        status, headers, imported = self.call('login', payload)
+        self.assertEqual(status, 200, imported)
+        self.assertIn('Set-Cookie', headers)
+        self.assertEqual(imported['user'], account['user'])
+        self.assertEqual(imported['revision'], 1)
+        self.assertEqual(len(imported['state']['profile']), 3000)
+        self.assertEqual(next(item['weight'] for item in imported['state']['profile'] if item['id'] == 169), 1)
+        self.assertEqual(imported['state']['saved'], [{'id': 82}, {'id': 83}])
+        self.assertEqual(imported['state']['settings'], {'known_min': 85})
+        self.assertEqual(self.call('session', headers={'Cookie': cookie})[2]['state'], imported['state'])
+
+    def test_login_import_overflow_returns_no_session_cookie_and_preserves_state(self):
+        cookie, account = self.signup()
+        full = {**STATE, 'saved': [{'id': i + 1} for i in range(200)]}
+        status, _, saved = self.call('state', {'state': full, 'revision': 0, 'sync_version': 2},
+                                    {'Cookie': cookie, 'X-CSRF-Token': account['csrf']})
+        self.assertEqual(status, 200)
+        guest = {**STATE, 'saved': [{'id': 201}]}
+        status, headers, failed = self.call('login', {'email': 'viewer@gmail.com', 'password': PASSWORD, 'guest_state': guest})
+        self.assertEqual(status, 409)
+        self.assertIn('exceeds 200', failed['error'])
+        self.assertNotIn('Set-Cookie', headers)
+        current = self.call('session', headers={'Cookie': cookie})[2]
+        self.assertEqual((current['state'], current['revision']), (saved['state'], saved['revision']))
+
+    def test_session_removal_headers_are_validated_and_scoped_to_the_owner(self):
+        cookie, account = self.signup()
+        empty = {**STATE, 'saved': []}
+        status, _, saved = self.call('state', {'state': empty, 'revision': 0, 'sync_version': 2},
+                                    {'Cookie': cookie, 'X-CSRF-Token': account['csrf']})
+        self.assertEqual(status, 200)
+        self.assertEqual(saved['removals'], {'profile': [], 'saved': [{'id': 82, 'revision': 1}]})
+        known = {'Cookie': cookie, 'X-Account-Owner': account['user']['id'], 'X-Account-Revision': '1'}
+        self.assertEqual(self.call('session', headers=known)[2]['removals'], {'profile': [], 'saved': []})
+        self.assertEqual(self.call('session', headers={**known, 'X-Account-Owner': 'other-account'})[2]['removals'], saved['removals'])
+        self.assertEqual(self.call('session', headers={'Cookie': cookie})[2]['removals'], saved['removals'])
+        for revision in ('-1', 'NaN', '1.0', '9007199254740992', '99999999999999999'):
+            self.assertEqual(self.call('session', headers={**known, 'X-Account-Revision': revision})[0], 400)
+        self.assertEqual(self.call('session', headers={**known, 'X-Account-Owner': '\u00ff'})[0], 400)
+
+    def test_old_clients_cannot_overwrite_ratings_or_restore_account_removals(self):
+        cookie, account = self.signup()
+        empty = {**STATE, 'saved': []}
+        status, _, saved = self.call('state', {'state': empty, 'revision': 0, 'sync_version': 2},
+                                    {'Cookie': cookie, 'X-CSRF-Token': account['csrf']})
+        self.assertEqual(status, 200)
+        status, headers, legacy = self.call('login', {'email': 'viewer@gmail.com', 'password': PASSWORD})
+        self.assertEqual(status, 200)
+        legacy_cookie = headers['Set-Cookie'].split(';')[0]
+        old_guest = {**STATE, 'profile': [{'id': 169, 'weight': -1}]}
+        for marker in (None, 1, '2', 2.0, True):
+            payload = {'state': old_guest, 'revision': legacy['revision']}
+            if marker is not None:
+                payload['sync_version'] = marker
+            status, _, denied = self.call('state', payload,
+                                         {'Cookie': legacy_cookie, 'X-CSRF-Token': legacy['csrf']})
+            self.assertEqual(status, 409)
+            self.assertTrue(denied['upgrade'])
+            self.assertEqual(denied['error'], 'Couchside was updated. Refresh this page to finish syncing. '
+                             'Your changes are safe on this device.')
+        status, _, denied = self.call('state', {'state': old_guest, 'revision': legacy['revision']},
+                                     {'Cookie': legacy_cookie, 'Origin': 'https://attacker.example'})
+        self.assertEqual(status, 403, 'origin validation still precedes the protocol upgrade response')
+        current = self.call('session', headers={'Cookie': legacy_cookie})[2]
+        self.assertEqual((current['state'], current['revision'], current['removals']),
+                         (saved['state'], saved['revision'], saved['removals']))
+
+    def test_explicit_cancelled_additions_are_forwarded_and_validated(self):
+        cookie, account = self.signup()
+        credentials = {'Cookie': cookie, 'X-CSRF-Token': account['csrf']}
+        payload = {'state': STATE, 'revision': 0, 'sync_version': 2}
+        status, _, denied = self.call('state', {**payload, 'removed': {'profile': [169], 'saved': []}}, credentials)
+        self.assertEqual(status, 400)
+        current = self.call('session', headers={'Cookie': cookie})[2]
+        self.assertEqual(current['revision'], 0)
+        self.assertEqual(current['removals'], {'profile': [], 'saved': []})
+        status, _, saved = self.call('state', {**payload, 'removed': {'profile': [99], 'saved': [98]}}, credentials)
+        self.assertEqual(status, 200)
+        self.assertEqual(saved['state'], STATE)
+        self.assertEqual(saved['removals'], {'profile': [{'id': 99, 'revision': 1}], 'saved': [{'id': 98, 'revision': 1}]})
+        guest = {**STATE, 'profile': [{'id': 99, 'weight': 1}], 'saved': [{'id': 98}]}
+        status, _, replayed = self.call('login', {'email': 'viewer@gmail.com', 'password': PASSWORD, 'guest_state': guest})
+        self.assertEqual(status, 200)
+        self.assertEqual((replayed['state'], replayed['revision']), (STATE, 1))
 
     def test_malformed_host_and_non_ascii_csrf_are_client_errors(self):
         self.assertEqual(self.call('session', headers={'Host': '[:::]'})[0], 400)

@@ -1,3 +1,4 @@
+@layer touch-forms;
 :root{
   --paper:#fff;--raised:#fbfbfc;--ink:#16181d;--muted:#63676f;--line:#e3e4e8;--soft:#f2f3f6;
   --accent:#1f3d99;--accent-soft:#eaeefb;--good:#0f6f45;--warm:#a9500f;--bad:#a02020;
@@ -312,4 +313,24 @@ footer p{margin:6px 0}
 }
 @media(prefers-reduced-motion:no-preference){
   .card,.chip,.seg button{transition:border-color .12s,background .12s,color .12s}
+}
+
+/* A shared floor for editable controls on phones, tablets and hybrid devices.
+   Keep it global so sheets and dialogs mounted elsewhere share the same rule. */
+@layer touch-forms {
+  @media (any-pointer: coarse) {
+    /* WebKit's native search and select appearances can ignore the font floor.
+       Existing component appearances still take precedence over these defaults. */
+    input[type="search"] { -webkit-appearance: textfield; appearance: textfield; }
+    select { -webkit-appearance: menulist-button; appearance: menulist-button; }
+    input,
+    select,
+    textarea,
+    [contenteditable]:not([contenteditable="false"]),
+    [contenteditable]:not([contenteditable="false"]) *,
+    [role="textbox"],
+    [role="textbox"] * {
+      font-size: max(16px, 1rem) !important;
+    }
+  }
 }

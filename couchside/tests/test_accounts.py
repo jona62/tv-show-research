@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 import hashlib
 import os
+import sqlite3
 import tempfile
 import threading
 from unittest import TestCase, main
@@ -67,7 +68,8 @@ class AccountTests(TestCase):
         self.assertEqual(os.stat(self.path.parent).st_mode & 0o777, 0o700)
         self.assertEqual(response['state'], STATE)
         self.assertEqual(response['revision'], 0)
-        self.assertEqual(set(response), {'user', 'csrf', 'state', 'revision'})
+        self.assertEqual(set(response), {'user', 'csrf', 'state', 'revision', 'removals'})
+        self.assertEqual(response['removals'], {'profile': [], 'saved': []})
 
     def test_email_syntax_normalization_and_case_insensitive_uniqueness(self):
         _, response = self.signup(' Person@GMAIL.COM ')
@@ -140,7 +142,8 @@ class AccountTests(TestCase):
         new['saved'] = [{'id': 99, 'name': 'Untrusted title', 'poster': 'https://example.com'}]
         new['profile'][0]['name'] = 'Untrusted name'
         saved = self.service.save(token, response['csrf'], new, 0)
-        self.assertEqual(saved, {'state': {**STATE, 'saved': [{'id': 99}]}, 'revision': 1})
+        self.assertEqual(saved, {'state': {**STATE, 'saved': [{'id': 99}]}, 'revision': 1,
+                                 'removals': {'profile': [], 'saved': [{'id': 20, 'revision': 1}]}})
         self.assertEqual(self.service.session(second)['state'], STATE)
         self.assertEqual(self.service.session(second)['revision'], 0)
         self.error(403, lambda: self.service.save(second, response['csrf'], new, 0))
@@ -148,6 +151,230 @@ class AccountTests(TestCase):
         conflict = self.error(409, lambda: self.service.save(token, response['csrf'], STATE, 0))
         self.assertEqual(conflict.data, saved)
         self.assertEqual(self.service.session(token)['state'], saved['state'])
+
+    def test_login_imports_guest_additions_once_and_keeps_account_choices(self):
+        token, account = self.signup()
+        guest = {'version': 3, 'profile': [{'id': 10, 'weight': -1}, {'id': 11, 'weight': 1}],
+                 'saved': [{'id': 20}, {'id': 21}], 'settings': {'known_min': 0}, 'onboarded': False}
+        _, imported = self.service.login('person@gmail.com', PASSWORD, guest)
+        expected = {**STATE, 'profile': [{'id': 10, 'weight': .7}, {'id': 11, 'weight': 1}],
+                    'saved': [{'id': 20}, {'id': 21}]}
+        self.assertEqual(imported['state'], expected)
+        self.assertEqual(imported['revision'], 1)
+        self.assertEqual(imported['user'], account['user'])
+        self.assertEqual(self.service.session(token)['state'], expected)
+        _, replayed = self.service.login('person@gmail.com', PASSWORD, guest)
+        self.assertEqual(replayed['state'], expected)
+        self.assertEqual(replayed['revision'], 1, 'a repeated import must not create another revision')
+
+    def test_recorded_account_removals_block_guest_replay_and_survive_restart(self):
+        token, account = self.signup()
+        empty = {**STATE, 'profile': [], 'saved': []}
+        self.service.save(token, account['csrf'], empty, 0)
+        self.service = self.reopen()
+        guest = {**STATE, 'profile': STATE['profile'] + [{'id': 11, 'weight': 1}],
+                 'saved': STATE['saved'] + [{'id': 21}]}
+        _, imported = self.service.login('person@gmail.com', PASSWORD, guest)
+        self.assertEqual(imported['state'], {**STATE, 'profile': [{'id': 11, 'weight': 1}], 'saved': [{'id': 21}]})
+        self.assertEqual(imported['revision'], 2)
+        # An explicit signed-in re-add remains possible; history still protects
+        # the account after the item is subsequently removed again.
+        self.service.save(token, account['csrf'], STATE, 2)
+        self.service.save(token, account['csrf'], empty, 3)
+        _, replayed = self.service.login('person@gmail.com', PASSWORD, STATE)
+        self.assertEqual(replayed['state'], empty)
+        self.assertEqual(replayed['revision'], 4)
+
+    def test_removal_history_is_scoped_to_the_account_and_collection(self):
+        token, account = self.signup()
+        self.service.save(token, account['csrf'], {**STATE, 'profile': []}, 0)
+        # A removed rating does not prevent saving that same show to My List.
+        guest = {**STATE, 'saved': [{'id': 10}]}
+        _, imported = self.service.login('person@gmail.com', PASSWORD, guest)
+        self.assertEqual(imported['state']['profile'], [])
+        self.assertEqual(imported['state']['saved'], [{'id': 20}, {'id': 10}])
+        self.signup('second@gmail.com', state={**STATE, 'profile': [], 'saved': []})
+        _, second = self.service.login('second@gmail.com', PASSWORD, STATE)
+        self.assertEqual(second['state'], STATE)
+        with self.service.store.connection(write=True) as connection:
+            self.assertEqual(connection.execute('SELECT count(*) FROM account_removals').fetchone()[0], 1)
+            connection.execute('DELETE FROM accounts WHERE id=?', (account['user']['id'],))
+            self.assertEqual(connection.execute('SELECT count(*) FROM account_removals').fetchone()[0], 0)
+
+    def test_invalid_guest_import_does_not_consume_an_email_attempt(self):
+        self.signup()
+        with self.service.store.connection() as connection:
+            before = dict(connection.execute('SELECT * FROM account_attempts').fetchone())
+        invalid = {**STATE, 'saved': [{'id': 20}, {'id': 20}]}
+        with patch('backend.accounts.verifies', side_effect=AssertionError('password work on invalid guest state')):
+            self.error(400, lambda: self.service.login('person@gmail.com', PASSWORD, invalid))
+        with self.service.store.connection() as connection:
+            self.assertEqual(dict(connection.execute('SELECT * FROM account_attempts').fetchone()), before)
+            self.assertEqual(connection.execute('SELECT count(*) FROM account_sessions').fetchone()[0], 1)
+
+    def test_guest_union_overflow_does_not_truncate_or_create_a_session(self):
+        for kind, maximum in (('profile', MAX_RATED), ('saved', MAX_SAVED)):
+            with self.subTest(kind=kind):
+                full = {**STATE, 'profile': [], 'saved': []}
+                full[kind] = [{'id': i + 1, **({'weight': .7} if kind == 'profile' else {})} for i in range(maximum)]
+                email = f'{kind}@gmail.com'
+                token, _ = self.signup(email, state=full)
+                guest = {**full, kind: [{'id': maximum + 1, **({'weight': 1} if kind == 'profile' else {})}]}
+                with self.service.store.connection() as connection:
+                    session_count = connection.execute('SELECT count(*) FROM account_sessions').fetchone()[0]
+                self.error(409, lambda: self.service.login(email, PASSWORD, guest))
+                unchanged = self.service.session(token)
+                self.assertEqual((unchanged['state'], unchanged['revision']), (full, 0))
+                with self.service.store.connection() as connection:
+                    self.assertEqual(connection.execute('SELECT count(*) FROM account_sessions').fetchone()[0], session_count)
+                # A duplicate at capacity does not count as another show.
+                _, duplicate = self.service.login(email, PASSWORD, {**full, kind: full[kind][:1]})
+                self.assertEqual((duplicate['state'], duplicate['revision']), (full, 0))
+
+    def test_guest_import_rolls_back_if_session_creation_fails(self):
+        token, _ = self.signup()
+        guest = {**STATE, 'saved': [{'id': 21}]}
+        with patch.object(self.service, '_new_session', side_effect=sqlite3.OperationalError('simulated storage failure')):
+            with self.assertRaises(sqlite3.OperationalError):
+                self.service.login('person@gmail.com', PASSWORD, guest)
+        unchanged = self.service.session(token)
+        self.assertEqual((unchanged['state'], unchanged['revision']), (STATE, 0))
+        with self.service.store.connection() as connection:
+            self.assertEqual(connection.execute('SELECT count(*) FROM account_sessions').fetchone()[0], 1)
+
+    def test_concurrent_guest_imports_keep_both_devices_additions(self):
+        token, _ = self.signup()
+        barrier = threading.Barrier(2)
+
+        def sign_in(show_id):
+            guest = {**STATE, 'profile': [{'id': show_id, 'weight': 1}], 'saved': [{'id': show_id}]}
+            barrier.wait(timeout=5)
+            return self.service.login('person@gmail.com', PASSWORD, guest)[1]
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(sign_in, show_id) for show_id in (30, 40)]
+            imported = [future.result(timeout=10) for future in futures]
+        self.assertEqual(sorted(item['revision'] for item in imported), [1, 2])
+        current = self.service.session(token)
+        self.assertEqual(sorted(item['id'] for item in current['state']['profile']), [10, 30, 40])
+        self.assertEqual(sorted(item['id'] for item in current['state']['saved']), [20, 30, 40])
+
+    def test_stale_save_does_not_record_a_removal(self):
+        token, response = self.signup()
+        self.service.save(token, response['csrf'], STATE, 0)
+        self.error(409, lambda: self.service.save(token, response['csrf'], {**STATE, 'profile': [], 'saved': []}, 0))
+        with self.service.store.connection() as connection:
+            self.assertEqual(connection.execute('SELECT count(*) FROM account_removals').fetchone()[0], 0)
+
+    def test_cancelled_unsaved_additions_record_removals_and_block_guest_replay(self):
+        token, response = self.signup()
+        removed = {'profile': [99], 'saved': [98]}
+        saved = self.service.save(token, response['csrf'], STATE, 0, removed)
+        self.assertEqual(saved['state'], STATE)
+        self.assertEqual(saved['revision'], 1)
+        self.assertEqual(saved['removals'], {'profile': [{'id': 99, 'revision': 1}], 'saved': [{'id': 98, 'revision': 1}]})
+        guest = {**STATE, 'profile': [{'id': 99, 'weight': 1}], 'saved': [{'id': 98}]}
+        _, replayed = self.service.login('person@gmail.com', PASSWORD, guest)
+        self.assertEqual((replayed['state'], replayed['revision']), (STATE, 1))
+        self.signup('second@gmail.com')
+        _, second = self.service.login('second@gmail.com', PASSWORD, guest)
+        self.assertEqual(second['state']['profile'], STATE['profile'] + guest['profile'])
+        self.assertEqual(second['state']['saved'], STATE['saved'] + guest['saved'])
+
+    def test_inferred_and_explicit_removals_are_recorded_once(self):
+        token, response = self.signup()
+        empty = {**STATE, 'profile': [], 'saved': []}
+        saved = self.service.save(token, response['csrf'], empty, 0, {'profile': [10, 11], 'saved': [20, 21]})
+        self.assertEqual(saved['removals'], {'profile': [{'id': 10, 'revision': 1}, {'id': 11, 'revision': 1}],
+                                           'saved': [{'id': 20, 'revision': 1}, {'id': 21, 'revision': 1}]})
+        with self.service.store.connection() as connection:
+            self.assertEqual(connection.execute('SELECT count(*) FROM account_removals').fetchone()[0], 4)
+
+    def test_invalid_explicit_removals_leave_state_revision_and_history_unchanged(self):
+        token, response = self.signup()
+        invalid = [[], {}, {'profile': []}, {'profile': [], 'saved': [], 'other': []},
+                   {'profile': None, 'saved': []}, {'profile': [], 'saved': '99'},
+                   {'profile': [99, 99], 'saved': []}, {'profile': [10], 'saved': []},
+                   {'profile': [], 'saved': [20]},
+                   {'profile': list(range(100, 100 + MAX_RATED + 1)), 'saved': []},
+                   {'profile': [], 'saved': list(range(100, 100 + MAX_SAVED + 1))}]
+        invalid += [{'profile': [show_id], 'saved': []} for show_id in (None, True, 0, -1, .5, '99', 2**53, [], {})]
+        for removed in invalid:
+            with self.subTest(removed=str(removed)[:80]):
+                self.error(400, lambda: self.service.save(token, response['csrf'], STATE, 0, removed))
+        self.assertEqual(self.service.session(token), response)
+        with self.service.store.connection() as connection:
+            self.assertEqual(connection.execute('SELECT count(*) FROM account_removals').fetchone()[0], 0)
+
+    def test_stale_explicit_cancellation_does_not_write_history(self):
+        token, response = self.signup()
+        self.service.save(token, response['csrf'], STATE, 0)
+        failure = self.error(409, lambda: self.service.save(token, response['csrf'], STATE, 0,
+                                                         {'profile': [99], 'saved': [98]}))
+        self.assertEqual(failure.data['removals'], {'profile': [], 'saved': []})
+        with self.service.store.connection() as connection:
+            self.assertEqual(connection.execute('SELECT count(*) FROM account_removals').fetchone()[0], 0)
+
+    def test_removal_revisions_follow_repeated_deletions_and_filter_by_owner(self):
+        token, response = self.signup()
+        owner = response['user']['id']
+        empty = {**STATE, 'profile': [], 'saved': []}
+        removed = self.service.save(token, response['csrf'], empty, 0)
+        first = {'profile': [{'id': 10, 'revision': 1}], 'saved': [{'id': 20, 'revision': 1}]}
+        self.assertEqual(removed['removals'], first)
+        readded = self.service.save(token, response['csrf'], STATE, 1)
+        self.assertEqual(readded['removals'], {'profile': [], 'saved': []})
+        self.assertEqual(self.service.session(token)['removals'], first, 're-adds must retain removal history')
+        self.service.save(token, response['csrf'], empty, 2)
+        latest = {'profile': [{'id': 10, 'revision': 3}], 'saved': [{'id': 20, 'revision': 3}]}
+        self.assertEqual(self.service.session(token, 2, owner)['removals'], latest)
+        self.assertEqual(self.service.session(token, 3, owner)['removals'], {'profile': [], 'saved': []})
+        self.assertEqual(self.service.session(token, 3, 'different-account')['removals'], latest)
+        self.assertEqual(self.service.session(token, 3)['removals'], latest)
+        conflict = self.error(409, lambda: self.service.save(token, response['csrf'], STATE, 2))
+        self.assertEqual(conflict.data['removals'], latest)
+        with self.service.store.connection() as connection:
+            self.assertEqual([row[0] for row in connection.execute('SELECT revision FROM account_removals')], [3, 3])
+
+    def test_session_removal_query_rejects_invalid_revisions_and_owners(self):
+        token, _ = self.signup()
+        for since in (None, True, -1, 2**53, .0, '0'):
+            self.error(400, lambda: self.service.session(token, since))
+        for owner in (42, '', 'é', '\ud800', 'x' * 129):
+            self.error(400, lambda: self.service.session(token, owner=owner))
+
+    def test_session_state_and_removals_share_one_read_snapshot(self):
+        token, response = self.signup()
+        read, changed = threading.Event(), threading.Event()
+        original = self.service._session_row
+
+        def pause_session(connection, *args):
+            row = original(connection, *args)
+            if len(args) == 1:
+                read.set()
+                self.assertTrue(changed.wait(5))
+            return row
+
+        with patch.object(self.service, '_session_row', side_effect=pause_session):
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                reading = executor.submit(self.service.session, token)
+                self.assertTrue(read.wait(5))
+                self.service.save(token, response['csrf'], {**STATE, 'saved': []}, 0)
+                changed.set()
+                session = reading.result(timeout=5)
+        self.assertEqual(session, response, 'an old state must not include a newer removal')
+        self.assertEqual(self.service.session(token)['removals']['saved'], [{'id': 20, 'revision': 1}])
+
+    def test_existing_database_adds_removal_history_without_changing_accounts(self):
+        token, response = self.signup()
+        # This is the old schema: account/session data exists without the new table.
+        with self.service.store.connection(write=True) as connection:
+            connection.execute('DROP TABLE account_removals')
+        self.service = self.reopen()
+        self.assertEqual(self.service.session(token), response)
+        self.service.save(token, response['csrf'], {**STATE, 'saved': []}, 0)
+        _, replayed = self.service.login('person@gmail.com', PASSWORD, STATE)
+        self.assertEqual(replayed['state']['saved'], [])
 
     def test_concurrent_device_updates_have_one_winner(self):
         first, response = self.signup()
@@ -171,7 +398,7 @@ class AccountTests(TestCase):
         self.assertEqual(conflict.status, 409)
         final = self.service.session(first)
         self.assertEqual(final['revision'], 1)
-        self.assertEqual(conflict.data, {'state': final['state'], 'revision': 1})
+        self.assertEqual(conflict.data, {'state': final['state'], 'revision': 1, 'removals': final['removals']})
 
     def test_password_change_rotates_session_and_revokes_other_devices(self):
         first, response = self.signup()

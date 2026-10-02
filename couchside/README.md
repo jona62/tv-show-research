@@ -94,11 +94,15 @@ file* (Next Watch's README says why).
 
 Your profile offers **Create account** and **Sign in**. Creating an account saves
 this device's ratings, My List and recommendation reach; signing in on another
-device restores them. Sign-in can also add that device's guest list, with its
-ratings taking priority for shows already rated. Changes save automatically,
-including removals; concurrent devices merge changes against their last synced
-version rather than overwriting the whole list. Returning to a tab, reconnecting,
-or the visible tab's minute check picks up other devices' changes.
+device restores them. Sign-in automatically joins that device's guest shows,
+with duplicates appearing once and existing account ratings kept. Changes save
+automatically, including removals; concurrent devices merge edits against their
+last synced version instead of replacing a whole list. Recorded removals prevent
+an old device copy from restoring a removed show. Returning to a tab,
+reconnecting, or the visible tab's minute check picks up other devices' changes.
+The profile shows sync status, with a retry action only when needed. See
+[the merge rules](../docs/account-sync.md) for duplicate ratings, offline edits,
+capacity protection and compatibility details.
 
 Offline changes stay in an account-specific local cache until they can sync.
 Sign-out syncs pending changes first, clears the active account and restores the

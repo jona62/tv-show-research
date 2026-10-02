@@ -11,7 +11,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
-from tools.public_bundle import output_path, reset_public
+from tools.public_bundle import bundle_styles, output_path, reset_public
 
 PUBLIC = HERE / 'public'
 CLIENT = HERE / 'client'
@@ -34,7 +34,10 @@ def main():
 
     reset_public(PUBLIC)
     for name in ASSETS:
-        shutil.copyfile(CLIENT / name, PUBLIC / output_path(name))
+        if name.endswith('.css'):
+            bundle_styles(CLIENT / name, PUBLIC / output_path(name))
+        else:
+            shutil.copyfile(CLIENT / name, PUBLIC / output_path(name))
     shutil.copyfile(BRAND / 'favicon.svg', PUBLIC / output_path('favicon.svg'))
 
     # The badge states the page's own size as served, filled in, so settle on a figure

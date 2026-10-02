@@ -3,6 +3,8 @@
 export const GUEST_KEY = 'couchside-v1';
 export const ACTIVE_KEY = 'couchside-account-active-v1';
 export const accountKey = id => `couchside-account-v1:${id}`;
+const LIMITS = { profile: 3000, saved: 200 };
+const emptyRemovals = () => ({ profile: [], saved: [] });
 
 const copy = value => JSON.parse(JSON.stringify(value));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -31,7 +33,45 @@ export function sameState(a, b) {
   return same(canonical(a), canonical(b));
 }
 
-function mergeItems(base, local, remote, rating) {
+function mergeRemovals(...histories) {
+  return Object.fromEntries(Object.keys(LIMITS).map(kind => {
+    const latest = new Map();
+    for (const history of histories) for (const item of history?.[kind] || []) {
+      if (Number.isSafeInteger(item?.id) && item.id > 0 && Number.isSafeInteger(item.revision)
+        && item.revision > (latest.get(item.id) || 0)) latest.set(item.id, item.revision);
+    }
+    return [kind, [...latest].sort(([a], [b]) => a - b).map(([id, revision]) => ({ id, revision }))];
+  }));
+}
+
+function pendingDeleted(history, ...copies) {
+  return Object.fromEntries(Object.keys(LIMITS).map(kind => {
+    const recorded = new Map((history?.[kind] || []).map(item => [item.id, item.revision]));
+    const pending = new Map();
+    for (const copy of copies) for (const item of copy?.[kind] || []) {
+      if (Number.isSafeInteger(item?.id) && item.id > 0 && typeof item.writer === 'string'
+        && /^[A-Za-z0-9_-]{1,128}$/.test(item.writer) && Number.isSafeInteger(item.sequence)
+        && item.sequence >= 0 && Number.isSafeInteger(item.revision) && item.revision >= 0
+        && (recorded.get(item.id) || 0) <= item.revision) pending.set(item.id, item);
+    }
+    return [kind, [...pending.values()].sort((a, b) => a.id - b.id)];
+  }));
+}
+
+const hasDeleted = deleted => Object.keys(LIMITS).some(kind => deleted?.[kind]?.length);
+const deletedIds = deleted => Object.fromEntries(Object.keys(LIMITS)
+  .map(kind => [kind, (deleted?.[kind] || []).map(item => item.id)]));
+
+function checkCapacity(state) {
+  for (const [kind, limit] of Object.entries(LIMITS)) {
+    if (state[kind].length > limit) throw new AccountRequestError(
+      `Both lists are safe, but together they exceed ${limit.toLocaleString('en-US')} ${kind === 'saved' ? 'shows in My List' : 'ratings'}. Remove a few on this device to finish syncing.`,
+      422, { capacity: true });
+  }
+  return state;
+}
+
+function mergeItems(base, local, remote, rating, removed, deleted) {
   const before = new Map(base.map(item => [item.id, item]));
   const ours = new Map(local.map(item => [item.id, item]));
   const theirs = new Map(remote.map(item => [item.id, item]));
@@ -39,7 +79,13 @@ function mergeItems(base, local, remote, rating) {
   const merged = new Map();
   for (const id of new Set([...before.keys(), ...ours.keys(), ...theirs.keys()])) {
     const changed = value(ours.get(id)) !== value(before.get(id));
-    const selected = changed ? ours.get(id) : theirs.get(id);
+    const changedRemote = value(theirs.get(id)) !== value(before.get(id));
+    // An acknowledged removal also covers an add/remove that happened entirely
+    // while this device was offline. A later, informed re-add remains possible.
+    const conflict = changed && changedRemote;
+    const deletedConflict = conflict && before.has(id) && (!ours.has(id) || !theirs.has(id));
+    const selected = removed.has(id) ? theirs.get(id) : deleted.has(id) || deletedConflict ? undefined
+      : changed && !changedRemote ? ours.get(id) : theirs.get(id);
     if (selected) {
       // Metadata stays local when useful; only IDs and weights go to the server.
       const old = ours.get(id);
@@ -51,24 +97,20 @@ function mergeItems(base, local, remote, rating) {
   return [...new Set(order)].filter(id => merged.has(id)).map(id => merged.get(id));
 }
 
-export function mergeStates(base, local, remote) {
-  return {
+export function mergeStates(base, local, remote, { removals, revision = 0, deleted } = {}) {
+  const after = kind => new Set((removals?.[kind] || [])
+    .filter(item => item.revision > revision).map(item => item.id));
+  const reachChanged = local.settings?.known_min !== base.settings?.known_min;
+  const remoteReachChanged = remote.settings?.known_min !== base.settings?.known_min;
+  const negative = deletedIds(pendingDeleted(removals, deleted));
+  return checkCapacity({
     ...remote,
-    profile: mergeItems(base.profile || [], local.profile || [], remote.profile || [], true),
-    saved: mergeItems(base.saved || [], local.saved || [], remote.saved || [], false),
-    settings: { ...remote.settings, known_min: local.settings?.known_min !== base.settings?.known_min
+    profile: mergeItems(base.profile || [], local.profile || [], remote.profile || [], true, after('profile'), new Set(negative.profile)),
+    saved: mergeItems(base.saved || [], local.saved || [], remote.saved || [], false, after('saved'), new Set(negative.saved)),
+    settings: { ...remote.settings, known_min: reachChanged && !remoteReachChanged
       ? local.settings?.known_min : remote.settings?.known_min },
     onboarded: local.onboarded !== base.onboarded ? local.onboarded : remote.onboarded,
-  };
-}
-
-export function mergeGuest(account, guest) {
-  const profile = new Map((account.profile || []).map(item => [item.id, item]));
-  const saved = new Map((account.saved || []).map(item => [item.id, item]));
-  for (const item of guest.profile || []) profile.set(item.id, item);
-  for (const item of guest.saved || []) if (!saved.has(item.id)) saved.set(item.id, item);
-  return { ...account, profile: [...profile.values()], saved: [...saved.values()],
-    onboarded: account.onboarded || guest.onboarded };
+  });
 }
 
 export class AccountRequestError extends Error {
@@ -80,14 +122,14 @@ export class AccountRequestError extends Error {
   }
 }
 
-export async function accountRequest(path, body, { csrf, fetcher = globalThis.fetch, timeout = 12000 } = {}) {
+export async function accountRequest(path, body, { csrf, owner, revision, fetcher = globalThis.fetch, timeout = 12000 } = {}) {
   const abort = new AbortController();
   const deadline = setTimeout(() => abort.abort(), Math.max(1, Math.min(Number(timeout) || 12000, 12000)));
   try {
     const response = await fetcher(`/api/account/${path}`, {
       method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store',
       signal: abort.signal,
-      headers: body === undefined ? {} : {
+      headers: body === undefined ? owner ? { 'X-Account-Owner': owner, 'X-Account-Revision': String(revision || 0) } : {} : {
         'Content-Type': 'application/json', 'X-Account-Request': '1', ...(csrf ? { 'X-CSRF-Token': csrf } : {}),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -115,6 +157,15 @@ export class AccountSync {
     this.connected = false;
     this.pending = false;
     this.revision = 0;
+    this.removals = emptyRemovals();
+    this.deferred = [];
+    this.deleted = emptyRemovals();
+    this.blocked = false;
+    // Tab identity orders only local cache snapshots. It is not a credential or
+    // a device clock, and it is never sent to the account server.
+    this.writer = globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2);
+    this.sequence = 0;
+    this.seen = new Map();
     this.generation = 0;
     this.paintVersion = 0;
     this.local = sanitize(getState());
@@ -157,13 +208,23 @@ export class AccountSync {
   }
 
   persistCache() {
+    this.seen.set(this.writer, this.sequence);
     const existing = this.cached(this.user);
     // Semantically identical list orders or metadata must not trigger a cycle
     // of storage events and refreshes between two open tabs.
     if (existing && existing.revision === this.revision && existing.pending === this.pending
-      && sameState(existing.base, this.base) && sameState(existing.local, this.local)) return;
+      && sameState(existing.base, this.base) && sameState(existing.local, this.local)
+      && same(mergeRemovals(existing.removals), this.removals)
+      && same(existing.deferred || [], this.deferred)
+      && same(existing.deleted || emptyRemovals(), this.deleted)
+      && same(this.seenWire(existing.seen), this.seenWire())) return;
+    // Forwarding another tab's pending edits also publishes a new snapshot.
+    // Reusing a prior sequence would let a receiver skip those forwarded edits.
+    ++this.sequence;
+    this.seen.set(this.writer, this.sequence);
     this.write(accountKey(this.user.id), { user: this.user, base: toWire(this.base), local: this.local,
-      revision: this.revision, pending: this.pending });
+      revision: this.revision, pending: this.pending, removals: this.removals, deferred: this.deferred,
+      writer: this.writer, sequence: this.sequence, seen: this.seenWire(), deleted: this.deleted });
   }
 
   report(status, message = '') {
@@ -187,20 +248,128 @@ export class AccountSync {
     return user;
   }
 
-  async acceptSession(data, { guest = null } = {}) {
+  combineDeferred(local, deferred, removals) {
+    let deleted = pendingDeleted(removals, this.deleted);
+    for (const other of deferred) {
+      const previous = local;
+      const base = this.sanitize(other.base), pending = this.sanitize(other.local);
+      // A forwarded old removal cannot undo a re-add that cleared that intent.
+      // Keep already-seen intents only while that exact intent remains pending.
+      const incoming = Object.fromEntries(Object.keys(LIMITS).map(kind => [kind,
+        (other.deleted?.[kind] || []).filter(item => item.sequence > (this.seen.get(item.writer) ?? -1)
+          || deleted[kind].some(live => live.id === item.id && live.writer === item.writer
+            && live.sequence === item.sequence))]));
+      for (const kind of Object.keys(LIMITS)) {
+        const accepted = new Set(incoming[kind].map(item => item.id));
+        const present = new Set(pending[kind].map(item => item.id));
+        const ignored = new Set((other.deleted?.[kind] || []).filter(item => !accepted.has(item.id))
+          .map(item => item.id));
+        // Remove the obsolete deletion delta as well as its explicit intent.
+        for (const item of base[kind]) if (ignored.has(item.id) && !present.has(item.id)) pending[kind].push(item);
+      }
+      deleted = pendingDeleted(removals, deleted, incoming);
+      local = mergeStates(base, pending, previous,
+        { removals, revision: other.revision, deleted });
+      for (const kind of Object.keys(LIMITS)) {
+        const items = new Map(local[kind].map(item => [item.id, item]));
+        const order = new Set([...previous[kind].map(item => item.id), ...items.keys()]);
+        local[kind] = [...order].filter(id => items.has(id)).map(id => items.get(id));
+      }
+    }
+    this.deleted = Object.fromEntries(Object.keys(LIMITS).map(kind => {
+      const present = new Set(local[kind].map(item => item.id));
+      return [kind, deleted[kind].filter(item => !present.has(item.id))];
+    }));
+    for (const other of deferred) this.learnSeen(other);
+    return local;
+  }
+
+  seenWire(raw) {
+    const source = arguments.length ? raw || {} : Object.fromEntries(this.seen);
+    return Object.fromEntries(Object.entries(source).filter(([writer, sequence]) =>
+      /^[A-Za-z0-9_-]{1,128}$/.test(writer) && Number.isSafeInteger(sequence) && sequence >= 0)
+      .sort(([a], [b]) => a.localeCompare(b)));
+  }
+
+  learnSeen(other) {
+    for (const [writer, sequence] of Object.entries(this.seenWire(other.seen))) {
+      this.seen.set(writer, Math.max(this.seen.get(writer) ?? -1, sequence));
+    }
+    if (typeof other.writer === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(other.writer)
+      && Number.isSafeInteger(other.sequence) && other.sequence >= 0) {
+      this.seen.set(other.writer, Math.max(this.seen.get(other.writer) ?? -1, other.sequence));
+    }
+  }
+
+  rememberDeferred(...copies) {
+    const unique = new Map();
+    for (const other of copies.flat()) {
+      if (!other?.base || !other.local || !Number.isSafeInteger(other.revision) || other.revision < 0) continue;
+      const writer = typeof other.writer === 'string' && other.writer.length <= 128 ? other.writer : 'legacy';
+      const sequence = Number.isSafeInteger(other.sequence) && other.sequence >= 0 ? other.sequence : 0;
+      if (writer === this.writer && sequence <= this.sequence || sequence <= (this.seen.get(writer) ?? -1)) continue;
+      const previous = unique.get(writer);
+      if (previous && (previous.sequence > sequence
+        || previous.sequence === sequence && previous.revision > other.revision)) continue;
+      unique.set(writer, { base: toWire(other.base), local: this.sanitize(other.local),
+        revision: other.revision, writer, sequence, seen: this.seenWire(other.seen),
+        deleted: pendingDeleted(emptyRemovals(), other.deleted) });
+    }
+    return [...unique.values()].filter(other => {
+      if (!sameState(other.base, other.local) || hasDeleted(other.deleted)) return true;
+      this.learnSeen(other);
+      return false;
+    });
+  }
+
+  async acceptSession(data) {
     const user = this.validSession(data);
     const remote = this.sanitize(data.state);
     const cache = this.user?.id === user.id
-      ? { base: this.base, local: this.local, revision: this.revision } : this.cached(user);
-    let local = cache ? mergeStates(this.sanitize(cache.base), this.sanitize(cache.local), remote) : remote;
-    if (guest) local = mergeGuest(local, guest);
+      ? { base: this.base, local: this.local, revision: this.revision,
+        removals: this.removals, deferred: this.deferred, seen: this.seenWire(), deleted: this.deleted } : this.cached(user);
+    if (this.user?.id !== user.id) {
+      this.seen = new Map();
+      if (cache) this.learnSeen(cache);
+    }
+    const removals = mergeRemovals(cache?.removals, data.removals);
+    this.deleted = pendingDeleted(removals, cache?.deleted);
+    const deferred = this.rememberDeferred(cache?.deferred || []);
+    let local;
+    try {
+      local = cache ? mergeStates(this.sanitize(cache.base), this.sanitize(cache.local), remote,
+        { removals, revision: cache.revision, deleted: this.deleted }) : remote;
+      local = this.combineDeferred(local, deferred, removals);
+    } catch (error) {
+      if (!error.data?.capacity || !cache) throw error;
+      // The server retains its copy and this device retains its complete pending
+      // copy. Never feed an oversized union into the display sanitizer.
+      this.user = user;
+      this.csrf = data.csrf;
+      this.connected = true;
+      this.base = this.sanitize(cache.base);
+      this.local = this.sanitize(cache.local);
+      this.revision = cache.revision;
+      this.removals = removals;
+      this.deferred = deferred;
+      this.pending = !sameState(this.base, this.local) || deferred.length > 0 || hasDeleted(this.deleted);
+      this.blocked = true;
+      clearTimeout(this.timer);
+      this.persist();
+      await this.paint();
+      this.report('retry', error.message);
+      return;
+    }
     this.user = user;
     this.csrf = data.csrf;
     this.connected = true;
     this.base = remote;
     this.local = this.sanitize(local);
     this.revision = data.revision;
-    this.pending = !sameState(this.base, this.local);
+    this.removals = removals;
+    this.deferred = [];
+    this.blocked = false;
+    this.pending = !sameState(this.base, this.local) || hasDeleted(this.deleted);
     this.persist();
     await this.paint();
     this.report(this.pending ? 'pending' : 'saved');
@@ -220,12 +389,16 @@ export class AccountSync {
       this.local = this.sanitize(cache.local);
       this.base = this.sanitize(cache.base);
       this.revision = cache.revision;
-      this.pending = !sameState(this.base, this.local);
+      this.removals = mergeRemovals(cache.removals);
+      this.deleted = pendingDeleted(this.removals, cache.deleted);
+      this.learnSeen(cache);
+      this.deferred = this.rememberDeferred(cache.deferred || []);
+      this.pending = !sameState(this.base, this.local) || this.deferred.length > 0 || hasDeleted(this.deleted);
       await this.paint();
     }
     const generation = this.generation;
     try {
-      const data = await this.request('session');
+      const data = await this.request('session', undefined, { owner: this.user?.id, revision: this.revision });
       if (generation === this.generation) await this.acceptSession(data);
     } catch (error) {
       if (generation !== this.generation) return;
@@ -237,8 +410,19 @@ export class AccountSync {
 
   changed() {
     ++this.paintVersion;
+    ++this.sequence;
+    const previous = this.local;
     this.local = this.sanitize(this.getState());
-    if (this.user) this.pending = !sameState(this.base, this.local);
+    if (this.user) for (const kind of Object.keys(LIMITS)) {
+      const present = new Set(this.local[kind].map(item => item.id));
+      const deleted = new Map(this.deleted[kind].filter(item => !present.has(item.id)).map(item => [item.id, item]));
+      for (const item of previous[kind]) if (!present.has(item.id)) {
+        deleted.set(item.id, { id: item.id, writer: this.writer, sequence: this.sequence, revision: this.revision });
+      }
+      this.deleted[kind] = [...deleted.values()].sort((a, b) => a.id - b.id);
+    }
+    this.blocked = false;
+    if (this.user) this.pending = !sameState(this.base, this.local) || this.deferred.length > 0 || hasDeleted(this.deleted);
     this.persist();
     if (this.user) {
       this.report(this.connected ? this.pending ? 'pending' : 'saved' : this.status === 'expired' ? 'expired' : 'offline');
@@ -264,7 +448,7 @@ export class AccountSync {
     if (this.flight) await this.flight;
     const generation = this.generation;
     try {
-      const data = await this.request('session');
+      const data = await this.request('session', undefined, { owner: this.user?.id, revision: this.revision });
       if (generation === this.generation && !this.authenticating) await this.acceptSession(data);
     } catch (error) {
       if (generation !== this.generation) return;
@@ -280,12 +464,25 @@ export class AccountSync {
     clearTimeout(this.timer);
     this.timer = null;
     if (this.flight) return this.flight;
-    if (!this.pending || !this.connected || !this.user || this.authenticating) return;
+    if (!this.pending || !this.connected || !this.user || this.authenticating || this.blocked) return;
     // Saves wait for a GET already in progress; refreshSession waits only for a
     // save that existed before that GET, so the two never wait on each other.
     if (this.refreshing) await this.refreshing;
     if (this.flight) return this.flight;
-    if (!this.pending || !this.connected || !this.user || this.authenticating) return;
+    if (!this.pending || !this.connected || !this.user || this.authenticating || this.blocked) return;
+    if (this.deferred.length) {
+      try {
+        this.local = this.sanitize(this.combineDeferred(this.local, this.deferred, this.removals));
+        this.deferred = [];
+        this.pending = !sameState(this.base, this.local) || hasDeleted(this.deleted);
+        this.persist();
+        await this.paint();
+      } catch (error) {
+        this.blocked = true;
+        this.report('retry', error.message);
+        return;
+      }
+    }
     this.flight = this.pushChanges().finally(() => { this.flight = null; });
     return this.flight;
   }
@@ -294,19 +491,34 @@ export class AccountSync {
     const generation = this.generation, owner = this.user.id;
     let conflicts = 0;
     this.report('saving');
-    while (this.pending && generation === this.generation && this.user?.id === owner) {
+    while (this.pending && !this.blocked && generation === this.generation && this.user?.id === owner) {
       const snapshot = copy(this.local);
+      // Long offline sessions may cancel more shows than fit in one request.
+      // Acknowledge bounded batches; retain every remaining removal for the next save.
+      const deleted = Object.fromEntries(Object.entries(LIMITS)
+        .map(([kind, limit]) => [kind, copy(this.deleted[kind].slice(0, limit))]));
       try {
-        const data = await this.request('state', { state: toWire(snapshot), revision: this.revision }, { csrf: this.csrf });
+        const data = await this.request('state', { state: toWire(snapshot), revision: this.revision,
+          sync_version: 2, removed: deletedIds(deleted) }, { csrf: this.csrf });
         if (generation !== this.generation || this.user?.id !== owner) return;
         if (!data.state || !Number.isSafeInteger(data.revision) || data.revision < this.revision) {
           throw new AccountRequestError('The account service returned an incomplete save.');
         }
         const remote = this.sanitize(data.state);
-        this.local = this.sanitize(mergeStates(snapshot, this.local, remote));
+        // Acknowledgment clears only the deletion intents in this request.
+        // A newer remove or re-add made during the request stays ordered after it.
+        for (const kind of Object.keys(LIMITS)) {
+          const sent = new Map(deleted[kind].map(item => [item.id, item]));
+          this.deleted[kind] = this.deleted[kind].filter(item => {
+            const earlier = sent.get(item.id);
+            return !earlier || earlier.writer !== item.writer || earlier.sequence !== item.sequence;
+          }).map(item => item.writer === this.writer ? { ...item, revision: data.revision } : item);
+        }
+        this.local = this.sanitize(mergeStates(snapshot, this.local, remote, { deleted: this.deleted }));
         this.base = remote;
         this.revision = data.revision;
-        this.pending = !sameState(this.base, this.local);
+        this.removals = mergeRemovals(this.removals, data.removals);
+        this.pending = !sameState(this.base, this.local) || hasDeleted(this.deleted) || this.deferred.length > 0;
         this.persist();
         await this.paint();
       } catch (error) {
@@ -314,18 +526,32 @@ export class AccountSync {
         if (error.status === 409 && error.data.state && Number.isSafeInteger(error.data.revision)
           && error.data.revision >= this.revision) {
           const remote = this.sanitize(error.data.state);
-          this.local = this.sanitize(mergeStates(this.base, this.local, remote));
+          const removals = mergeRemovals(this.removals, error.data.removals);
+          try {
+            this.local = this.sanitize(mergeStates(this.base, this.local, remote,
+              { removals, revision: this.revision, deleted: this.deleted }));
+          } catch (failure) {
+            if (!failure.data?.capacity) throw failure;
+            this.blocked = true;
+            this.report('retry', failure.message);
+            return;
+          }
           this.base = remote;
           this.revision = error.data.revision;
-          this.pending = !sameState(this.base, this.local);
+          this.removals = removals;
+          this.deleted = pendingDeleted(removals, this.deleted);
+          this.pending = !sameState(this.base, this.local) || hasDeleted(this.deleted);
           this.persist();
           await this.paint();
           if (++conflicts < 3 && this.pending) continue;
-          this.report(this.pending ? 'pending' : 'saved', this.pending
-            ? 'Your changes are saved on this device. Tap Sync now to try again.' : '');
+          this.report(this.pending ? 'retry' : 'saved', this.pending
+            ? 'Your changes are safe on this device. We will try syncing again shortly.' : '');
           return;
         }
-        if (error.status === 401 || error.status === 403) {
+        if (error.data?.upgrade) {
+          this.blocked = true;
+          this.report('retry', error.message);
+        } else if (error.status === 401 || error.status === 403) {
           this.connected = false;
           this.csrf = null;
           this.report('expired', 'Sign in again to sync. Your changes are saved on this device.');
@@ -335,10 +561,10 @@ export class AccountSync {
         return;
       }
     }
-    if (generation === this.generation) this.report('saved');
+    if (generation === this.generation && !this.blocked) this.report(this.pending ? 'pending' : 'saved');
   }
 
-  async authenticate(kind, { email, password, merge = false, current_password } = {}) {
+  async authenticate(kind, { email, password, current_password } = {}) {
     await this.ready();
     if (this.authenticating) throw new AccountRequestError('An account request is already in progress.');
     if (kind === 'password') {
@@ -353,9 +579,11 @@ export class AccountSync {
     if (!this.user) this.write(GUEST_KEY, guest);
     try {
       const body = kind === 'password' ? { current_password, password }
-        : kind === 'signup' ? { email, password, state: toWire(guest) } : { email, password };
+        : kind === 'signup' ? { email, password, state: toWire(guest) }
+          : { email, password, ...(!this.user && (guest.profile.length || guest.saved.length)
+            ? { guest_state: toWire(guest) } : {}) };
       const data = await this.request(kind, body, { csrf: kind === 'password' ? this.csrf : undefined });
-      await this.acceptSession(data, { guest: kind === 'login' && merge && !this.user ? guest : null });
+      await this.acceptSession(data);
       return data;
     } catch (error) {
       if (kind === 'password' && [401, 403].includes(error.status)) {
@@ -364,14 +592,14 @@ export class AccountSync {
         this.report('expired', 'Sign in again to continue.');
       }
       throw error;
-    } finally { this.authenticating = false; if (this.pending && this.connected) this.schedule(); }
+    } finally { this.authenticating = false; if (this.pending && this.connected && !this.blocked) this.schedule(); }
   }
 
   async logout() {
     await this.ready();
     if (this.authenticating) throw new AccountRequestError('An account request is already in progress.');
     await this.flush();
-    if (this.pending) throw new AccountRequestError('Sync your changes before signing out. Your changes are saved on this device.');
+    if (this.pending) throw new AccountRequestError('Your changes are safe on this device. Finish syncing before signing out.');
     this.authenticating = true;
     ++this.generation;
     clearTimeout(this.timer);
@@ -386,6 +614,11 @@ export class AccountSync {
       this.csrf = null;
       this.connected = false;
       this.pending = false;
+      this.blocked = false;
+      this.removals = emptyRemovals();
+      this.deferred = [];
+      this.deleted = emptyRemovals();
+      this.seen = new Map();
       this.local = this.guest();
       this.base = copy(this.local);
       await this.paint();
@@ -407,6 +640,11 @@ export class AccountSync {
         this.csrf = null;
         this.connected = false;
         this.pending = false;
+        this.blocked = false;
+        this.removals = emptyRemovals();
+        this.deferred = [];
+        this.deleted = emptyRemovals();
+        this.seen = new Map();
         this.local = this.guest();
         this.base = copy(this.local);
         await this.paint();
@@ -418,13 +656,40 @@ export class AccountSync {
       try { other = JSON.parse(event.newValue); } catch { return; }
       if (identity(other?.user)?.id !== this.user.id || !other.local || !other.base
         || !Number.isSafeInteger(other.revision) || other.revision < 0) return;
-      const local = this.sanitize(mergeStates(this.base, this.local, this.sanitize(other.local)));
-      if (!sameState(local, this.local)) {
-        this.local = local;
-        this.pending = !sameState(this.base, this.local);
+      const removals = mergeRemovals(this.removals, other.removals);
+      const deferred = this.rememberDeferred(this.deferred, other.deferred || [], other);
+      let local;
+      try {
+        // A tab's acknowledged server base may advance ours. Its pending edits
+        // must then be compared with ITS base, never treated as a full account
+        // snapshot: unchanged items in an old tab cannot resurrect deletions.
+        local = other.revision > this.revision ? mergeStates(this.base, this.local,
+          this.sanitize(other.base), { removals, revision: this.revision, deleted: this.deleted }) : this.local;
+        local = this.combineDeferred(local, deferred, removals);
+      } catch (error) {
+        if (!error.data?.capacity) throw error;
+        this.deferred = deferred;
+        this.removals = removals;
+        this.pending = true;
+        this.blocked = true;
+        clearTimeout(this.timer);
         this.persistCache();
-        await this.paint();
+        this.report('retry', error.message);
+        return;
       }
+      const changed = !sameState(local, this.local);
+      this.local = this.sanitize(local);
+      if (other.revision > this.revision) {
+        this.base = this.sanitize(other.base);
+        this.revision = other.revision;
+      }
+      this.removals = removals;
+      this.deferred = [];
+      this.blocked = false;
+      this.pending = !sameState(this.base, this.local) || hasDeleted(this.deleted);
+      this.learnSeen(other);
+      this.persistCache();
+      if (changed) await this.paint();
       await this.refresh();
     }
   }

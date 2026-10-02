@@ -1,0 +1,19 @@
+/* A shared floor for editable controls on phones, tablets and hybrid devices.
+   Keep it global so sheets and dialogs mounted elsewhere share the same rule. */
+@layer touch-forms {
+  @media (any-pointer: coarse) {
+    /* WebKit's native search and select appearances can ignore the font floor.
+       Existing component appearances still take precedence over these defaults. */
+    input[type="search"] { -webkit-appearance: textfield; appearance: textfield; }
+    select { -webkit-appearance: menulist-button; appearance: menulist-button; }
+    input,
+    select,
+    textarea,
+    [contenteditable]:not([contenteditable="false"]),
+    [contenteditable]:not([contenteditable="false"]) *,
+    [role="textbox"],
+    [role="textbox"] * {
+      font-size: max(16px, 1rem) !important;
+    }
+  }
+}
