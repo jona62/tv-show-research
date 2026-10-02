@@ -33,6 +33,8 @@ check('several seasons are plural', seasons(5) === '5 Seasons');
 check('names join in plain English', joinNames(['A']) === 'A' && joinNames(['A', 'B']) === 'A and B'
   && joinNames(['A', 'B', 'C']) === 'A, B and C' && joinNames([]) === '');
 check('home route', same(parseRoute('/', ''), { page: 'home', q: '', genre: '', show: null, episode: null, person: null }));
+check('comparison is its own page and keeps an open title', parseRoute('/compare', '?compare=169,16149&show=169').page === 'compare'
+  && parseRoute('/compare', '?compare=169,16149&show=169').show === 169);
 check('search route keeps its terms', same(parseRoute('/search', '?q=breaking%20bad'), { page: 'search', q: 'breaking bad', genre: '', show: null, episode: null, person: null }));
 check('a title opens over any page', same(parseRoute('/list', '?show=169'), { page: 'list', q: '', genre: '', show: 169, episode: null, person: null }));
 check('browse keeps its genre', same(parseRoute('/browse', '?genre=Science-Fiction'), { page: 'browse', q: '', genre: 'Science-Fiction', show: null, episode: null, person: null }));
@@ -46,6 +48,12 @@ check('a bad title id is ignored', parseRoute('/', '?show=abc').show === null &&
   && parseRoute('/', '?show=1.5').show === null);
 check('an unknown path falls back to home', parseRoute('/nope', '').page === 'home');
 check('opening a title keeps the search', withShow('/search', '?q=bad', 169) === '/search?q=bad&show=169');
+check('a different title clears the previous episode view and preserves comparison choices',
+  withShow('/compare', '?compare=169%2C16149&show=169&rating-view=grid&rating-season=2&rating-inverted=1', 16149)
+  === '/compare?compare=169%2C16149&show=16149');
+check('the same title keeps its selected view',
+  withShow('/', '?show=169&rating-view=grid&rating-season=2&rating-inverted=1', 169)
+  === '/?show=169&rating-view=grid&rating-season=2&rating-inverted=1');
 check('closing a title leaves a clean path', withShow('/', '?show=169', null) === '/'
   && withShow('/search', '?q=bad&show=169', null) === '/search?q=bad');
 check('opening a person keeps the page and the title beneath them',
@@ -538,6 +546,8 @@ sw.fetched.length = 0;
 check('the build\'s files come from what it kept', (await (await sw.ask('/assets/scripts/main.js', { mode: 'cors' })).text()) === 'main build one'
   && !sw.fetched.length);
 net = siteOf({}, { down: true });
+check('comparison links use the app shell offline',
+  (await (await sw.ask('/compare?compare=169,16149', { mode: 'navigate' })).text()) === 'the page, a new catalogue');
 check('without a connection, a page that is not the app\'s is the offline page',
   (await (await sw.ask('/nope', { mode: 'navigate' })).text()) === 'offline page');
 const poster = n => `https://static.tvmaze.com/uploads/images/medium_portrait/0/${n}.jpg`;

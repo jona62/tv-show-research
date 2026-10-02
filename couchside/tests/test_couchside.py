@@ -1813,7 +1813,7 @@ check('images come only from TVmaze, YouTube thumbnails and TMDB',
       "img-src 'self' data: https://static.tvmaze.com https://i.ytimg.com https://image.tmdb.org;" in policy)
 check('trailers play only in the no-cookie player', "frame-src https://www.youtube-nocookie.com;" in policy)
 check('no referrer goes to the image server', headers.get('Referrer-Policy') == 'no-referrer')
-for path in ('/new', '/list', '/search', '/browse', '/welcome'):
+for path in ('/new', '/list', '/search', '/browse', '/welcome', '/compare'):
     status, _headers, body = fetch(path)
     check(f'{path} is the page too', status == 200 and body == page_root)
 status, headers, body = fetch('/nope')
@@ -1873,7 +1873,8 @@ for path, kind in [('/assets/icons/favicon.ico', 'image/x-icon'), ('/assets/icon
     status, headers, _body = fetch(path)
     check(f'{path} is served as {kind}', status == 200 and headers.get('Content-Type') == kind, headers.get('Content-Type'))
 check('the service worker carries this build', b'__BUILD__' not in fetch('/sw.js')[2])
-imported = sorted(set(re.findall(r"from '\./([\w.-]+\.js)'", (ROOT / 'couchside' / 'client' / 'main.js').read_text())))
+imported = sorted(set(re.findall(r"""(?:from|import)\s*\(?\s*['"]\./([\w.-]+\.js)['"]""",
+                                (ROOT / 'couchside' / 'client' / 'main.js').read_text())))
 check('every module the page imports is built and served as JavaScript', 'gestures.js' in imported
       and all(status == 200 and headers.get('Content-Type') == 'text/javascript'
               for status, headers, _body in map(fetch, (f'/{output_path(name)}' for name in imported))), imported)
@@ -1971,7 +1972,7 @@ check('an error goes whole', fetch('/api/extra?id=abc', headers=GZ)[1].get('Cont
 kept_for_a_year = 'public, max-age=31536000, immutable'
 asked_by_hash = re.findall(rb'(?:src|href)="/assets/(?:scripts|styles)/([\w.-]+\.(?:js|css))\?v=([0-9a-f]{16})"', page_root)
 imports_by_hash = [(name, version) for source in ('main.js', 'starters.js', 'start.js')
-                   for name, version in re.findall(rb"from '\./([\w.-]+\.js)\?v=([0-9a-f]{16})'", fetch(f'/{output_path(source)}')[2])]
+                   for name, version in re.findall(rb"""(?:from|import)\s*\(?\s*['"]\./([\w.-]+\.js)\?v=([0-9a-f]{16})['"]""", fetch(f'/{output_path(source)}')[2])]
 icons_by_hash = re.findall(rb'href="/assets/(?:icons|images)/([\w.-]+\.(?:ico|svg|png))\?v=([0-9a-f]{16})"', page_root)
 manifest_icons = [*manifest['icons'], *(i for sc in manifest['shortcuts'] for i in sc['icons'])]
 icons_by_hash.extend((name.encode(), version.encode()) for icon in manifest_icons
@@ -1980,7 +1981,7 @@ dependencies = set(imported)
 queue = list(imported)
 while queue:
     source = queue.pop()
-    for name, version in re.findall(rb"from '\./([\w.-]+\.js)\?v=([0-9a-f]{16})'", fetch(f'/{output_path(source)}')[2]):
+    for name, version in re.findall(rb"""(?:from|import)\s*\(?\s*['"]\./([\w.-]+\.js)\?v=([0-9a-f]{16})['"]""", fetch(f'/{output_path(source)}')[2]):
         imports_by_hash.append((name, version))
         module = name.decode()
         if module not in dependencies:

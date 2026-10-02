@@ -53,10 +53,11 @@ assert.ok(Math.max(...paddedSeries.points.map(p=>p.y))<Math.min(...paddedSeries.
 for(const gap of [episode(null,3),episode(8,9),episode(8,1,3)]){
   const before=[episode(6),episode(8,2),gap,episode(7,10,gap.season)];
   const after=before.map((p,i)=>i>=2?{...p,rating:p.rating==null?null:10}:p);
-  const firstRun=list=>timelineModel(list).series[0].trend[0].map(p=>p.rating);
+  const firstRun=list=>timelineModel(list).series[0].trendPoints.slice(0,2).map(p=>p.rating);
   assert.deepEqual(firstRun(before),[7,7]);
   assert.deepEqual(firstRun(after),firstRun(before),'later scores cannot bleed across unrated episodes, missing numbers or seasons');
-  assert.equal(timelineModel(before).series[0].runs[0].length,2);
+  assert.equal(timelineModel(before).series[0].runs[0].length,before.filter(p=>p.rating!=null).length,
+    'the raw curve connects real samples while the averaging window keeps its boundaries');
 }
 
 const rawMoveCount=markup=>[...markup.matchAll(/<path\b([^>]*class="ratings-raw-line"[^>]*)>/g)]
@@ -69,8 +70,9 @@ for(const nextNumber of [1,3]){
   const series=timelineModel(joined).series[0];
   assert.equal(series.runs.length,1,'ordinary reset or absolute episode numbering connects across a season boundary');
   assert.deepEqual(series.trendRuns.map(run=>run.length),[2,2]);
-  assert.deepEqual(series.trend.map(run=>run.map(p=>p.rating)),[[7,7],[10,10]],
+  assert.deepEqual(series.trendPoints.map(p=>p.rating),[7,7,10,10],
     'the next season cannot change the preceding season average');
+  assert.equal(series.trend.length,1,'the average line connects the independently computed season windows');
   assert.equal(rawMoveCount(chart(joined)),1,'the rendered raw line also remains continuous');
 }
 const years=[episode(6,51,2000),episode(8,52,2000),episode(10,53,2001),episode(10,54,2001)];
@@ -86,9 +88,9 @@ for(const [name,list,expected] of [
   ['a gap at a season change',[episode(7,6),episode(9,3,2)],[['S1E6'],['S2E3']]],
 ]){
   const model=timelineModel(list);
-  assert.deepEqual(runCodes(model.series[0].runs),expected,`${name} breaks the raw line`);
-  assert.deepEqual(runCodes(model.series[0].trendRuns),expected,`${name} also breaks the average`);
-  assert.equal(rawMoveCount(chart(list)),expected.length,`${name} stays broken in the rendered path`);
+  assert.deepEqual(runCodes(model.series[0].runs),[expected.flat()],`${name} connects the real rated samples`);
+  assert.deepEqual(runCodes(model.series[0].trendRuns),expected,`${name} retains separate averaging windows`);
+  assert.equal(rawMoveCount(chart(list)),1,`${name} keeps one continuous rendered path`);
   assert.equal(model.series[0].points.length,list.length,'unrated entries keep their ordinal position');
 }
 
@@ -194,7 +196,7 @@ const compared=timelineModel([episode(0),episode(10,2),episode(8,1,2),episode(7,
   [episode(9,1),episode(10,1,3)]);
 assert.equal(compared.series[0].points[0].rating,5,'comparison plots actual season means');
 assert.equal(compared.low,4.75,'comparison scale follows plotted averages rather than individual outliers');
-assert.deepEqual(compared.series[1].runs.map(run=>run.map(p=>p.season)),[[1],[3]],'a missing season breaks the comparison line');
+assert.deepEqual(compared.series[1].runs.map(run=>run.map(p=>p.season)),[[1,3]],'comparison lines connect each show\'s actual season means');
 assert.equal(compared.series[0].trend.length,0,'season comparisons do not add an episode moving average');
 assert.equal(compared.series[0].trendRuns.length,0);
 const comparedAxis=timelineAxis(compared);

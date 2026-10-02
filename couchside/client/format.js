@@ -1,7 +1,7 @@
 // Small pure helpers, shared by the page and test_format.mjs.
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const PAGES = { '/': 'home', '/new': 'new', '/list': 'list', '/search': 'search', '/welcome': 'welcome', '/browse': 'browse' };
+const PAGES = { '/': 'home', '/new': 'new', '/list': 'list', '/search': 'search', '/welcome': 'welcome', '/browse': 'browse', '/compare': 'compare' };
 
 // "2008" while it runs or when it ended the year it began, "2008–2013" otherwise.
 export const years = (start, ended) => !start ? '' : ended && ended > start ? `${start}–${ended}` : String(start);
@@ -227,7 +227,10 @@ function withId(pathname, search, key, id, closes = []) {
 }
 // A title opened over the page, or closed; either way no episode stays open, since an
 // episode belongs to the title it was opened from.
-export const withShow = (pathname, search, id) => withId(pathname, search, 'show', id, ['episode']);
+export const withShow = (pathname, search, id) => {
+  const changed = Number(new URLSearchParams(search).get('show')) !== id;
+  return withId(pathname, search, 'show', id, ['episode', ...(changed ? ['rating-view', 'rating-season', 'rating-inverted'] : [])]);
+};
 // The same title with one of its episodes opened over it, or closed again.
 export const withEpisode = (pathname, search, id) => withId(pathname, search, 'episode', id);
 // A person opened over the page, beside the title or episode they were opened from, or closed.

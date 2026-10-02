@@ -20,7 +20,7 @@ const FILES = __FILES__;
 const SHELL = `couchside-${VERSION}`;
 const IMAGES = 'couchside-images';
 // The app's own pages (PAGES in server.py): each is the one page, which routes itself.
-const PAGES = ['/', '/index.html', '/new', '/list', '/search', '/browse', '/welcome'];
+const PAGES = ['/', '/index.html', '/new', '/list', '/search', '/browse', '/welcome', '/compare'];
 const IMAGE_HOSTS = ['static.tvmaze.com', 'image.tmdb.org', 'i.ytimg.com'];
 const MOST_SMALL = 1000, MOST_LARGE = 40;
 // Full-size art and backdrops run to a few hundred KB each; posters, stills and logos to tens.

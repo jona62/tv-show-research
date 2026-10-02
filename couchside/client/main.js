@@ -1,4 +1,5 @@
 import { mountEpisodeRatings } from './episode-ratings.js';
+import { mountCompare, comparisonURL } from './compare.js';
 import { mountTitleSections } from './title-sections.js';
 import { enhanceShowCard,receiveMatrices,matrixPreference } from './show-cards.js';
 import { mountTaste } from './taste.js';
@@ -38,11 +39,12 @@ const RATES = [
   { weight: .7, label: 'I like this', icon: 'up', said: 'Liked. Your rows will lean toward it.' },
   { weight: 1, label: 'Love this!', icon: 'heart', said: 'Loved. Your rows will lean hard toward it.' },
 ];
-const VIEWS = ['home', 'welcome', 'browse', 'new', 'list', 'search'];
+const VIEWS = ['home', 'welcome', 'browse', 'new', 'list', 'search', 'compare'];
 const pageFilters = new Map();
 const TITLES = {
   home: 'Couchside', welcome: 'Welcome · Couchside', new: 'New & Popular · Couchside',
   list: 'My List · Couchside', search: 'Search · Couchside', browse: 'Browse · Couchside',
+  compare: 'Compare shows · Couchside',
 };
 // Thumb, heart, star, search and navigation shapes follow Feather icons (MIT, Cole Bemis).
 const ICONS = {
@@ -67,6 +69,8 @@ const ICONS = {
   pause: '<path d="M8 5v14M16 5v14" stroke-width="3.4"/>',
   more: '<path d="M6 9l6 6 6-6"/>',
   share: '<path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"/>',
+  download: '<path d="M12 3v12m-5-5 5 5 5-5M4 16v4a1 1 0 001 1h14a1 1 0 001-1v-4"/>',
+  compare: '<rect x="3" y="4" width="7" height="16" rx="2"/><rect x="14" y="4" width="7" height="16" rx="2"/><path d="M6 8h1m10 0h1M6 12h1m10 0h1M6 16h1m10 0h1"/>',
   grid: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>',
   star: '<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z" fill="currentColor"/>',
 };
@@ -428,6 +432,29 @@ function ratingOf(id, tm, watching = false) {
 
 /* -------------------------------------------------------------- routing */
 let view = null;
+let compareDispose = null, compareKey = '';
+const comparisonKey = search => {
+  const params = new URLSearchParams(search);
+  return ['compare', 'mode', 'compare-inverted', 'averages', 'seasons'].map(key => `${key}=${params.get(key) || ''}`).join('&');
+};
+function renderCompare() {
+  const key = comparisonKey(location.search);
+  if (compareDispose && key === compareKey) return;
+  compareDispose?.();
+  compareKey = key;
+  compareDispose = mountCompare($('compare-body'), {
+    search: location.search,
+    replaceURL: path => {
+      const target = new URL(path, location.origin), current = new URLSearchParams(location.search);
+      for (const key of ['show', 'episode', 'person', 'rating-view', 'rating-season', 'rating-inverted']) {
+        if (current.has(key)) target.searchParams.set(key, current.get(key));
+      }
+      history.replaceState(history.state, '', target.pathname + target.search);
+      compareKey = comparisonKey(target.search);
+    },
+    openShow: id => openTitle(id), saveSnapshot: saveRatingSnapshot, announce: toast,
+  });
+}
 let dockRest = 0;    // the pause after a scroll that brings the dock back
 const where = () => parseRoute(location.pathname, location.search);
 
@@ -449,13 +476,14 @@ function route() {
   if (name !== view) showView(name);
   else if (name === 'browse') renderBrowse();
   if (name === 'search') search(q, false);
+  if (name === 'compare') renderCompare();
   const place = history.state?.place || {};
   if (show) {
     if (!$('title').open || titleId !== show) {
       // A title opening beneath someone's page would open over it, so theirs goes and comes back.
       if (person && personId && !$('title').open) hidePerson(true);
       showTitle(show, false, place.title);
-    }
+    } else T?.ratingRestore?.();
     if (episode && episodeId !== episode) {
       // So would an episode.
       if (person && personId && !$('episode').open) hidePerson(true);
@@ -476,6 +504,7 @@ function showView(name) {
 }
 
 function paintView(name) {
+  if (name !== 'compare') { compareDispose?.(); compareDispose = null; compareKey = ''; }
   for (const id of VIEWS) $(id).hidden = id !== name;
   const current = name === 'welcome' ? 'home' : name;
   for (const a of document.querySelectorAll('[data-page]')) {
@@ -531,8 +560,12 @@ function dockAway(away) {
 // The button that stands in for the dock: the icon and name of the section you are in.
 function paintDockMini() {
   const on = document.querySelector('.dock [aria-current=page]');
-  if (!on) return;
   const mini = $('dock-mini');
+  if (!on) {
+    mini.replaceChildren(icon('more'));
+    mini.setAttribute('aria-label', 'Show every section');
+    return;
+  }
   mini.replaceChildren(icon(on.dataset.icon));
   mini.setAttribute('aria-label', `${on.getAttribute('aria-label') || on.textContent.trim()}. Show every section`);
 }
@@ -2306,9 +2339,19 @@ function buildTitle(c) {
   const share = button('round', '', shareTitle, 'share');
   share.setAttribute('aria-label', 'Share');
   share.title = 'Share';
+  const snapshot = button('round', '', () => saveTitleSnapshot(t), 'download');
+  snapshot.setAttribute('aria-label', 'Save image');
+  snapshot.title = 'Save image';
+  snapshot.disabled = true;
+  const compare = button('round', '', () => {
+    try { go(comparisonURL(c.id, location.search)); }
+    catch (error) { toast(error.message || 'This show could not be added. Try again.'); }
+  }, 'compare');
+  compare.setAttribute('aria-label', 'Add to compare');
+  compare.title = 'Add to compare';
   // The round buttons keep to a line of their own on a phone, under Trailer and My List.
   const icons = el('div', '', 't-icons');
-  icons.append(...(newer(c.id) ? [] : [rateGroup(c)]), share, out);
+  icons.append(...(newer(c.id) ? [] : [rateGroup(c)]), share, snapshot, compare, out);
   // Trailer's place, until the title says whether it has one (paintTrailerButton).
   const trailer = el('span', '', 'btn skel trailer');
   trailer.setAttribute('aria-hidden', 'true');
@@ -2358,6 +2401,13 @@ function buildTitle(c) {
               eps: null, epsMore: null, clipList: null, clipsMore: null, pick: null, season: null, episodeSeason: null,
               episodeData: null, ratingsFailed: false,
               open: { watch: false, episodes: false, clips: false } };
+  t.saveSnapshot = snapshot;
+  t.snapshotReady = false;
+  t.snapshotBusy = false;
+  t.ratingSnapshotReady = ready => {
+    t.snapshotReady = ready;
+    snapshot.disabled = !canSaveTitleSnapshot(t) || t.snapshotBusy;
+  };
   paintOut(t, c);
   mountTitleSections(t, { revealButton, paintReveal, unfold, busy, edges });
   for(const [page,section] of [['more',more],['fans',fans]]){
@@ -2446,6 +2496,7 @@ function paintTitle() {
   if (!T) return;
   const s = { ...T.card, ...(T.data?.show || {}) };
   const live = T.live;
+  T.ratingSnapshotReady?.(T.snapshotReady);
   // Until the title is here, what it will say stands in, in its own shape.
   const waiting = !T.data && !T.error;
   if (s.name || !waiting) T.name.textContent = s.name || '';
@@ -2816,8 +2867,38 @@ function stopVideo() {
 async function shareTitle() {
   if (!T) return;
   const s = { ...T.card, ...(T.data?.show || {}) };
-  await shareLink(`${location.origin}/?show=${s.id}`, `${s.name} on Couchside`, `${s.name}${s.year ? ` (${s.year})` : ''}`,
+  const params = new URLSearchParams({show: String(s.id)}), current = new URLSearchParams(location.search);
+  for (const key of ['rating-view', 'rating-season', 'rating-inverted']) {
+    if (current.has(key)) params.set(key, current.get(key));
+  }
+  await shareLink(`${location.origin}/?${params}`, `${s.name} on Couchside`, `${s.name}${s.year ? ` (${s.year})` : ''}`,
     'Link copied. It opens straight to this show.');
+}
+async function saveRatingSnapshot(model) {
+  const frozen = structuredClone(model);
+  const { downloadRatingSnapshot } = await import('./rating-snapshots.js');
+  const result = await downloadRatingSnapshot(frozen);
+  toast(result.pages.length > 1 ? 'Images saved together in one ZIP.' : 'Image saved.');
+  return result;
+}
+function canSaveTitleSnapshot(t) {
+  return t.snapshotReady && Boolean(t.data?.show?.name || t.card?.name)
+    && Boolean(t.data || t.card?.art || t.card?.poster);
+}
+async function saveTitleSnapshot(t) {
+  if (!t.ratingSnapshot || t.saveSnapshot.disabled) return;
+  const model = t.ratingSnapshot();
+  t.snapshotBusy = true;
+  t.saveSnapshot.disabled = true;
+  t.saveSnapshot.setAttribute('aria-busy', 'true');
+  toast('Preparing your image…');
+  try { await saveRatingSnapshot(model); }
+  catch (error) { toast(error.message || 'The image could not be saved. Try again.', 8000); }
+  finally {
+    t.snapshotBusy = false;
+    t.saveSnapshot.removeAttribute('aria-busy');
+    t.saveSnapshot.disabled = !canSaveTitleSnapshot(t);
+  }
 }
 // The phone's own share sheet where there is one, and the clipboard elsewhere.
 async function shareLink(url, title, text, copied) {

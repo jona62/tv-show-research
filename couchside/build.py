@@ -41,7 +41,8 @@ CLIENT = HERE / 'client'
 BACKEND = HERE / 'backend'
 OWN = ('style.css', 'main.js', 'format.js', 'gestures.js', 'start.js', 'ratings.js',
        'episode-ratings.js', 'episode-timeline.js', 'show-cards.js', 'title-sections.js', 'filter-state.js', 'filters.js', 'network.js',
-       'accounts.js', 'account-state.js', 'taste.js', 'list-transfer.js')
+       'accounts.js', 'account-state.js', 'taste.js', 'list-transfer.js', 'compare.js',
+       'rating-views.js', 'rating-snapshots.js', 'snapshot-images.js')
 SHARED = ('transfer.js', 'qr.js', 'fresh.js', 'starters.js')
 # Shared packages are copied into backend/ so this app deploys by itself.
 MODULES = ('engine.py', 'taste.py', 'titles.py', 'fallback.py', 'follow.py', 'facets.py', 'neighbours.py', 'fresh.py',
@@ -175,7 +176,7 @@ def main():
     reset_public(PUBLIC)
     for name in OWN:
         if name.endswith('.css'):
-            bundle_styles(CLIENT / name, built(name), extras=(CLIENT / 'taste.css',))
+            bundle_styles(CLIENT / name, built(name), extras=(CLIENT / 'taste.css', CLIENT / 'compare.css'))
         else:
             shutil.copyfile(CLIENT / name, built(name))
     for name in SHARED:

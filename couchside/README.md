@@ -35,7 +35,17 @@ rebuilt every night. Nothing plays. It is for finding your next show.
   keeps to one line of services, each season to its first three episodes and the
   trailers to the first two (a row of three on a wide screen), and a button opens
   the rest and closes it again. *Trailer* plays it right there. Rate it *Not for
-  me*, *I like this* or *Love this*, or add it to My List.
+  me*, *I like this* or *Love this*, or add it to My List. Episode ratings offer
+  Episode list, Grid, Wrapped and Timeline views; invert Grid to swap the season
+  and episode axes. The round **Save image** action saves the complete selected
+  view with its full poster and Couchside header, preserving every episode in
+  labeled PNG parts inside one ZIP when the view is large.
+- **Compare shows** opens from **Add to compare** beside a title's Share and
+  TVmaze actions. Search for multiple shows, reorder them, invert the table and
+  choose season averages across all seasons or episode ratings from an independently
+  selected season for each show. Overall averages count every rated episode equally
+  and exclude unrated entries. Save image keeps the current order and options;
+  the page's link keeps them too. Comparisons do not change My List or your taste.
 - **An episode** opens from its season's list in a sheet of its own over the title
   page: its largest still, *S2 E5*, the air date (or, still to come, when it airs in
   your own time), runtime and TVmaze rating, the whole summary, who directed and

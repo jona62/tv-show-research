@@ -1,4 +1,4 @@
-import { leaningHeading } from './format.js?v=e565cc65c0882a95';
+import { leaningHeading } from './format.js?v=9c2dfc9440b436fa';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const RATES = [-1, 0, .35, .7, 1];

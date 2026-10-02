@@ -510,8 +510,8 @@ dialog.modal::backdrop{background:#000000b8}
   text-shadow:0 2px 12px #000b;overflow-wrap:anywhere}
 .t-acts{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .t-icons{display:flex;align-items:center;gap:10px}
-/* On a phone, Trailer and My List share the first line and the round buttons keep to the
-   second, close together and all on it: the gap narrows before any button wraps. */
+/* On a phone, Trailer and My List share the first line. Title actions follow below;
+   their gap narrows before they wrap on the smallest screens. */
 @media(max-width:759px){
   .t-acts>.btn{flex:1 1 0}
   .t-icons{flex:1 0 100%;gap:clamp(4px,calc((90vw - 264px) / 5),10px)}

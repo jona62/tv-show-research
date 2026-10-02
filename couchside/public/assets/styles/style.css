@@ -511,8 +511,8 @@ dialog.modal::backdrop{background:#000000b8}
   text-shadow:0 2px 12px #000b;overflow-wrap:anywhere}
 .t-acts{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .t-icons{display:flex;align-items:center;gap:10px}
-/* On a phone, Trailer and My List share the first line and the round buttons keep to the
-   second, close together and all on it: the gap narrows before any button wraps. */
+/* On a phone, Trailer and My List share the first line. Title actions follow below;
+   their gap narrows before they wrap on the smallest screens. */
 @media(max-width:759px){
   .t-acts>.btn{flex:1 1 0}
   .t-icons{flex:1 0 100%;gap:clamp(4px,calc((90vw - 264px) / 5),10px)}
@@ -1313,6 +1313,75 @@ dialog.peek::backdrop{background:#000000c7}
   .taste-radar-grid,.taste-radar-axis{stroke:GrayText}
   .taste-radar-reference{stroke:CanvasText;fill:none}
   .taste-radar-liked{stroke:Highlight;fill:none}
+}
+
+/* Episode matrices share the title page's compact cells and rating palette. */
+.rating-table{border-collapse:separate;border-spacing:6px;table-layout:fixed;min-width:max-content;margin:-6px}
+.rating-table th{font-size:11px;font-weight:400;color:var(--muted);padding:5px 2px;min-width:34px;text-align:center}
+.rating-table th:first-child{min-width:48px;text-align:left;font-size:12px;color:var(--ink-2)}
+.rating-table td{padding:0;min-width:34px;width:38px}
+.rating-cell{display:grid;place-content:center;width:100%;min-width:34px;height:38px;border:0;border-radius:4px;font:inherit;font-size:12px;font-weight:700;line-height:1.2;font-variant-numeric:tabular-nums;cursor:pointer}
+.rating-cell:hover,.rating-cell:focus-visible{box-shadow:0 0 0 2px var(--ink);outline-offset:3px}
+.rating-cell.mean-cell{background:none!important;color:var(--ink)!important;font-size:13px}
+.cell-count{font-size:10px;font-weight:400;opacity:.8;display:block;margin-top:3px}
+.rating-empty{display:block;height:38px;color:transparent}
+.rating-table th small{display:block;font-size:10px;color:var(--dim);margin-top:3px}
+.rating-table .mean-column{padding-left:6px}
+.rating-table .average-row>*{border-top:1px solid var(--line);padding-top:8px}
+.ratings-invert{font-size:13px;min-height:38px}
+.t-icons{flex-wrap:wrap}
+.round:disabled{opacity:.45;cursor:default}
+
+/* Compare is reached from a show's title actions, using the existing page shell. */
+.compare-page{max-width:1180px;margin:0 auto;padding:0 var(--gutter)}
+.compare-header{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:24px}
+.compare-header .page-h{margin:0}
+.compare-header .btn{flex:none}
+.compare-page .note{margin-inline:0}
+.compare-search{max-width:560px;margin:0 0 24px}
+.compare-result-action{margin-left:auto;font-size:12px;color:var(--muted)}
+.compare-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-bottom:24px}
+.compare-card{min-width:0;background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:10px 16px 16px}
+.compare-card.is-grabbed{border-color:var(--brand)}
+.compare-card.is-dragging{opacity:.45}
+.compare-card-top{display:flex;justify-content:space-between;align-items:center;margin:0 -8px 6px}
+.compare-card-top .icon-btn{color:var(--muted)}
+.compare-reorder-handle{cursor:grab}
+.compare-show-title{display:flex;align-items:center;gap:12px;min-height:84px}
+.compare-poster{width:48px;height:72px;object-fit:cover;border-radius:3px;flex:none}
+.compare-show-title h4{margin:0 0 4px;font-size:15px;font-weight:600;overflow-wrap:anywhere}
+.compare-show-title .link{text-align:left;font-weight:600}
+.compare-card .note{margin:0;font-size:12px}
+.compare-card-bottom{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px}
+.compare-reorder-actions{display:flex;gap:6px}
+.compare-reorder-actions button:disabled{opacity:.35;cursor:default}
+.compare-card-bottom>span{font-size:12px;color:var(--muted)}
+.compare-card select{background:#242424;border:1px solid #4d4d4d;border-radius:4px;padding:8px 10px;min-width:110px}
+.compare-toolbar{gap:12px}
+.compare-scope button{padding:8px 14px;font-size:13px;white-space:nowrap;min-width:112px}
+.compare-board{border-top:1px solid var(--line);padding-top:20px}
+.compare-board .ratings-grid-scroll{padding:4px 3px 12px;margin-inline:-3px;overscroll-behavior-x:contain}
+.compare-board .rating-table th{min-width:104px}
+.compare-board .rating-table th:first-child{min-width:56px}
+.compare-board .rating-table td{min-width:108px}
+.compare-board .rating-cell{height:48px}
+.compare-board .rating-table .show-heading{color:var(--ink-2);font-size:12px;font-weight:600}
+.compare-status{font-size:14px;color:var(--muted);margin:8px 0 20px}
+.compare-snapshot-error{color:var(--ink-2)}
+
+@media(max-width:759px){
+  .rating-cell,.rating-empty{height:40px}
+  .compare-header{flex-wrap:wrap;gap:12px;margin-bottom:20px}
+  .compare-header .btn{padding:8px 14px}
+  .compare-cards{grid-template-columns:minmax(0,1fr);gap:10px}
+  .compare-card{padding:10px 14px 14px}
+  .compare-card-top{margin-bottom:0}
+  .compare-show-title{min-height:68px}
+  .compare-poster{width:40px;height:60px}
+  .compare-card-bottom{margin-top:10px}
+  .compare-reorder-actions .round{width:44px;height:44px}
+  .compare-toolbar{gap:10px}
+  .compare-scope button,.ratings-invert{min-height:44px}
 }
 
 /* Keep editable text large enough to avoid iOS focus zoom. This fallback must

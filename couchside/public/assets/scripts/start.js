@@ -9,7 +9,7 @@ import { apiFetch } from './network.js?v=4038b4a1107593ef';
 // added anywhere else would have main.js ask again.
 import { LIMITS, packList } from './transfer.js?v=2bfd019beccdb78d';
 import { freshStore, today, prune, beginVisit, freshness } from './fresh.js?v=afcc972f76479400';
-import { pageKey, ongoing, resumable } from './format.js?v=e565cc65c0882a95';
+import { pageKey, ongoing, resumable } from './format.js?v=9c2dfc9440b436fa';
 import {filtersFor,filterKey,wantsMatrices} from './filter-state.js?v=2a62eef7fd5aeeda';
 
 /* ------------------------------------------------------------- the list */

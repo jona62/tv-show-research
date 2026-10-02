@@ -1,25 +1,56 @@
-import { apiFetch } from './network.js';
 import {chart,nearestRatingPoint} from './episode-timeline.js';
 export {chart,smoothPath} from './episode-timeline.js';
-import {esc,score,code,average,seasons,band,icon,html,legend,ratings,ratingSource,ratingSources} from './ratings.js';
+import {esc,score,average,seasons,band,icon,html,legend,ratings,ratingSource,ratingSources} from './ratings.js';
+import {detailMatrix,ratingTableHTML,seasonName,episodeCode} from './rating-views.js';
 const plain = value => new DOMParser().parseFromString(value||'', 'text/html').body.textContent||'';
 const layouts=[['list','Episode list'],['grid','Grid'],['wrapped','Wrapped'],['timeline','Timeline']];
 const ep = e => ({...e,still:e.image,summary:plain(e.summary)});
 const options = (items,value) => items.map(([v,t])=>`<option value="${v}" ${String(v)===String(value)?'selected':''}>${esc(t)}</option>`).join('');
 
-function picker(onChange) {
+export function ratingDetailView(search,episodes) {
+  const params=new URLSearchParams(search),view=params.get('rating-view'),selected=params.get('rating-season');
+  return {view:layouts.some(([id])=>id===view)?view:'list',
+    season:[...new Set(episodes.map(e=>e.season))].find(n=>String(n)===selected)??'all',
+    inverted:params.get('rating-inverted')==='1'};
+}
+
+export function ratingDetailSearch(search,state) {
+  const params=new URLSearchParams(search);
+  for(const [key,value,fallback] of [['rating-view',state.view,'list'],
+    ['rating-season',String(state.season),'all'],['rating-inverted',state.inverted?'1':'0','0']]) {
+    if(value===fallback)params.delete(key);else params.set(key,value);
+  }
+  return params.toString();
+}
+
+export function ratingDetailSnapshot(t,data,state) {
+  const show={...t.card,...t.data?.show,...t.live};
+  const episodes=data.episodes.filter(e=>state.season==='all'||e.season===Number(state.season));
+  // These are the portrait artwork fields. Backdrops and rendered hero images
+  // must never replace the source poster in an exported rating view.
+  return structuredClone({kind:'detail',id:t.id,title:show.name||data.name||t.name?.textContent||'This show',
+    poster:show.art||show.poster||null,year:show.year??null,status:show.status??null,
+    season:state.season,view:state.view,inverted:state.inverted,averages:true,
+    episodes,sources:ratingSources({episodes})||data.sources||'',cacheFetchedAt:data.cacheFetchedAt??null});
+}
+
+function picker(onChange,value='list') {
   const node=document.createElement('div');node.className='ratings-picker';
-  html(node,`<button type="button" class="ratings-view-button" aria-label="Episode layout: Episode list" aria-haspopup="listbox" aria-expanded="false" aria-controls="ratings-view-options">${icon('list')}<span>Episode list</span>${icon('down')}</button><div id="ratings-view-options" class="ratings-view-options" role="listbox" aria-label="Episode layout" hidden>${layouts.map(([id,label])=>`<button type="button" role="option" aria-selected="${id==='list'}" data-layout="${id}">${icon(id)}<span>${label}</span>${icon('check')}</button>`).join('')}</div>`);
+  const label=layouts.find(([id])=>id===value)[1];
+  html(node,`<button type="button" class="ratings-view-button" aria-label="Episode layout: ${label}" aria-haspopup="listbox" aria-expanded="false" aria-controls="ratings-view-options">${icon(value)}<span>${label}</span>${icon('down')}</button><div id="ratings-view-options" class="ratings-view-options" role="listbox" aria-label="Episode layout" hidden>${layouts.map(([id,label])=>`<button type="button" role="option" aria-selected="${id===value}" data-layout="${id}">${icon(id)}<span>${label}</span>${icon('check')}</button>`).join('')}</div>`);
   const trigger=node.querySelector('.ratings-view-button'),menu=node.querySelector('[role=listbox]');
   const close=()=>{menu.hidden=true;trigger.setAttribute('aria-expanded','false');};
   const open=()=>{menu.hidden=false;trigger.setAttribute('aria-expanded','true');menu.querySelector('[aria-selected=true]').focus();};
+  node.setValue=value=>{
+    const label=layouts.find(([id])=>id===value)[1];
+    node.querySelectorAll('[data-layout]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.layout===value)));
+    html(trigger,`${icon(value)}<span>${label}</span>${icon('down')}`);
+    trigger.setAttribute('aria-label',`Episode layout: ${label}`);close();
+  };
   trigger.onclick=()=>menu.hidden?open():close();
   trigger.onkeydown=e=>{if(['ArrowDown','ArrowUp'].includes(e.key)){e.preventDefault();open();}};
   node.querySelectorAll('[data-layout]').forEach(button=>button.onclick=()=>{
-    node.querySelectorAll('[data-layout]').forEach(b=>b.setAttribute('aria-selected',String(b===button)));
-    html(trigger,`${icon(button.dataset.layout)}<span>${button.querySelector('span').textContent}</span>${icon('down')}`);
-    trigger.setAttribute('aria-label',`Episode layout: ${button.querySelector('span').textContent}`);
-    close();trigger.focus();onChange(button.dataset.layout);
+    node.setValue(button.dataset.layout);trigger.focus();onChange(button.dataset.layout);
   });
   node.onkeydown=e=>{
     if(e.key==='Escape'&&!menu.hidden){e.stopPropagation();close();trigger.focus();}
@@ -35,16 +66,11 @@ function picker(onChange) {
 function cell(e) {
   if(!e)return '<span></span>';
   const b=band(e.rating);
-  return `<button type="button" class="ratings-cell" style="background:${b.colour};color:${b.text}" data-episode="${e.id}" aria-label="${code(e)}: ${esc(e.name)}, ${score(e.rating)}${e.rating==null?'':' out of 10'}, ${b.name}">${e.rating==null?'—':score(e.rating)}</button>`;
+  return `<button type="button" class="ratings-cell" style="background:${b.colour};color:${b.text}" data-episode="${e.id}" aria-label="${episodeCode(e)}: ${esc(e.name)}, ${score(e.rating)}${e.rating==null?'':' out of 10'}, ${b.name}">${e.rating==null?'—':score(e.rating)}</button>`;
 }
-function grid(es) {
-  const ss=[...new Set(es.map(e=>e.season))],max=Math.max(1,...es.map(e=>e.number));
-  let out='<span class="ratings-axis">Season</span>'+Array.from({length:max},(_,i)=>`<span class="ratings-axis">E${i+1}</span>`).join('')+'<span class="ratings-axis">Avg.</span>';
-  for(const n of ss){const eps=es.filter(e=>e.season===n);out+=`<span class="ratings-season">S${n}</span>`+Array.from({length:max},(_,i)=>cell(eps.find(e=>e.number===i+1))).join('')+`<span class="ratings-average">${score(average(eps))}</span>`;}
-  return `<div class="ratings-grid-scroll" tabindex="0" aria-label="Episode ratings grid; scroll for more episodes"><div class="ratings-grid" style="grid-template-columns:48px repeat(${max},minmax(34px,1fr)) 40px">${out}</div></div>`;
-}
+export const ratingDetailGrid=(episodes,inverted=false)=>ratingTableHTML(detailMatrix({episodes,inverted,averages:true}));
 function wrapped(es) {
-  return [...new Set(es.map(e=>e.season))].map(n=>{const eps=es.filter(e=>e.season===n);return `<section class="ratings-wrapped-season"><div class="ratings-wrapped-heading"><b>Season ${n}</b><span>${score(average(eps))} average</span></div><div class="ratings-wrapped-cells">${eps.map(e=>`<div><span class="ratings-axis">E${e.number}</span>${cell(e)}</div>`).join('')}</div></section>`;}).join('');
+  return [...new Set(es.map(e=>e.season))].map(n=>{const eps=es.filter(e=>e.season===n);return `<section class="ratings-wrapped-season"><div class="ratings-wrapped-heading"><b>${seasonName(n)}</b><span>${score(average(eps))} average</span></div><div class="ratings-wrapped-cells">${eps.map(e=>`<div><span class="ratings-axis">E${e.number}</span>${cell(e)}</div>`).join('')}</div></section>`;}).join('');
 }
 
 function bindTimelineNavigation(node) {
@@ -140,7 +166,7 @@ function tooltip(host) {
     hide();
     active={target};
     const b=band(e.rating),summary=plain(e.summary).trim();
-    html(tip,`${e.image?`<img src="${esc(e.image)}" alt="" loading="lazy">`:''}<div class="ratings-tooltip-body"><span class="ratings-tooltip-code">${showName?esc(showName)+' · ':''}${e.number?code(e):'Season '+e.season}</span><b>${esc(e.name||'Season average')}</b><div class="ratings-tooltip-score"><strong style="background:${b.colour};color:${b.text}">${score(e.rating)}</strong><span>${b.name}<small>${e.rating==null?'Awaiting audience ratings':`out of 10 on ${esc(ratingSource(e))}${e.rating_votes?' · '+Number(e.rating_votes).toLocaleString()+' votes':''}`}</small></span></div>${e.number?`<p class="ratings-tooltip-summary">${esc(summary||'No episode description available.')}</p>`:''}</div>`);
+    html(tip,`${e.image?`<img src="${esc(e.image)}" alt="" loading="lazy">`:''}<div class="ratings-tooltip-body"><span class="ratings-tooltip-code">${showName?esc(showName)+' · ':''}${e.number?episodeCode(e):seasonName(e.season)}</span><b>${esc(e.name||'Season average')}</b><div class="ratings-tooltip-score"><strong style="background:${b.colour};color:${b.text}">${score(e.rating)}</strong><span>${b.name}<small>${e.rating==null?'Awaiting audience ratings':`out of 10 on ${esc(ratingSource(e))}${e.rating_votes?' · '+Number(e.rating_votes).toLocaleString()+' votes':''}`}</small></span></div>${e.number?`<p class="ratings-tooltip-summary">${esc(summary||'No episode description available.')}</p>`:''}</div>`);
     tip.hidden=false;target.setAttribute('aria-describedby',tip.id);
     position();
   };
@@ -156,101 +182,100 @@ function tooltip(host) {
   host.addEventListener('scroll',scrolled,true);dialog?.addEventListener('scroll',scrolled);window.addEventListener('resize',position);
   return {show,hide,leave,dispose:()=>{hide();host.removeEventListener('scroll',scrolled,true);dialog?.removeEventListener('scroll',scrolled);window.removeEventListener('resize',position);}};
 }
-function compareSearch(host,s,onPick) {
-  html(host,`<div class="ratings-compare-head"><h4>Compare with another show</h4><span class="ratings-compare-selected"></span></div><div class="ratings-search-wrap">${icon('search')}<input type="search" placeholder="Search any show…" aria-label="Find a show to compare" autocomplete="off" aria-controls="ratings-compare-results" aria-expanded="false"><div class="ratings-compare-results" id="ratings-compare-results" hidden></div></div><p class="ratings-search-status" role="status"></p><div class="ratings-comparison"></div>`);
-  const input=host.querySelector('input'),results=host.querySelector('.ratings-compare-results'),status=host.querySelector('[role=status]'),selected=host.querySelector('.ratings-compare-selected');
-  let timer,token=0;
-  const dismiss=()=>{results.hidden=true;input.setAttribute('aria-expanded','false');};
-  const choose=async c=>{
-    const asked=++token;dismiss();input.value='';status.textContent='Loading '+c.name+'…';
-    try{const data=await ratings(c.id);if(asked!==token)return;const other={...data,name:c.name};status.textContent='';onPick(other);html(selected,`<span>${esc(c.name)}</span><button type="button" class="link" aria-label="Remove comparison">${icon('close')}</button>`);selected.querySelector('button').onclick=()=>{token++;selected.replaceChildren();onPick(null);input.focus();};}
-    catch(error){if(asked===token){status.textContent=error.message;}}
-  };
-  input.oninput=()=>{
-    clearTimeout(timer);const q=input.value.trim(),asked=++token;dismiss();if(q.length<2){status.textContent='';return;}
-    status.textContent='Searching…';
-    timer=setTimeout(async()=>{
-      try{const response=await apiFetch(`/api/search?q=${encodeURIComponent(q)}`),body=await response.json();if(asked!==token)return;if(!response.ok)throw Error(body.error||'Search is unavailable.');
-        const shows=(body.shows||[]).filter(c=>c.id!==s.id).slice(0,8);
-        html(results,shows.map(c=>`<button type="button" class="ratings-search-result" data-id="${c.id}">${c.poster?`<img src="${esc(c.poster)}" alt="">`:''}<span><b>${esc(c.name)}</b><small>${esc(c.year||'')}</small></span>${icon('down')}</button>`).join(''));
-        results.querySelectorAll('button').forEach(b=>b.onclick=()=>choose(shows.find(c=>c.id===Number(b.dataset.id))));results.hidden=!shows.length;input.setAttribute('aria-expanded',String(Boolean(shows.length)));status.textContent=shows.length?'':'No matching shows.';
-      }catch(error){if(asked===token)status.textContent=error.message;}
-    },250);
-  };
-  host.onkeydown=e=>{if(e.key==='Escape'&&!results.hidden){e.stopPropagation();dismiss();}if(e.key==='ArrowDown'&&!results.hidden){e.preventDefault();const bs=[...results.querySelectorAll('button')];bs[(bs.indexOf(document.activeElement)+1)%bs.length]?.focus();}};
-  const dialog=host.closest('dialog'),outside=e=>{if(!host.contains(e.target))dismiss();};
-  dialog?.addEventListener('pointerdown',outside);
-  const comparison=host.querySelector('.ratings-comparison');
-  comparison.dispose=()=>{token++;clearTimeout(timer);dialog?.removeEventListener('pointerdown',outside);};
-  return comparison;
-}
 export async function mountEpisodeRatings(t,{openEpisode,episodeEl,revealButton,paintReveal,unfold,busy,snippet,revealLabel},saved=null) {
   if(t.episodes.dataset.ratingsMounted)return;
   t.episodes.dataset.ratingsMounted='true';
+  t.ratingSnapshotReady?.(false);
   let data;
-  try{data=saved||await ratings(t.id);}catch{return;}
-  if(!t.episodes.isConnected||!data.episodes.length)return;
-  const s={...data,name:t.live?.name||t.name.textContent||data.name||t.card.name||'This show'};
-  let layout='list',season='all',expanded=t.open.episodes,other=null;
+  try{data=saved||await ratings(t.id);}catch{delete t.episodes.dataset.ratingsMounted;return;}
+  if(!t.episodes.isConnected||!data.episodes?.length){delete t.episodes.dataset.ratingsMounted;return;}
+  const s={...data,id:t.id,name:t.live?.name||t.name.textContent||data.name||t.card?.name||'This show'};
+  let state=ratingDetailView(window.location.search,s.episodes),expanded=t.open.episodes,disposed=false;
   const head=t.episodes.querySelector('.t-section-head'),controls=document.createElement('div');controls.className='ratings-controls';
-  const view=picker(value=>{layout=value;paint();});
-  const filter=document.createElement('select');filter.setAttribute('aria-label','Episode season');filter.innerHTML=options([['all','All seasons'],...seasons(s).map(n=>[n,'Season '+n])],season);
-  controls.append(view,filter);head.after(controls);
+  const persist=()=>{
+    const url=new URL(window.location.href);
+    if(url.searchParams.get('show')!==String(t.id))return;
+    url.search=ratingDetailSearch(url.search,state);
+    window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash);
+  };
+  const view=picker(value=>{state.view=value;persist();syncControls();paint();},state.view);
+  const filter=document.createElement('select');filter.setAttribute('aria-label','Episode season');
+  filter.innerHTML=options([['all','All seasons'],...seasons(s).map(n=>[n,seasonName(n)])],state.season);
+  const invert=document.createElement('button');invert.type='button';invert.className='chip ratings-invert';
+  invert.textContent='Inverted';invert.title='Switch seasons between rows and columns';
+  invert.onclick=()=>{state.inverted=!state.inverted;persist();syncControls();paint();};
+  controls.append(view,filter,invert);head.after(controls);
   const root=document.createElement('div');root.className='episode-ratings';controls.after(root);
-  const compare=document.createElement('div');compare.className='ratings-compare';root.after(compare);
+  const annual=seasons(s).filter(n=>n>=1900);
+  if(annual.length){
+    const note=document.createElement('p');note.className='ratings-credit annual-season-note';
+    note.textContent=annual.length===1?`${annual[0]} calendar-year season.`:`Calendar-year seasons, ${annual[0]}–${annual.at(-1)}.`;
+    root.before(note);
+  }
   const tip=tooltip(t.episodes);
-  const comparison=compareSearch(compare,s,value=>{other=value;paintComparison();});
-  const updated=event=>{if(event.detail===s.id||event.detail===other?.id){paint();paintComparison();}};
+  const updated=event=>{if(event.detail===s.id)paint();};
   window.addEventListener('couchside-ratings',updated);
-  let resizeFrame;
+  let resizeFrame,observedWidth=root.clientWidth;
   const observer=new ResizeObserver(entries=>{
     const width=entries[0].contentRect.width;
     if(Math.abs(width-observedWidth)<.5)return;
     observedWidth=width;cancelAnimationFrame(resizeFrame);
     resizeFrame=requestAnimationFrame(()=>{
-      const hosts=[root,comparison],scrolls=hosts.map(host=>host.querySelector('.ratings-chart-wrap')?.scrollLeft||0);
-      const active=document.activeElement,owner=hosts.find(host=>host.contains(active));
-      const selector=active?.dataset.episode?`[data-episode="${active.dataset.episode}"]`:
-        active?.dataset.season?`[data-season="${active.dataset.season}"][data-show-index="${active.dataset.showIndex}"]`:
-        active?.classList.contains('ratings-chart-wrap')?'.ratings-chart-wrap':null;
-      if(layout==='timeline')paint();
-      if(other)paintComparison();
-      hosts.forEach((host,i)=>{const viewport=host.querySelector('.ratings-chart-wrap');if(viewport)viewport.scrollLeft=scrolls[i];});
-      if(owner&&selector)owner.querySelector(selector)?.focus();
+      if(disposed||!root.isConnected||state.view!=='timeline')return;
+      const scroll=root.querySelector('.ratings-chart-wrap')?.scrollLeft||0;
+      const active=document.activeElement;
+      const selector=root.contains(active)?active?.dataset.episode?`[data-episode="${active.dataset.episode}"]`:
+        active?.classList.contains('ratings-chart-wrap')?'.ratings-chart-wrap':null:null;
+      paint();
+      const viewport=root.querySelector('.ratings-chart-wrap');if(viewport)viewport.scrollLeft=scroll;
+      if(selector)root.querySelector(selector)?.focus();
     });
   });
-  let observedWidth=root.clientWidth;observer.observe(root);
-  t.ratingsDispose=()=>{observer.disconnect();cancelAnimationFrame(resizeFrame);tip.dispose();comparison.dispose();window.removeEventListener('couchside-ratings',updated);};
+  observer.observe(root);
+  t.ratingsDispose=()=>{
+    disposed=true;observer.disconnect();cancelAnimationFrame(resizeFrame);tip.dispose();
+    window.removeEventListener('couchside-ratings',updated);
+    t.episodes.removeEventListener('click',view.closestTitleClick);
+    delete t.ratingSnapshot;delete t.ratingRestore;
+    t.ratingSnapshotReady?.(false);
+  };
   if(t.pick)t.pick.hidden=true;
   t.ratingsUpdate=()=>{t.eps.hidden=true;t.epsMore.parentElement.hidden=true;};
   t.ratingsUpdate();
   t.episodes.addEventListener('click',view.closestTitleClick);
+  t.ratingSnapshot=()=>ratingDetailSnapshot(t,data,state);
+  t.ratingRestore=()=>{
+    if(disposed||new URL(window.location.href).searchParams.get('show')!==String(t.id))return;
+    const restored=ratingDetailView(window.location.search,s.episodes);
+    if(restored.view===state.view&&restored.season===state.season&&restored.inverted===state.inverted)return;
+    state=restored;syncControls();paint();
+  };
+  function syncControls(){
+    view.setValue(state.view);filter.value=String(state.season);
+    invert.hidden=state.view!=='grid';invert.setAttribute('aria-pressed',String(state.inverted));
+  }
   function bindHover(node){
     bindTimelineNavigation(node);
     node.querySelectorAll('[data-episode]').forEach(target=>{
       const e=s.episodes.find(e=>e.id===Number(target.dataset.episode));if(!e)return;
-      target.onpointerenter=()=>tip.show(target,e);target.onpointerleave=tip.leave;target.onfocus=()=>{revealTimelinePoint(target);tip.show(target,e);};target.onblur=tip.hide;
+      target.onpointerenter=()=>tip.show(target,e);target.onpointerleave=tip.leave;
+      target.onfocus=()=>{revealTimelinePoint(target);tip.show(target,e);};target.onblur=tip.hide;
       const open=()=>{tip.hide();openEpisode(ep(e),{show:s.id,number:e.season,episodes:s.episodes.filter(x=>x.season===e.season).map(ep)},target);};
       target.onclick=open;if(target.tagName.toLowerCase()==='g')target.onkeydown=event=>{if(['Enter',' '].includes(event.key)){event.preventDefault();open();}};
     });
     bindTimelinePointer(node,tip);
   }
-  function paintComparison(){
-    tip.hide();if(!other){comparison.replaceChildren();return;}
-    html(comparison,`<p class="ratings-comparison-key"><span>${esc(s.name)}</span><span>${esc(other.name)}</span></p>${chart(s.episodes,other.episodes,[s.name,other.name],comparison.clientWidth)}<p class="ratings-credit">Average episode rating per season · Seasons align by number</p>`);
-    bindTimelineNavigation(comparison);
-    comparison.querySelectorAll('[data-season]').forEach(target=>{
-      const show=Number(target.dataset.showIndex)===0?s:other,n=Number(target.dataset.season),eps=show.episodes.filter(e=>e.season===n),rated=eps.filter(e=>e.rating!=null).length,e={season:n,rating:average(eps),rating_source:ratingSources({episodes:eps}),name:`${rated} rated of ${eps.length} episodes`};
-      target.onpointerenter=()=>tip.show(target,e,show.name);target.onpointerleave=tip.leave;target.onfocus=()=>{revealTimelinePoint(target);tip.show(target,e,show.name);};target.onblur=tip.hide;
-    });
-  }
   function paint(){
-    tip.hide();t.ratingsUpdate();const es=s.episodes.filter(e=>season==='all'||e.season===Number(season));
-    if(layout==='list'){
+    if(disposed)return;
+    tip.hide();t.ratingsUpdate();const es=s.episodes.filter(e=>state.season==='all'||e.season===Number(state.season));
+    if(state.view==='list'){
       root.replaceChildren();const list=document.createElement('ol');list.className='eps';list.id='ratings-episode-list';
       const rowFor=e=>{
         const row=episodeEl(ep(e),{show:s.id,number:e.season,episodes:s.episodes.filter(x=>x.season===e.season).map(ep)});
-        if(season==='all'){const number=row.querySelector('.ep-num');number.textContent=code(e);number.classList.add('ratings-list-code');row.querySelector('.ep-open')?.setAttribute('aria-label',`${code(e)}: ${e.name}`);}
+        if(state.season==='all'){
+          const number=row.querySelector('.ep-num');number.textContent=episodeCode(e);number.classList.add('ratings-list-code');
+          row.querySelector('.ep-open')?.setAttribute('aria-label',`${episodeCode(e)}: ${e.name}`);
+        }
         const heading=row.querySelector('h4'),meta=document.createElement('span'),badge=document.createElement('span'),b=band(e.rating);
         meta.className='ratings-list-meta';
         const runtime=heading.querySelector('span');if(runtime)meta.append(runtime);
@@ -264,8 +289,7 @@ export async function mountEpisodeRatings(t,{openEpisode,episodeEl,revealButton,
       root.append(list);
       const set=open=>{
         const shown=snippet(es.length,3);
-        // Build only what is shown. Long-running series can have thousands of rows;
-        // constructing them and their images just to hide them stalls the title sheet.
+        // Build only visible rows; long series can have thousands of episodes.
         list.replaceChildren(...es.slice(0,open?es.length:shown).map(rowFor));
         more.parentElement.hidden=shown===es.length;
         paintReveal(more,revealLabel('episodes',es.length,open),open);
@@ -278,8 +302,10 @@ export async function mountEpisodeRatings(t,{openEpisode,episodeEl,revealButton,
       root.append(more.parentElement);set(expanded);
       return;
     }
-    html(root,`${legend()}${layout==='grid'?grid(es):layout==='wrapped'?wrapped(es):chart(es,null,[],root.clientWidth)}<p class="ratings-credit">${esc(ratingSources({episodes:es})||'Audience')} episode ratings · Out of 10</p>`);
+    html(root,`${legend()}${state.view==='grid'?ratingDetailGrid(es,state.inverted):state.view==='wrapped'?wrapped(es):chart(es,null,[],root.clientWidth)}<p class="ratings-credit">${esc(ratingSources({episodes:es})||'Audience')} episode ratings · Out of 10</p>`);
     bindHover(root);
   }
-  filter.onchange=()=>{season=filter.value;expanded=t.open.episodes=false;paint();};paint();
+  filter.onchange=()=>{state.season=filter.value==='all'?'all':Number(filter.value);expanded=t.open.episodes=false;persist();paint();};
+  syncControls();paint();t.ratingSnapshotReady?.(true);
+  return t.ratingSnapshot;
 }

@@ -14,19 +14,19 @@ function scale(points) {
   return {low,ticks};
 }
 
-function adjacentRatings(previous,point,comparison,acrossSeasons) {
-  if(comparison)return point.season===previous.season+1;
-  if(point.season===previous.season)return point.number===previous.number+1;
-  return acrossSeasons&&point.season===previous.season+1&&
-    (point.number===1||point.number===previous.number+1);
+function continuousRuns(points) {
+  const rated=points.filter(point=>point.rating!=null);
+  return rated.length?[rated]:[];
 }
 
-function ratedRuns(points,comparison,acrossSeasons=true) {
+// Windows retain season and number/null boundaries, even though the visible
+// lines connect the actual samples on each side of those boundaries.
+function averagingRuns(points) {
   const runs=[];
   let run=[];
   for(const point of points){
     const previous=run.at(-1);
-    const follows=previous&&adjacentRatings(previous,point,comparison,acrossSeasons);
+    const follows=previous&&point.season===previous.season&&point.number===previous.number+1;
     if(point.rating==null||previous&&!follows){if(run.length)runs.push(run);run=[];}
     if(point.rating!=null)run.push(point);
   }
@@ -50,14 +50,15 @@ export function timelineModel(episodes,other=null,availableWidth=780) {
   const series=lists.map(points=>{
     points=points.map((p,i)=>({...p,x:count===1?width/2:20+i*(width-64)/(count-1),
       y:p.rating==null?null:ordinate(p.rating,low,RAW)}));
-    const runs=ratedRuns(points,comparison);
-    // Season boundaries do not interrupt the episode curve, but averages stay
-    // inside one season and never cross a missing episode or an unrated score.
-    const trendRuns=comparison?[]:ratedRuns(points,false,false);
-    const trend=trendRuns.map(run=>run.map((p,i)=>({...p,
-      rating:average(run.slice(Math.max(0,i-2),i+3)),
-      y:ordinate(average(run.slice(Math.max(0,i-2),i+3)),low,TREND)})));
-    return {points,runs,trendRuns,trend};
+    // Nulls keep their positions but receive neither dots nor invented scores.
+    const runs=continuousRuns(points);
+    const trendRuns=comparison?[]:averagingRuns(points);
+    const trendPoints=trendRuns.flatMap(run=>run.map((p,i)=>{
+      const rating=average(run.slice(Math.max(0,i-2),i+3));
+      return {...p,rating,y:ordinate(rating,low,TREND)};
+    }));
+    const trend=continuousRuns(trendPoints);
+    return {points,runs,trendRuns,trendPoints,trend};
   });
   return {comparison,low,ticks,count,width,spacing,viewport,height:comparison?300:444,series};
 }

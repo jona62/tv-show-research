@@ -59,7 +59,7 @@ def accounts():
 ACCOUNT_ROUTES = AccountRoutes(accounts, https_only=os.environ.get('ACCOUNT_HTTPS_ONLY') == '1',
                                origin=os.environ.get('ACCOUNT_ORIGIN'))
 # The app keeps its page in the path, so these are the page too and a refresh stays put.
-PAGES = ('/', '/index.html', '/new', '/list', '/search', '/browse', '/welcome')
+PAGES = ('/', '/index.html', '/new', '/list', '/search', '/browse', '/welcome', '/compare')
 POSTS = ('/api/home', '/api/title', '/api/shows', '/api/browse', '/api/taste')
 # Every request carries the whole list: 3,000 ratings packed as ids and rating codes
 # (engine.CODES) are about 21 KB at most. A request for more of the home page carries
