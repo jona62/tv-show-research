@@ -1,4 +1,6 @@
 import { apiFetch } from './network.js';
+import {chart} from './episode-timeline.js';
+export {chart,smoothPath} from './episode-timeline.js';
 import {esc,score,code,average,seasons,band,icon,html,legend,ratings,ratingSource,ratingSources} from './ratings.js';
 const plain = value => new DOMParser().parseFromString(value||'', 'text/html').body.textContent||'';
 const layouts=[['list','Episode list'],['grid','Grid'],['wrapped','Wrapped'],['timeline','Timeline']];
@@ -44,40 +46,31 @@ function grid(es) {
 function wrapped(es) {
   return [...new Set(es.map(e=>e.season))].map(n=>{const eps=es.filter(e=>e.season===n);return `<section class="ratings-wrapped-season"><div class="ratings-wrapped-heading"><b>Season ${n}</b><span>${score(average(eps))} average</span></div><div class="ratings-wrapped-cells">${eps.map(e=>`<div><span class="ratings-axis">E${e.number}</span>${cell(e)}</div>`).join('')}</div></section>`;}).join('');
 }
-// A cubic through the smoothed samples, with bounded control points to prevent overshoot.
-export function smoothPath(points) {
-  if(!points.length)return '';
-  let d=`M${points[0].x},${points[0].y}`;
-  for(let i=1;i<points.length;i++){
-    const p0=points[Math.max(0,i-2)],p1=points[i-1],p2=points[i],p3=points[Math.min(points.length-1,i+1)];
-    const low=Math.min(p1.y,p2.y),high=Math.max(p1.y,p2.y),clamp=y=>Math.max(low,Math.min(high,y));
-    d+=` C${p1.x+(p2.x-p0.x)/6},${clamp(p1.y+(p2.y-p0.y)/6)} ${p2.x-(p3.x-p1.x)/6},${clamp(p2.y-(p3.y-p1.y)/6)} ${p2.x},${p2.y}`;
-  }
-  return d;
+
+function bindTimelineNavigation(node) {
+  node.querySelectorAll('.ratings-chart-wrap').forEach(viewport=>viewport.addEventListener('keydown',event=>{
+    if(event.target!==viewport||!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+    event.preventDefault();
+    if(event.key==='Home')viewport.scrollLeft=0;
+    else if(event.key==='End')viewport.scrollLeft=viewport.scrollWidth-viewport.clientWidth;
+    else viewport.scrollLeft+=(event.key==='ArrowRight'?1:-1)*Math.min(160,viewport.clientWidth/2);
+  }));
+  const points=[...node.querySelectorAll('.ratings-point-hit')];
+  points.forEach((target,index)=>target.addEventListener('keydown',event=>{
+    if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+    event.preventDefault();
+    const next=event.key==='Home'?0:event.key==='End'?points.length-1:
+      Math.max(0,Math.min(points.length-1,index+(event.key==='ArrowRight'?1:-1)));
+    points[next]?.focus();
+  }));
 }
-export function chart(es,other=null,names=[]) {
-  const comparison=Boolean(other);
-  const points=list=>comparison?[...new Set(list.map(e=>e.season))].map(n=>({season:n,rating:average(list.filter(e=>e.season===n)),label:`S${n}`})):list.map(e=>({...e,label:code(e)}));
-  const a=points(es),b=other?points(other):[],all=[...es,...(other||[])].filter(e=>e.rating!=null);
-  if(!all.length)return '<p class="ratings-empty">These episodes have not been rated yet.</p>';
-  const low=Math.max(0,Math.min(9,Math.floor(Math.min(...all.map(e=>e.rating)))-1));
-  const ss=[...new Set([...a,...b].map(p=>p.season))].sort((x,y)=>x-y),count=Math.max(1,a.length,b.length);
-  const x=(p,i)=>46+(comparison?ss.indexOf(p.season)/Math.max(1,ss.length-1):i/Math.max(1,count-1))*686;
-  const y=v=>270-(v-low)*240/(10-low),ticks=Array.from({length:(10-low)*2+1},(_,i)=>low+i*.5);
-  const series=(ps,c,showIndex)=>{
-    const pts=ps.map((p,i)=>({...p,x:x(p,i),y:p.rating==null?null:y(p.rating)}));
-    const line=pts.map((p,i)=>p.y==null?'':`${i&&pts[i-1].y!=null?'L':'M'}${p.x},${p.y}`).join(' ');
-    let out=`<path class="ratings-raw-line" d="${line}" fill="none" stroke="${c}" stroke-width="${comparison?2:1}" opacity="${comparison?'.8':'.3'}"/>`;
-    if(!comparison){
-      const moving=pts.map((p,i)=>({...p,y:p.rating==null?null:y(average(ps.slice(Math.max(0,i-2),Math.min(ps.length,i+3))))}));
-      const segments=[];for(const p of moving){if(p.y==null){if(segments.at(-1)?.length)segments.push([]);}else{if(!segments.length)segments.push([]);segments.at(-1).push(p);}}
-      out+=`<path class="ratings-trend" d="${segments.map(smoothPath).join(' ')}" fill="none" stroke="var(--brand)" stroke-width="2.6"/>`;
-    }
-    out+=pts.map(p=>p.y==null?'':`<g class="ratings-point-hit" ${comparison?`data-season="${p.season}" data-show-index="${showIndex}"`:`data-episode="${p.id}"`} tabindex="0" role="${comparison?'img':'button'}" aria-label="${comparison?esc(names[showIndex])+', ':''}${p.label}${p.name?': '+esc(p.name):''}, ${score(p.rating)} out of 10, ${band(p.rating).name}"><circle class="ratings-point-target" cx="${p.x}" cy="${p.y}" r="9" fill="transparent"/><circle class="ratings-point" cx="${p.x}" cy="${p.y}" r="${comparison?4.5:3.5}" fill="${comparison?c:band(p.rating).colour}"/></g>`).join('');
-    return out;
-  };
-  const labels=comparison?ss.map((n,i)=>({text:'S'+n,x:46+i*686/Math.max(1,ss.length-1)})):a.filter((p,i)=>i===0||p.season!==a[i-1].season).map(p=>({text:p.label,x:x(p,a.indexOf(p))}));
-  return `<div class="ratings-chart-wrap"><svg class="ratings-timeline" viewBox="0 0 780 310" role="group" aria-label="${comparison?'Season averages':'Episode ratings'}, scale ${low} to 10 in half-point steps" data-min="${low}">${ticks.map(v=>`<line x1="46" y1="${y(v)}" x2="736" y2="${y(v)}" stroke="#ffffff0c"/><text class="ratings-tick" x="32" y="${y(v)+4}" text-anchor="end">${v.toFixed(1)}</text>`).join('')}${series(a,'#ffb020',0)}${b.length?series(b,'#91b9dc',1):''}${labels.map(p=>`<text x="${p.x}" y="298" text-anchor="middle">${p.text}</text>`).join('')}</svg></div>`;
+
+function revealTimelinePoint(target) {
+  const viewport=target.closest('.ratings-chart-wrap');
+  if(!viewport)return;
+  const point=target.getBoundingClientRect(),bounds=viewport.getBoundingClientRect();
+  if(point.left<bounds.left)viewport.scrollLeft-=bounds.left-point.left+8;
+  else if(point.right>bounds.right)viewport.scrollLeft+=point.right-bounds.right+8;
 }
 
 function tooltip(host) {
@@ -102,7 +95,12 @@ function tooltip(host) {
   };
   tip.onpointerenter=()=>clearTimeout(hideTimer);tip.onpointerleave=leave;
   host.addEventListener('keydown',event=>{if(event.key==='Escape'&&active){event.preventDefault();event.stopPropagation();hide();}});
-  const scrolled=event=>{if(tip.contains(event.target))return;if(active?.target===document.activeElement)position();else hide();};
+  const scrolled=event=>{
+    if(tip.contains(event.target))return;
+    const viewport=active?.target.closest('.ratings-chart-wrap'),point=active?.target.getBoundingClientRect(),bounds=viewport?.getBoundingClientRect();
+    if(active?.target===document.activeElement&&(!bounds||point.right>bounds.left&&point.left<bounds.right))position();
+    else hide();
+  };
   const dialog=host.closest('dialog');
   host.addEventListener('scroll',scrolled,true);dialog?.addEventListener('scroll',scrolled);window.addEventListener('resize',position);
   return {show,hide,leave,dispose:()=>{hide();host.removeEventListener('scroll',scrolled,true);dialog?.removeEventListener('scroll',scrolled);window.removeEventListener('resize',position);}};
@@ -153,25 +151,45 @@ export async function mountEpisodeRatings(t,{openEpisode,episodeEl,revealButton,
   const comparison=compareSearch(compare,s,value=>{other=value;paintComparison();});
   const updated=event=>{if(event.detail===s.id||event.detail===other?.id){paint();paintComparison();}};
   window.addEventListener('couchside-ratings',updated);
-  t.ratingsDispose=()=>{tip.dispose();comparison.dispose();window.removeEventListener('couchside-ratings',updated);};
+  let resizeFrame;
+  const observer=new ResizeObserver(entries=>{
+    const width=entries[0].contentRect.width;
+    if(Math.abs(width-observedWidth)<.5)return;
+    observedWidth=width;cancelAnimationFrame(resizeFrame);
+    resizeFrame=requestAnimationFrame(()=>{
+      const hosts=[root,comparison],scrolls=hosts.map(host=>host.querySelector('.ratings-chart-wrap')?.scrollLeft||0);
+      const active=document.activeElement,owner=hosts.find(host=>host.contains(active));
+      const selector=active?.dataset.episode?`[data-episode="${active.dataset.episode}"]`:
+        active?.dataset.season?`[data-season="${active.dataset.season}"][data-show-index="${active.dataset.showIndex}"]`:
+        active?.classList.contains('ratings-chart-wrap')?'.ratings-chart-wrap':null;
+      if(layout==='timeline')paint();
+      if(other)paintComparison();
+      hosts.forEach((host,i)=>{const viewport=host.querySelector('.ratings-chart-wrap');if(viewport)viewport.scrollLeft=scrolls[i];});
+      if(owner&&selector)owner.querySelector(selector)?.focus();
+    });
+  });
+  let observedWidth=root.clientWidth;observer.observe(root);
+  t.ratingsDispose=()=>{observer.disconnect();cancelAnimationFrame(resizeFrame);tip.dispose();comparison.dispose();window.removeEventListener('couchside-ratings',updated);};
   if(t.pick)t.pick.hidden=true;
   t.ratingsUpdate=()=>{t.eps.hidden=true;t.epsMore.parentElement.hidden=true;};
   t.ratingsUpdate();
   t.episodes.addEventListener('click',view.closestTitleClick);
   function bindHover(node){
+    bindTimelineNavigation(node);
     node.querySelectorAll('[data-episode]').forEach(target=>{
       const e=s.episodes.find(e=>e.id===Number(target.dataset.episode));if(!e)return;
-      target.onpointerenter=()=>tip.show(target,e);target.onpointerleave=tip.leave;target.onfocus=()=>tip.show(target,e);target.onblur=tip.hide;
+      target.onpointerenter=()=>tip.show(target,e);target.onpointerleave=tip.leave;target.onfocus=()=>{revealTimelinePoint(target);tip.show(target,e);};target.onblur=tip.hide;
       const open=()=>{tip.hide();openEpisode(ep(e),{show:s.id,number:e.season,episodes:s.episodes.filter(x=>x.season===e.season).map(ep)},target);};
       target.onclick=open;if(target.tagName.toLowerCase()==='g')target.onkeydown=event=>{if(['Enter',' '].includes(event.key)){event.preventDefault();open();}};
     });
   }
   function paintComparison(){
     tip.hide();if(!other){comparison.replaceChildren();return;}
-    html(comparison,`<p class="ratings-comparison-key"><span>${esc(s.name)}</span><span>${esc(other.name)}</span></p>${chart(s.episodes,other.episodes,[s.name,other.name])}<p class="ratings-credit">Average episode rating per season · Seasons align by number</p>`);
+    html(comparison,`<p class="ratings-comparison-key"><span>${esc(s.name)}</span><span>${esc(other.name)}</span></p>${chart(s.episodes,other.episodes,[s.name,other.name],comparison.clientWidth)}<p class="ratings-credit">Average episode rating per season · Seasons align by number</p>`);
+    bindTimelineNavigation(comparison);
     comparison.querySelectorAll('[data-season]').forEach(target=>{
-      const show=Number(target.dataset.showIndex)===0?s:other,n=Number(target.dataset.season),eps=show.episodes.filter(e=>e.season===n),e={season:n,rating:average(eps),rating_source:ratingSources({episodes:eps}),name:`${eps.length} episodes`};
-      target.onpointerenter=()=>tip.show(target,e,show.name);target.onpointerleave=tip.leave;target.onfocus=()=>tip.show(target,e,show.name);target.onblur=tip.hide;
+      const show=Number(target.dataset.showIndex)===0?s:other,n=Number(target.dataset.season),eps=show.episodes.filter(e=>e.season===n),rated=eps.filter(e=>e.rating!=null).length,e={season:n,rating:average(eps),rating_source:ratingSources({episodes:eps}),name:`${rated} rated of ${eps.length} episodes`};
+      target.onpointerenter=()=>tip.show(target,e,show.name);target.onpointerleave=tip.leave;target.onfocus=()=>{revealTimelinePoint(target);tip.show(target,e,show.name);};target.onblur=tip.hide;
     });
   }
   function paint(){
@@ -208,7 +226,7 @@ export async function mountEpisodeRatings(t,{openEpisode,episodeEl,revealButton,
       root.append(more.parentElement);set(expanded);
       return;
     }
-    html(root,`${legend()}${layout==='grid'?grid(es):layout==='wrapped'?wrapped(es):chart(es)}<p class="ratings-credit">${esc(ratingSources({episodes:es})||'Audience')} episode ratings · Out of 10${layout==='timeline'?' · Amber line: smoothed 5-episode average':''}</p>`);
+    html(root,`${legend()}${layout==='grid'?grid(es):layout==='wrapped'?wrapped(es):chart(es,null,[],root.clientWidth)}<p class="ratings-credit">${esc(ratingSources({episodes:es})||'Audience')} episode ratings · Out of 10</p>`);
     bindHover(root);
   }
   filter.onchange=()=>{season=filter.value;expanded=t.open.episodes=false;paint();};paint();

@@ -162,9 +162,12 @@ Episodes offer List, Grid, Wrapped and Timeline in an icon menu, plus an All sea
 or Season filter. List keeps the existing episode rows and shows the TVmaze score
 beside the title. Grid and Wrapped use the same rating colours and qualitative key;
 hover or keyboard focus shows the episode's still, description and exact score.
-Clicking any episode opens its existing sheet. Timeline uses half-point ticks,
-a range based on the lowest score and a smooth five-episode average. Compare searches
-any other show and plots the two series' season averages on one shared scale.
+Clicking any episode opens its existing sheet. Long timelines scroll horizontally,
+with a fixed rating scale and room for every episode. The scale starts just below the
+lowest score, and a separate panel shows the smooth five-episode average within each
+season. Arrow keys move between ratings; Home and End jump to the first and last.
+Compare searches any other show and plots the two series' season averages on one
+shared scale.
 
 The episode list, More like this, Fans also like and About cast use the same
 Show all / Show fewer pill as trailers. Collapsed recommendations and cast remain

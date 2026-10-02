@@ -1,5 +1,5 @@
-import { mountEpisodeRatings } from './episode-ratings.js?v=22d75171dc1686b0';
-import { mountTitleSections } from './title-sections.js?v=47e93fa931aed0c8';
+import { mountEpisodeRatings } from './episode-ratings.js?v=08c7d36282ed90e1';
+import { mountTitleSections } from './title-sections.js?v=c735de07fc7f1d99';
 import { enhanceShowCard,receiveMatrices,matrixPreference } from './show-cards.js?v=1e100102e3a68bf6';
 import { mountTaste } from './taste.js?v=e23081ea7e42ec26';
 import { mergeTransferredList } from './list-transfer.js?v=bf96d9f9d5d965e6';

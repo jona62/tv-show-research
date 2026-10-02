@@ -1,14 +1,19 @@
 // The title page's existing cards and faces, using the same reveal as its trailers.
-let currentObserver;
+let disposeCurrent;
 
 export function mountTitleSections(t,{revealButton,paintReveal,unfold,busy,edges}) {
-  currentObserver?.disconnect();
+  disposeCurrent?.();
   const parts=new Map();
+  let resizeFrame;
   const observer=new ResizeObserver(()=>{
-    for(const part of parts.values())if(part.list.isConnected&&!busy(part.list))part.set(t.open[part.key]);
+    cancelAnimationFrame(resizeFrame);
+    // Card rails can change their own height. Repaint after observer delivery so
+    // rotating a phone cannot trigger a ResizeObserver loop in Safari.
+    resizeFrame=requestAnimationFrame(()=>{
+      for(const part of parts.values())if(part.list.isConnected&&!busy(part.list))part.set(t.open[part.key]);
+    });
   });
-  currentObserver=observer;
-  t.sectionsDispose=()=>observer.disconnect();
+  disposeCurrent=t.sectionsDispose=()=>{observer.disconnect();cancelAnimationFrame(resizeFrame);};
 
   function attach(key,list,label,faces=false) {
     const previous=parts.get(key);
