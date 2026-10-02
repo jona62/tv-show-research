@@ -4,6 +4,7 @@ import { compareMatrix, ratingTableHTML, seasonName } from './rating-views.js';
 import { comparisonOverlayHTML, comparisonShowColour } from './comparison-timeline.js';
 import { bindComparisonTimeline } from './compare-timeline-interactions.js';
 import { comparisonPosterColours, loadPosterColour, validPosterColour } from './poster-colours.js';
+import { createComparisonPosters } from './compare-posters.js';
 
 const STORAGE_KEY = 'couchside.comparison-v1', MAX_SHOWS = 40;
 const validId = id => Number.isInteger(id) && id > 0 && id <= 2147483647;
@@ -176,9 +177,7 @@ function controlsHTML(state) {
 function cardHTML(id, index, state, entry, grabbed, colour) {
   const show = entry?.show, name = show?.name || `Show ${id}`, ready = entry?.status === 'ready';
   const seasons = ready ? seasonNumbers(show) : [];
-  const poster = show?.art || show?.poster;
-  const artwork = ready && poster ? `<img class="compare-poster" src="${esc(poster)}" alt="${esc(name)} poster" loading="lazy">`
-    : `<span class="compare-poster compare-poster-empty${entry?.status === 'loading' ? ' skel' : ''}" aria-hidden="true"></span>`;
+  const artwork = `<span class="compare-poster compare-poster-empty${entry?.status === 'loading' ? ' skel' : ''}" aria-hidden="true"></span>`;
   const title = ready ? `<button type="button" class="link compare-title" data-action="open" data-id="${id}">${esc(name)}</button>` : esc(name);
   const meta = ready ? `${esc(show.year || '')}${show.year ? ' · ' : ''}${seasons.length} ${seasons.length === 1 ? 'season' : 'seasons'}`
     : entry?.status === 'error' ? esc(entry.error) : 'Loading show…';
@@ -216,6 +215,7 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
   html(host, `<section class="compare-page page"><div class="compare-header"><h1 class="page-h">Compare shows</h1><button class="btn primary compare-save" type="button" disabled>${actionIcon('save')}Save image</button></div><div class="ratings-search-wrap compare-search">${icon('search')}<input type="search" id="compare-search" placeholder="Search any show…" aria-label="Find a show to compare" autocomplete="off" maxlength="100" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-controls="compare-results" aria-expanded="false"><div class="ratings-compare-results" id="compare-results" role="listbox" aria-label="Shows to compare" hidden></div></div><p class="ratings-search-status compare-search-status" role="status"></p><div class="compare-content"></div><p class="compare-status" role="status" aria-live="polite"></p></section>`);
   const input = host.querySelector('#compare-search'), results = host.querySelector('#compare-results'), searchStatus = host.querySelector('.compare-search-status');
   const content = host.querySelector('.compare-content'), save = host.querySelector('.compare-save'), live = host.querySelector('.compare-status');
+  const posters = createComparisonPosters();
   const searchViewport = window.visualViewport;
   function sizeSearchResults() {
     if (results.hidden) return;
@@ -305,6 +305,7 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
       : `${legend()}<div class="compare-board">${ratingTableHTML(matrix)}</div>`;
     const board = `<div class="compare-timeline-layout layout-${state.timelineLayout}">${cards}<div class="compare-timeline-plots">${plot}</div></div>`;
     html(content, `${controls}${model.shows.length ? `${model.shows.some(show => seasonNumbers(show).some(season => season >= 1900)) ? '<p class="ratings-credit">Calendar-year season labels are preserved in episode descriptions.</p>' : ''}${board}<p class="ratings-credit">${timeline ? 'Episode ratings · Same rating scale · Each show ends at its last episode' : state.mode === 'all' ? 'Average episode rating per season · Seasons align by number' : 'Episode ratings · Each show uses its selected season'}</p><p class="ratings-credit">${esc([...new Set(model.shows.flatMap(show => show.sources.split(' / ')))].filter(Boolean).join(' / '))} episode ratings · Out of 10</p>${ready ? '' : '<p class="note" role="status">Some shows are still loading. Save image is available when all selected shows are ready.</p>'}` : `<div class="compare-timeline-layout layout-${state.timelineLayout}">${cards}</div><p class="note">${state.ids.length ? 'Loading your comparison…' : 'Find a show to compare.'}</p>`}`);
+    posters.paint(content, state.ids.map(id => loader.entries.get(id)?.show).filter(Boolean));
     if (timeline) {
       paintTimeline();
       const plots = content.querySelector('.compare-timeline-plots');
@@ -348,6 +349,10 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
     }, 250);
   };
   input.onfocus = () => { searchOpen = Boolean(query); if (found.length) renderSearch(); };
+  const failedSearchImage = event => {
+    if (event.target instanceof HTMLImageElement && results.contains(event.target)) event.target.remove();
+  };
+  results.addEventListener('error', failedSearchImage, true);
   results.onmousedown = event => {
     // Match the app's recent-search buttons: keep focus until the suggestion click.
     if (event.target.closest('button[data-add]')) event.preventDefault();
@@ -473,7 +478,8 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
   window.addEventListener('couchside-ratings', enriched);
   render(); state.ids.forEach(id => loader.ensure(id));
   return () => {
-    disposed = true; clearTimeout(timer); ++searchToken; loader.dispose(); observer?.disconnect(); cancelAnimationFrame(resizeFrame); timelineCleanup();
+    disposed = true; clearTimeout(timer); ++searchToken; loader.dispose(); posters.dispose(); observer?.disconnect(); cancelAnimationFrame(resizeFrame); timelineCleanup();
+    results.removeEventListener('error', failedSearchImage, true);
     document.removeEventListener('pointerdown', outside); window.removeEventListener('couchside-ratings', enriched);
     window.removeEventListener('resize', sizeSearchResults); window.removeEventListener('scroll', sizeSearchResults);
     searchViewport?.removeEventListener('resize', sizeSearchResults); searchViewport?.removeEventListener('scroll', sizeSearchResults);

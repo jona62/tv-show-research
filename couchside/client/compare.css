@@ -39,7 +39,12 @@
 .compare-card-top .icon-btn{color:var(--muted)}
 .compare-reorder-handle{cursor:grab}
 .compare-card-art{grid-row:2;min-width:0}
-.compare-poster{display:block;width:160px;height:var(--compare-poster-height,240px);object-fit:contain;background:#191919;border-radius:5px}
+.compare-poster{position:relative;display:block;width:160px;height:var(--compare-poster-height,240px);background:#191919;border-radius:5px;overflow:hidden}
+.compare-poster-name{display:grid;place-items:center;height:100%;padding:16px;color:var(--muted);font-size:13px;text-align:center;overflow-wrap:anywhere}
+.compare-poster.has-image .compare-poster-name{visibility:hidden}
+.compare-poster-image{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#191919}
+.compare-poster-image.is-loading{opacity:0}
+.compare-poster-full{z-index:1}
 .compare-card-title{grid-row:3;width:100%;min-width:0;border-top:3px solid var(--show-colour);padding-top:10px}
 .compare-card-title h4{margin:0;font-size:15px;font-weight:600;line-height:1.35;overflow-wrap:anywhere}
 .compare-card-title .link{text-align:left;font-weight:600;line-height:inherit;white-space:normal}

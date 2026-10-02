@@ -18,9 +18,12 @@ SHOWS = [
     {'id': 563, 'name': 'Star Wars: The Clone Wars', 'year': 2008},
     {'id': 999, 'name': LONG_TITLE, 'year': 2025},
 ]
+POSTER_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="240"><rect width="160" height="240" fill="#db9669"/></svg>'
+PREVIEW_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="48"><rect width="32" height="48" fill="#579961"/></svg>'
 
 
-def source_document(unavailable=False, deferred_colours=False, search_payload=None, deferred_search=False):
+def source_document(unavailable=False, deferred_colours=False, search_payload=None, deferred_search=False,
+                    poster_metadata=None, deferred_metadata=()):
     shows = [*SHOWS[:2], {'id': 999, 'name': 'No episodes yet', 'year': 2025},
              {'id': 1000, 'name': 'Unavailable show', 'year': 2025}] if unavailable else SHOWS
     return '''<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -31,6 +34,10 @@ def source_document(unavailable=False, deferred_colours=False, search_payload=No
     <script type="module">
       import {mountCompare} from '/client/compare.js';
       const shows=SHOW_FIXTURE, unavailable=UNAVAILABLE_FIXTURE;
+      const metadataFor=id=>({...shows.find(show=>show.id===id)||{id,name:'Fixture show '+id,year:2026},
+        poster:'/poster.svg',art:'/poster.svg',...POSTER_METADATA_FIXTURE[id]});
+      window.pendingMetadata=new Map();
+      window.resolveMetadata=id=>{window.pendingMetadata.get(id)(metadataFor(id));window.pendingMetadata.delete(id);};
       window.pendingColours=new Map();
       window.resolveColour=(id,colour)=>{window.pendingColours.get(id)(colour);window.pendingColours.delete(id);};
       window.pendingSearch=new Map();window.requestedSearches=[];
@@ -39,7 +46,8 @@ def source_document(unavailable=False, deferred_colours=False, search_payload=No
         rating:5+season+number,name:'Season '+season+' episode '+number})));
       window.disposeComparison=mountCompare(document.getElementById('host'),{
         search:'?compare='+shows.map(show=>show.id).join(',')+'&mode=single&compare-view=timeline',
-        metadata:async id=>({...shows.find(show=>show.id===id)||{id,name:'Fixture show '+id,year:2026},poster:'/poster.svg',art:'/poster.svg'}),
+        metadata:id=>DEFERRED_METADATA_FIXTURE.includes(id)
+          ? new Promise(resolve=>window.pendingMetadata.set(id,resolve)) : Promise.resolve(metadataFor(id)),
         loadRatings:async id=>{
           if(unavailable&&id===1000)throw Error('This show could not be loaded.');
           return {episodes:unavailable&&id===999?[]:episodes(id),sources:'TVmaze'};
@@ -51,7 +59,7 @@ def source_document(unavailable=False, deferred_colours=False, search_payload=No
         replaceURL:url=>history.replaceState({},'',url),
         openShow:id=>{window.openedShow=id;}
       });
-    </script>'''.replace('SHOW_FIXTURE', json.dumps(shows)).replace('UNAVAILABLE_FIXTURE', json.dumps(unavailable)).replace('DEFERRED_COLOURS_FIXTURE', json.dumps(deferred_colours)).replace('DEFERRED_SEARCH_FIXTURE', json.dumps(deferred_search)).replace('SEARCH_PAYLOAD_FIXTURE', json.dumps(search_payload or {'shows': []}))
+    </script>'''.replace('SHOW_FIXTURE', json.dumps(shows)).replace('UNAVAILABLE_FIXTURE', json.dumps(unavailable)).replace('DEFERRED_COLOURS_FIXTURE', json.dumps(deferred_colours)).replace('DEFERRED_SEARCH_FIXTURE', json.dumps(deferred_search)).replace('SEARCH_PAYLOAD_FIXTURE', json.dumps(search_payload or {'shows': []})).replace('POSTER_METADATA_FIXTURE', json.dumps(poster_metadata or {})).replace('DEFERRED_METADATA_FIXTURE', json.dumps(list(deferred_metadata)))
 
 
 class ComparisonCardLayout(unittest.TestCase):
@@ -66,7 +74,8 @@ class ComparisonCardLayout(unittest.TestCase):
         cls.browser.close()
         cls.playwright.stop()
 
-    def open_fixture(self, physical_width=1280, zoom=100, unavailable=False, deferred_colours=False, search_payload=None, deferred_search=False):
+    def open_fixture(self, physical_width=1280, zoom=100, unavailable=False, deferred_colours=False, search_payload=None, deferred_search=False,
+                     poster_metadata=None, deferred_metadata=(), image_responses=None, image_requests=None, pending_images=None):
         width = round(physical_width * 100 / zoom)
         mobile = physical_width < 760
         options = {'viewport': {'width': width, 'height': 1200}, 'has_touch': mobile,
@@ -83,13 +92,17 @@ class ComparisonCardLayout(unittest.TestCase):
         page.set_default_timeout(5000)
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
+        image_responses = image_responses if image_responses is not None else {}
+        image_requests = image_requests if image_requests is not None else []
+        pending_images = pending_images if pending_images is not None else {}
 
         def serve(route):
             url = urlsplit(route.request.url)
             if url.netloc != urlsplit(ORIGIN).netloc:
                 return route.fulfill(status=404, body='External networking is blocked.')
             if url.path == '/':
-                return route.fulfill(content_type='text/html', body=source_document(unavailable, deferred_colours, search_payload, deferred_search))
+                return route.fulfill(content_type='text/html', body=source_document(unavailable, deferred_colours, search_payload, deferred_search,
+                                                                                   poster_metadata, deferred_metadata))
             if url.path.startswith('/client/'):
                 file = CLIENT / url.path.removeprefix('/client/')
                 if file.is_file() and file.parent == CLIENT:
@@ -99,15 +112,24 @@ class ComparisonCardLayout(unittest.TestCase):
                 return route.fulfill(content_type='text/javascript', body=(ROOT / 'shared/client/touch-forms.js').read_bytes())
             if url.path == '/touch-forms.css':
                 return route.fulfill(content_type='text/css', body=(ROOT / 'tools/touch-forms.css').read_bytes())
-            if url.path == '/poster.svg':
-                return route.fulfill(content_type='image/svg+xml', body='<svg xmlns="http://www.w3.org/2000/svg" width="160" height="240"><rect width="160" height="240" fill="#db9669"/></svg>')
+            if url.path == '/poster.svg' or url.path in image_responses:
+                image_requests.append(url.path)
+                response = image_responses.get(url.path, {})
+                if response.get('hold'):
+                    pending_images.setdefault(url.path, []).append(route)
+                    return
+                status = response.get('status', 200)
+                return route.fulfill(status=status, content_type='image/svg+xml' if status == 200 else 'text/plain',
+                                     body=response.get('body', POSTER_SVG) if status == 200 else 'Poster unavailable.')
             return route.fulfill(status=404, body='No offline fixture for this request.')
 
         page.route('**/*', serve)
-        page.goto(ORIGIN + '/')
+        page.goto(ORIGIN + '/', wait_until='domcontentloaded')
         if unavailable:
             page.locator('[data-action="retry"]').wait_for()
             page.get_by_label('Season for Star Wars: The Clone Wars', exact=True).wait_for()
+        elif deferred_metadata:
+            page.get_by_label('Season for Primal', exact=True).wait_for()
         else:
             page.locator('.compare-save:not(:disabled)').wait_for()
         self.addCleanup(context.close)
@@ -175,6 +197,190 @@ class ComparisonCardLayout(unittest.TestCase):
 
     def set_view(self, page, view):
         self.choose(page, 'view', view)
+
+    @staticmethod
+    def remember_posters(page, ids):
+        page.evaluate('''ids=>{window.savedPosters=new Map(ids.map(id=>{
+            const art=document.querySelector(`[data-show="${id}"] .compare-card-art`);
+            return [id,{art,box:art.querySelector('.compare-poster'),images:[...art.querySelectorAll('img')]}];
+        }));}''', ids)
+
+    def assert_posters_retained(self, page, images=True):
+        changed = page.evaluate('''checkImages=>[...window.savedPosters].flatMap(([id,saved])=>{
+            const art=document.querySelector(`[data-show="${id}"] .compare-card-art`);
+            const current=[...art.querySelectorAll('img')];
+            return art!==saved.art||art.querySelector('.compare-poster')!==saved.box
+                ||(checkImages&&(current.length!==saved.images.length||current.some((image,i)=>image!==saved.images[i]))) ? [id] : [];
+        })''', images)
+        self.assertEqual(changed, [], 'Redraws must retain decoded and pending poster nodes')
+
+    def assert_no_broken_posters(self, page):
+        self.assertEqual(page.locator('.compare-card-art img').evaluate_all(
+            'images=>images.filter(image=>image.complete&&!image.naturalWidth).map(image=>image.src)'), [])
+
+    def test_preview_survives_full_image_failure_and_every_comparison_redraw(self):
+        for width, zoom in ((1280, 100), (390, 85)):
+            with self.subTest(width=width, zoom=zoom):
+                responses = {'/preview.svg': {'body': PREVIEW_SVG}, '/full.svg': {'hold': True}}
+                requests, pending = [], {}
+                page, errors = self.open_fixture(width, zoom, deferred_metadata=(999,),
+                    poster_metadata={42184: {'poster': '/preview.svg', 'art': '/full.svg'}},
+                    image_responses=responses, image_requests=requests, pending_images=pending)
+                page.wait_for_function('''()=>{
+                    const preview=document.querySelector('[data-show="42184"] .compare-poster-image:not(.compare-poster-full)');
+                    return preview?.naturalWidth===32&&!preview.classList.contains('is-loading');
+                }''')
+                self.assertEqual(len(pending.get('/full.svg', [])), 1)
+                self.assertTrue(page.locator('[data-show="42184"] .compare-poster-full').evaluate(
+                    'image=>image.classList.contains("is-loading")&&getComputedStyle(image).opacity==="0"'))
+                self.remember_posters(page, [42184, 563])
+                page.evaluate('window.savedPreview=window.savedPosters.get(42184).images.find(image=>!image.classList.contains("compare-poster-full"))')
+                self.check_rows(page, 'row', zoom)
+
+                page.locator('[data-action="averages"]').click()
+                self.assert_posters_retained(page)
+                for view in ('grid', 'timeline'):
+                    self.set_view(page, view)
+                    self.assert_posters_retained(page)
+                    self.check_rows(page, 'row', zoom)
+                for layout in ('side', 'compact', 'row'):
+                    self.choose(page, 'timelineLayout', layout)
+                    self.assert_posters_retained(page)
+                    self.check_rows(page, layout, zoom)
+                for mode in ('all', 'single'):
+                    self.choose(page, 'mode', mode)
+                    self.assert_posters_retained(page)
+                    self.check_rows(page, 'row', zoom)
+                page.locator('[data-action="move"][data-id="42184"][data-direction="1"]').click()
+                self.assertEqual(page.locator('.compare-card').evaluate_all('cards=>cards.map(card=>+card.dataset.show)'), [563, 42184, 999])
+                self.assert_posters_retained(page)
+                page.evaluate('window.resolveMetadata(999)')
+                page.locator('.compare-save:not(:disabled)').wait_for()
+                self.assert_posters_retained(page)
+                self.assertEqual(requests.count('/preview.svg'), 1)
+                self.assertEqual(requests.count('/full.svg'), 1)
+
+                pending['/full.svg'].pop().fulfill(status=404, body='Original poster unavailable.')
+                page.wait_for_function('!document.querySelector("[data-show=\\\"42184\\\"] .compare-poster-full")')
+                self.assert_posters_retained(page, images=False)
+                self.assertTrue(page.evaluate('''()=>document.querySelector('[data-show="42184"] .compare-poster-image')===window.savedPreview
+                    &&window.savedPreview.naturalWidth===32&&!window.savedPreview.classList.contains('is-loading')'''))
+                self.assert_no_broken_posters(page)
+
+                responses['/full.svg'] = {'body': POSTER_SVG}
+                page.evaluate('window.dispatchEvent(new Event("online"))')
+                page.wait_for_function('''()=>{
+                    const full=document.querySelector('[data-show="42184"] .compare-poster-full');
+                    return full?.naturalWidth===160&&!full.classList.contains('is-loading');
+                }''')
+                self.assertEqual(requests.count('/preview.svg'), 1, 'Healthy previews must not be requested again')
+                self.assertEqual(requests.count('/full.svg'), 2, 'Online retries the failed original once')
+                self.assert_posters_retained(page, images=False)
+                self.assertTrue(page.evaluate('window.savedPreview.isConnected'))
+                self.check_rows(page, 'row', zoom)
+                self.assert_no_broken_posters(page)
+                self.assertFalse(errors, errors)
+
+    def test_all_poster_failures_show_a_named_placeholder_then_recover_online(self):
+        for width, zoom in ((1280, 100), (390, 85)):
+            with self.subTest(width=width, zoom=zoom):
+                responses = {'/missing-preview.svg': {'status': 404}, '/missing-full.svg': {'status': 404}}
+                requests = []
+                page, errors = self.open_fixture(width, zoom,
+                    poster_metadata={42184: {'poster': '/missing-preview.svg', 'art': '/missing-full.svg'}},
+                    image_responses=responses, image_requests=requests)
+                page.wait_for_function('!document.querySelector("[data-show=\\\"42184\\\"] .compare-card-art img")')
+                placeholder = page.get_by_role('img', name='Primal poster', exact=True)
+                self.assertTrue(placeholder.is_visible())
+                self.assertEqual(placeholder.locator('.compare-poster-name').text_content(), 'Primal')
+                self.assertEqual(placeholder.locator('.compare-poster-name').evaluate('node=>getComputedStyle(node).visibility'), 'visible')
+                self.remember_posters(page, [42184])
+                self.check_rows(page, 'row', zoom)
+                self.choose(page, 'timelineLayout', 'compact')
+                for view in ('grid', 'timeline'):
+                    self.set_view(page, view)
+                    page.locator('[data-action="averages"]').click()
+                    self.assert_posters_retained(page)
+                    self.check_rows(page, 'compact', zoom)
+                    self.assert_no_broken_posters(page)
+                self.assertEqual(requests.count('/missing-preview.svg'), 1)
+                self.assertEqual(requests.count('/missing-full.svg'), 1, 'Redraws must not create a failure retry loop')
+
+                responses.update({'/missing-preview.svg': {'body': PREVIEW_SVG}, '/missing-full.svg': {'body': POSTER_SVG}})
+                page.evaluate('window.dispatchEvent(new Event("online"))')
+                page.wait_for_function('''()=>{
+                    const images=[...document.querySelectorAll('[data-show="42184"] .compare-poster-image')];
+                    return images.length===2&&images.every(image=>image.naturalWidth&&!image.classList.contains('is-loading'));
+                }''')
+                self.assert_posters_retained(page, images=False)
+                self.assertEqual(requests.count('/missing-preview.svg'), 2)
+                self.assertEqual(requests.count('/missing-full.svg'), 2)
+                self.assertEqual(placeholder.locator('.compare-poster-name').evaluate('node=>getComputedStyle(node).visibility'), 'hidden')
+                self.check_rows(page, 'compact', zoom)
+                self.assert_no_broken_posters(page)
+                self.assertFalse(errors, errors)
+
+    def test_removed_or_disposed_posters_ignore_late_network_completion(self):
+        for operation, status in (('remove', 200), ('remove', 404), ('dispose', 200), ('dispose', 404)):
+            with self.subTest(operation=operation, status=status):
+                requests, pending = [], {}
+                page, errors = self.open_fixture(390, 85,
+                    poster_metadata={42184: {'poster': '/preview.svg', 'art': '/late-full.svg'}},
+                    image_responses={'/preview.svg': {'body': PREVIEW_SVG}, '/late-full.svg': {'hold': True}},
+                    image_requests=requests, pending_images=pending)
+                page.wait_for_function('''()=>{
+                    const preview=document.querySelector('[data-show="42184"] .compare-poster-image:not(.compare-poster-full)');
+                    return preview?.naturalWidth&&!preview.classList.contains('is-loading');
+                }''')
+                self.assertEqual(len(pending.get('/late-full.svg', [])), 1)
+                page.evaluate('''()=>{
+                    window.stoppedArt=document.querySelector('[data-show="42184"] .compare-card-art');
+                    window.stoppedFull=window.stoppedArt.querySelector('.compare-poster-full');
+                    window.latePosterEvent=null;
+                    for(const type of ['load','error'])window.stoppedFull.addEventListener(type,()=>window.latePosterEvent=type,{once:true});
+                }''')
+                if operation == 'remove':
+                    page.locator('[data-action="remove"][data-id="42184"]').tap()
+                    self.assertEqual(page.locator('[data-show="42184"]').count(), 0)
+                    self.assertFalse(page.evaluate('window.stoppedArt.isConnected'))
+                else:
+                    page.evaluate('window.disposeComparison()')
+                page.evaluate('window.stoppedPosterMarkup=window.stoppedArt.innerHTML')
+                pending['/late-full.svg'].pop().fulfill(status=status,
+                    content_type='image/svg+xml' if status == 200 else 'text/plain',
+                    body=POSTER_SVG if status == 200 else 'Late poster failure.')
+                page.wait_for_function('window.latePosterEvent!==null')
+                self.assertEqual(page.evaluate('window.latePosterEvent'), 'load' if status == 200 else 'error')
+                self.assertEqual(page.evaluate('window.stoppedArt.innerHTML'), page.evaluate('window.stoppedPosterMarkup'),
+                                 'Late callbacks must not reveal images or mutate stopped poster markup')
+                self.assertTrue(page.evaluate('window.stoppedFull.classList.contains("is-loading")'))
+                page.evaluate('''async()=>{window.dispatchEvent(new Event('online'));
+                    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));}''')
+                self.assertEqual(requests.count('/late-full.svg'), 1, 'Stopped posters must not retry on reconnect')
+                if operation == 'remove':
+                    self.assertEqual(page.locator('[data-show="42184"]').count(), 0)
+                    self.assert_no_broken_posters(page)
+                self.assertFalse(errors, errors)
+
+    def test_failed_search_thumbnail_is_removed_without_losing_the_add_target(self):
+        requests = []
+        page, errors = self.open_fixture(390, 85,
+            poster_metadata={81: {'name': 'Criminal Minds'}},
+            search_payload={'shows': [{'id': 81, 'name': 'Criminal Minds', 'year': 2005, 'poster': '/missing-thumb.svg'}]},
+            image_responses={'/missing-thumb.svg': {'status': 404}}, image_requests=requests)
+        page.locator('#compare-search').fill('criminal')
+        result = page.locator('#compare-results [data-add="81"]')
+        result.wait_for()
+        page.wait_for_function('!document.querySelector("#compare-results [data-add=\\\"81\\\"] img")')
+        self.assertEqual(requests.count('/missing-thumb.svg'), 1, 'The real failed image request was exercised')
+        self.assertIn('Criminal Minds', result.text_content())
+        self.assertTrue(result.evaluate('node=>{const r=node.getBoundingClientRect();return node.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}'))
+        result.tap()
+        page.locator('.compare-save:not(:disabled)').wait_for()
+        self.assertEqual(page.locator('[data-show="81"] h4').text_content(), 'Criminal Minds')
+        self.assertFalse(page.locator('#compare-results').is_visible())
+        self.assert_no_broken_posters(page)
+        self.assertFalse(errors, errors)
 
     def test_common_rows_keep_full_titles_and_scope_aligned_in_both_views(self):
         for physical_width, zoom in ((1280, 100), (390, 100), (390, 85)):

@@ -461,19 +461,28 @@ const { readFileSync } = await import('node:fs');
 const { createHash } = await import('node:crypto');
 const SITE = 'https://couch.test';
 const hash16 = text => createHash('sha256').update(text).digest('hex').slice(0, 16);
-function stubWorker({ files, network, build = 'b1', mostSmall = 1000 }) {
+function stubWorker({ files, network, build = 'b1', mostSmall = 1000, imageCacheFailure = null }) {
   const on = {}, stores = new Map(), fetched = [], caching = [];
   let tick = 0, skipped = false;
   const key = r => new URL(typeof r === 'string' ? r : r.url, SITE).href;
   const store = name => stores.get(name) || stores.set(name, new Map()).get(name);
-  const cache = m => ({
-    match: async r => m.get(key(r))?.clone(),
-    put: async (r, response) => { m.delete(key(r)); m.set(key(r), response); },
+  const cache = (m, name) => ({
+    match: async r => {
+      if (name === 'couchside-images' && imageCacheFailure === 'match') throw new Error('Image cache unavailable');
+      return m.get(key(r))?.clone();
+    },
+    put: async (r, response) => {
+      if (name === 'couchside-images' && imageCacheFailure === 'put') throw new Error('Image cache full');
+      m.delete(key(r)); m.set(key(r), response);
+    },
     keys: async () => [...m.keys()].map(url => ({ url })),
     delete: async r => m.delete(key(r)),
   });
   const caches = {
-    open: async name => cache(store(name)),
+    open: async name => {
+      if (name === 'couchside-images' && imageCacheFailure === 'open') throw new Error('Image storage unavailable');
+      return cache(store(name), name);
+    },
     keys: async () => [...stores.keys()],
     delete: async name => stores.delete(name),
     match: async (r, { cacheName } = {}) => {
@@ -565,6 +574,24 @@ const simultaneous = await Promise.all([
 check('image downloads share duplicates and never exceed six concurrent transfers',
   imagePeak <= 6 && parallelImages.fetched.length === 12
   && await simultaneous[0].text() === await simultaneous[12].text());
+for (const failure of ['open', 'match', 'put']) {
+  let active = 0, peak = 0;
+  const withoutImageCache = stubWorker({ files, imageCacheFailure: failure, network: async url => {
+    active++; peak = Math.max(peak, active);
+    await new Promise(done => setTimeout(done, 5));
+    active--; return new Response(url);
+  } });
+  const answers = await Promise.all([
+    ...Array.from({ length: 12 }, (_, n) => withoutImageCache.ask(poster(n), { destination: 'image' })),
+    withoutImageCache.ask(poster(0), { mode: 'cors', destination: 'image' }),
+  ]);
+  check(`images still load and share bounded transfers when image cache ${failure} fails`,
+    peak <= 6 && withoutImageCache.fetched.length === 12
+    && await answers[0].text() === await answers[12].text());
+  check(`failed image cache ${failure} writes cannot prevent the next network request`,
+    (await (await withoutImageCache.ask(poster(0), { destination: 'image' })).text()) === poster(0)
+    && withoutImageCache.fetched.length === 13);
+}
 const images = Object.fromEntries([1, 2, 3, 4, 5].map(n => [poster(n), `poster ${n}`]));
 net = siteOf({ ...images, [poster(9)]: undefined });
 sw = stubWorker({ files, network: url => net(url), mostSmall: 3 });

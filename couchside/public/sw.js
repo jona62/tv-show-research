@@ -15,8 +15,8 @@
 // CORS so every copy is readable (Chrome counts an opaque one as about 7 MB of quota),
 // and the least recently used go once there are more than 1,000 small images or 40
 // large ones, about 30 MB in all. One long scroll down the home page shows 350 posters.
-const VERSION = '2af644037ae3';
-const FILES = {"/assets/styles/style.css": "80b74d7d8db0df52", "/assets/scripts/main.js": "e0afd88238d9f8b3", "/assets/scripts/format.js": "9c2dfc9440b436fa", "/assets/scripts/gestures.js": "c2173468ef22c30e", "/assets/scripts/start.js": "dd8f0fc9dfb5b7ce", "/assets/scripts/ratings.js": "2a0509d86dd759f5", "/assets/scripts/episode-ratings.js": "c4e6d874df401c35", "/assets/scripts/episode-timeline.js": "803e207689055be8", "/assets/scripts/show-cards.js": "1e100102e3a68bf6", "/assets/scripts/title-sections.js": "c735de07fc7f1d99", "/assets/scripts/filter-state.js": "2a62eef7fd5aeeda", "/assets/scripts/filters.js": "d657b07fba74e1f3", "/assets/scripts/network.js": "4038b4a1107593ef", "/assets/scripts/accounts.js": "5eadc4519564f154", "/assets/scripts/account-state.js": "b5fa40b4d244907c", "/assets/scripts/taste.js": "94c80891be4e9edb", "/assets/scripts/list-transfer.js": "bf96d9f9d5d965e6", "/assets/scripts/compare.js": "05f667cd6dd4d9a6", "/assets/scripts/comparison-timeline.js": "08136e7a421ad31d", "/assets/scripts/compare-timeline-interactions.js": "1df7ff031af8a1c4", "/assets/scripts/comparison-timeline-export.js": "849ae6d7d91c88c9", "/assets/scripts/poster-colours.js": "0a5c074f14836db9", "/assets/scripts/rating-views.js": "2168d19db732fbe1", "/assets/scripts/rating-snapshots.js": "75d5e1e996fcebdd", "/assets/scripts/snapshot-images.js": "58ed772a708f7e6c", "/assets/scripts/app-updates.js": "6fd21e40c7dc0bdb", "/assets/scripts/transfer.js": "2bfd019beccdb78d", "/assets/scripts/qr.js": "d7f92f94bb8911ea", "/assets/scripts/fresh.js": "afcc972f76479400", "/assets/scripts/starters.js": "d559e3a61414a450", "/assets/scripts/touch-forms.js": "b396a8dd24140a5f", "/pages/offline.html": "eff55b208648b7c9", "/assets/icons/favicon.svg": "8a7c0610bab9b7fc", "/assets/icons/icon-192.png": "72daa1f7f1066393", "/assets/images/tmdb.svg": "8e7b30f73a402069"};
+const VERSION = 'dd3c585081b0';
+const FILES = {"/assets/styles/style.css": "35387f51419021e9", "/assets/scripts/main.js": "7684e3f406427ca1", "/assets/scripts/format.js": "9c2dfc9440b436fa", "/assets/scripts/gestures.js": "c2173468ef22c30e", "/assets/scripts/start.js": "dd8f0fc9dfb5b7ce", "/assets/scripts/ratings.js": "2a0509d86dd759f5", "/assets/scripts/episode-ratings.js": "c4e6d874df401c35", "/assets/scripts/episode-timeline.js": "803e207689055be8", "/assets/scripts/show-cards.js": "1e100102e3a68bf6", "/assets/scripts/title-sections.js": "c735de07fc7f1d99", "/assets/scripts/filter-state.js": "2a62eef7fd5aeeda", "/assets/scripts/filters.js": "d657b07fba74e1f3", "/assets/scripts/network.js": "4038b4a1107593ef", "/assets/scripts/accounts.js": "5eadc4519564f154", "/assets/scripts/account-state.js": "b5fa40b4d244907c", "/assets/scripts/taste.js": "94c80891be4e9edb", "/assets/scripts/list-transfer.js": "bf96d9f9d5d965e6", "/assets/scripts/compare.js": "174cdb2573ad92fa", "/assets/scripts/comparison-timeline.js": "08136e7a421ad31d", "/assets/scripts/compare-timeline-interactions.js": "1df7ff031af8a1c4", "/assets/scripts/comparison-timeline-export.js": "849ae6d7d91c88c9", "/assets/scripts/poster-colours.js": "0a5c074f14836db9", "/assets/scripts/compare-posters.js": "2f489d7d10b368a3", "/assets/scripts/rating-views.js": "2168d19db732fbe1", "/assets/scripts/rating-snapshots.js": "75d5e1e996fcebdd", "/assets/scripts/snapshot-images.js": "58ed772a708f7e6c", "/assets/scripts/app-updates.js": "6fd21e40c7dc0bdb", "/assets/scripts/transfer.js": "2bfd019beccdb78d", "/assets/scripts/qr.js": "d7f92f94bb8911ea", "/assets/scripts/fresh.js": "afcc972f76479400", "/assets/scripts/starters.js": "d559e3a61414a450", "/assets/scripts/touch-forms.js": "b396a8dd24140a5f", "/pages/offline.html": "8f1f840921548897", "/assets/icons/favicon.svg": "8a7c0610bab9b7fc", "/assets/icons/icon-192.png": "72daa1f7f1066393", "/assets/images/tmdb.svg": "8e7b30f73a402069"};
 const SHELL = `couchside-${VERSION}`;
 const IMAGES = 'couchside-images';
 // The app's own pages (PAGES in server.py): each is the one page, which routes itself.
@@ -118,9 +118,15 @@ function drainImages() {
 
 async function image(event, url) {
   used.set(url, Date.now());
-  const cache = await caches.open(IMAGES);
-  const hit = await cache.match(url, { ignoreVary: true });
-  if (hit) return hit;
+  let cache;
+  try {
+    cache = await caches.open(IMAGES);
+    const hit = await cache.match(url, { ignoreVary: true });
+    if (hit) return hit;
+  } catch {
+    // Storage pressure must not prevent an available image from loading.
+    cache = null;
+  }
   if(!arriving.has(url)) {
     const pending=imageTurn(()=>fetchImage(event,url,cache)).finally(()=>arriving.delete(url));
     arriving.set(url,pending);
@@ -138,7 +144,7 @@ async function fetchImage(event,url,cache) {
     // A host that refuses CORS, or no connection: the page's own request, and nothing kept.
     return fetch(request);
   }
-  if (response.status === 200) event.waitUntil(cache.put(url, response.clone()).then(trimSoon).catch(()=>{}));
+  if (cache && response.status === 200) event.waitUntil(cache.put(url, response.clone()).then(trimSoon).catch(()=>{}));
   return response;
 }
 
