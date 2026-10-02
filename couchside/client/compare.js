@@ -1,10 +1,11 @@
 import { apiFetch } from './network.js';
 import { esc, html, icon, legend, ratings, ratingSources } from './ratings.js';
 import { compareMatrix, ratingTableHTML, seasonName } from './rating-views.js';
-import { comparisonOverlayHTML, comparisonShowColour } from './comparison-timeline.js';
+import { comparisonOverlayHTML, comparisonOverlayPlan, comparisonShowColour } from './comparison-timeline.js';
 import { bindComparisonTimeline } from './compare-timeline-interactions.js';
 import { comparisonPosterColours, loadPosterColour, validPosterColour } from './poster-colours.js';
 import { createComparisonPosters } from './compare-posters.js';
+import { createComparisonViewport } from './compare-viewport.js';
 
 const STORAGE_KEY = 'couchside.comparison-v1', MAX_SHOWS = 40;
 const validId = id => Number.isInteger(id) && id > 0 && id <= 2147483647;
@@ -211,11 +212,12 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
   announce = () => {}, metadata, loadRatings, colourLoader, searchShows = query => answer(`/api/search?q=${encodeURIComponent(query)}`) } = {}) {
   const state = parseComparison(search, storedComparison());
   let disposed = false, grabbed = null, dragId = null, timer, searchToken = 0, saving = false, query = '', found = [], searchGroups = [], searchMessage = '', searchOpen = false;
-  let matrix, timelineCleanup = () => {}, resizeFrame, observedWidth = 0;
+  let matrix, timelineModel, timelineSourcePlan, timelineCleanup = () => {}, resizeFrame, observedWidth = 0;
   html(host, `<section class="compare-page page"><div class="compare-header"><h1 class="page-h">Compare shows</h1><button class="btn primary compare-save" type="button" disabled>${actionIcon('save')}Save image</button></div><div class="ratings-search-wrap compare-search">${icon('search')}<input type="search" id="compare-search" placeholder="Search any show…" aria-label="Find a show to compare" autocomplete="off" maxlength="100" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-controls="compare-results" aria-expanded="false"><div class="ratings-compare-results" id="compare-results" role="listbox" aria-label="Shows to compare" hidden></div></div><p class="ratings-search-status compare-search-status" role="status"></p><div class="compare-content"></div><p class="compare-status" role="status" aria-live="polite"></p></section>`);
   const input = host.querySelector('#compare-search'), results = host.querySelector('#compare-results'), searchStatus = host.querySelector('.compare-search-status');
   const content = host.querySelector('.compare-content'), save = host.querySelector('.compare-save'), live = host.querySelector('.compare-status');
   const posters = createComparisonPosters();
+  const timelineView = createComparisonViewport({ changed: () => { if (!disposed) paintTimeline(); } });
   const searchViewport = window.visualViewport;
   function sizeSearchResults() {
     if (results.hidden) return;
@@ -239,6 +241,7 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
     if (!content.contains(active)) return null;
     return active.dataset.compareSeason ? `[data-compare-season="${active.dataset.compareSeason}"]`
       : active.closest('.compare-picker') ? `[data-compare-picker="${active.closest('.compare-picker').dataset.picker}"]`
+        : active.closest('.comparison-zoom-controls') ? active.dataset.zoomAction ? `[data-zoom-action="${active.dataset.zoomAction}"]` : '[data-zoom-menu]'
         : active.dataset.episode && active.dataset.showId ? `.ratings-point-hit[data-show-id="${active.dataset.showId}"][data-episode="${active.dataset.episode}"]`
           : active.classList.contains('ratings-chart-wrap') ? '.ratings-chart-wrap'
             : active.dataset.action ? ['action', 'id', 'direction', 'mode', 'view'].filter(key => active.dataset[key] != null)
@@ -250,21 +253,45 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
     observedWidth = width; cancelAnimationFrame(resizeFrame);
     resizeFrame = requestAnimationFrame(() => { if (!disposed && state.view === 'timeline') paintTimeline(); });
   });
-  function paintTimeline() {
+  function paintTimeline(renew = false) {
     const board = content.querySelector('[data-timeline-board]'); if (!board) return;
-    const focus = rememberFocus(), scroll = board.querySelector('.ratings-chart-wrap')?.scrollLeft || 0;
+    const focus = rememberFocus(), active = document.activeElement;
     timelineCleanup();
-    const model = freezeComparison(state, loader.entries);
-    html(board, comparisonOverlayHTML(model, { availableWidth: Math.max(300, board.clientWidth || content.clientWidth || 960), pointStyle: state.pointStyle }));
-    timelineCleanup = bindComparisonTimeline(board, model, host.querySelector('.compare-page'));
-    const viewport = board.querySelector('.ratings-chart-wrap'); if (viewport) viewport.scrollLeft = scroll;
-    if (focus) board.querySelector(focus)?.focus({ preventScroll: true });
+    if (renew || !timelineModel) {
+      timelineModel = freezeComparison(state, loader.entries);
+      timelineSourcePlan = comparisonOverlayPlan(timelineModel);
+    }
+    timelineView.prepare(timelineSourcePlan, JSON.stringify([state.ids, state.mode, state.seasons]));
+    const availableWidth = Math.max(240, board.clientWidth || content.clientWidth || 960);
+    const options = { availableWidth, pointStyle: state.pointStyle, viewport: timelineView.options(), sourcePlan: timelineSourcePlan };
+    const plan = comparisonOverlayPlan(timelineModel, availableWidth, options.viewport, timelineSourcePlan);
+    const replacement = document.createElement('div');
+    html(replacement, `<div data-comparison-zoom-controls></div>${comparisonOverlayHTML(timelineModel, options)}`);
+    const current = board.querySelector('.ratings-timeline'), next = replacement.querySelector('.ratings-timeline');
+    if (current && next) {
+      // Keep the SVG and its viewport as gesture targets throughout a touch or drag.
+      // Only projected children change; posters and controls never join this redraw.
+      for (const selector of ['.ratings-timeline', '.ratings-chart-axis', '.ratings-chart-wrap']) {
+        const before = board.querySelector(selector), after = replacement.querySelector(selector);
+        for (const attribute of [...before.attributes]) if (!after.hasAttribute(attribute.name)) before.removeAttribute(attribute.name);
+        for (const attribute of after.attributes) before.setAttribute(attribute.name, attribute.value);
+        if (selector !== '.ratings-chart-wrap') html(before, after.innerHTML);
+      }
+      for (const selector of ['.comparison-overlay-key', '.comparison-overlay-caption']) {
+        const before = board.querySelector(selector), after = replacement.querySelector(selector);
+        before?.replaceWith(after);
+      }
+    } else board.replaceChildren(...replacement.childNodes);
+    timelineView.bind(board, plan);
+    timelineCleanup = bindComparisonTimeline(board, timelineModel, host.querySelector('.compare-page'));
+    if (focus && document.activeElement !== active) (board.querySelector(focus) || board.querySelector('.ratings-chart-wrap'))?.focus({ preventScroll: true });
+    if (!renew) { const tip = host.querySelector('.ratings-tooltip'); if (tip) tip.hidden = true; }
   }
   function refreshPosterColours() {
     const model = freezeComparison(state, loader.entries);
     for (const show of model.shows) content.querySelector(`.compare-card[data-show="${show.id}"]`)?.style.setProperty('--show-colour', show.colour);
     // Sampling must not replace cards or close a menu while someone is using it.
-    if (state.view === 'timeline') paintTimeline();
+    if (state.view === 'timeline') paintTimeline(true);
   }
   const closePicker = (picker, focus = false) => {
     const trigger = picker?.querySelector('[data-compare-picker]'), menu = picker?.querySelector('[role="listbox"]');
@@ -287,7 +314,7 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
   function render(focusOverride) {
     const focus = focusOverride || rememberFocus(), scroll = content.querySelector('.ratings-chart-wrap')?.scrollLeft || 0,
       posterScroll = content.querySelector('.compare-cards')?.scrollLeft || 0;
-    timelineCleanup(); timelineCleanup = () => {}; observer?.disconnect(); cancelAnimationFrame(resizeFrame);
+    timelineCleanup(); timelineCleanup = () => {}; timelineView.suspend(); observer?.disconnect(); cancelAnimationFrame(resizeFrame);
     for (const id of state.ids) {
       const show = loader.entries.get(id)?.show;
       if (show) {
@@ -307,7 +334,7 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
     html(content, `${controls}${model.shows.length ? `${model.shows.some(show => seasonNumbers(show).some(season => season >= 1900)) ? '<p class="ratings-credit">Calendar-year season labels are preserved in episode descriptions.</p>' : ''}${board}<p class="ratings-credit">${timeline ? 'Episode ratings · Same rating scale · Each show ends at its last episode' : state.mode === 'all' ? 'Average episode rating per season · Seasons align by number' : 'Episode ratings · Each show uses its selected season'}</p><p class="ratings-credit">${esc([...new Set(model.shows.flatMap(show => show.sources.split(' / ')))].filter(Boolean).join(' / '))} episode ratings · Out of 10</p>${ready ? '' : '<p class="note" role="status">Some shows are still loading. Save image is available when all selected shows are ready.</p>'}` : `<div class="compare-timeline-layout layout-${state.timelineLayout}">${cards}</div><p class="note">${state.ids.length ? 'Loading your comparison…' : 'Find a show to compare.'}</p>`}`);
     posters.paint(content, state.ids.map(id => loader.entries.get(id)?.show).filter(Boolean));
     if (timeline) {
-      paintTimeline();
+      paintTimeline(true);
       const plots = content.querySelector('.compare-timeline-plots');
       if (plots) { observedWidth = plots.clientWidth; observer?.observe(plots); }
       const viewport = content.querySelector('.ratings-chart-wrap'); if (viewport) viewport.scrollLeft = scroll;
@@ -388,7 +415,7 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
     if (!seasonNumbers(loader.entries.get(id)?.show || { episodes: [] }).includes(selected)) return;
     state.seasons[id] = selected;
     // Keep Safari's just-dismissed select in place; refocusing a new select reopens it.
-    if (state.view === 'timeline') paintTimeline();
+    if (state.view === 'timeline') paintTimeline(true);
     else {
       matrix = compareMatrix(freezeComparison(state, loader.entries));
       html(content.querySelector('.compare-board'), ratingTableHTML(matrix));
@@ -432,8 +459,14 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
     }
     if (target.matches('.ratings-point-hit[data-episode]') && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
       event.preventDefault();
-      const series = target.closest('.comparison-overlay-series'), points = [...series.querySelectorAll('.ratings-point-hit[data-episode]')], index = points.indexOf(target);
-      points[event.key === 'Home' ? 0 : event.key === 'End' ? points.length - 1 : Math.max(0, Math.min(points.length - 1, index + (event.key === 'ArrowRight' ? 1 : -1)))]?.focus(); return;
+      const series = timelineSourcePlan?.series.find(item => item.show.id === Number(target.dataset.showId));
+      const points = series?.runs.flat() || [], index = points.findIndex(point => point.id === Number(target.dataset.episode));
+      const next = points[event.key === 'Home' ? 0 : event.key === 'End' ? points.length - 1 : Math.max(0, Math.min(points.length - 1, index + (event.key === 'ArrowRight' ? 1 : -1)))];
+      if (next) {
+        timelineView.reveal(next.sampleIndex, next.rating);
+        content.querySelector(`.ratings-point-hit[data-show-id="${series.show.id}"][data-episode="${next.id}"]`)?.focus({ preventScroll: true });
+      }
+      return;
     }
     const viewport = target.closest('.scroll-board,.ratings-chart-wrap');
     if (target === viewport && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
@@ -478,7 +511,7 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
   window.addEventListener('couchside-ratings', enriched);
   render(); state.ids.forEach(id => loader.ensure(id));
   return () => {
-    disposed = true; clearTimeout(timer); ++searchToken; loader.dispose(); posters.dispose(); observer?.disconnect(); cancelAnimationFrame(resizeFrame); timelineCleanup();
+    disposed = true; clearTimeout(timer); ++searchToken; loader.dispose(); posters.dispose(); timelineView.dispose(); observer?.disconnect(); cancelAnimationFrame(resizeFrame); timelineCleanup();
     results.removeEventListener('error', failedSearchImage, true);
     document.removeEventListener('pointerdown', outside); window.removeEventListener('couchside-ratings', enriched);
     window.removeEventListener('resize', sizeSearchResults); window.removeEventListener('scroll', sizeSearchResults);
