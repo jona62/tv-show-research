@@ -42,7 +42,7 @@ The picks are not the same list every day, nor a new one every time.
 - **The first five hold.** Places 1 to 5 are the strongest picks by rank and by how
   often they have been on screen lately. Nothing random touches them.
 - **The rest turn over a little each day.** Places 6 to 24 are drawn from your best
-  72 by rank, by that same fatigue and by the day's noise (`fresh.py`). Over a month of
+  72 by rank, by that same fatigue and by the day's noise (`backend/recommendation/fresh.py`). Over a month of
   daily visits by the bench personas, about two thirds of the list carries over from
   one day to the next, no top-ten pick is gone for more than two days running, and
   nothing ranked below 72 appears.
@@ -67,12 +67,12 @@ The picks are not the same list every day, nor a new one every time.
 The day is the browser's local date, turning over at 04:00, and the seed is the
 first 16 hex digits of SHA-256 of a salt and the day; the salt never leaves the
 browser, so days cannot be linked to each other or to anyone. The memory is
-`fresh.js`, kept in this browser as `next-watch-fresh` and `next-watch-shown`, and
+`client/fresh.js`, kept in this browser as `next-watch-fresh` and `next-watch-shown`, and
 the visit as `next-watch-visit` in the tab. A request adds the day, the seed, a
 decayed seen count per title and the ids engaged with lately. The answer echoes the
 day and seed as `fresh`, and each pick gives its true `rank` and its `place`:
 `steady`, `fresh` or `different`. A request without them gets the plain ranking,
-byte for byte, which is what the tests and `scripts/bench` see, and so does a
+byte for byte, which is what the tests and `pipeline/bench` see, and so does a
 browser with no storage or no Web Crypto (a page not served over https).
 
 ## How first-visit shows are chosen
@@ -80,7 +80,7 @@ browser with no storage or no Web Crypto (a page not served over https).
 A fixed list of famous titles is easy to recognise but teaches little, and starts
 everyone from the same few shows (MovieLens: Rashid et al. 2002 and 2008; Golbandi
 et al. 2011). So the chips on a first visit come from `GET /api/starters`, drawn by
-`starters.py`:
+`backend/recommendation/starters.py`:
 
 - **A pool of familiar titles in about 35 kinds.** Well rated or very popular shows
   (the 2,000 most popular, and the 50 most popular in each of the 15 largest
@@ -96,7 +96,7 @@ et al. 2011). So the chips on a first visit come from `GET /api/starters`, drawn
   `Accept-Language`). A language other than English takes seven places from what is
   popular in it; English with a region such as en-GB or en-IN takes four from that
   country's television. Otherwise the four explore kinds not yet on screen.
-- **Different each day, the same all day.** The seed is the picks' own (`fresh.js`),
+- **Different each day, the same all day.** The seed is the picks' own (`client/fresh.js`),
   so a screen is a function of seed, round, language and what you added: the server
   caches it and keeps nothing. *Show different shows* moves to the next round, which
   changes every chip you have not added.
@@ -117,7 +117,7 @@ unscripted, rather than pretending a show-versus-film distinction exists.
 Barely 13% of the catalogue carries a public rating, so a rating floor throws
 away good titles for the crime of being new. *How well known* filters on
 TVmaze's own 0 to 100 popularity instead, which covers every title.
-`scripts/build_popularity.py` writes those weights in catalog order as one byte
+`pipeline/jobs/build_popularity.py` writes those weights in catalog order as one byte
 each, about 69 KB gzipped, so the 18 MB catalog never has to be rebuilt for it.
 
 ## Finding a show
@@ -180,20 +180,20 @@ to AirDrop, mail or keep in a cloud folder and open on the other device with *Op
 a saved file*. The link stays the one format, so nothing new has to be learned or
 trusted, and the file is for the channels that mangle long text.
 
-`qr.js` is a byte-mode encoder at error-correction level M, written here because
+`client/qr.js` is a byte-mode encoder at error-correction level M, written here because
 the page loads no third-party script. Supporting one correction level keeps the
 block table to forty rows and the whole encoder near 11 KB. It was verified by
 generating all forty versions at three payload sizes each and reading every one
-back with ZBar; `app/qr-golden.json` records four of those matrices so a
+back with ZBar; `app/tests/qr-golden.json` records four of those matrices so a
 regression shows up as a byte difference. Regenerate the fixtures only after
 re-checking with a real scanner.
 
 ## Run it
 
 ```sh
-python3 -m pip install -r scripts/requirements-runtime.txt
-python3 app/build.py      # writes app/public, links the model from model/
-python3 app/server.py     # http://localhost:8080
+python3 -m pip install -r app/requirements-runtime.txt
+.venv/bin/python tools/manage.py build app
+.venv/bin/python tools/manage.py run app
 ```
 
 Python 3.10+ and urllib3 for the shared outbound search client. `build.py` fails the build if the first load ever
@@ -202,17 +202,23 @@ crosses 512 KB.
 ## Check it
 
 ```sh
-.venv/bin/python app/test_engine.py
-.venv/bin/python app/test_search.py
-.venv/bin/python app/test_server.py
-node app/test_similar.mjs
-node app/test_transfer.mjs
-node app/test_qr.mjs
-.venv/bin/python app/test_fresh.py
-node app/test_fresh.mjs
-node app/test_visits.mjs
-.venv/bin/python app/test_starters.py
-node app/test_starters.mjs
+.venv/bin/python tools/manage.py test app
+```
+
+Individual checks can also be run directly:
+
+```sh
+.venv/bin/python app/tests/test_engine.py
+.venv/bin/python app/tests/test_search.py
+.venv/bin/python app/tests/test_server.py
+node app/tests/test_similar.mjs
+node app/tests/test_transfer.mjs
+node app/tests/test_qr.mjs
+.venv/bin/python app/tests/test_fresh.py
+node app/tests/test_fresh.mjs
+node app/tests/test_visits.mjs
+.venv/bin/python app/tests/test_starters.py
+node app/tests/test_starters.mjs
 ```
 
 The first verifies the app engine ranks identically to the research recommender under
@@ -241,10 +247,10 @@ code, packs a list for a request, reads a code out of a link or folded text, and
 checks that damaged, truncated and wrong-version codes are refused rather than
 half-applied. The sixth holds the QR
 encoder to its recorded matrices, its version boundaries, and the structure a
-scanner depends on. The last three cover freshness: `fresh.py` over sixty simulated
-days and a month of Couchside's visits, `fresh.js`'s memory, those visits in it and
+scanner depends on. The last three cover freshness: `backend/recommendation/fresh.py` over sixty simulated
+days and a month of Couchside's visits, `client/fresh.js`'s memory, those visits in it and
 its one-second rule with a stand-in observer, and
-`visits.js`, which merges an answer into the cards on screen, decides when a kept
+`client/visits.js`, which merges an answer into the cards on screen, decides when a kept
 visit can be shown again, and keeps the days of picks to find one again.
 `test_engine.py` checks fresh answers too: the same day and seed give the same
 answer, the first five hold, places 12 and 20 come from ranks 25 to 72, two weeks of
@@ -260,11 +266,10 @@ place, and the seed from the fresh store.
 
 Next Watch is the `next-watch` app in the root `rig.yaml`, on port 8081.
 Pushing to `main` deploys it through the Rigbox GitHub connection; commit
-`public/` after `build.py`, since the host runs `server.py` with no build
+`public/` after `build.py`, since the host runs `python -m backend.server` from `app/` with no build
 step. The model never travels in a release: the app reads the one the
-refresher keeps on the workspace, through `MODEL_DIR`. Locally, `build.py`
-links the repository's `model/` into `app/model/` and the server finds it
-there.
+refresher keeps on the workspace, through `MODEL_DIR`. Locally, the build and server both read the repository's `data/model/` directly;
+`MODEL_DIR` can select another model without making an app-local copy.
 
 Only `app/public/` is served as files. The model and the Python sources sit
 outside the document root and return 404.
@@ -280,13 +285,15 @@ status 0, and the host's restart brings it back on the new model. A link to a
 directory without `build.json`, or to nothing, is never a reason to leave, and a
 plain directory never moves. `MODEL_POLL_SECONDS=0` turns following off. The page's
 count, snapshot date and first-visit data are filled in at startup, so they follow
-the model without a rebuild. `follow.py` does the watching; Couchside carries a copy.
+the model without a rebuild. `backend/follow.py` does the watching; Couchside carries a copy.
 
 ## How it is put together
 
-`engine.py` loads the catalog, the sparse TF-IDF, genre and theme vectors, and
+[Build and public asset notes](../docs/public-assets.md) describe how the browser bundle is generated.
+
+`backend/recommendation/engine.py` loads the catalog, the sparse TF-IDF, genre and theme vectors, and
 the model's facets (Wikidata's genres, makers, cast, franchises and subjects, and
-TVmaze's networks, read by `facets.py`) once. A pick has to do two things.
+TVmaze's networks, read by `backend/recommendation/facets.py`) once. A pick has to do two things.
 
 - **Sit close to shows you liked.** Closeness to one show blends plot wording,
   themes and genres as the *Tune* preset weighs them, plus a bonus for sharing a
@@ -297,7 +304,7 @@ TVmaze's networks, read by `facets.py`) once. A pick has to do two things.
   than what a show is. Candidates are
   scored with a weighted mean across your liked shows, blended with the single
   strongest match, less a penalty for looking like what you disliked.
-- **Fit what your whole list leans toward.** `taste.py` compares how often your
+- **Fit what your whole list leans toward.** `backend/recommendation/taste.py` compares how often your
   liked shows carry each attribute (language, format, network country, network,
   decade, episode length, how well known and how well rated, TVmaze genres and
   Wikidata subgenres) with how often shows in general do, as a smoothed log
@@ -323,8 +330,8 @@ one is out of reach (about 20 ms and 360 KB a rated show, a minute and a gigabyt
 3,000 before any ranking; run on 3,000 the old way took 11 minutes), and averaged
 over hundreds of shows it would favour whatever sits near the middle of them all. So
 a long list is ranked by `Wide` from `neighbours.bin.gz`, each show's 48 closest
-shows, which the nightly build precomputes (`scripts/build_neighbours.py`) and
-`neighbours.py` reads: each liked show adds its closeness to each of its closest
+shows, which the nightly build precomputes (`pipeline/jobs/build_neighbours.py`) and
+`backend/recommendation/neighbours.py` reads: each liked show adds its closeness to each of its closest
 shows, so a candidate close to many liked shows gathers the most, as item-to-item
 recommenders have long ranked. Over so many ratings the noise is kept down: an OK
 counts a tenth of a love, older ratings fade toward half, themes and genres count
@@ -338,16 +345,16 @@ over the whole list. Without the neighbour index, a long list is ranked from its
 most recent likes and dislikes. Next Watch ranks 3,000 ratings in about a quarter of
 a second here.
 
-`scripts/bench` measures all of this against 71 viewer personas, and long lists built
+`pipeline/bench` measures all of this against 71 viewer personas, and long lists built
 from them; its README has the numbers and how the constants were chosen.
 
-`titles.py` is search. It indexes every show's titles once at startup, as flat
+`backend/recommendation/titles.py` is search. It indexes every show's titles once at startup, as flat
 arrays and byte strings rather than an object per title, and answers
-`Engine.search`. `fallback.py` shapes what `GET /api/search` returns,
+`Engine.search`. `backend/fallback.py` shapes what `GET /api/search` returns,
 `{"shows": [...], "missing": [...], "missing_first": false}`, asking TVmaze when
 the catalogue comes up short. Couchside copies both, with the engine.
 
-`server.py` is a standard-library HTTP server with `GET /api/search`,
+`backend/server.py` is a standard-library HTTP server with `GET /api/search`,
 `GET /api/starters` and `POST /api/recommend`. All are stateless: your list lives in your browser and is
 posted with each request, never stored, packed as its ids and one character a rating
 (`{"ids": [...], "weights": "43..."}`, 19 KB for 3,000 ratings; a list of objects is
@@ -355,18 +362,18 @@ still read). A body may run to 64 KB. Three concurrent calculations at most.
 It renders the page once at startup and answers `/` and the three tab paths with
 it, so a refresh keeps the tab; everything else in `public/` is served as files.
 
-`main.js` renders; `fit.js` holds the taste chart and its pure value maths;
-`similar.js` holds the rules for which chosen shows the picks are matched to;
-`fresh.js` (shared with Couchside) remembers what was on screen, and `visits.js`
-holds what stays put within a visit; `starters.js` (shared too) asks for first-visit
+`client/main.js` renders; `client/fit.js` holds the taste chart and its pure value maths;
+`client/similar.js` holds the rules for which chosen shows the picks are matched to;
+`client/fresh.js` (shared with Couchside) remembers what was on screen, and `client/visits.js`
+holds what stays put within a visit; `client/starters.js` (shared too) asks for first-visit
 shows and keeps added ones in place.
 The catalog metadata and the quick picks ride in the page, the quick picks as the
 fallback when first-visit shows cannot be asked for. `build.py` leaves them, with the count and snapshot date, as
-placeholders that `server.py` fills from the model it loaded (`page.py`), and
+placeholders that `backend/server.py` fills from the model it loaded (`backend/page.py`), and
 fills them itself only to measure the page for its size badge and the 512 KB check.
 
-The model is a hard link to the repository's `model/`, which the research pipeline
-in `scripts/` produces. Rebuild it there, then rerun `app/build.py`.
+The research pipeline writes the shared model to `data/model/`. Rebuild it through
+`pipeline/jobs/`, then rerun `.venv/bin/python tools/manage.py build app`.
 
 Data from [TVmaze](https://www.tvmaze.com/), [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
 A match score is content similarity, not a prediction that you will enjoy something.

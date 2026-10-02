@@ -1,0 +1,214 @@
+import { AccountSync } from './account-state.js?v=143a11bc49a0ad05';
+
+const STATUS = {
+  checking: 'Checking your account…',
+  guest: 'Save your ratings and My List across devices.',
+  saved: 'Your ratings and My List are synced.',
+  pending: 'Changes saved on this device. Waiting to sync…',
+  saving: 'Syncing your changes…',
+  offline: 'Changes stay on this device until you reconnect.',
+  expired: 'Sign in again to sync. Your changes are saved on this device.',
+};
+
+const element = (tag, className, text) => {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text) node.textContent = text;
+  return node;
+};
+
+const button = (label, handler, className = 'btn ghost') => {
+  const node = element('button', className, label);
+  node.type = 'button';
+  node.addEventListener('click', handler);
+  return node;
+};
+
+export function mountAccounts({ getState, applyState, fresh, sanitize, toast = () => {}, onStatus = () => {} }) {
+  const panel = document.getElementById('account-access');
+  const dialog = document.getElementById('auth');
+  const body = document.getElementById('auth-body');
+  const heading = document.getElementById('auth-h');
+  let formBusy = false;
+  let formVersion = 0;
+  const sync = new AccountSync({ getState, applyState, fresh, sanitize, onStatus: status => {
+    renderPanel(status);
+    onStatus(status);
+  } });
+
+  function renderPanel({ status = sync.status, message = '', user = sync.user, connected = sync.connected } = {}) {
+    const section = element('div', 'account-panel');
+    if (user) section.append(element('p', 'account-email', user.email));
+    const note = element('p', 'account-status', message || STATUS[status] || STATUS.guest);
+    note.setAttribute('role', 'status');
+    section.append(note);
+    const actions = element('div', 'account-actions');
+    if (user) {
+      if (!connected) actions.append(button('Sign in again', () => openForm('login'), 'btn primary'));
+      actions.append(button('Sync now', async () => {
+        await sync.refresh();
+        await sync.flush();
+      }));
+      if (connected) actions.append(button('Change password', () => openForm('password')));
+      actions.append(button('Sign out', async event => {
+        event.currentTarget.disabled = true;
+        try { await sync.logout(); toast('Signed out. This device’s guest list is restored.'); }
+        catch (error) { toast(error.message); renderPanel(); }
+      }));
+    } else {
+      actions.append(button('Create account', () => openForm('signup'), 'btn primary'));
+      actions.append(button('Sign in', () => openForm('login')));
+    }
+    for (const action of actions.children) action.disabled = status === 'checking';
+    section.append(actions);
+    panel.replaceChildren(section);
+  }
+
+  function field(form, label, name, { type = 'text', autocomplete, minLength, maxLength, value = '' } = {}) {
+    const wrapper = element('label', 'field', label);
+    const input = element('input');
+    input.id = `auth-${name}`;
+    input.name = name;
+    input.type = type;
+    input.required = true;
+    input.value = value;
+    if (autocomplete) input.autocomplete = autocomplete;
+    if (minLength) input.minLength = minLength;
+    if (maxLength) input.maxLength = maxLength;
+    wrapper.htmlFor = input.id;
+    wrapper.append(input);
+    form.append(wrapper);
+    return input;
+  }
+
+  function openForm(kind) {
+    if (formBusy) return;
+    const version = ++formVersion;
+    document.getElementById('account').close();
+    heading.textContent = kind === 'signup' ? 'Create your account'
+      : kind === 'password' ? 'Change your password' : 'Sign in to Couchside';
+    body.replaceChildren();
+    body.append(element('p', 'note', kind === 'signup'
+      ? sync.user ? 'Keep your ratings and My List together on every device. The guest list saved on this device will be added to your new account.'
+        : 'Keep your ratings and My List together on every device. Your list on this device will be saved to your account.'
+      : kind === 'password' ? 'Choose a password you do not use elsewhere.'
+        : 'Use your email and password to pick up where you left off.'));
+    const form = element('form', 'auth-form');
+    const isNewPassword = kind !== 'login';
+    let email = null, current = null, confirm = null, merge = null;
+    if (kind !== 'password') {
+      email = field(form, 'Email address', 'email', { type: 'email', autocomplete: 'username', maxLength: 254,
+        value: kind === 'login' ? sync.user?.email || '' : '' });
+      email.inputMode = 'email';
+      email.autocapitalize = 'none';
+      email.spellcheck = false;
+      email.pattern = '[^\\s@]+@[^\\s@]+\\.[^\\s@]+';
+      email.title = 'Use an email address with a complete domain, such as name@example.com.';
+    } else {
+      current = field(form, 'Current password', 'current-password', {
+        type: 'password', autocomplete: 'current-password', maxLength: 128,
+      });
+    }
+    const password = field(form, kind === 'password' ? 'New password' : 'Password', 'password', {
+      type: 'password', autocomplete: isNewPassword ? 'new-password' : 'current-password',
+      minLength: isNewPassword ? 15 : undefined, maxLength: 128,
+    });
+    if (isNewPassword) {
+      form.append(element('p', 'note auth-password-note', 'Use at least 15 characters. A passphrase works well.'));
+      confirm = field(form, 'Confirm password', 'confirm-password', {
+        type: 'password', autocomplete: 'new-password', minLength: 15, maxLength: 128,
+      });
+      confirm.addEventListener('input', () => confirm.setCustomValidity(''));
+      password.addEventListener('input', () => confirm.setCustomValidity(''));
+    }
+    if (kind === 'login' && !sync.user && (getState().profile.length || getState().saved.length)) {
+      const option = element('label', 'auth-options');
+      merge = element('input');
+      merge.type = 'checkbox';
+      merge.checked = true;
+      option.append(merge, document.createTextNode('Add this device’s ratings and list'));
+      form.append(option);
+      form.append(element('p', 'note', 'Your choices on this device take priority when the same show is already rated in your account.'));
+    }
+    const error = element('p', 'auth-error');
+    error.setAttribute('role', 'alert');
+    error.hidden = true;
+    form.append(error);
+    const submit = element('button', 'btn primary', kind === 'signup' ? 'Create account'
+      : kind === 'password' ? 'Save password' : 'Sign in');
+    submit.type = 'submit';
+    form.append(submit);
+    if (kind !== 'password') {
+      const switcher = element('p', 'note auth-switch', kind === 'signup' ? 'Already have an account? ' : 'New to Couchside? ');
+      switcher.append(button(kind === 'signup' ? 'Sign in' : 'Create account',
+        () => openForm(kind === 'signup' ? 'login' : 'signup'), 'link'));
+      form.append(switcher);
+    }
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (formBusy) return;
+      if (confirm && confirm.value !== password.value) {
+        confirm.setCustomValidity('The passwords do not match.');
+        confirm.reportValidity();
+        return;
+      }
+      if (!form.reportValidity()) return;
+      error.hidden = true;
+      formBusy = true;
+      submit.textContent = kind === 'signup' ? 'Creating account…' : kind === 'password' ? 'Saving password…' : 'Signing in…';
+      const payload = { email: email?.value.trim(), password: password.value,
+        current_password: current?.value, merge: merge?.checked === true };
+      for (const input of form.querySelectorAll('input,button')) input.disabled = true;
+      try {
+        await sync.authenticate(kind, payload);
+        if (version === formVersion) dialog.close();
+        toast(kind === 'signup' ? 'Your account is ready.' : kind === 'password' ? 'Password changed.' : 'Signed in.');
+      } catch (failure) {
+        if (version === formVersion) {
+          error.textContent = failure.message;
+          error.hidden = false;
+        }
+      } finally {
+        formBusy = false;
+        for (const input of form.querySelectorAll('input,button')) input.disabled = false;
+        submit.textContent = kind === 'signup' ? 'Create account' : kind === 'password' ? 'Save password' : 'Sign in';
+        // Passwords never leave the submitted request or survive a closed dialog.
+        if (!dialog.open) form.reset();
+      }
+    });
+    body.append(form);
+    if (!dialog.open) dialog.showModal();
+    (email || current || password).focus();
+  }
+
+  const closeForm = () => {
+    if (!formBusy) body.querySelector('form')?.reset();
+  };
+  const refresh = () => { if (document.visibilityState !== 'hidden') void sync.refresh(); };
+  const visibility = () => { if (document.visibilityState === 'visible') refresh(); };
+  const otherTab = event => { void sync.storageChanged(event); };
+  dialog.addEventListener('close', closeForm);
+  document.addEventListener('visibilitychange', visibility);
+  window.addEventListener('focus', refresh);
+  window.addEventListener('online', refresh);
+  window.addEventListener('storage', otherTab);
+  // Visible devices see each other's changes even when their tab stays focused.
+  const poll = setInterval(refresh, 60000);
+  renderPanel();
+
+  return {
+    changed: () => sync.changed(),
+    ready: () => sync.ready(),
+    refresh: () => sync.refresh(),
+    sync: () => sync.flush(),
+    destroy() {
+      sync.destroy();
+      clearInterval(poll);
+      dialog.removeEventListener('close', closeForm);
+      document.removeEventListener('visibilitychange', visibility);
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('online', refresh);
+      window.removeEventListener('storage', otherTab);
+    },
+  };
+}

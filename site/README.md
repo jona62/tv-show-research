@@ -9,31 +9,32 @@ The design retains the reference site's narrow reading column, small-caps serif 
 Build from the parent research directory:
 
 ```sh
-.venv/bin/python scripts/build_site.py
+.venv/bin/python tools/manage.py build site
+.venv/bin/python tools/manage.py run site
 ```
 
 The site is the `tv-taste` app in the root `rig.yaml`, and pushing to `main` deploys it through the Rigbox GitHub connection. It reads the frozen model through `MODEL_DIR=/home/developer/model`, a link to `/home/developer/data/model` on the workspace's persistent volume, not the nightly one, so its numbers stay as published. The public files are committed, so the server needs only Python 3.10+ and no packages.
 
-Rigbox runs the Python server on port 8080 and probes `/healthz`. Only files inside `public/` are served as files. `model/catalog.json.gz` stays outside the public root. Search and recommendation APIs expose curated results, not raw model files. The original six-show research report remains unchanged and describes the older English-scripted subset. Current catalog statistics and theme definitions are at `/catalog-audit.json` and `/expanded_theme_rules.json`. The app is public in `rig.yaml`.
+Rigbox runs the Python server on port 8080 and probes `/healthz`. Only files inside `public/` are served as files. `data/model/catalog.json.gz` stays outside the public root. Search and recommendation APIs expose curated results, not raw model files. The original six-show research report remains unchanged and describes the older English-scripted subset. Current catalog statistics and theme definitions are at `/data/catalog-audit.json` and `/data/expanded_theme_rules.json`. The app is public in `rig.yaml`.
 
-`public/` is generated. Edit `index.template.html`, `style.css`, `app.js`, `chart.js`, or `../scripts/build_site.py`, then rebuild. The badge links to 512KB Club; the site has not been submitted to the directory. No external browser assets or tracking are loaded.
+The browser bundle is generated; [build and public asset notes](../docs/public-assets.md) describe the build sources and published paths. The original `/research.html` address remains available through a redirect. The badge links to 512KB Club; the site has not been submitted to the directory. No external browser assets or tracking are loaded.
 
 ## Manual dataset refresh
 
 From the parent project directory, run:
 
 ```sh
-.venv/bin/python scripts/download.py --refresh
-.venv/bin/python scripts/analyze.py
-.venv/bin/python scripts/build_deliverables.py
-.venv/bin/python scripts/build_model.py
-.venv/bin/python scripts/build_site.py
-.venv/bin/python scripts/test_recommender.py
+.venv/bin/python tools/manage.py job download --refresh
+.venv/bin/python tools/manage.py job analyze
+.venv/bin/python tools/manage.py job build_deliverables
+.venv/bin/python tools/manage.py job build_model
+.venv/bin/python tools/manage.py build site
+.venv/bin/python tools/manage.py test site
 ```
 
-To publish the result, copy `model/` to `/home/developer/data/model` on the workspace, then commit `site/public/` and `output/` and push.
+To publish the result, copy `data/model/` to `/home/developer/data/model` on the workspace, then commit `site/public/` and `research/output/` and push.
 
-`--refresh` archives the old raw responses and manifest under `data/archive/` before downloading a new complete snapshot. Without that flag the downloader resumes cached pages and preserves their retrieval date. The online model is rebuilt from the full raw catalog; normal user interactions do not download or refit the dataset. Rebuild `model/catalog.json.gz` before the first site build on a clean checkout.
+`--refresh` archives the old raw responses and manifest under `data/archive/` before downloading a new complete snapshot. Without that flag the downloader resumes cached pages and preserves their retrieval date. The online model is rebuilt from the full raw catalog; normal user interactions do not download or refit the dataset. Rebuild `data/model/catalog.json.gz` before the first site build on a clean checkout.
 
 ## API and scoring
 
@@ -45,7 +46,7 @@ To publish the result, copy `model/` to `/home/developer/data/model` on the work
 
 The approximately 46MB compressed model (metadata plus binary sparse matrices) is loaded once; cached components contain only catalog-to-show similarities. Sparse matrices and cached similarities use compact typed arrays to fit the existing 1GB server. Catalog feature correlations use bitset intersections. Profile payloads and personalized results are not cached or persisted on the server. Calculations are bounded to three concurrent requests. Python standard-library modules are sufficient at runtime; scientific dependencies are needed only for offline rebuilding and numerical tests.
 
-Checks: `scripts/test_recommender.py` validates the expanded ranking against an independent NumPy/SciPy calculation, independent pairwise and correlation references, exclusions, dislikes, filters, and 50-show profiles. `scripts/verify_personalization.py --url <URL>` exercises search, repeated rating edits, persistence, isolated browsers, settings, empty/error states, axes, exports, and responsive layouts on the actual service.
+Checks: `site/tests/test_recommender.py` validates the expanded ranking against an independent NumPy/SciPy calculation, independent pairwise and correlation references, exclusions, dislikes, filters, and 50-show profiles. `.venv/bin/python site/tests/verify_personalization.py --url <URL>` is the broad browser check: it exercises search, repeated rating edits, persistence, isolated browsers, settings, empty/error states, axes, exports, and responsive layouts on the actual service.
 
 ## Features and coverage
 
@@ -55,7 +56,7 @@ The 20 added theme signals cover science, space, medicine, war, history, work, s
 
 New personal lists use all languages and formats. The original example starts with English scripted recommendations. Filters never restrict watched-list search. Existing browser profiles retain their IDs, ratings, and saved settings; missing new filters get the appropriate personal/example defaults.
 
-Expanded browser checks: `scripts/verify_expansion.py --url <URL>` tests saved-profile migration, international, documentary and animation additions, metadata filters, feature groups, per-show details, mobile overflow, and private model paths. `output/site-qa/` contains the screenshots and verification outputs.
+Expanded browser checks: `.venv/bin/python site/tests/verify_expansion.py --url <URL>` tests saved-profile migration, international, documentary and animation additions, metadata filters, feature groups, per-show details, mobile overflow, and private model paths. `research/output/site-qa/` contains the screenshots and verification outputs.
 
 ## Multidimensional radar
 
@@ -67,4 +68,4 @@ Each show's axis is binary: 100 for a detected theme or recorded genre, zero for
 
 The radar is a view of these interpretable features, not a projection of all 40,000 text terms, an intensity estimate, or an exact decomposition of the final score. Text cosine, normalized feature-family weights, closest-match blending, and dislike penalties still affect ranking. Changing the radar view, dimensions, or comparison does not change recommendations or trigger a model request.
 
-`radar.js` contains chart rendering and pure feature/profile calculations. `scripts/verify_radar.py --url <URL>` checks weighted values against an independent reference, unknown data, 3/12-spoke bounds, custom-dimension stability, presets, view switching, saved profiles, and desktop/mobile light/dark layouts. Recommendation tests also verify the closest *other* like used for automatic comparison.
+`client/radar.js` contains chart rendering and pure feature/profile calculations. `.venv/bin/python site/tests/verify_radar.py --url <URL>` checks weighted values against an independent reference, unknown data, 3/12-spoke bounds, custom-dimension stability, presets, view switching, saved profiles, and desktop/mobile light/dark layouts. Recommendation tests also verify the closest *other* like used for automatic comparison.

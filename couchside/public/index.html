@@ -13,36 +13,38 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="format-detection" content="telephone=no">
 <title>Couchside</title>
-<link rel="icon" href="/favicon.ico?v=f4aee35b6a5a97b0" sizes="16x16 32x32 48x48">
-<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=3706386a0bb2a62d">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=7ae501d2dbd7d08c" sizes="180x180">
+<link rel="icon" href="/assets/icons/favicon.ico?v=f4aee35b6a5a97b0" sizes="16x16 32x32 48x48">
+<link rel="icon" type="image/svg+xml" href="/assets/icons/favicon.svg?v=3706386a0bb2a62d">
+<link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png?v=7ae501d2dbd7d08c" sizes="180x180">
 <link rel="manifest" href="/manifest.webmanifest">
 <!--share: the server rewrites this block for each request, so a shared title shows its own poster-->
 <meta property="og:site_name" content="Couchside">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Couchside">
 <meta property="og:description" content="Rows of TV shows picked for your taste, with trailers, where to watch and My List.">
-<meta property="og:image" content="/og.jpg">
+<meta property="og:image" content="/assets/images/og.jpg">
 <meta name="twitter:card" content="summary_large_image">
 <!--/share-->
 <!--start.js asks for the home page as soon as it arrives, while main.js is still on its way-->
-<script type="module" async src="/start.js?v=6a0715a23a1035dd" fetchpriority="high"></script>
+<script type="module" async src="/assets/scripts/start.js?v=6a0715a23a1035dd" fetchpriority="high"></script>
 <link rel="preconnect" href="https://static.tvmaze.com" crossorigin>
-<link rel="stylesheet" href="/style.css?v=88c94422136e3262">
-<script type="module" src="/main.js?v=7fc4c78a4d8bbb13"></script>
-<link rel="modulepreload" href="/episode-ratings.js?v=a3165ae91e694745">
-<link rel="modulepreload" href="/title-sections.js?v=47e93fa931aed0c8">
-<link rel="modulepreload" href="/show-cards.js?v=e6be684d2c9ea028">
-<link rel="modulepreload" href="/network.js?v=0e96ad7f2eaf4036">
-<link rel="modulepreload" href="/filter-state.js?v=2a62eef7fd5aeeda">
-<link rel="modulepreload" href="/filters.js?v=05473f9c8c0c3616">
-<link rel="modulepreload" href="/ratings.js?v=54b0ed6f30577419">
-<link rel="modulepreload" href="/transfer.js?v=aca34fe2830e9d29">
-<link rel="modulepreload" href="/qr.js?v=d7f92f94bb8911ea">
-<link rel="modulepreload" href="/format.js?v=e565cc65c0882a95">
-<link rel="modulepreload" href="/gestures.js?v=c2173468ef22c30e">
-<link rel="modulepreload" href="/fresh.js?v=afcc972f76479400">
-<link rel="modulepreload" href="/starters.js?v=d559e3a61414a450">
+<link rel="stylesheet" href="/assets/styles/style.css?v=a1d19e799a81917f">
+<script type="module" src="/assets/scripts/main.js?v=221d4c39cd4ea7bd"></script>
+<link rel="modulepreload" href="/assets/scripts/episode-ratings.js?v=a3165ae91e694745">
+<link rel="modulepreload" href="/assets/scripts/title-sections.js?v=47e93fa931aed0c8">
+<link rel="modulepreload" href="/assets/scripts/show-cards.js?v=e6be684d2c9ea028">
+<link rel="modulepreload" href="/assets/scripts/network.js?v=0e96ad7f2eaf4036">
+<link rel="modulepreload" href="/assets/scripts/accounts.js?v=e704127e5be43fbe">
+<link rel="modulepreload" href="/assets/scripts/filter-state.js?v=2a62eef7fd5aeeda">
+<link rel="modulepreload" href="/assets/scripts/filters.js?v=05473f9c8c0c3616">
+<link rel="modulepreload" href="/assets/scripts/ratings.js?v=54b0ed6f30577419">
+<link rel="modulepreload" href="/assets/scripts/transfer.js?v=aca34fe2830e9d29">
+<link rel="modulepreload" href="/assets/scripts/qr.js?v=d7f92f94bb8911ea">
+<link rel="modulepreload" href="/assets/scripts/format.js?v=e565cc65c0882a95">
+<link rel="modulepreload" href="/assets/scripts/gestures.js?v=c2173468ef22c30e">
+<link rel="modulepreload" href="/assets/scripts/fresh.js?v=afcc972f76479400">
+<link rel="modulepreload" href="/assets/scripts/starters.js?v=d559e3a61414a450">
+<link rel="modulepreload" href="/assets/scripts/account-state.js?v=143a11bc49a0ad05">
 </head>
 <body>
 <a class="skip" href="#page">Skip to content</a>
@@ -143,7 +145,7 @@
   <p><button class="link" id="open-about" type="button">How Couchside works</button></p>
   <p>Shows, images and details from <a href="https://www.tvmaze.com/">TVmaze</a>, <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. Catalogue snapshot __DATASET_DATE__.</p>
   <!--tmdb: the server keeps this only when the model carries TMDB data-->
-  <p class="tmdb"><a class="tmdb-logo" href="https://www.themoviedb.org"><img src="/tmdb.svg" alt="TMDB" width="85" height="11"></a> This website uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.</p>
+  <p class="tmdb"><a class="tmdb-logo" href="https://www.themoviedb.org"><img src="/assets/images/tmdb.svg" alt="TMDB" width="85" height="11"></a> This website uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.</p>
   <!--/tmdb-->
   <p>Nothing plays here: Couchside is for finding your next show.</p>
 </footer>
@@ -167,6 +169,7 @@
     <div><h2 id="account-h">Your profile</h2><p id="account-counts"></p></div>
     <button class="icon-btn close-btn" type="button" data-close aria-label="Close"></button>
   </div>
+  <div id="account-access" aria-live="polite"></div>
   <a class="menu-item" href="/list" data-link>My List and ratings</a>
   <a class="menu-item" href="/welcome" data-link>Pick shows you like</a>
   <button class="menu-item" id="open-taste" type="button">Your taste</button>
@@ -180,6 +183,12 @@
   <button class="menu-item" id="open-move" type="button">Move your list to another device</button>
   <button class="menu-item" id="open-about-2" type="button">How Couchside works</button>
   <button class="menu-item danger" id="reset" type="button">Start over</button>
+</div></dialog>
+
+<dialog id="auth" class="modal small" aria-labelledby="auth-h"><div class="sheet pad">
+  <button class="icon-btn close-btn corner" type="button" data-close aria-label="Close"></button>
+  <h2 id="auth-h" class="sheet-h">Your Couchside account</h2>
+  <div id="auth-body"></div>
 </div></dialog>
 
 <dialog id="move" class="modal small" aria-labelledby="move-h"><div class="sheet pad">
@@ -231,9 +240,9 @@
   <p>The catalogue is a TVmaze snapshot of __CATALOG_COUNT__ series from __DATASET_DATE__. Cast, seasons, episodes, backdrops and where a show streams or airs are fetched from TVmaze when you open a title, and posters load from TVmaze's image server.</p>
   <p>Anyone in a cast has a page of their own. Their photo, dates and shows come from TVmaze. Their biography is the opening of their English Wikipedia article, under <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>, and their place of birth and IMDb id come from Wikidata, which this server finds by the TVmaze id Wikidata keeps for them or else by their name and date of birth together; someone it cannot be sure of has no biography. Only their id, name and birthday are sent, never anything about you.</p>
   <p>Trailers come from KinoCheck, which has official ones for most recent shows, and play in YouTube's no-cookie player only when you press play; their thumbnails load from YouTube's image server. Age ratings are the US ratings iTunes lists for the shows it sells, so shows iTunes does not sell have none. Service icons are fetched through DuckDuckGo by this server. Where to watch shows where a show first streams or airs; it may stream somewhere else in your country.</p>
-  <p>Your ratings and My List stay in this browser. There is no account, and nothing about you is stored on a server. Nothing plays here: open a title on TVmaze to see where it airs.</p>
+  <p>You can use Couchside without an account and keep your ratings and My List in this browser. Create an account to save them and your recommendation settings on the server and use them across devices. Your password is stored as a secure hash. Browsing history stays on this device. Nothing plays here: open a title on TVmaze to see where it airs.</p>
   <!--tmdb-->
-  <p class="tmdb"><a class="tmdb-logo" href="https://www.themoviedb.org"><img src="/tmdb.svg" alt="TMDB" width="92" height="12"></a> This website uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.</p>
+  <p class="tmdb"><a class="tmdb-logo" href="https://www.themoviedb.org"><img src="/assets/images/tmdb.svg" alt="TMDB" width="92" height="12"></a> This website uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.</p>
   <!--/tmdb-->
 </div></dialog>
 

@@ -12,18 +12,15 @@ data/raw/
 data/archive/
 data/model-backup/
 data/cache/
-# The Wikidata cache scripts/wikidata.py writes; build_facets.py reads it.
+data/accounts/
+# The Wikidata cache pipeline/jobs/wikidata.py writes; build_facets.py reads it.
 data/wikidata.json.gz
 data/cointerest.json.gz
-# The film cache scripts/films.py writes; build_films.py reads it.
+# The film cache pipeline/jobs/films.py writes; build_films.py reads it.
 data/films.json.gz
-output/site-qa/
-output/qa/
+research/output/site-qa/
+research/output/qa/
 *.log
-
-# Hard links made by app/build.py. The tracked copy lives in model/, which sits
-# outside every app directory so the Rigbox release uploader never carries it.
-app/model/
 
 # Worktrees Claude Code makes for parallel agents.
 .claude/worktrees/

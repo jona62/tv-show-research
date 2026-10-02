@@ -1,0 +1,23 @@
+.options{padding:28px 24px 24px;max-width:1680px;margin:auto;min-height:100vh}
+.options-head{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:26px}
+.options-head .brand{display:inline-block;font-size:19px;padding:0}
+.options-head h1{font-size:27px;letter-spacing:-.03em;margin:10px 0 5px;line-height:1.2}
+.options-head p{margin:0;color:var(--muted);font-size:14px}
+.preview-label{font-size:12px;color:var(--muted);border:1px solid #3a3a3a;padding:7px 10px;border-radius:4px;white-space:nowrap}
+.choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.choice{min-width:0;border:1px solid #353535;border-radius:6px;padding:16px;background:#191919}
+.choice-head{display:flex;gap:12px;align-items:center}
+.choice h2{display:flex;align-items:center;gap:9px;font-size:19px;margin:0;letter-spacing:-.01em}
+.choice h2 span{display:grid;place-items:center;width:25px;height:25px;border:1px solid #656565;border-radius:4px;font-size:14px;font-weight:600;color:var(--ink-2)}
+.choice-head b{font-size:11px;font-weight:600;color:var(--brand);margin-left:auto}
+.choice>p{font-size:13px;color:var(--muted);margin:9px 0 13px;min-height:19px;line-height:1.45}
+.states{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.states figure{min-width:0;margin:0}
+.states figcaption{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:7px}
+.states iframe{display:block;width:100%;height:205px;border:1px solid #333;border-radius:4px;background:var(--bg)}
+.try{display:flex;gap:16px;flex-wrap:wrap;margin-top:14px}
+.try a{font-size:12px;color:var(--ink-2);text-underline-offset:3px}
+.try a:hover{color:var(--brand)}
+.options-foot{font-size:13px;color:var(--muted);margin:20px 0 0;line-height:1.5}
+@media(max-width:1250px){.choices{grid-template-columns:1fr}.options{max-width:850px}.choice>p{min-height:0}}
+@media(max-width:600px){.options{padding:20px 12px}.options-head h1{font-size:24px}.preview-label{display:none}.choice{padding:12px}.states{grid-template-columns:1fr;gap:12px}.states iframe{height:210px}.choice-head b{font-size:10px}.choice h2{font-size:17px}.try{gap:12px}}

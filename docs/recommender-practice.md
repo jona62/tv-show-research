@@ -82,10 +82,12 @@ chose rather than a published one, it says so.
   localised picker made new users 5 to 10% likelier to return
   ([Pinterest](https://medium.com/pinterest-engineering/personalizing-pinterests-new-user-experience-abroad-60f8f55177ac)).
 
-## Behaviour without accounts
+## Behaviour without viewing histories
 
 The services above learn most from what their members watch together; these apps
-have no members' histories to learn from. The nearest public, legal equivalent is
+have no members' viewing histories to learn from. The September research used
+browser-only lists; Couchside's later accounts sync chosen ratings and My List,
+and do not collect playback histories. The nearest public, legal equivalent is
 Wikipedia's monthly clickstream (CC0): how many readers went from one article to
 another ([Wikimedia](https://dumps.wikimedia.org/other/clickstream/)). Among the
 articles about the catalogue's shows, it says which shows the same people are
@@ -116,10 +118,12 @@ shows with no co-interest or facets.
 
 ## What Next Watch and Couchside do
 
-Both apps keep no accounts, so everything personal lives in the browser and is
-posted with each request; the server stays deterministic and needs no clock.
+Ranking is stateless: each browser supplies its list with the request, and the
+same model and inputs produce the same result. Next Watch keeps its list in the
+browser. Couchside also offers accounts that sync ratings and My List; its
+freshness memory and visit seeds remain local to each browser.
 
-- **Freshness** (app/fresh.py, app/fresh.js). The browser sends its day (rolling
+- **Freshness** (`app/backend/recommendation/fresh.py`, `app/client/fresh.js`). The browser sends its day (rolling
   over at 04:00) and a seed from a salt it never sends. Lists are shown by
   ln(rank) + 0.35 ln(1 + seen) + 0.35 z: the top five stay put, the rest rotate
   among the best 72, and a title half on screen for a second counts as seen once a
@@ -143,10 +147,11 @@ posted with each request; the server stays deterministic and needs no clock.
   eight and then six at a time as you scroll; lower rows reorder daily, the hero is
   drawn each day from the top ten, never repeating within a week, and rows you keep
   passing over rest.
-- **First visits** (app/starters.py) draw 24 starters from about 350 shows that are
+- **First visits** (`app/backend/recommendation/starters.py`) draw 24 starters from about 350 shows that are
   familiar and span distinct kinds of show, one per franchise, per browser and per
   day, with the browser's language taking its share. Each pick keeps its place and
   swaps in a contrast, a neighbour and a kind not yet explored.
 
-scripts/bench measures ranking and home-page changes against 71 viewer personas,
-20 of them never tuned on; its README and couchside/README.md have the numbers.
+`pipeline/bench/` measures ranking and home-page changes against 71 viewer personas,
+20 of them never tuned on; [its README](../pipeline/bench/README.md) and
+[Couchside's README](../couchside/README.md) have the numbers.

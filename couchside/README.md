@@ -83,12 +83,53 @@ refresh, Back and shared links behave. Stepping through a season replaces the ad
 so Back from any episode returns to its title page. A person's page is a sheet over the
 title or episode it came from, so Back finds that as it was left, and a title opened
 from their page leaves them out of its address and comes back to them, where they were
-left, on Back. Your ratings and My List
+left, on Back. Without an account your ratings and My List
 stay in the browser. *Move your list to another device* uses the same code as
 Next Watch, so a list moves between the two apps as well as between devices: a
 link, the code alone, a QR code while the list fits one (a few hundred ratings),
 and *Save as a file* for any length, opened on the other device with *Open a saved
 file* (Next Watch's README says why).
+
+## Accounts and devices
+
+Your profile offers **Create account** and **Sign in**. Creating an account saves
+this device's ratings, My List and recommendation reach; signing in on another
+device restores them. Sign-in can also add that device's guest list, with its
+ratings taking priority for shows already rated. Changes save automatically,
+including removals; concurrent devices merge changes against their last synced
+version rather than overwriting the whole list. Returning to a tab, reconnecting,
+or the visible tab's minute check picks up other devices' changes.
+
+Offline changes stay in an account-specific local cache until they can sync.
+Sign-out syncs pending changes first, clears the active account and restores the
+device's separate guest list. Another open tab also leaves the account when you
+sign out. Browsing history, page filters and card-display choices remain on the
+device. Link/file transfers still work without an account and between apps;
+Next Watch does not use Couchside accounts.
+
+The server validates addresses with `email-validator`, including normalized
+syntax and a signup DNS check for a mail-capable domain, without a provider
+allowlist. This does not prove that the person owns that inbox. Verification
+emails and forgotten-password recovery are not implemented; they require an email
+delivery provider. Passwords accept 15–128 characters, including passphrases,
+and are stored as salted Argon2id hashes. Change password requires the current
+password and revokes other sessions. Sessions expire after 30 days.
+
+Production uses secure, HttpOnly, SameSite cookies, exact-origin checks and CSRF
+tokens for writes. Session identifiers are random and hashed in SQLite. Password
+work and body reads are bounded; login/signup attempts have separate client and
+durable email budgets. Account responses are never cached by the browser or
+service worker. SQLite transactions and optimistic revisions protect account
+isolation and simultaneous saves.
+
+`ACCOUNT_DB` names the database; locally it is
+`data/accounts/couchside.sqlite3` (ignored by Git). Deployment stores it at
+`/home/developer/data/accounts/couchside.sqlite3` on the persistent volume, outside
+the nightly model and release directories. Back up this database with SQLite's
+online backup API rather than copying a live database without its WAL. Deployed
+`ACCOUNT_HTTPS_ONLY=1` requires secure cookies behind the HTTPS reverse proxy.
+`ACCOUNT_ORIGIN` may set an explicit public origin; otherwise the request's host
+is used. Local HTTP account access requires a loopback host and connection.
 
 ## Episode ratings
 
@@ -103,7 +144,7 @@ any other show and plots the two series' season averages on one shared scale.
 The episode list, More like this, Fans also like and About cast use the same
 Show all / Show fewer pill as trailers. Collapsed recommendations and cast remain
 scrollable horizontally; expanded they use the full grid. There are no extra colour,
-key or hover switches, and no accounts.
+key or hover switches.
 
 `GET /api/episode-ratings?id=` returns every regular episode across all seasons,
 including missing scores. A compressed SQLite cache outside the app checkout survives
@@ -232,7 +273,7 @@ JSON answers, SVG and the manifest. Hover descriptions make the card responses
 larger; the release fixture's home page compresses from 140 KB to 41 KB. Each file
 is gzipped once and kept, every answer says it varies by
 Accept-Encoding, and gzipped bytes carry their own ETag. The page asks for its
-scripts, styles and icons by the hash of what they hold (`/main.js?v=...`, written by
+scripts, styles and icons by the hash of what they hold (`/assets/scripts/main.js?v=...`, written by
 `build.py`, which also names each module's hash in the imports between them), so
 those addresses are kept a year; unversioned scripts and styles, the page and the
 service worker are checked every time, and unversioned icons are kept a day. The page lists
@@ -260,10 +301,10 @@ the page and is pushed away. The skeletons shimmer, and hold still under reduced
 motion; the rows still to come at the foot of the home page shimmer only while they
 are on screen.
 
-`brand/icon-master.png` holds the selected Afterglow Ember sofa artwork, with its
-ImageGen prompt in `brand/icon-prompt.txt`. The favicon and home-screen icons use
+`assets/brand/icon-master.png` holds the selected Afterglow Ember sofa artwork, with its
+ImageGen prompt in `assets/brand/icon-prompt.txt`. The favicon and home-screen icons use
 the same opaque, full-bleed composition; each platform applies its own corners or
-mask. `brand/make.py` derives every icon size from the raster master with
+mask. `assets/brand/make.py` derives every icon size from the raster master with
 ImageMagick and renders the share image's poster wall in headless Chrome. The SVG
 files embed the same artwork, with a compact 128-pixel image for the favicon. The
 script needs ImageMagick and Chrome and runs by hand; the outputs are committed
@@ -272,13 +313,13 @@ and `build.py` copies them into `public/`.
 so a changed icon gets a fresh address. The manifest offers the app-size PNGs;
 the browser favicon is linked separately. An existing iOS Home Screen installation
 may need to be added again to pick up a changed icon.
-`brand/tmdb.svg` is TMDB's own logo, fetched unchanged from themoviedb.org for
+`assets/brand/tmdb.svg` is TMDB's own logo, fetched unchanged from themoviedb.org for
 the credit TMDB asks for, and copied the same way.
 
 ## How first-visit shows are chosen
 
 The welcome page asks `GET /api/starters` for 24 posters, drawn by Next Watch's
-`starters.py` (copied here; its README says how) from shows with posters: familiar
+`backend/recommendation/starters.py` (copied here; its README says how) from shows with posters: familiar
 titles spread across about 35 kinds of show, different for each browser and day by
 the seed `fresh.js` keeps, with seven places for a browser's own language, or four
 for an English-speaking country's television. A pick keeps its place and swaps three
@@ -291,7 +332,7 @@ twelve posters from the plain screen in case the request fails.
 
 ## How the home page is built
 
-`library.py` wraps the Next Watch engine, taste model and interests included
+`backend/recommendation/library.py` wraps the Next Watch engine, taste model and interests included
 (see Next Watch's README). For each request it works out once how close every
 show sits to each rated show and scores everything with one ranking, then cuts
 every candidate row from that. It follows what Netflix, Prime Video, YouTube and
@@ -305,10 +346,10 @@ disliked shows it sits near outweigh the liked ones (a list of thousands has so
 many dislikes that the plain rule would clear whole genres), and rows of their own
 are cut for the list's 60 most telling liked shows, loves first and then the
 newest. The first home request for 3,000 ratings takes about a quarter of a
-second here and about 30 MB (`scripts/bench/scale_bench.py`). A title page's *More
+second here and about 30 MB (`pipeline/bench/scale_bench.py`). A title page's *More
 like this* and *Fans also like* leave out what is very like a show marked *Not for
 me* by the same rule for every list, but for a long one they read how close from
-the neighbour index (`Disliked` in `library.py`): a disliked show counts when it is
+the neighbour index (`Disliked` in `backend/recommendation/library.py`): a disliked show counts when it is
 among the show's closest or the show among its, where a short list works out every
 disliked show's closeness to every show. That keeps a title page for 3,000 ratings
 near 0.15 s here, where hundreds of dislikes worked out in full took 3 to 16 s. On
@@ -538,7 +579,7 @@ that (fresh.py on the server):
 - *Recently viewed*, after the third row, holds titles you opened in the last two
   weeks and neither rated nor listed; the browser builds it.
 
-`scripts/bench/visit_bench.py` plays the bench personas opening the app five times a
+`pipeline/bench/visit_bench.py` plays the bench personas opening the app five times a
 day for three days, each visit seeing the hero and the first six cards of the first
 eight rows and acting on nothing, and asks for each visit both ways: as before
 visits, when every visit of a day got the day's page, and as now:
@@ -577,8 +618,8 @@ hero from the Top 10 alone.
 
 ## How search finds a show
 
-Search is Next Watch's: `titles.py` indexes every show's name and, when the model
-carries `search.json.gz`, its other titles from Wikidata, and `fallback.py` asks
+Search is Next Watch's: `backend/recommendation/titles.py` indexes every show's name and, when the model
+carries `search.json.gz`, its other titles from Wikidata, and `backend/fallback.py` asks
 TVmaze's own search when the catalogue finds nothing or only guesses. Both are
 copied here by `build.py`; Next Watch's README says how they match and rank. Here
 the answer's cards carry posters, a card found through another title has that
@@ -597,7 +638,7 @@ by a link, opens the same title page from TVmaze alone. TVmaze numbers shows as 
 them, so the server and the page tell such a show by its id, past the newest the
 catalogue holds (the page has it from the server, which asks TVmaze only up to 5,000
 past it), and `POST /api/title` answers for it from the one call any show's live
-details take (`live.py` keeps the show itself from that answer too), sending those
+details take (`backend/live.py` keeps the show itself from that answer too), sending those
 details with it, so the page asks TVmaze for nothing more but the episodes it opens.
 TMDB's data covers the catalogue's shows alone, so its trailers, age rating and where
 to watch come from KinoCheck, iTunes and TVmaze, as for any show TMDB lacks. It has
@@ -615,7 +656,7 @@ Search finds them on every query, not only when the catalogue's own match is wea
 TVmaze's search is asked: a reboot or a revival shares its name with a show the
 catalogue holds, as HBO Max's *The Howard Stern Show* of 2026 does with the 1992 one,
 and new shows are what people search for most. So the server keeps the shows TVmaze
-lists past the catalogue's newest (`added.py`). About every hour it reads TVmaze's
+lists past the catalogue's newest (`backend/added.py`). About every hour it reads TVmaze's
 updates list, a day of it (a week on starting, so a catalogue left far behind brings no
 flood of calls on every restart, and a week or a month after a longer gap), and asks
 for each new show once, two seconds apart, through the client, cache and rate window
@@ -638,7 +679,7 @@ next nightly build starts the list again from nothing.
 ### Shows like a search
 
 Beside its matches, each answer carries one row of shows like the search
-(`related.py`), as Netflix's search does, or none:
+(`backend/recommendation/related.py`), as Netflix's search does, or none:
 
 - **More like** the show a search names: the title page's own *More like this*
   (`Library.more_like`, as a visitor with no list sees it), weighed over every show
@@ -696,28 +737,28 @@ screen, so it does not blink out between words.
 
 ### Films
 
-`scripts/films.py` fetches from Wikidata every film with 20 or more sitelinks
+`pipeline/jobs/films.py` fetches from Wikidata every film with 20 or more sitelinks
 (Wikipedia articles and the like) and every film series, trilogy and franchise with 5
 or more, some 9,800 in 31 queries: their English titles and aliases, original titles,
-years, genres and main subjects. `scripts/build_films.py` keys their genres as
+years, genres and main subjects. `pipeline/jobs/build_films.py` keys their genres as
 `build_facets.py` keys the shows' (*post-apocalyptic film* is *post apocalyptic*,
 with superclasses at half weight), keeps only the genres and subjects shows carry,
 lets a series take on what a third or more of its films share, and writes
 `films.json.gz` beside the model: 9,747 films and series, 0.4 MB, with the date of
 the facets it was mapped to. The refresher fetches the films again with the Wikidata
 cache and builds the file with each model; when a fetch or a build fails, the last
-good file carries on. `model/` holds a built copy, and a model without one, or with
+good file carries on. `data/model/` holds a built copy, and a model without one, or with
 one that will not read, searches as before.
 
 ## Where the pictures, trailers and live details come from
 
 TVmaze keeps every poster at a URL built from its image id, so
-`scripts/build_art.py` stores one integer per show, plus the year it ended, in
-`art.bin.gz` (269 KB). Posters load straight from TVmaze's image server, which
+`pipeline/jobs/build_art.py` stores one integer per show, plus the year it ended, in
+`assets/model/art.bin.gz` (269 KB). Posters load straight from TVmaze's image server, which
 TVmaze allows, asked for with CORS so the service worker can keep them; the page
 sends no referrer. The server reads `art.bin.gz` from
 the model directory when the model carries one, as each refreshed model does, and
-otherwise the copy here, which matches the repository's `model/`.
+otherwise the copy here, which matches the repository's `data/model/`.
 
 ### TMDB first
 
@@ -733,7 +774,7 @@ JustWatch's data, with *Streaming data from JustWatch* beside them.
 Trailers are the show's own YouTube trailers and teasers. TMDB keeps many shows'
 trailers on their seasons instead (Breaking Bad has none of its own, but a
 trailer on its first season and a teaser on its last), so for a show with none
-`scripts/tmdb.py` asks for its first and latest seasons' videos too, and each of
+`pipeline/jobs/tmdb.py` asks for its first and latest seasons' videos too, and each of
 those says which season it is for. Those requests count toward the night's
 `TMDB_DAILY_LIMIT` like a show's own, so a night with many of them fetches fewer
 shows, and the rest wait for the next.
@@ -749,7 +790,7 @@ in *How Couchside works* only when there is TMDB data to credit.
 ### Live from TVmaze, KinoCheck and iTunes
 
 Cast, seasons, episodes and widescreen backdrops are not in the snapshot.
-`live.py` fetches them from the TVmaze API on the server when a title opens,
+`backend/live.py` fetches them from the TVmaze API on the server when a title opens,
 trims them, caches them for six hours, and stays inside TVmaze's rate limit of
 20 calls every 10 seconds, backing off after a 429 and serving a stale answer
 rather than none. That limit is per address, so title pages take 12 of the 20
@@ -779,7 +820,7 @@ cached for days and a show with nothing is cached as nothing.
 ### People
 
 A title's cast carries each person's TVmaze id, and `GET /api/person?id=` answers
-with who they are and what they are in (`people.py`): two TVmaze calls through the
+with who they are and what they are in (`backend/people.py`): two TVmaze calls through the
 same client, cache and rate limit as a title's, one for the person with the shows
 they are a regular in and the shows they made, and one for every episode they were
 a guest in, grouped by show. Their roles are the shows they are a regular in (as
@@ -815,20 +856,22 @@ leaves Wikidata's facts. Photos stay TVmaze's, so the image policy is unchanged.
 ## Run it
 
 ```sh
-.venv/bin/pip install -r scripts/requirements-runtime.txt
+.venv/bin/pip install -r couchside/requirements-runtime.txt
 .venv/bin/python couchside/build.py     # copies the engine, its search and the follower, writes public/
-.venv/bin/python couchside/server.py    # http://localhost:8082
-.venv/bin/python couchside/brand/make.py    # only when the icon or share image changes
+.venv/bin/python tools/manage.py run couchside   # http://localhost:8082
+.venv/bin/python couchside/assets/brand/make.py    # only when the icon or share image changes
 ```
 
-Python 3.10+ and urllib3, pinned in the runtime requirements. The model is read from `MODEL_DIR`, or from
-`model/` beside this directory. The build needs no model: the page's count,
+Generated asset placement and build behavior are documented in [Public browser assets](../docs/public-assets.md).
+
+Python 3.10+, urllib3, argon2-cffi and email-validator, pinned in the runtime requirements. The model is read from `MODEL_DIR`, or from
+`data/model/` at the repository root. The build needs no model: the page's count,
 snapshot date and first-visit posters are filled in by the server at startup,
 from whichever model it loaded.
 
 ## Connectivity and recovery
 
-Outbound reads use the shared `scripts/http_client.py`, copied into each app by the
+Outbound reads use the shared `pipeline/backend/http_client.py`, copied into each app by the
 build. urllib3 provides pooled TLS connections and retry classification. There are
 at most three attempts, with exponential backoff and jitter, a total deadline, and
 no adaptive rate control. Every physical attempt, including retries and nightly
@@ -866,20 +909,28 @@ across deploys. Images are not copied into the server's public-response cache.
 ## Check it
 
 ```sh
-.venv/bin/python couchside/test_couchside.py
-node couchside/test_format.mjs
-node couchside/test_gestures.mjs
-node couchside/test_ratings.mjs
-.venv/bin/python couchside/test_episode_store.py
-.venv/bin/python scripts/test_http_client.py
-.venv/bin/python scripts/test_warm_cache.py
-.venv/bin/python couchside/test_request_limits.py
-node couchside/test_network.mjs
-.venv/bin/python couchside/test_related.py
-.venv/bin/python couchside/test_long_lists.py
+.venv/bin/python couchside/tests/test_accounts.py
+.venv/bin/python couchside/tests/test_account_http.py
+node couchside/tests/test_accounts.mjs
+.venv/bin/python couchside/tests/test_couchside.py
+node couchside/tests/test_format.mjs
+node couchside/tests/test_gestures.mjs
+node couchside/tests/test_ratings.mjs
+.venv/bin/python couchside/tests/test_episode_store.py
+.venv/bin/python couchside/tests/test_discovery.py
+.venv/bin/python couchside/tests/test_discovery_http.py
+.venv/bin/python couchside/tests/test_personal_rows.py
+.venv/bin/python couchside/tests/test_explore_rows.py
+node couchside/tests/test_filters.mjs
+.venv/bin/python pipeline/tests/test_http_client.py
+.venv/bin/python pipeline/tests/test_warm_cache.py
+.venv/bin/python couchside/tests/test_request_limits.py
+node couchside/tests/test_network.mjs
+.venv/bin/python couchside/tests/test_related.py
+.venv/bin/python couchside/tests/test_long_lists.py
 ```
 
-The first runs everything over a temporary model laid out the way the refresher
+`tests/test_couchside.py` runs everything over a temporary model laid out the way the refresher
 leaves one: the repository's model dated a day later, with a poster moved,
 hand-made TMDB data and a few other titles. It holds the home page to its rules
 for lists of several shapes (fixed rows, sizes, no row opening like another, no
@@ -888,7 +939,7 @@ calibrated top picks), and checks paging, a day's page against the next day's,
 fatigue and engagement, the hero and featured shows, visits (the same visit's page
 whole or in parts, a hero from the best picks and none featured earlier the day, Top
 picks' first six turning a little with the best three kept), resting rows, the first
-visit's rows and every new field. With stand-in rows for the tiers past today's (`scripts/bench/stub_tiers.py`)
+visit's rows and every new field. With stand-in rows for the tiers past today's (`pipeline/bench/stub_tiers.py`)
 it pages whole pages to their end: no row or title twice, *more* false only at the
 end, no row before its tier opens, a tier built only once the page reaches it, the
 same request giving the same rows, the page laid out at once matching the page
@@ -923,39 +974,39 @@ that could be packed), how long each file is kept, the page asking for its files
 modules by their hashes, the build each page names and the hash of
 every file the service worker keeps; first-visit starters over HTTP, as posters that adapt to a
 pick and follow a browser's language; and the follower's decisions. It also fails if
-`engine.py`, `titles.py`, `fallback.py`, `follow.py`, `starters.py` or any other
-module copied here ever differs from Next Watch's. The
-second covers the page's small helpers, where to watch, how much of a title page's
+`backend/recommendation/engine.py`, `backend/recommendation/titles.py`, `backend/fallback.py`, `backend/follow.py`, `backend/recommendation/starters.py` or any other
+module copied here ever differs from Next Watch's. `tests/test_format.mjs`
+covers the page's small helpers, where to watch, how much of a title page's
 long parts shows before its button and what search says among them, a person's
 address beside the title's, their age and dates and what each of their credits
 says, when a visit goes on and when the next begins, what the home
 page keeps for a visit, asks for more with, merges after an action and shows as
 recently viewed, how far ahead it loads rows and posters and how many at once, and
-what the page keeps of the server's answers; how `start.js` reads a stored list and asks for
+what the page keeps of the server's answers; how `client/start.js` reads a stored list and asks for
 the home page as a page starts, handing the answer only to the same request, once, and asking
 nothing when the tab keeps its page; and it runs the service worker against
 a stand-in for the browser's
 caches and network: a build kept whole or not at all, its files asked for by their hashes,
 pages, files, the offline
-page, images and which of them go first. The third holds the gestures to their numbers:
+page, images and which of them go first. `tests/test_gestures.mjs` holds the gestures to their numbers:
 how far down and how fast a sheet must go to close, how it gives when pulled the other
 way, a finger's speed, a long press, a swipe back from the edge, and which rows ease in.
-The fourth reads the repository's model, facets and film index and all, and holds a
+`tests/test_related.py` reads the repository's model, facets and film index and all, and holds a
 search's row of shows like it to its rules: which searches name a show, which are
 topics, which name a film and which go by meaning; no show the search matched in its
 row; More like as the title page's own, in its order; zombies for zombies; *mad max*,
 *jurassic park*, *the godfather* and *the matrix* as films, and *기생충* and
 *千と千尋の神隠し* by their own titles; a film's name counting only where it should;
 nothing for a search with nothing behind it; searches still being typed; answers
-kept; a film index that will not read; and a model without facets. The fifth builds
+kept; a film index that will not read; and a model without facets. `tests/test_long_lists.py` builds
 pages for lists of 300, 1,000 and 3,000 ratings from the bench personas
-(`scripts/bench/large_lists.py`) on the repository's model, neighbour index and all:
+(`pipeline/bench/large_lists.py`) on the repository's model, neighbour index and all:
 each page and each request for more in reasonable time, nothing rated on any of them,
 rows of the list's own, interests named but not listed whole, the same page for the
 same request, title pages and their More like this and Fans also like, genres, and
 60 ratings still ranked the old way.
 
-`scripts/bench/home_bench.py` compares the home page with an earlier one over the
+`pipeline/bench/home_bench.py` compares the home page with an earlier one over the
 71 bench personas: one of each persona's loves is held out, and it counts how
 many come back among the first six cards of the first three and first eight rows,
 whether every interest with 15% or more of the list has one of the first eight
@@ -987,7 +1038,7 @@ page's first, which here lays the page out to its end (the bench turns off layin
 it out behind the first request, which the server does). `--stub-tiers` runs the
 same with stand-in rows for the tiers.
 
-These pages carry no day or seed. `scripts/bench/visit_bench.py` reads the pages a
+These pages carry no day or seed. `pipeline/bench/visit_bench.py` reads the pages a
 day's visits get instead, over the same personas and held-out loves: the hero, Top
 picks' first six and the first eight rows from one visit to the next and from one
 day to the next, and the held-out loves, each visit asked for as before visits and
@@ -996,15 +1047,15 @@ how often the app is opened, and `--set VISIT=0.5` tries another value of one of
 fresh.py's constants.
 
 ```sh
-.venv/bin/python scripts/bench/visit_bench.py     # about four minutes
+.venv/bin/python pipeline/bench/visit_bench.py     # about four minutes
 ```
 
 ## Deploy
 
 Couchside is the `couchside` app in the root `rig.yaml`, on port 8082, reading
 the shared model through `MODEL_DIR`. Pushing to `main` deploys it through the
-Rigbox GitHub binding. If `app/engine.py`, `app/titles.py`, `app/fallback.py` or
-`app/follow.py` changes, rerun `couchside/build.py` so the copies here follow.
+Rigbox GitHub binding. If `app/backend/recommendation/engine.py`, `app/backend/recommendation/titles.py`, `app/backend/fallback.py` or
+`app/backend/follow.py` changes, rerun `couchside/build.py` so the copies here follow.
 
 When `MODEL_DIR` names a link the refresher moves to each new model, the server
 follows it the way Next Watch does: it checks every `MODEL_POLL_SECONDS` (60),

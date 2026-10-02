@@ -4,135 +4,71 @@ Three apps over the TVmaze catalogue of TV series. Next Watch and Couchside read
 a model rebuilt every night; the research site keeps the 89,594-show snapshot it
 was published with.
 
-Both apps share one recommender. A pick has to sit close to shows you liked (plot,
-themes, genres, and a shared franchise or maker from Wikidata) and fit what your
-whole list leans toward: its languages, formats, networks, eras, subgenres, and how
-well known and well rated its shows are, learned from your ratings and dislikes.
-A list with several tastes gets picks for each, and a list may rate up to 3,000
-shows: past 60 it is ranked from each show's closest shows, which the nightly
-build precomputes, so a heavy watcher's whole history counts and a page still
-comes in a quarter of a second. [scripts/bench](scripts/bench/)
-measures it against 71 viewer personas: on the 20 nobody tuned on, a held-out
-favourite lands in the top 24 picks 54% of the time, up from 10%. Besides each
-show's own data it uses which shows the same readers look up on Wikipedia, from the
-public clickstream. Picks and rows
-stay fresh from day to day, and first visits are drawn per browser; what that
-borrows from Netflix and others is in [docs/recommender-practice.md](docs/recommender-practice.md).
-
 **[app/](app/) is Next Watch**, the web app: rate what you have watched, get
 ranked picks with the reason each one surfaced, and see your taste drawn against
-them. Four screens, light by default, about 135 KB on first load, works on a
-phone. [Read more](app/README.md).
-
-```sh
-python3 app/build.py && python3 app/server.py
-```
+them. Four screens, light by default, about 145 KB on first load, works on a
+phone. Lists stay in your browser and can be moved by link or file.
+[Read more](app/README.md).
 
 **[couchside/](couchside/) is Couchside**, the same recommender dressed as a
 streaming service: a hero and rows built from what you rate, title pages with
-cast, episodes and more like this, and My List. Nothing plays; it is for finding
-your next show. [Read more](couchside/README.md).
-
-```sh
-python3 couchside/build.py && python3 couchside/server.py
-```
+cast, episodes and more like this, and My List. Optional email/password accounts
+sync ratings and My List across devices. It is for finding your next show.
+[Read more](couchside/README.md).
 
 **[site/](site/) is the original research write-up** and its interactive
 recommender, kept as published. [Live](https://tv-taste-jlvf21do.rigbox.dev/) ·
-[Report](output/research-report.md) · [Notes](site/README.md).
+[Report](research/output/research-report.md) · [Notebook](research/tv_taste_research.ipynb) · [Notes](site/README.md).
+
+## Common commands
+
+Local development needs Python 3.10+. Each app's README covers dependencies and
+setup. Run these from the repository root with the project's Python environment:
 
 ```sh
-python3 site/server.py
+.venv/bin/python tools/manage.py build all
+.venv/bin/python tools/manage.py run couchside
+.venv/bin/python tools/manage.py test all
 ```
 
-`scripts/` holds the pipeline that downloads the catalog, derives theme and genre
-features, and builds the shared model every app reads. Python 3.10+; no app
-needs packages at runtime.
+| Command | Supported targets |
+| --- | --- |
+| `build <target>` | `app`, `couchside`, `site`, `all` |
+| `run <target>` | `app`, `couchside`, `site`, `pipeline` |
+| `test <target>` | `app`, `couchside`, `site`, `pipeline`, `all` |
 
-## Fresh data every night
+The helper selects the right working directory and entrypoint. It also runs
+pipeline jobs and [recommendation benchmarks](pipeline/bench/README.md).
 
-Next Watch and Couchside read a live model that `scripts/refresher.py` rebuilds
-each night at 04:30 UTC: it downloads TVmaze's whole show index (and, one at a time,
-the shows TVmaze lists that the index, cached for up to a day, does not hold yet),
-rebuilds the model into a new folder under `/home/developer/data/tv-model/versions/`, checks it,
-and only then moves `tv-model/current` to it. Each app notices the move and
-restarts on the new model, Next Watch after 30 seconds and Couchside after 150,
-so they are never down together. A failed build leaves the live model alone and
-is retried two hours later. The research site stays on the snapshot it was
-published with.
+## Fresh recommendations
 
-The refresher is the private `model-refresher` app in `rig.yaml`. Its page shows
-the live build, recent runs and the next one, with a *Rebuild now* button. It
-rebuilds on deploy whenever the pipeline changes, and seeds itself from the frozen
-model the first time it starts.
+Next Watch and Couchside share a recommender. It compares plots, themes, genres,
+franchises, and makers, then considers what a person's whole list leans toward:
+languages, formats, networks, eras, and other patterns. Ratings and dislikes shape
+those picks. A list with several tastes can receive recommendations for each,
+and long lists use precomputed neighbors to keep requests responsive.
 
-Each build also adds taste facets from Wikidata, whose data is CC0 and so may
-shape the ranking: genres, creators and writers, cast, franchise and spin-off
-links, subjects and settings, and awards, for the shows Wikidata can match by
-TVmaze or IMDb id, beside TVmaze's networks for every show, plus each show's names
-in other languages for search. The Wikidata cache is fetched again once it is a
-week old; when Wikidata is down, the last cache serves, so it never fails a build.
+The shared catalog and model refresh nightly. A new model is checked before
+publication, and a failed build leaves the previous one available. The research
+site keeps the snapshot used for its published study. With provider credentials
+configured, Couchside also shows trailers, streaming availability, cast, and
+provider ratings. Provider details do not change recommendation rankings.
 
-Wikidata's best-known films and film series, some 9,700, are mapped to the same
-genres and subjects (`scripts/films.py`, `scripts/build_films.py`), so a Couchside
-search for *Mad Max* or *The Godfather* finds shows like it. The film cache is
-fetched with the Wikidata one and the film index built with each model; when either
-fails, the last good index serves, and `model/films.json.gz` is a built copy.
+[Recommendation practice](docs/recommender-practice.md) describes the approach
+and its evaluation. [Public asset conventions](docs/public-assets.md) explains
+where browser files come from, how builds group them, and why the icon formats
+differ. Each app's README covers its local setup and checks.
 
-Which shows the same readers look up comes from Wikipedia's monthly clickstream,
-also CC0: once a day the refresher checks for a newly published month and streams
-it without storing it (about 500 MB, three months on the first build), keeping
-only the counts between shows' articles for the latest three months. When a month
-will not download, the months already held serve, and it is tried again next run.
+## Deployment
 
-Last, `scripts/build_neighbours.py` works out every show's 48 closest shows under
-the apps' own closeness (about two minutes and 820 MB on one laptop thread, 13 MB
-on disk), which is what the apps rank a list of more than 60 ratings from. A build
-that fails leaves that version without it, and long lists are then ranked from
-their 60 most recent likes and dislikes.
+Rigbox uses the root `rig.yaml`. A push to `main` deploys the changed apps. Build
+and commit the generated public bundles with their sources before deploying;
+the servers serve those existing bundles.
 
-With `TMDB_API_KEY` set, each build also fetches TMDB's US age ratings, streaming
-services, trailers and backdrops for the 23,000 or so best-known shows, 6,000 a
-night, keeping each for at most TMDB's six months. Couchside shows them, credited
-to TMDB and JustWatch; nothing from TMDB reaches the ranking. On Rigbox the token
-goes in the GitHub connection's runtime secrets as `TMDB_READ_API=...`.
-
-```sh
-MODEL_ROOT=/tmp/tv-model SEED_MODEL_DIR=model RAW_SOURCE_DIR=data/raw \
-  .venv/bin/python scripts/refresher.py    # http://localhost:8083
-.venv/bin/python scripts/test_refresher.py
-.venv/bin/python scripts/test_facets.py
-.venv/bin/python scripts/test_neighbours.py
-.venv/bin/python scripts/test_films.py
-```
-
-## Deploy
-
-Every app is an entry in the root `rig.yaml`, the only manifest in the
-repository. It is connected to Rigbox through the GitHub app, so a push to
-`main` is a deploy, and Rigbox restarts only the apps whose folder, entry or
-secrets changed.
-
-The workspace's `data` volume is mounted at `/home/developer/data`. The frozen
-research model is in `data/model`; the live model versions, downloaded source data,
-provider caches, build history and logs are in `data/tv-model`. Couchside's episode
-ratings database is `data/tv-model/cache/episode-ratings.sqlite3`. These files live
-outside release checkouts, on the persistent volume. User lists and preferences
-remain in each browser's local storage. Each deployed app checks that the volume
-is mounted before starting, so a missing mount cannot create new data on the VM's
-root disk.
-
-The apps share the model through `/home/developer/model` and
-`/home/developer/tv-model`, stable links to the corresponding directories on the
-volume. Each start also checks that its link exists. Keep these links when setting
-up a replacement root disk. Rigbox's per-app `volumes: [data]` creates a private
-directory bound over the volume root; these apps use the shared host paths so the
-refresher's published model remains visible to every reader.
-
-The October 2026 migration preserved the original root-disk directories as
-`/home/developer/model.pre-volume-*` and `/home/developer/tv-model.pre-volume-*`.
-The originals are recovery snapshots and are no longer
-updated. Check volume free space before a model build or a large cache expansion.
+The shared model, provider caches, and Couchside accounts use the persistent
+`data` volume. Guest lists remain in each browser, and signed-in Couchside lists
+sync between devices. See [Couchside's deployment notes](couchside/README.md) for
+account configuration and operational details.
 
 Data from [TVmaze](https://www.tvmaze.com/),
 [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/), and

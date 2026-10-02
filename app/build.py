@@ -6,71 +6,54 @@ them with its own model only to measure the page for its size badge and the budg
 """
 import shutil
 import sys
+import os
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))
+from tools.public_bundle import output_path, reset_public
+
 PUBLIC = HERE / 'public'
-MODEL = HERE / 'model'
-SHARED = HERE.parent / 'model'
+CLIENT = HERE / 'client'
+BRAND = HERE / 'assets' / 'brand'
+MODEL = Path(os.environ.get('MODEL_DIR') or HERE.parent / 'data' / 'model')
 ASSETS = ('style.css', 'main.js', 'fit.js', 'similar.js', 'transfer.js', 'qr.js', 'fresh.js', 'visits.js',
           'starters.js')
 BUDGET = 512_000
 
-FAVICON = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">'
-           '<rect width="40" height="40" rx="8" fill="#1f3d99"/>'
-           '<path d="M11 13h18M14 13v15h12V13" fill="none" stroke="#fff" stroke-width="2.6" '
-           'stroke-linecap="round" stroke-linejoin="round"/>'
-           '<path d="M16 8l4 5 4-5" fill="none" stroke="#1f3d99" stroke-width="2.6" stroke-linecap="round"/>'
-           '</svg>')
-
-
-def ensure_model():
-    """The app ships its own model copy so it can deploy on its own."""
-    MODEL.mkdir(exist_ok=True)
-    sources = sorted(SHARED.glob('*.gz')) + sorted(SHARED.glob('*.part*'))
-    if not sources:
-        sys.exit(f'No model files in {SHARED}. Build the research model first.')
-    for source in sources:
-        target = MODEL / source.name
-        if target.exists():
-            continue
-        print(f'linking {source.name} from model/')
-        try:
-            target.hardlink_to(source)
-        except OSError:
-            shutil.copyfile(source, target)
-
-
 def main():
-    for name in ('http_client.py', 'requirements-runtime.txt'):
-        shutil.copyfile(HERE.parent / 'scripts' / name, HERE / name)
-    ensure_model()
+    pipeline = HERE.parent / 'pipeline'
+    shutil.copyfile(pipeline / 'backend' / 'http_client.py', HERE / 'backend' / 'http_client.py')
+    shutil.copyfile(pipeline / 'requirements-runtime.txt', HERE / 'requirements-runtime.txt')
+    if not (MODEL / 'catalog.json.gz').exists():
+        sys.exit(f'No model files in {MODEL}. Build the research model first, or set MODEL_DIR.')
     sys.path.insert(0, str(HERE))
-    from engine import Engine
-    from page import fill
+    from backend.recommendation.engine import Engine
+    from backend.page import fill
     engine = Engine(MODEL)
 
-    PUBLIC.mkdir(exist_ok=True)
+    reset_public(PUBLIC)
     for name in ASSETS:
-        shutil.copyfile(HERE / name, PUBLIC / name)
-    (PUBLIC / 'favicon.svg').write_text(FAVICON)
+        shutil.copyfile(CLIENT / name, PUBLIC / output_path(name))
+    shutil.copyfile(BRAND / 'favicon.svg', PUBLIC / output_path('favicon.svg'))
 
     # The badge states the page's own size as served, filled in, so settle on a figure
     # that includes itself. The server fills in its own model later; this one measures.
-    template = (HERE / 'index.template.html').read_text()
-    others = sum((PUBLIC / name).stat().st_size for name in (*ASSETS, 'favicon.svg'))
+    template = (CLIENT / 'index.template.html').read_text()
+    others = sum((PUBLIC / output_path(name)).stat().st_size for name in (*ASSETS, 'favicon.svg'))
     label = '00.0 KB'
     for _ in range(4):
         badge = label
         page = fill(template.replace('__PAGE_SIZE__', badge), engine)
         label = f'{(len(page.encode()) + others) / 1000:.1f} KB'
-    (PUBLIC / 'index.html').write_text(template.replace('__PAGE_SIZE__', badge))
+    (PUBLIC / output_path('index.html')).write_text(template.replace('__PAGE_SIZE__', badge))
 
     sizes = {'index.html': len(page.encode()),
-             **{name: (PUBLIC / name).stat().st_size for name in (*ASSETS, 'favicon.svg')}}
+             **{str(output_path(name)): (PUBLIC / output_path(name)).stat().st_size
+                for name in (*ASSETS, 'favicon.svg')}}
     total = sum(sizes.values())
     for name, size in sizes.items():
-        print(f'  {name:<14} {size / 1000:7.1f} KB')
+        print(f'  {name:<34} {size / 1000:7.1f} KB')
     print(f'  {"first load":<14} {total / 1000:7.1f} KB  ({total / BUDGET:.0%} of the 512 KB budget)')
     if total >= BUDGET:
         sys.exit(f'First-load bundle is {total} bytes, over the {BUDGET} byte budget.')

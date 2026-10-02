@@ -1,0 +1,67 @@
+<article>
+<p class="meta">Your own viewing notes · __CATALOG_COUNT__ shows</p>
+<h1>Find your next show</h1>
+<p class="lede">Add shows you’ve watched, tell us what you liked, and explore the connections. Recommendations and charts update with your list.</p>
+<section id="your-list">
+<h2>What have you watched?</h2>
+<p id="profile-kind" class="small">The original six favorites are loaded as an example.</p>
+<div class="profile-actions"><button id="start-list" type="button">Start my own list</button><button id="example-list" class="text-button" type="button">Use the example</button></div>
+<label for="show-search">Search the dataset</label>
+<input id="show-search" type="search" placeholder="Try The Office, Severance, or Ozark…" autocomplete="off" maxlength="100" aria-describedby="search-help search-status">
+<p id="search-help" class="small">All languages and show types · snapshot __DATASET_DATE__. New additions default to “Liked.”</p>
+<p id="search-status" class="small" role="status" aria-live="polite"></p>
+<ul id="search-results" class="search-results" aria-label="Matching TV shows"></ul>
+<div id="watched-list" class="watched-list" aria-label="Your watched shows"></div>
+<p class="small" id="storage-note">Saved in this browser. Calculations run on the server; no account is required.</p>
+<details id="model-settings"><summary>Adjust the recommendations</summary>
+<p class="small">Feature weights are relative: 40 / 35 / 25 means 40% plot text, 35% themes, and 25% genres.</p>
+<div class="settings-grid">
+<label for="language-filter">Show language<select id="language-filter" data-setting="language"></select></label>
+<label for="type-filter">Show format<select id="type-filter" data-setting="type"></select></label>
+<label for="status-filter">Series status<select id="status-filter" data-setting="status"></select></label>
+<label>Plot text <output id="text-value">40</output><input id="text-weight" data-setting="text" type="range" min="0" max="100" step="5" value="40"></label>
+<label>Theme keywords <output id="themes-value">35</output><input id="themes-weight" data-setting="themes" type="range" min="0" max="100" step="5" value="35"></label>
+<label>Genres <output id="genres-value">25</output><input id="genres-weight" data-setting="genres" type="range" min="0" max="100" step="5" value="25"></label>
+<label>Emphasize the closest favorite <output id="closest-value">30%</output><input id="closest-weight" data-setting="closest" type="range" min="0" max="1" step=".1" value=".3"></label>
+<label>Reduce matches to dislikes <output id="dislike-value">35%</output><input id="dislike-weight" data-setting="dislike" type="range" min="0" max="1" step=".05" value=".35"></label>
+<label for="year-min">Premiered from<input id="year-min" data-setting="year_min" type="number" min="1900" max="2100" step="1" value="1990"></label>
+<label for="runtime-min">Minimum episode length (minutes)<input id="runtime-min" data-setting="runtime_min" type="number" min="0" max="240" step="5" value="25"></label>
+<label for="rating-min">Minimum TVmaze rating (0 = any)<input id="rating-min" data-setting="rating_min" type="number" min="0" max="10" step=".5" value="0"></label>
+</div><p class="small">These filters limit recommendations, not search or your watched list. A minimum rating excludes unrated shows. Zero runtime includes shows with unknown length. Public ratings filter the pool; they do not increase similarity scores.</p>
+<button type="button" id="reset-settings" class="text-button">Reset recommendation settings</button></details>
+<div class="update-line"><p id="calculation-status" role="status" aria-live="polite">Loading your results…</p><button type="button" id="retry" hidden>Try again</button></div>
+</section>
+<div id="results" hidden>
+<section id="explore"><h2>Your taste, mapped</h2><p id="result-count" class="countline"></p><p id="coverage-warning" class="note" hidden></p>
+<div class="controls"><label for="show-select">Inspect a show</label><select id="show-select"></select></div>
+<div class="view-switch" role="group" aria-label="Explore chart view"><button id="radar-view" type="button" aria-pressed="true">Feature radar</button><button id="map-view" type="button" aria-pressed="false">Similarity map</button></div>
+<div id="radar-panel">
+<p class="small">Compare the ingredients of your shows across several dimensions. Overlapping signals reveal what they have in common.</p>
+<div class="radar-controls"><label for="radar-compare">Compare with<select id="radar-compare"></select></label><label for="radar-preset">Dimensions<select id="radar-preset"><option value="mixed">Themes and genres</option><option value="themes">Themes</option><option value="genres">Genres</option></select></label></div>
+<details id="radar-settings"><summary>Choose radar dimensions <span id="radar-dimension-count"></span></summary><p class="small">Choose 3–12 spokes. Suggested dimensions favor shared signals and features present in your likes. The table below includes every dimension.</p><button type="button" id="radar-suggest" class="text-button">Use suggested dimensions</button><p id="radar-dimension-status" class="small" role="status"></p><div id="radar-dimensions"></div></details>
+<div id="radar-legend" class="radar-legend"></div>
+<figure><div id="radar-frame"><svg id="taste-radar" role="img" aria-label="Multidimensional theme and genre radar"></svg></div><ol id="radar-key" class="radar-key"></ol><figcaption>For a show: 100 = recorded signal; 0 = no recorded signal. The profile line shows the rating-weighted share of your likes with that signal. Unknown values are drawn at the center with hollow markers and labeled in the table; they contribute zero to the profile share.</figcaption></figure>
+<p id="radar-summary" class="small" aria-live="polite"></p><p class="small">This compares feature presence, not theme intensity or the final similarity score. Text similarity and dislike penalties also affect recommendations. A larger polygon does not mean a better match.</p>
+<details id="radar-values"><summary id="radar-table-summary">Read all dimension values</summary><div id="radar-table" class="table-wrap"></div></details>
+</div>
+<div id="map-panel" hidden><div class="axis-controls"><label for="axis-x">Horizontal comparison<select id="axis-x"></select></label><label for="axis-y">Vertical comparison<select id="axis-y"></select></label></div>
+<p class="small" id="axis-note"></p>
+<div class="legend"><span><i class="diamond"></i>Your liked shows</span><span><i></i>Possible next watches</span><span><i class="selected-dot"></i>Selected show</span></div>
+<figure><div id="map-frame"><svg id="taste-map" class="chart" role="img" aria-label="Personalized show similarity map"></svg><div id="map-tooltip" class="hover-tip" role="tooltip"></div></div><figcaption>Similarity, not enjoyment probability. Liked-show positions include self-similarity. Dislike adjustments affect the ranking, not these axes.</figcaption></figure>
+</div>
+<div id="show-detail" class="selection" aria-live="polite"></div>
+</section>
+<section id="findings"><h2>What your likes have in common</h2><div class="controls"><label for="feature-group">Explore features</label><select id="feature-group"><option value="content">Themes and genres</option><option value="themes">32 theme signals</option><option value="genres">Genres</option><option value="type">Show formats</option><option value="language">Languages</option><option value="country">Network countries</option><option value="status">Series status</option></select></div><p id="feature-summary"></p>
+<div class="legend"><span><i class="selected-dot"></i>Your liked shows</span><span>Faint bars: eligible unwatched shows</span></div>
+<figure class="profile"><div id="feature-bars"></div><div class="profile-scale"><span>0%</span><span>50%</span><span>100%</span></div><figcaption>These counts treat every liked show equally; ratings affect recommendations. Theme keywords are summary evidence, not definitive labels. Language, format, country, and status describe the catalog; they are not similarity weights.</figcaption></figure>
+<details><summary>Compare your liked shows</summary><p id="pair-note" class="small"></p><div id="pair-matrix" class="table-wrap"></div><p class="small">Pairwise content similarity, 0–100, using your current feature weights. This is not a correlation of enjoyment.</p></details>
+<details><summary>Feature correlations in the recommendation pool</summary><p class="small">These describe the eligible catalog. They change with filters and watched-show exclusions, not simply because a like becomes a stronger like.</p><div id="catalog-correlations"></div></details>
+</section>
+<section id="recommendations"><h2>What to watch next</h2><p class="small">Every show in your watched list is excluded, including neutral ratings and dislikes.</p>
+<p id="empty-candidates" class="note" hidden></p>
+<div class="table-wrap"><table class="personal-ranking"><thead><tr><th scope="col">Show</th><th scope="col">Similarity<br>/ 100</th><th scope="col">Closest like</th><th scope="col">Already seen?</th></tr></thead><tbody id="ranking-body"></tbody></table></div>
+<button class="text-button" type="button" id="download-results">Download these recommendations (CSV)</button>
+</section></div>
+<section id="method"><h2>What the numbers mean</h2><p>The model compares plot text, theme keywords, and genres. It combines your average positive match with your closest favorite, then subtracts a similarity penalty for disliked shows. Scores are clipped at zero.</p><p>“Loved,” “Liked,” and “Somewhat liked” have positive weights of 1, 0.7, and 0.35. Neutral shows are only excluded. Disliked shows contribute to the penalty. These are adjustable heuristics, not a trained predictor of enjoyment.</p><p>Search covers all __CATALOG_COUNT__ shows in this snapshot, including international shows, animation, documentaries, and reality TV. Recommendations require a known premiere on or before the snapshot and at least 15 summary words or one genre. Entries with sparse data are labeled; missing features contribute zero similarity. The dataset and its text features are refreshed manually; changing your list only recomputes the analysis.</p><p class="small">The model uses 40,000 text terms, 28 genres, and 32 theme signals. Theme rules use English words in catalog summaries, including summaries of international shows; untranslated text may have weaker coverage. Network country is not necessarily production origin or streaming availability.</p><p class="small">Themes miss pacing, performances, and character arcs. More ratings help describe your taste but do not turn similarity into a guarantee.</p><p><a href="/pages/research.html">Read the original six-show study and its limitations →</a></p><div class="downloads"><a href="/data/expanded_theme_rules.json">Expanded theme definitions</a><a href="/data/catalog-audit.json">Current catalog audit</a><a href="/data/audit.json">Original data audit</a></div><noscript><p>The personal recommender needs JavaScript. The <a href="/pages/research.html">original research notes, charts as tables, and downloads</a> remain available without it.</p></noscript></section>
+</article>
+<script type="application/json" id="research-data">__BOOTSTRAP__</script>
