@@ -986,10 +986,10 @@ body.loose{display:grid;place-items:center;min-height:100vh;min-height:100dvh;
 .lost p{margin:0 0 26px;font-size:17px;line-height:1.5;color:var(--ink-2)}
 
 /* touch screens -------------------------------------------------------- */
-/* iOS zooms into any focused field under 16px and stays there, so on a touch screen no field
-   is smaller, whatever its own rule says. Pinch zoom stays on. */
+/* Keep touch fields at 16px without restricting pinch zoom. :read-write follows inherited
+   editability into editor children and skips contenteditable=false regions. */
 @media(any-pointer:coarse){
-  input,select,textarea{font-size:16px!important}
+  input,select,textarea,[contenteditable]:read-write,[contenteditable] :read-write{font-size:16px!important}
 }
 /* Whatever a thumb presses is at least 44px each way. */
 @media(any-pointer:coarse){

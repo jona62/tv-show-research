@@ -30,15 +30,6 @@ import { KEY, DEFAULTS, REACH, VERSION, MAX_RATED, fresh, tidy, stored, FRESH_KE
   newVisit, keepVisit, tasteOf, homeBody, packed, PAGE_KEY, take, sanitize } from './start.js?v=6a0715a23a1035dd';
 
 const boot = JSON.parse(document.getElementById('boot').textContent);
-// iOS zooms into a field it judges small and stays zoomed. maximum-scale=1 in the page's
-// viewport stops that, while iOS still lets fingers pinch; elsewhere the limit would stop
-// the pinch as well, so it comes off.
-const IOS = /iP(hone|ad|od)/.test(navigator.userAgent)
-  || (!/Android/.test(navigator.userAgent) && navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-if (!IOS) {
-  const viewport = document.querySelector('meta[name="viewport"]');
-  if (viewport) viewport.content = viewport.content.replace(/,\s*maximum-scale=1/, '');
-}
 const $ = id => document.getElementById(id);
 const RATES = [
   { weight: -1, label: 'Not for me', icon: 'down', said: 'Got it. You will see less like this.' },
