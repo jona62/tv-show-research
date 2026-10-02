@@ -1,5 +1,5 @@
 import { apiFetch } from './network.js';
-import {chart} from './episode-timeline.js';
+import {chart,nearestRatingPoint} from './episode-timeline.js';
 export {chart,smoothPath} from './episode-timeline.js';
 import {esc,score,code,average,seasons,band,icon,html,legend,ratings,ratingSource,ratingSources} from './ratings.js';
 const plain = value => new DOMParser().parseFromString(value||'', 'text/html').body.textContent||'';
@@ -71,6 +71,46 @@ function revealTimelinePoint(target) {
   const point=target.getBoundingClientRect(),bounds=viewport.getBoundingClientRect();
   if(point.left<bounds.left)viewport.scrollLeft-=bounds.left-point.left+8;
   else if(point.right>bounds.right)viewport.scrollLeft+=point.right-bounds.right+8;
+}
+
+function bindTimelinePointer(node,tip) {
+  const svg=node.querySelector('.ratings-timeline');
+  if(!svg)return;
+  const points=[...svg.querySelectorAll('[data-episode]')].map(target=>{
+    const dot=target.querySelector('.ratings-point');
+    return {target,x:Number(dot.getAttribute('cx')),y:Number(dot.getAttribute('cy'))};
+  });
+  if(!points.length)return;
+  let hovered,frame,down,cancelled=false;
+  const nearest=event=>{
+    const matrix=svg.getScreenCTM();if(!matrix)return null;
+    // Safari truncates pointer coordinates to whole CSS pixels. Resolve that
+    // pixel's centre so adjacent ratings remain reachable at fractional offsets.
+    const centre=value=>Number.isInteger(value)?value+.5:value;
+    const p=new DOMPoint(centre(event.clientX),centre(event.clientY)).matrixTransform(matrix.inverse());
+    return nearestRatingPoint(points,p.x,p.y)?.target;
+  };
+  const clear=()=>{cancelAnimationFrame(frame);hovered?.classList.remove('is-hovered');hovered=null;tip.leave();};
+  svg.onpointermove=event=>{
+    if(event.pointerType==='touch')return;
+    cancelAnimationFrame(frame);
+    frame=requestAnimationFrame(()=>{
+      if(!svg.isConnected)return;
+      const target=nearest(event);if(target===hovered)return;
+      hovered?.classList.remove('is-hovered');hovered=target;
+      if(target){target.classList.add('is-hovered');target.onpointerenter();}
+      else tip.leave();
+    });
+  };
+  svg.onpointerleave=clear;
+  svg.onpointercancel=()=>{cancelled=true;down=null;clear();};
+  svg.onpointerdown=event=>{cancelled=false;down={x:event.clientX,y:event.clientY,target:nearest(event)};};
+  svg.onclick=event=>{
+    if(cancelled){cancelled=false;return;}
+    if(down&&Math.hypot(event.clientX-down.x,event.clientY-down.y)>8){down=null;return;}
+    const target=down?.target||nearest(event);down=null;cancelAnimationFrame(frame);
+    if(target){clear();target.onclick();}
+  };
 }
 
 function tooltip(host) {
@@ -182,6 +222,7 @@ export async function mountEpisodeRatings(t,{openEpisode,episodeEl,revealButton,
       const open=()=>{tip.hide();openEpisode(ep(e),{show:s.id,number:e.season,episodes:s.episodes.filter(x=>x.season===e.season).map(ep)},target);};
       target.onclick=open;if(target.tagName.toLowerCase()==='g')target.onkeydown=event=>{if(['Enter',' '].includes(event.key)){event.preventDefault();open();}};
     });
+    bindTimelinePointer(node,tip);
   }
   function paintComparison(){
     tip.hide();if(!other){comparison.replaceChildren();return;}

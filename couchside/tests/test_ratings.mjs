@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { band, average, compactMatrix, matrixSkeleton, ratings, cachedRatings, matrixRatings, cachedMatrix, ratingSources } from '../client/ratings.js';
-import { chart, timelineModel, smoothPath } from '../client/episode-timeline.js';
+import { chart, timelineModel, smoothPath, nearestRatingPoint } from '../client/episode-timeline.js';
 
 assert.equal(band(9.7).name, 'Absolute cinema');
 assert.equal(band(9.7).colour, '#1DA1F2');
@@ -58,16 +58,25 @@ for(const gap of [episode(null,3),episode(8,9),episode(8,1,2)]){
   assert.equal(timelineModel(before).series[0].runs[0].length,2);
 }
 
-// Keep long-series samples and missing positions, rather than thinning or overlapping them.
+// Keep all samples in a compact overview, with modest scrolling for very long shows.
 const long=Array.from({length:1181},(_,i)=>episode(i<1168?6+(i%9)/2:null,i+1));
 const longModel=timelineModel(long,null,390),longPoints=longModel.series[0].points;
 assert.equal(longPoints.length,1181);
 assert.equal(longPoints.filter(p=>p.y!=null).length,1168);
 assert.equal(new Set(longPoints.filter(p=>p.y!=null).map(p=>p.id)).size,1168);
-assert.ok(longPoints.every((p,i)=>!i||p.x-longPoints[i-1].x>=28));
+assert.ok(longPoints.every((p,i)=>!i||p.x-longPoints[i-1].x>=1));
 assert.ok(longModel.width>longModel.viewport);
+assert.ok(longModel.width<1500,'a long show stays near the original overview instead of stretching into dozens of screens');
 assert.equal(timelineModel(long,null,1280).width,longModel.width,'desktop does not compress a long timeline either');
 assert.equal(timelineModel(long.slice(0,5),null,390).width,344,'short shows fit their mobile viewport');
+
+const dense=[{id:1,x:10,y:80},{id:2,x:11,y:100},{id:3,x:12,y:null},{id:4,x:13,y:100}];
+assert.equal(nearestRatingPoint(dense,10,80).id,1,'overlapping hit targets cannot steal a point at its actual centre');
+assert.equal(nearestRatingPoint(dense,10.1,100).id,2,'vertical distance matters as well as episode order');
+assert.equal(nearestRatingPoint(dense,12,100).id,2,'equal-distance ties are stable');
+assert.equal(nearestRatingPoint(dense,12,0),null,'blank plot space does not select a distant rating');
+assert.equal(nearestRatingPoint([{x:1,y:null}],1,0),null,'unrated positions are never pointer targets');
+for(const p of longPoints.filter(p=>p.y!=null))assert.equal(nearestRatingPoint(longPoints,p.x,p.y).id,p.id,'every dense rating can still be picked at its centre');
 
 const compared=timelineModel([episode(0),episode(10,2),episode(8,1,2),episode(7,1,3)],
   [episode(9,1),episode(10,1,3)]);

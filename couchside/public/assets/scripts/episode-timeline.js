@@ -1,6 +1,6 @@
 import {esc,score,code,average,band} from './ratings.js?v=2a0509d86dd759f5';
 
-const AXIS_WIDTH=46, EPISODE_SPACE=28, SEASON_SPACE=72;
+const AXIS_WIDTH=46, EPISODE_SPACE=1, SEASON_SPACE=72;
 const RAW={top:36,bottom:244}, TREND={top:338,bottom:426};
 const ordinate=(value,low,row)=>row.bottom-(value-low)*(row.bottom-row.top)/(10-low);
 const tickLabel=value=>value.toFixed(Number.isInteger(value*2)?1:2);
@@ -28,7 +28,7 @@ function ratedRuns(points,comparison) {
   return runs;
 }
 
-// The geometry is in CSS pixels: long shows grow sideways instead of shrinking their dots.
+// Keep the overview compact; very long shows gain just enough width to scroll.
 export function timelineModel(episodes,other=null,availableWidth=780) {
   const comparison=Boolean(other);
   const seasonNumbers=[...new Set([...episodes,...(other||[])].map(e=>e.season))].sort((a,b)=>a-b);
@@ -40,6 +40,7 @@ export function timelineModel(episodes,other=null,availableWidth=780) {
   const {low,ticks}=scale(lists.flat()),count=lists[0].length;
   const viewport=Math.max(96,Math.floor(availableWidth)-AXIS_WIDTH);
   const width=Math.max(viewport,(count-1)*(comparison?SEASON_SPACE:EPISODE_SPACE)+64);
+  const spacing=(width-64)/Math.max(1,count-1);
   const series=lists.map(points=>{
     points=points.map((p,i)=>({...p,x:count===1?width/2:20+i*(width-64)/(count-1),
       y:p.rating==null?null:ordinate(p.rating,low,RAW)}));
@@ -49,7 +50,21 @@ export function timelineModel(episodes,other=null,availableWidth=780) {
       y:ordinate(average(run.slice(Math.max(0,i-2),i+3)),low,TREND)})));
     return {points,runs,trend};
   });
-  return {comparison,low,ticks,count,width,viewport,height:comparison?300:444,series};
+  return {comparison,low,ticks,count,width,spacing,viewport,height:comparison?300:444,series};
+}
+
+// Dense ratings can overlap visually. Select the nearest actual sample, not the
+// last hit circle painted, and leave empty areas of the chart unselected.
+export function nearestRatingPoint(points,x,y,radius=12) {
+  let left=0,right=points.length;
+  while(left<right){const mid=(left+right)>>1;if(points[mid].x<x-radius)left=mid+1;else right=mid;}
+  let nearest=null,distance=radius*radius;
+  for(let i=left;i<points.length&&points[i].x<=x+radius;i++){
+    const point=points[i];if(point.y==null)continue;
+    const squared=(point.x-x)**2+(point.y-y)**2;
+    if(squared<=distance&&(!nearest||squared<distance)){nearest=point;distance=squared;}
+  }
+  return nearest;
 }
 
 // Bound the cubic controls to their neighbouring samples so a trend never invents peaks.
@@ -85,26 +100,29 @@ function rowGrid(model,row) {
 function seriesMarkup(series,model,colour,index,names) {
   const line=series.runs.map(run=>run.map((p,i)=>`${i?'L':'M'}${p.x},${p.y}`).join(' ')).join(' ');
   return `<path class="ratings-raw-line" d="${line}" fill="none" stroke="${model.comparison?colour:'var(--muted)'}" stroke-width="${model.comparison?2:1.25}"/>`+
-    series.points.map(p=>p.rating==null?'':`<g class="ratings-point-hit" ${model.comparison?`data-season="${p.season}" data-show-index="${index}"`:`data-episode="${p.id}"`} tabindex="0" role="${model.comparison?'img':'button'}" aria-label="${model.comparison?esc(names[index]||'Show')+', ':''}${p.label}${p.name?': '+esc(p.name):''}, ${score(p.rating)} out of 10, ${band(p.rating).name}"><circle class="ratings-point-target" cx="${p.x}" cy="${p.y}" r="12" fill="transparent"/><circle class="ratings-point" cx="${p.x}" cy="${p.y}" r="${model.comparison?4.5:4}" fill="${model.comparison?colour:band(p.rating).colour}"/></g>`).join('');
+    series.points.map(p=>p.rating==null?'':`<g class="ratings-point-hit" ${model.comparison?`data-season="${p.season}" data-show-index="${index}"`:`data-episode="${p.id}"`} tabindex="0" role="${model.comparison?'img':'button'}" aria-label="${model.comparison?esc(names[index]||'Show')+', ':''}${p.label}${p.name?': '+esc(p.name):''}, ${score(p.rating)} out of 10, ${band(p.rating).name}"><circle class="ratings-point-target" cx="${p.x}" cy="${p.y}" r="12" fill="transparent"/><circle class="ratings-point" cx="${p.x}" cy="${p.y}" r="${model.comparison?4.5:Math.max(1.75,Math.min(4,model.spacing*.45))}" fill="${model.comparison?colour:band(p.rating).colour}"/></g>`).join('');
 }
 
-function seasonLabels(model) {
+function chartLabels(model) {
   const starts=model.series[0].points.filter((p,i,points)=>model.comparison||i===0||p.season!==points[i-1].season);
-  let previous=-Infinity,row=0;
-  return starts.map(p=>{
-    row=p.x-previous<64?1-row:0;previous=p.x;
-    return `<text class="ratings-season-label" x="${p.x}" y="${270+row*16}" text-anchor="start">S${p.season}</text>`;
-  }).join('');
-}
-
-function episodeLabels(model) {
-  if(model.comparison)return '';
-  let seasonStart=-Infinity,season;
-  return model.series[0].points.map(p=>{
-    if(p.season!==season){season=p.season;seasonStart=p.x;}
-    if(p.x-seasonStart<56||model.count>24&&p.number%5!==0)return '';
-    return `<text class="ratings-episode-label" x="${p.x}" y="286" text-anchor="middle">E${p.number}</text>`;
-  }).join('');
+  const rows=[[],[]],labels=[];
+  const overlaps=(row,left,right)=>row.some(label=>left<label.right+8&&right>label.left-8);
+  for(const p of starts){
+    const text=`S${p.season}`,left=p.x,right=left+text.length*8;
+    const row=rows.findIndex(items=>!overlaps(items,left,right));
+    if(row<0||right>model.width-4)continue;
+    rows[row].push({left,right});labels.push({text,x:p.x,y:270+row*16,kind:'season',anchor:'start'});
+  }
+  if(!model.comparison){
+    for(const p of model.series[0].points){
+      if(model.count>24&&p.number%5!==0)continue;
+      const text=`E${p.number}`,half=text.length*4,left=p.x-half,right=p.x+half;
+      if(left<4||right>model.width-4||overlaps(rows[1],left,right))continue;
+      rows[1].push({left,right});labels.push({text,x:p.x,y:286,kind:'episode',anchor:'middle'});
+    }
+  }
+  return labels.sort((a,b)=>a.y-b.y||a.x-b.x).map(p=>
+    `<text class="ratings-${p.kind}-label" x="${p.x}" y="${p.y}" text-anchor="${p.anchor}">${p.text}</text>`).join('');
 }
 
 export function chart(episodes,other=null,names=[],availableWidth=780) {
@@ -119,10 +137,10 @@ export function chart(episodes,other=null,names=[],availableWidth=780) {
     ${comparison?'':'<p class="ratings-chart-label ratings-chart-label-trend">5-episode average <span>Within each season</span></p>'}
     <svg class="ratings-chart-axis" width="46" height="${height}" viewBox="0 0 46 ${height}" aria-hidden="true">${rowAxis(model,RAW)}${comparison?'':rowAxis(model,TREND)}</svg>
     <div class="ratings-chart-wrap" tabindex="0" role="region" aria-label="${comparison?'Season averages':'Episode ratings'} timeline${scrolls?'; scroll horizontally to explore':''}">
-      <svg class="ratings-timeline" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="group" aria-label="${comparison?'Season averages':'Episode ratings'}, scale ${low} to 10${comparison?'':', with a separate five-episode average below'}" data-min="${low}">
+      <svg class="ratings-timeline" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="group" aria-label="${comparison?'Season averages':'Episode ratings'}, scale ${low} to 10${comparison?'':', with a separate five-episode average below'}" data-min="${low}" style="--ratings-point-stroke:${comparison||model.spacing>=6?1.5:.65}">
         <g class="ratings-chart-grid">${rowGrid(model,RAW)}${comparison?'':rowGrid(model,TREND)}</g>
         <g class="ratings-episode-plot">${seriesMarkup(series[0],model,'#ffb020',0,names)}${comparison?seriesMarkup(series[1],model,'#91b9dc',1,names):''}</g>
-        ${seasonLabels(model)}${episodeLabels(model)}${comparison?'':`<g class="ratings-trend-plot" aria-hidden="true">${trend}</g>`}
+        ${chartLabels(model)}${comparison?'':`<g class="ratings-trend-plot" aria-hidden="true">${trend}</g>`}
       </svg>
     </div>
   </div>${scrolls?`<p class="ratings-scroll-hint">Scroll to explore all ${model.count.toLocaleString('en-US')} ${comparison?'seasons':'episodes'}</p>`:''}`;

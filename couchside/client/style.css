@@ -1131,9 +1131,10 @@ dialog.peek::backdrop{background:#000000c7}
 .ratings-chart-label-trend span{display:inline-block;margin-left:10px;color:var(--dim);font-size:12px;font-weight:400;line-height:16px}
 .ratings-chart-frame-comparison .ratings-chart-label::before{display:none}
 .ratings-scroll-hint{margin:8px 0 0;color:var(--muted);font-size:12px;line-height:1.5}
-.ratings-point{stroke:var(--bg-2);stroke-width:1.5}
+.ratings-point{stroke:var(--bg-2);stroke-width:var(--ratings-point-stroke,1.5)}
 .ratings-point-hit{cursor:pointer;outline:none}
-.ratings-point-hit:hover .ratings-point,.ratings-point-hit:focus-visible .ratings-point{stroke:var(--ink);stroke-width:2.5;r:5.5}
+.ratings-chart-frame:not(.ratings-chart-frame-comparison) .ratings-point-hit{pointer-events:none}
+.ratings-point-hit:hover .ratings-point,.ratings-point-hit.is-hovered .ratings-point,.ratings-point-hit:focus-visible .ratings-point{stroke:var(--ink);stroke-width:2.5;r:5.5}
 .ratings-credit,.ratings-empty{color:var(--dim);font-size:12px;line-height:1.5;margin:12px 0}
 .episode-ratings .ratings-list-code{font-size:11px;line-height:1.5;padding-top:20px;white-space:normal}
 .ratings-title-list.rail{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:calc((100% - 4 * 14px) / 4.3);overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;scrollbar-width:none;padding:4px;margin:0 -4px;scroll-padding:0 4px}
