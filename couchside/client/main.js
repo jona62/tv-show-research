@@ -437,7 +437,8 @@ let view = null;
 let compareDispose = null, compareKey = '';
 const comparisonKey = search => {
   const params = new URLSearchParams(search);
-  return ['compare', 'mode', 'compare-inverted', 'averages', 'seasons'].map(key => `${key}=${params.get(key) || ''}`).join('&');
+  return ['compare', 'mode', 'compare-inverted', 'averages', 'seasons', 'compare-view', 'timeline-layout', 'point-style']
+    .map(key => `${key}=${params.get(key) || ''}`).join('&');
 };
 function renderCompare() {
   const key = comparisonKey(location.search);

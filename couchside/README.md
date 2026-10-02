@@ -41,11 +41,17 @@ rebuilt every night. Nothing plays. It is for finding your next show.
   view with its full poster and Couchside header, preserving every episode in
   labeled PNG parts inside one ZIP when the view is large.
 - **Compare shows** opens from **Add to compare** beside a title's Share and
-  TVmaze actions. Search for multiple shows, reorder them, invert the table and
-  choose season averages across all seasons or episode ratings from an independently
-  selected season for each show. Overall averages count every rated episode equally
-  and exclude unrated entries. Save image keeps the current order and options;
-  the page's link keeps them too. Comparisons do not change My List or your taste.
+  TVmaze actions. Search for multiple shows and reorder them. The view menu switches
+  between Episode matrix and Timeline beside Inverted. Matrix shows season averages
+  across all seasons or episode ratings from an independently selected season for each
+  show. Timeline overlays each show's episode ratings and its five-episode average on
+  separate shared graphs; shorter shows end at their final episode. Choose a full
+  poster row, compact row or posters on the side, and points that match show lines,
+  use rating colours or remain hidden until inspected. The defaults are full posters
+  in a row and points matching show lines. Overall averages count every rated episode
+  equally and exclude unrated entries. Save image keeps the full posters, current
+  order and options; the page's link keeps them too. Comparisons do not change My List
+  or your taste.
 - **An episode** opens from its season's list in a sheet of its own over the title
   page: its largest still, *S2 E5*, the air date (or, still to come, when it airs in
   your own time), runtime and TVmaze rating, the whole summary, who directed and
@@ -176,8 +182,7 @@ Clicking any episode opens its existing sheet. Long timelines scroll horizontall
 with a fixed rating scale and room for every episode. The scale starts just below the
 lowest score, and a separate panel shows the smooth five-episode average within each
 season. Arrow keys move between ratings; Home and End jump to the first and last.
-Compare searches any other show and plots the two series' season averages on one
-shared scale.
+Add to compare opens the dedicated comparison page with the show included.
 
 The episode list, More like this, Fans also like and About cast use the same
 Show all / Show fewer pill as trailers. Collapsed recommendations and cast remain

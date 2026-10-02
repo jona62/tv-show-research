@@ -287,7 +287,7 @@ class TouchFormFonts(unittest.TestCase):
         }''')
 
     def test_built_runtime_search_comparison_and_filter_forms(self):
-        for mode in (MODES[0], MODES[1], MODES[2], MODES[-1]):
+        for mode in MODES:
             # The 85% case integrates the real early script and generated CSS;
             # the desktop case also checks the ordinary larger-root floor.
             zoom = 85 if mode[3] else None
@@ -330,6 +330,22 @@ class TouchFormFonts(unittest.TestCase):
                     page.locator('#compare-search').focus()
                     self.assert_floor(page, '#compare-search',
                                       label=f'{label} focused comparison', expected=1, rendered=True)
+                    page.get_by_role('button', name='Comparison view: Episode matrix', exact=True).click()
+                    page.get_by_role('option', name='Timeline', exact=True).click()
+                    timeline_controls = ('#compare select[data-compare-option], '
+                                         '#compare select[data-compare-season="1"]')
+                    self.assert_floor(page, timeline_controls,
+                                      label=f'{label} timeline controls', expected=3, rendered=True)
+                    # Each arrangement and point style rebuilds the real controls;
+                    # font protection must survive those replacements and focus.
+                    for name, option, values in (('Timeline arrangement', 'timelineLayout', ('side', 'compact', 'row')),
+                                                ('Episode points', 'pointStyle', ('rating', 'none', 'show'))):
+                        for value in values:
+                            field = page.locator(f'#compare select[data-compare-option="{option}"]')
+                            field.select_option(value)
+                            field.focus()
+                            self.assert_floor(page, timeline_controls,
+                                              label=f'{label} {name} {value}', expected=3, rendered=True)
                     self.mount_title_ratings(page)
                     self.assert_floor(page, '#title .ratings-controls select',
                                       label=f'{label} title season', expected=1, rendered=True)

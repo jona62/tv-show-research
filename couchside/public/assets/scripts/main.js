@@ -1,5 +1,5 @@
 import { mountEpisodeRatings } from './episode-ratings.js?v=c4e6d874df401c35';
-import { mountCompare, comparisonURL } from './compare.js?v=565a1e5ab4ef6d00';
+import { mountCompare, comparisonURL } from './compare.js?v=51d5d63a1a954765';
 import { mountTitleSections } from './title-sections.js?v=c735de07fc7f1d99';
 import { enhanceShowCard,receiveMatrices,matrixPreference } from './show-cards.js?v=1e100102e3a68bf6';
 import { mountTaste } from './taste.js?v=94c80891be4e9edb';
@@ -437,7 +437,8 @@ let view = null;
 let compareDispose = null, compareKey = '';
 const comparisonKey = search => {
   const params = new URLSearchParams(search);
-  return ['compare', 'mode', 'compare-inverted', 'averages', 'seasons'].map(key => `${key}=${params.get(key) || ''}`).join('&');
+  return ['compare', 'mode', 'compare-inverted', 'averages', 'seasons', 'compare-view', 'timeline-layout', 'point-style']
+    .map(key => `${key}=${params.get(key) || ''}`).join('&');
 };
 function renderCompare() {
   const key = comparisonKey(location.search);
@@ -2878,7 +2879,7 @@ async function shareTitle() {
 }
 async function saveRatingSnapshot(model) {
   const frozen = structuredClone(model);
-  const { downloadRatingSnapshot } = await import('./rating-snapshots.js?v=1c7dbcb589b090d1');
+  const { downloadRatingSnapshot } = await import('./rating-snapshots.js?v=d27fd58b974bb703');
   const result = await downloadRatingSnapshot(frozen);
   toast(result.pages.length > 1 ? 'Images saved together in one ZIP.' : 'Image saved.');
   return result;

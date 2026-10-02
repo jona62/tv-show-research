@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {planRatingSnapshot, renderRatingSnapshot, prepareRatingSnapshot, downloadRatingSnapshot,
   pngArchive, SNAPSHOT_LIMITS} from '../client/rating-snapshots.js';
+import {comparisonOverlayPlan} from '../client/comparison-timeline.js';
 
 const episodes = (count, annual=false) => Array.from({length:count}, (_, index) => ({
   id:index + 1, season:annual ? 1999 + Math.floor(index / 42) : 1,
@@ -16,13 +17,15 @@ const compare = (inverted, count=11, episodeCount=401) => ({kind:'compare', mode
     season:1, year:2026, poster:index % 3 === 0 ? null : `show-${index}.jpg`, sources:'TVmaze',
     episodes:episodes(episodeCount).map(episode => ({...episode, id:episode.id + 10000 * index})),
   }))});
+const timelineCompare = (extra={}) => ({...compare(false, 5, 62), view:'timeline', mode:'all',
+  timelineLayout:'row', pointStyle:'show', ...extra});
 const artFor = model => new Map((model.kind === 'compare' ? model.shows : [model])
   .filter(show => show.poster).map(show => [show.poster, {naturalWidth:600, naturalHeight:900}]));
 
 function harness(options={}) {
   const canvases = [];
   function createCanvas() {
-    const canvas = {width:0, height:0, posters:[], texts:[], rectangles:[], paths:[]};
+    const canvas = {width:0, height:0, posters:[], texts:[], rectangles:[], paths:[], pathColors:[], dots:[]};
     let tx=0, ty=0; const states=[];
     const context = {
       font:'400 14px sans-serif', textAlign:'left', textBaseline:'alphabetic',
@@ -39,8 +42,11 @@ function harness(options={}) {
       fillRect(x, y, width, height) { canvas.rectangles.push({x:x+tx, y:y+ty, width, height}); },
       roundRect(x, y, width, height) { this.fillRect(x, y, width, height); },
       createLinearGradient() { return {addColorStop() {}}; },
-      stroke(path) { if (path) canvas.paths.push(path.value); },
-      beginPath() {}, clip() {}, fill() {}, arc() {}, moveTo() {}, lineTo() {},
+      stroke(path) { if (path) { canvas.paths.push(path.value); canvas.pathColors.push(this.strokeStyle); } },
+      beginPath() { this.currentArc=null; }, clip() {},
+      rect(x,y,width,height) { this.fillRect(x,y,width,height); },
+      fill() { if (this.currentArc) canvas.dots.push({...this.currentArc, color:this.fillStyle}); },
+      arc(x,y,radius) { this.currentArc={x:x+tx,y:y+ty,radius}; }, moveTo() {}, lineTo() {},
     };
     canvas.getContext = () => options.noContext ? null : context;
     canvas.toBlob = callback => {
@@ -57,6 +63,8 @@ function checkCoverage(model, parts) {
   const actual=parts.flatMap(part => part.kind === 'matrix'
     ? part.rows.flatMap(row => row.cells.slice(part.columnStart, part.columnStart+part.headers.length)
       .filter(cell => cell?.episode).map(cell => cell.episode.id))
+    : part.kind === 'comparison-timeline' ? part.groupIndex === 0
+      ? part.plot.series.flatMap(series => series.points.map(point => point.id)) : []
     : part.kind === 'wrapped' ? part.sections.flatMap(section => section.episodes.map(episode => episode.id))
     : part.episodes.map(episode => episode.id));
   const expected=(model.kind === 'compare' ? model.shows.flatMap(show => show.episodes) : model.episodes).map(episode => episode.id);
@@ -72,6 +80,12 @@ for (const annual of [false, true]) for (const view of ['grid','wrapped','list',
 cases.push({name:'inverted annual-season Grid', model:detail('grid', 0, {inverted:true, episodes:episodes(1181, true)})});
 for (const inverted of [false,true]) cases.push({name:`11 shows and 401 episodes, shows in ${inverted ? 'columns' : 'rows'}`, model:compare(inverted)});
 for (const view of ['grid','wrapped','list','timeline']) cases.push({name:`empty ${view}`, model:detail(view, 0, {poster:null})});
+for (const timelineLayout of ['row','side','compact']) for (const averages of [false,true]) {
+  const model=timelineCompare({timelineLayout, averages});
+  model.shows=model.shows.map((show,index)=>({...show,
+    episodes:episodes([62,12,5,1181,32][index],index===3).map(episode=>({...episode,id:episode.id+10000*index}))}));
+  cases.push({name:`shared comparison timeline ${timelineLayout}, averages ${averages}`,model});
+}
 
 for (const {name,model} of cases) test(name, async () => {
   const before=structuredClone(model), parts=planRatingSnapshot(model), drawing=harness();
@@ -108,6 +122,109 @@ test('the full portrait and landscape images are contained, never cropped', asyn
   }
 });
 
+test('comparison poster arrangements repeat full art, ordered show colors and the captured scopes', async () => {
+  for (const timelineLayout of ['row','side','compact']) {
+    const model=timelineCompare({timelineLayout}), drawing=harness(), parts=planRatingSnapshot(model);
+    await renderRatingSnapshot(model,artFor(model),drawing);
+    const part=parts[0], canvas=drawing.canvases[0], posterWidth=timelineLayout==='compact'?120:160;
+    assert.deepEqual(part.cards.map(card=>card.series.show.id),model.shows.map(show=>show.id));
+    assert.deepEqual(part.plot.series.map(series=>series.colour),comparisonOverlayPlan(model).series.map(series=>series.colour));
+    assert.ok(canvas.posters.every(poster=>poster.width===posterWidth && poster.height===posterWidth*1.5));
+    assert.ok(canvas.texts.some(text=>text.value==='Each show ends at its last episode'));
+    assert.ok(canvas.texts.some(text=>text.value==='Episode ratings'));
+    assert.ok(canvas.texts.some(text=>text.value==='5-episode average'));
+    assert.ok(!canvas.texts.some(text=>text.value.startsWith('Absolute cinema ')), 'default show colors omit the rating-color legend');
+    const expectedColors=new Set(part.plot.series.map(series=>series.colour));
+    assert.ok(canvas.pathColors.every(color=>expectedColors.has(color)));
+  }
+  const three=timelineCompare({timelineLayout:'side',shows:timelineCompare().shows.slice(0,3)}), part=planRatingSnapshot(three)[0];
+  assert.equal(part.cards[0].y,part.cards[1].y);
+  assert.notEqual(part.cards[0].x,part.cards[1].x);
+  assert.ok(part.cards[2].y>part.cards[0].y);
+  assert.ok(part.height<1200,'three-show side arrangement uses two poster rows');
+});
+
+test('all point styles retain show-colored raw/average paths; average-off hides the second plot and mean labels', async () => {
+  for (const pointStyle of ['show','rating','none']) for (const averages of [false,true]) {
+    const model=timelineCompare({pointStyle,averages}), drawing=harness();
+    await renderRatingSnapshot(model,artFor(model),drawing);
+    const canvas=drawing.canvases[0], part=planRatingSnapshot(model)[0];
+    assert.equal(canvas.texts.some(text=>text.value==='5-episode average'),averages);
+    assert.equal(canvas.texts.some(text=>text.value.startsWith('Avg. ')),averages);
+    assert.equal(canvas.texts.some(text=>text.value.startsWith('Absolute cinema ')),pointStyle==='rating');
+    assert.ok(!canvas.dots.some(dot=>dot.y>=part.chartY+338),'ordinary average samples stay line-only');
+    if(pointStyle==='none')assert.equal(canvas.dots.length,0);
+    assert.ok(canvas.pathColors.every(color=>part.plot.series.some(series=>series.colour===color)));
+  }
+});
+
+test('shared continuation indices preserve complete data, contextual connections and full-season mean windows', () => {
+  const model=timelineCompare({shows:timelineCompare().shows.slice(0,2)});
+  model.shows[0].episodes=episodes(10000,true).map((episode,index)=>({...episode,
+    rating:index>=1090&&index<=1110?null:episode.rating}));
+  model.shows[1].episodes=episodes(12).map(episode=>({...episode,id:episode.id+20000}));
+  const original=comparisonOverlayPlan(model), means=new Map(original.series[0].trendPoints.map(point=>[point.id,point.rating]));
+  const parts=planRatingSnapshot(model); checkCoverage(model,parts);
+  assert.ok(parts.length>1);
+  for(const part of parts) {
+    const series=part.plot.series[0];
+    assert.ok(part.plot.spacing>=1);
+    assert.ok(part.plot.axis.labels.every(label=>label.episodeIndex>=part.plot.start+1&&label.episodeIndex<=part.plot.end));
+    for(const point of series.trendPoints)assert.equal(point.rating,means.get(point.id));
+    if(part.plot.start)assert.ok(series.runs[0].some(point=>point.sampleIndex<part.plot.start));
+    if(part.plot.end<10000)assert.ok(series.trend[0].some(point=>point.sampleIndex>=part.plot.end));
+    if(part.plot.start>=12)assert.equal(part.plot.series[1].points.length,0,'short show never expands to later episode positions');
+    assert.ok(part.cards.every(card=>card.posterWidth===160&&card.posterHeight===240));
+  }
+});
+
+test('forty-show overlays paginate full posters without omitting lines or overflowing any canvas', async () => {
+  for (const timelineLayout of ['row','side','compact']) for (const rated of [false,true]) {
+    const model=timelineCompare({...compare(false,40,16),view:'timeline',mode:'all',timelineLayout,
+      shows:compare(false,40,16).shows.map((show,index)=>({...show,
+        episodes:show.episodes.map(episode=>({...episode,rating:rated&&index%3===0?episode.rating:null}))}))});
+    const parts=planRatingSnapshot(model), drawing=harness(); checkCoverage(model,parts);
+    const pages=await renderRatingSnapshot(model,artFor(model),drawing);
+    assert.equal(pages.length,parts.length);
+    assert.deepEqual(parts.flatMap(part=>part.cards.map(card=>card.series.show.id)),model.shows.map(show=>show.id));
+    for(const [index,part] of parts.entries()) {
+      assert.equal(part.plot.series.length,40);
+      assert.ok(part.width<=1600&&part.height<=1800&&part.width*part.height*4<=SNAPSHOT_LIMITS.pixels);
+      for(const text of drawing.canvases[index].texts)assert.ok(text.left>=0&&text.right<=part.width+.01&&text.y<=part.height);
+      assert.deepEqual([drawing.canvases[index].width,drawing.canvases[index].height],[1,1]);
+    }
+  }
+});
+
+test('single selected scopes, year numbering, missing ratings and one-sample timeline exports stay truthful', async () => {
+  for(const ratings of [[],[null],[8.3],[null,null]]) {
+    const show={id:100, name:'Annual show', season:2001, year:1999, poster:'annual.jpg',sources:'TVmaze',
+      episodes:ratings.map((rating,index)=>({id:index+1,season:2001,number:index+1,rating}))};
+    const model=timelineCompare({mode:'single',pointStyle:'none',shows:[show]}), drawing=harness();
+    const parts=planRatingSnapshot(model); checkCoverage(model,parts);
+    await renderRatingSnapshot(model,artFor(model),drawing);
+    assert.ok(drawing.canvases[0].texts.some(text=>text.value==='1999 · 2001 season'));
+    assert.ok(parts[0].plot.series[0].points.every(point=>Number.isFinite(point.x)));
+    if(ratings[0]===8.3) {
+      assert.equal(drawing.canvases[0].dots.length,1,'Lines only retains a single real mean, no raw dot');
+      assert.ok(drawing.canvases[0].dots[0].y>=parts[0].chartY+338);
+    }
+  }
+});
+
+test('low-rated comparisons retain readable y-label spacing at both endpoints in both panels', async () => {
+  const show={id:100,name:'Low ratings',season:1,poster:null,sources:'TVmaze',
+    episodes:[2.4,9].map((rating,index)=>({id:index+1,season:1,number:index+1,rating}))};
+  const model=timelineCompare({shows:[show]}), drawing=harness(), part=planRatingSnapshot(model)[0];
+  await renderRatingSnapshot(model,artFor(model),drawing);
+  for(const row of [{top:36,bottom:244},{top:338,bottom:426}]) {
+    const labels=drawing.canvases[0].texts.filter(text=>text.right===part.chartX-12&&/^\d+\.\d+$/.test(text.value)&&
+      text.y>=part.chartY+row.top+4&&text.y<=part.chartY+row.bottom+4).toSorted((left,right)=>left.y-right.y);
+    assert.ok(labels.length>=2);
+    for(let index=1;index<labels.length;index++)assert.ok(labels[index].y-labels[index-1].y>=18-1e-8);
+  }
+});
+
 test('the pending download freezes selected view, ratings, show order and season before images arrive', async () => {
   const model=compare(true,2,8), drawing=harness(); let resolveImages, requested;
   const expected=structuredClone(model);
@@ -120,6 +237,22 @@ test('the pending download freezes selected view, ratings, show order and season
   const result=await preparing;
   assert.deepEqual(result.model,expected); assert.match(result.filename,/single-season\.png$/);
   assert.equal(result.pages.length,1); assert.equal(result.blob,result.pages[0].blob);
+});
+
+test('pending comparison timeline export freezes layout, point mode, averages and independent selected seasons', async () => {
+  const model=timelineCompare({mode:'single',timelineLayout:'compact',pointStyle:'rating',averages:false,
+    shows:timelineCompare().shows.slice(0,2).map((show,index)=>({...show,season:index+2}))});
+  const expected=structuredClone(model), drawing=harness(); let resolveImages, requested;
+  const pending=prepareRatingSnapshot(model,{...drawing,loadImages:captured=>{
+    requested=captured;return new Promise(resolve=>{resolveImages=resolve;});
+  }});
+  model.view='grid';model.timelineLayout='side';model.pointStyle='none';model.averages=true;model.mode='all';
+  model.shows.reverse();model.shows[0].season=1999;model.shows[0].episodes[0].rating=1;model.shows[0].poster='new.jpg';
+  assert.deepEqual(requested,expected);resolveImages(artFor(expected));
+  const result=await pending;
+  assert.deepEqual(result.model,expected);assert.match(result.filename,/-timeline-single-season\.png$/);
+  assert.ok(!drawing.canvases[0].texts.some(text=>text.value==='5-episode average'));
+  assert.ok(drawing.canvases[0].posters.every(poster=>poster.width===120&&poster.height===180));
 });
 
 test('PNG encoding failures release the canvas and explicitly reject the snapshot', async () => {

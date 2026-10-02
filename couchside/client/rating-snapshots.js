@@ -2,6 +2,7 @@ import {average, band, bands, ratingSources, score} from './ratings.js';
 import {timelineModel, timelineAxis, smoothPath} from './episode-timeline.js';
 import {detailMatrix, compareMatrix, seasonName, episodeCode} from './rating-views.js';
 import {loadSnapshotImages} from './snapshot-images.js';
+import {comparisonTimelineParts, drawComparisonTimeline} from './comparison-timeline-export.js';
 
 // Every part stays below common mobile canvas limits, at twice its logical size.
 export const SNAPSHOT_LIMITS = Object.freeze({width:1600, height:1800, pixels:12_000_000, scale:2});
@@ -105,6 +106,7 @@ function timelineParts(model) {
 
 // Planning is independent of the DOM and image loading. It never changes the view.
 export function planRatingSnapshot(model) {
+  if (model.kind === 'compare' && model.view === 'timeline') return comparisonTimelineParts(model, SNAPSHOT_LIMITS);
   if (model.kind === 'compare' || model.view === 'grid') return matrixParts(model);
   if (model.view === 'wrapped') return wrappedParts(model);
   if (model.view === 'timeline') return timelineParts(model);
@@ -177,12 +179,12 @@ function drawBrand(context) {
   context.restore();
 }
 
-function drawPoster(context, image, x, y) {
+function drawPoster(context, image, x, y, boxWidth=POSTER.width, boxHeight=POSTER.height) {
   if (!image) return;
   // Contain the original artwork so faces and printed titles are never cropped.
-  const scale = Math.min(POSTER.width / image.naturalWidth, POSTER.height / image.naturalHeight);
+  const scale = Math.min(boxWidth / image.naturalWidth, boxHeight / image.naturalHeight);
   const width = image.naturalWidth * scale, height = image.naturalHeight * scale;
-  const left = x + (POSTER.width - width) / 2, top = y + (POSTER.height - height) / 2;
+  const left = x + (boxWidth - width) / 2, top = y + (boxHeight - height) / 2;
   context.save(); context.beginPath(); context.roundRect(left, top, width, height, 8); context.clip();
   context.drawImage(image, left, top, width, height); context.restore();
 }
@@ -202,9 +204,9 @@ function drawHeader(surface, model, subtitle, images) {
   context.fillStyle = COLORS.line; context.fillRect(36, 129 + headerOffset(model), width - 72, 1);
 }
 
-function drawFooter(surface, model, y) {
+function drawFooter(surface, model, y, {ratingLegend=true}={}) {
   const {context, width, height} = surface; let left = 36, rowY = y;
-  for (const item of [...bands, band(null)]) {
+  for (const item of ratingLegend ? [...bands, band(null)] : []) {
     const label = `${item.name} ${item.range}`; context.font = `400 10px ${FONT}`;
     const textWidth = context.measureText(label).width + 22;
     if (left + textWidth > width - 36) { left = 36; rowY += 23; }
@@ -380,6 +382,8 @@ export async function renderRatingSnapshot(model, images, {
     const surface = canvasSurface(part, createCanvas);
     try {
       if (part.kind === 'matrix') drawMatrix(surface, model, part, images);
+      else if (part.kind === 'comparison-timeline') drawComparisonTimeline(surface, model, part, images,
+        {drawText, drawPoster, wrapText, fitText, drawHeader, drawFooter, exportColors:COLORS, createPath});
       else if (part.kind === 'wrapped') drawWrapped(surface, model, part, images);
       else if (part.kind === 'timeline') drawTimeline(surface, model, part, images, createPath);
       else drawList(surface, model, part, images);
@@ -395,7 +399,7 @@ export async function renderRatingSnapshot(model, images, {
 
 function snapshotName(model) {
   const title = model.kind === 'compare' ? model.shows.map(show => show.name).join(' × ') : model.title;
-  const suffix = model.kind === 'compare' ? model.mode === 'all' ? 'all-seasons' : 'single-season' : model.view;
+  const suffix = model.kind === 'compare' ? `${model.view === 'timeline' ? 'timeline-' : ''}${model.mode === 'all' ? 'all-seasons' : 'single-season'}` : model.view;
   const slug = String(title || 'ratings').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
     .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 140) || 'ratings';
   return {title, base:`couchside-${slug}-${suffix}`};

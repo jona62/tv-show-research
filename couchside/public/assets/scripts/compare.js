@@ -1,12 +1,18 @@
 import { apiFetch } from './network.js?v=4038b4a1107593ef';
 import { esc, html, icon, legend, ratings, ratingSources } from './ratings.js?v=2a0509d86dd759f5';
 import { compareMatrix, ratingTableHTML, seasonName } from './rating-views.js?v=2168d19db732fbe1';
+import { comparisonOverlayHTML, comparisonShowColour } from './comparison-timeline.js?v=b10e3ebb0c446434';
+import { bindComparisonTimeline } from './compare-timeline-interactions.js?v=1df7ff031af8a1c4';
 
 const STORAGE_KEY = 'couchside.comparison-v1', MAX_SHOWS = 40;
 const validId = id => Number.isInteger(id) && id > 0 && id <= 2147483647;
 const validSeason = season => Number.isInteger(season) && season > 0 && season < 10000;
 const seasonNumbers = show => [...new Set(show.episodes.map(episode => episode.season))].sort((a, b) => a - b);
-const defaults = () => ({ ids: [], mode: 'all', inverted: true, averages: true, seasons: {} });
+const layouts = [['grid', 'Episode matrix'], ['timeline', 'Timeline']];
+const timelineLayouts = [['row', 'Posters in a row'], ['side', 'Posters on the side'], ['compact', 'Compact poster row']];
+const pointStyles = [['show', 'Match show lines'], ['rating', 'Rating colors'], ['none', 'Lines only']];
+const defaults = () => ({ ids: [], mode: 'all', inverted: true, averages: true, seasons: {},
+  view: 'grid', timelineLayout: 'row', pointStyle: 'show' });
 
 export function validateComparison(value) {
   const state = defaults();
@@ -15,6 +21,8 @@ export function validateComparison(value) {
   if (value.mode === 'single') state.mode = 'single';
   if (typeof value.inverted === 'boolean') state.inverted = value.inverted;
   if (typeof value.averages === 'boolean') state.averages = value.averages;
+  for (const [key, choices] of [['view', layouts], ['timelineLayout', timelineLayouts], ['pointStyle', pointStyles]])
+    if (choices.some(([id]) => id === value[key])) state[key] = value[key];
   for (const id of state.ids) if (validSeason(value.seasons?.[id])) state.seasons[id] = value.seasons[id];
   return state;
 }
@@ -30,6 +38,8 @@ export function parseComparison(search = '', fallback = defaults()) {
   const params = new URLSearchParams(search), state = validateComparison(fallback);
   if (params.has('compare')) state.ids = [...new Set(params.get('compare').split(',').map(Number).filter(validId))].slice(0, MAX_SHOWS);
   if (params.has('mode')) state.mode = params.get('mode') === 'single' ? 'single' : 'all';
+  for (const [query, key, choices] of [['compare-view', 'view', layouts], ['timeline-layout', 'timelineLayout', timelineLayouts], ['point-style', 'pointStyle', pointStyles]])
+    if (params.has(query)) state[key] = choices.some(([id]) => id === params.get(query)) ? params.get(query) : defaults()[key];
   for (const [query, key] of [['compare-inverted', 'inverted'], ['averages', 'averages']]) {
     if (params.get(query) === '0' || params.get(query) === '1') state[key] = params.get(query) === '1';
   }
@@ -46,7 +56,8 @@ export function parseComparison(search = '', fallback = defaults()) {
 export function comparisonStateURL(value) {
   const state = validateComparison(value), params = new URLSearchParams({ compare: state.ids.join(','), mode: state.mode,
     'compare-inverted': state.inverted ? '1' : '0', averages: state.averages ? '1' : '0',
-    seasons: state.ids.filter(id => state.seasons[id] != null).map(id => `${id}:${state.seasons[id]}`).join(',') });
+    seasons: state.ids.filter(id => state.seasons[id] != null).map(id => `${id}:${state.seasons[id]}`).join(','),
+    'compare-view': state.view, 'timeline-layout': state.timelineLayout, 'point-style': state.pointStyle });
   return `/compare?${params}`;
 }
 
@@ -119,17 +130,25 @@ const paths = {
 };
 const actionIcon = name => `<svg class="ratings-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name]}</svg>`;
 const options = (seasons, selected) => seasons.map(season => `<option value="${season}"${season === selected ? ' selected' : ''}>${seasonName(season)}</option>`).join('');
+const choiceOptions = (choices, selected) => choices.map(([value, label]) => `<option value="${value}"${value === selected ? ' selected' : ''}>${label}</option>`).join('');
 
-function cardHTML(id, index, state, entry, grabbed) {
+function controlsHTML(state) {
+  const label = layouts.find(([id]) => id === state.view)[1], timeline = state.view === 'timeline';
+  return `<div class="ratings-controls compare-toolbar"><div class="ratings-card-choices compare-scope" role="group" aria-label="Comparison scope"><button type="button" data-action="mode" data-mode="all" aria-pressed="${state.mode === 'all'}">All seasons</button><button type="button" data-action="mode" data-mode="single" aria-pressed="${state.mode === 'single'}">Single season</button></div><div class="compare-view-controls"><div class="ratings-picker compare-view"><button type="button" class="ratings-view-button" data-action="view-picker" aria-label="Comparison view: ${label}" aria-haspopup="listbox" aria-expanded="false" aria-controls="comparison-view-options">${icon(state.view)}<span>${label}</span>${icon('down')}</button><div id="comparison-view-options" class="ratings-view-options" role="listbox" aria-label="Comparison view" hidden>${layouts.map(([id, name]) => `<button type="button" role="option" aria-selected="${id === state.view}" data-action="view" data-view="${id}">${icon(id)}<span>${name}</span>${icon('check')}</button>`).join('')}</div></div><button class="chip" type="button" data-action="invert" aria-pressed="${state.inverted}"${timeline ? ' disabled title="Applies to episode matrix" aria-describedby="comparison-invert-note"' : ''}>Inverted</button></div><button class="chip" type="button" data-action="averages" aria-pressed="${state.averages}">Show averages</button></div>${timeline ? `<p id="comparison-invert-note" class="ratings-credit">Inverted applies to the episode matrix.</p><div class="compare-timeline-settings"><label>Timeline arrangement<select data-compare-option="timelineLayout" aria-label="Timeline arrangement">${choiceOptions(timelineLayouts, state.timelineLayout)}</select></label><label>Episode points<select data-compare-option="pointStyle" aria-label="Episode points">${choiceOptions(pointStyles, state.pointStyle)}</select></label></div>` : ''}`;
+}
+
+function cardHTML(id, index, state, entry, grabbed, timeline = false) {
   const show = entry?.show, name = show?.name || `Show ${id}`, ready = entry?.status === 'ready';
-  const body = ready ? `<div class="compare-show-title">${show.poster ? `<img class="compare-poster" src="${esc(show.poster)}" alt="" loading="lazy">` : ''}<div><h4><button type="button" class="link compare-title" data-action="open" data-id="${id}">${esc(name)}</button></h4><p class="note">${esc(show.year || '')}${show.year ? ' · ' : ''}${seasonNumbers(show).length} ${seasonNumbers(show).length === 1 ? 'season' : 'seasons'}</p></div></div>`
+  const body = ready ? `<div class="compare-show-title">${show.poster || show.art ? `<img class="compare-poster" src="${esc(timeline ? show.art || show.poster : show.poster || show.art)}" alt="${timeline ? esc(name) + ' poster' : ''}" loading="lazy">` : timeline ? '<span class="compare-poster compare-poster-empty" aria-hidden="true"></span>' : ''}<div><h4><button type="button" class="link compare-title" data-action="open" data-id="${id}">${esc(name)}</button></h4><p class="note">${esc(show.year || '')}${show.year ? ' · ' : ''}${seasonNumbers(show).length} ${seasonNumbers(show).length === 1 ? 'season' : 'seasons'}</p></div></div>`
     : entry?.status === 'error' ? `<p class="note" role="status">${esc(entry.error)}</p><button type="button" class="link" data-action="retry" data-id="${id}">Try again</button>`
       : `<p class="note" role="status">Loading show…</p><span class="skel compare-card-skeleton" aria-hidden="true"></span>`;
-  return `<article class="compare-card${grabbed === id ? ' is-grabbed' : ''}" draggable="true" data-show="${id}" aria-label="${esc(name)}"><div class="compare-card-top"><button class="icon-btn compare-reorder-handle" type="button" data-action="grab" data-id="${id}" aria-label="Reorder ${esc(name)}. Press Space to grab, arrow keys to move, Space to drop." aria-pressed="${grabbed === id}" title="Reorder">${actionIcon('grip')}</button><button class="icon-btn compare-remove" type="button" data-action="remove" data-id="${id}" aria-label="Remove ${esc(name)}" title="Remove">${icon('close')}</button></div>${body}<div class="compare-card-bottom"><div class="compare-reorder-actions"><button class="round small" type="button" data-action="move" data-id="${id}" data-direction="-1" aria-label="Move ${esc(name)} earlier" title="Move earlier"${index === 0 ? ' disabled' : ''}>${actionIcon('left')}</button><button class="round small" type="button" data-action="move" data-id="${id}" data-direction="1" aria-label="Move ${esc(name)} later" title="Move later"${index === state.ids.length - 1 ? ' disabled' : ''}>${actionIcon('right')}</button></div>${ready && state.mode === 'single' && seasonNumbers(show).length ? `<select data-compare-season="${id}" aria-label="Season for ${esc(name)}">${options(seasonNumbers(show), state.seasons[id])}</select>` : `<span class="muted">${state.mode === 'all' ? 'All seasons' : ready ? 'No episodes yet' : ''}</span>`}</div></article>`;
+  return `<article class="compare-card${grabbed === id ? ' is-grabbed' : ''}" draggable="true" data-show="${id}" aria-label="${esc(name)}"${timeline ? ` style="--show-colour:${comparisonShowColour(id)}"` : ''}><div class="compare-card-top"><button class="icon-btn compare-reorder-handle" type="button" data-action="grab" data-id="${id}" aria-label="Reorder ${esc(name)}. Press Space to grab, arrow keys to move, Space to drop." aria-pressed="${grabbed === id}" title="Reorder">${actionIcon('grip')}</button><button class="icon-btn compare-remove" type="button" data-action="remove" data-id="${id}" aria-label="Remove ${esc(name)}" title="Remove">${icon('close')}</button></div>${body}<div class="compare-card-bottom"><div class="compare-reorder-actions"><button class="round small" type="button" data-action="move" data-id="${id}" data-direction="-1" aria-label="Move ${esc(name)} earlier" title="Move earlier"${index === 0 ? ' disabled' : ''}>${actionIcon('left')}</button><button class="round small" type="button" data-action="move" data-id="${id}" data-direction="1" aria-label="Move ${esc(name)} later" title="Move later"${index === state.ids.length - 1 ? ' disabled' : ''}>${actionIcon('right')}</button></div>${ready && state.mode === 'single' && seasonNumbers(show).length ? `<select data-compare-season="${id}" aria-label="Season for ${esc(name)}">${options(seasonNumbers(show), state.seasons[id])}</select>` : `<span class="muted">${state.mode === 'all' ? 'All seasons' : ready ? 'No episodes yet' : ''}</span>`}</div></article>`;
 }
 
 export function freezeComparison(state, entries) {
-  return structuredClone({ kind: 'compare', view: 'grid', title: 'Compare shows', mode: state.mode,
+  state = validateComparison(state);
+  return structuredClone({ kind: 'compare', view: state.view, timelineLayout: state.timelineLayout, pointStyle: state.pointStyle,
+    title: 'Compare shows', mode: state.mode,
     inverted: state.inverted, averages: state.averages, shows: state.ids.map(id => entries.get(id)?.show).filter(Boolean).map(show => {
       const season = state.seasons[show.id] || seasonNumbers(show)[0];
       return { id: show.id, name: show.name, poster: show.art || show.poster, year: show.year, ...(season != null ? { season } : {}),
@@ -142,7 +161,7 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
   announce = () => {}, metadata, loadRatings, searchShows = query => answer(`/api/search?q=${encodeURIComponent(query)}`) } = {}) {
   const state = parseComparison(search, storedComparison());
   let disposed = false, grabbed = null, dragId = null, timer, searchToken = 0, saving = false, query = '', found = [], searchMessage = '';
-  let matrix;
+  let matrix, timelineCleanup = () => {}, resizeFrame, observedWidth = 0;
   html(host, `<section class="compare-page page"><div class="compare-header"><h1 class="page-h">Compare shows</h1><button class="btn primary compare-save" type="button" disabled>${actionIcon('save')}Save image</button></div><div class="ratings-search-wrap compare-search">${icon('search')}<input type="search" id="compare-search" placeholder="Search any show…" aria-label="Find a show to compare" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="compare-results" aria-expanded="false"><div class="ratings-compare-results" id="compare-results" hidden></div></div><p class="ratings-search-status compare-search-status" role="status"></p><div class="compare-content"></div><p class="compare-status" role="status" aria-live="polite"></p></section>`);
   const input = host.querySelector('#compare-search'), results = host.querySelector('#compare-results'), searchStatus = host.querySelector('.compare-search-status');
   const content = host.querySelector('.compare-content'), save = host.querySelector('.compare-save'), live = host.querySelector('.compare-status');
@@ -154,11 +173,42 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
     const active = document.activeElement;
     if (!content.contains(active)) return null;
     return active.dataset.compareSeason ? `[data-compare-season="${active.dataset.compareSeason}"]`
-      : active.dataset.action ? ['action', 'id', 'direction', 'mode'].filter(key => active.dataset[key] != null)
-        .map(key => `[data-${key}="${active.dataset[key]}"]`).join('') : null;
+      : active.dataset.compareOption ? `[data-compare-option="${active.dataset.compareOption}"]`
+        : active.dataset.episode && active.dataset.showId ? `.ratings-point-hit[data-show-id="${active.dataset.showId}"][data-episode="${active.dataset.episode}"]`
+          : active.classList.contains('ratings-chart-wrap') ? '.ratings-chart-wrap'
+            : active.dataset.action ? ['action', 'id', 'direction', 'mode', 'view'].filter(key => active.dataset[key] != null)
+              .map(key => `[data-${key}="${active.dataset[key]}"]`).join('') : null;
+  };
+  const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(entries => {
+    const width = entries[0]?.contentRect.width;
+    if (!Number.isFinite(width) || Math.abs(width - observedWidth) < .5) return;
+    observedWidth = width; cancelAnimationFrame(resizeFrame);
+    resizeFrame = requestAnimationFrame(() => { if (!disposed && state.view === 'timeline') paintTimeline(); });
+  });
+  function paintTimeline() {
+    const board = content.querySelector('[data-timeline-board]'); if (!board) return;
+    const focus = rememberFocus(), scroll = board.querySelector('.ratings-chart-wrap')?.scrollLeft || 0;
+    timelineCleanup();
+    const model = freezeComparison(state, loader.entries);
+    html(board, comparisonOverlayHTML(model, { availableWidth: Math.max(300, board.clientWidth || content.clientWidth || 960), pointStyle: state.pointStyle }));
+    timelineCleanup = bindComparisonTimeline(board, model, host.querySelector('.compare-page'));
+    const viewport = board.querySelector('.ratings-chart-wrap'); if (viewport) viewport.scrollLeft = scroll;
+    if (focus) board.querySelector(focus)?.focus({ preventScroll: true });
+  }
+  const closeView = (focus = false) => {
+    const trigger = content.querySelector('[data-action="view-picker"]'), menu = content.querySelector('#comparison-view-options');
+    if (menu) menu.hidden = true;
+    if (trigger) { trigger.setAttribute('aria-expanded', 'false'); if (focus) trigger.focus({ preventScroll: true }); }
+  };
+  const openView = () => {
+    const trigger = content.querySelector('[data-action="view-picker"]'), menu = content.querySelector('#comparison-view-options');
+    if (!menu) return;
+    menu.hidden = false; trigger.setAttribute('aria-expanded', 'true'); menu.querySelector('[aria-selected="true"]')?.focus({ preventScroll: true });
   };
   function render() {
-    const focus = rememberFocus();
+    const focus = rememberFocus(), scroll = content.querySelector('.ratings-chart-wrap')?.scrollLeft || 0,
+      posterScroll = content.querySelector('.compare-cards')?.scrollLeft || 0;
+    timelineCleanup(); timelineCleanup = () => {}; observer?.disconnect(); cancelAnimationFrame(resizeFrame);
     for (const id of state.ids) {
       const show = loader.entries.get(id)?.show;
       if (show) {
@@ -168,9 +218,19 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
       }
     }
     const model = freezeComparison(state, loader.entries), ready = model.shows.length === state.ids.length;
-    matrix = compareMatrix(model);
-    const controls = `<div class="ratings-controls compare-toolbar"><div class="ratings-card-choices compare-scope" role="group" aria-label="Comparison scope"><button type="button" data-action="mode" data-mode="all" aria-pressed="${state.mode === 'all'}">All seasons</button><button type="button" data-action="mode" data-mode="single" aria-pressed="${state.mode === 'single'}">Single season</button></div><button class="chip" type="button" data-action="invert" aria-pressed="${state.inverted}">Inverted</button><button class="chip" type="button" data-action="averages" aria-pressed="${state.averages}">Show averages</button></div>`;
-    html(content, `<div class="compare-cards" aria-label="Shows in comparison, in order">${state.ids.map((id, index) => cardHTML(id, index, state, loader.entries.get(id), grabbed)).join('')}</div>${controls}${model.shows.length ? `${model.shows.some(show => seasonNumbers(show).some(season => season >= 1900)) ? '<p class="ratings-credit">Calendar-year season labels are preserved.</p>' : ''}${legend()}<div class="compare-board">${ratingTableHTML(matrix)}</div><p class="ratings-credit">${state.mode === 'all' ? 'Average episode rating per season · Seasons align by number' : 'Episode ratings · Each show uses its selected season'}</p><p class="ratings-credit">${esc([...new Set(model.shows.flatMap(show => show.sources.split(' / ')))].filter(Boolean).join(' / '))} episode ratings · Out of 10</p>${ready ? '' : '<p class="note" role="status">Some shows are still loading. Save image is available when all selected shows are ready.</p>'}` : `<p class="note">${state.ids.length ? 'Loading your comparison…' : 'Find a show to compare.'}</p>`}`);
+    const timeline = state.view === 'timeline', controls = controlsHTML(state);
+    matrix = timeline ? null : compareMatrix(model);
+    const cards = `<div class="compare-cards${timeline ? ' compare-timeline-posters' : ''}" aria-label="Shows in comparison, in order">${state.ids.map((id, index) => cardHTML(id, index, state, loader.entries.get(id), grabbed, timeline)).join('')}</div>`;
+    const board = timeline ? `<div class="compare-timeline-layout layout-${state.timelineLayout}">${cards}<div class="compare-timeline-plots">${state.pointStyle === 'rating' ? legend() : ''}<div class="compare-board" data-timeline-board></div></div></div>`
+      : `${legend()}<div class="compare-board">${ratingTableHTML(matrix)}</div>`;
+    html(content, `${timeline ? '' : cards}${controls}${model.shows.length ? `${model.shows.some(show => seasonNumbers(show).some(season => season >= 1900)) ? '<p class="ratings-credit">Calendar-year season labels are preserved in episode descriptions.</p>' : ''}${board}<p class="ratings-credit">${timeline ? 'Episode ratings · Same rating scale · Each show ends at its last episode' : state.mode === 'all' ? 'Average episode rating per season · Seasons align by number' : 'Episode ratings · Each show uses its selected season'}</p><p class="ratings-credit">${esc([...new Set(model.shows.flatMap(show => show.sources.split(' / ')))].filter(Boolean).join(' / '))} episode ratings · Out of 10</p>${ready ? '' : '<p class="note" role="status">Some shows are still loading. Save image is available when all selected shows are ready.</p>'}` : `${timeline ? cards : ''}<p class="note">${state.ids.length ? 'Loading your comparison…' : 'Find a show to compare.'}</p>`}`);
+    if (timeline) {
+      paintTimeline();
+      const plots = content.querySelector('.compare-timeline-plots');
+      if (plots) { observedWidth = plots.clientWidth; observer?.observe(plots); }
+      const viewport = content.querySelector('.ratings-chart-wrap'); if (viewport) viewport.scrollLeft = scroll;
+      const gallery = content.querySelector('.compare-cards'); if (gallery) gallery.scrollLeft = posterScroll;
+    }
     save.disabled = saving || !state.ids.length || !ready; save.setAttribute('aria-busy', String(saving));
     if (focus) (content.querySelector(focus) || content.querySelector(`[data-action="grab"][data-id="${document.activeElement?.dataset?.id || ''}"]`))?.focus({ preventScroll: true });
     persist();
@@ -218,7 +278,9 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
       case 'move': move(id, state.ids.indexOf(id) + Number(button.dataset.direction)); break;
       case 'grab': grabbed = grabbed === id ? null : id; render(); content.querySelector(`[data-action="grab"][data-id="${id}"]`)?.focus(); tell(grabbed ? 'Show grabbed. Use arrow keys to move, Space to drop.' : 'Show position saved.'); break;
       case 'mode': state.mode = button.dataset.mode; render(); break;
-      case 'invert': state.inverted = !state.inverted; render(); break;
+      case 'view-picker': content.querySelector('#comparison-view-options')?.hidden ? openView() : closeView(); break;
+      case 'view': if (layouts.some(([value]) => value === button.dataset.view)) { state.view = button.dataset.view; render(); content.querySelector('[data-action="view-picker"]')?.focus({ preventScroll: true }); } break;
+      case 'invert': if (state.view === 'grid') { state.inverted = !state.inverted; render(); } break;
       case 'averages': state.averages = !state.averages; render(); break;
     }
     if (button.dataset.cell) {
@@ -227,15 +289,28 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
     }
   };
   host.onchange = event => {
+    const key = event.target.dataset.compareOption, choices = key === 'timelineLayout' ? timelineLayouts : key === 'pointStyle' ? pointStyles : [];
+    if (choices.some(([value]) => value === event.target.value)) { state[key] = event.target.value; render(); return; }
     if (!event.target.dataset.compareSeason) return;
     const id = Number(event.target.dataset.compareSeason), selected = Number(event.target.value);
     if (seasonNumbers(loader.entries.get(id)?.show || { episodes: [] }).includes(selected)) { state.seasons[id] = selected; render(); }
   };
   host.onkeydown = event => {
     const target = event.target;
+    if (target.closest('.compare-view')) {
+      const menu = content.querySelector('#comparison-view-options');
+      if (target.dataset.action === 'view-picker' && ['ArrowDown', 'ArrowUp'].includes(event.key)) { event.preventDefault(); openView(); return; }
+      if (!menu.hidden && event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeView(true); return; }
+      if (!menu.hidden && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+        event.preventDefault();
+        const buttons = [...menu.querySelectorAll('button')], index = buttons.indexOf(target);
+        buttons[event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length]?.focus(); return;
+      }
+      if (event.key === 'Tab') closeView();
+    }
     if (!results.hidden && ['ArrowDown', 'ArrowUp', 'Escape'].includes(event.key) && (target === input || results.contains(target))) {
       event.preventDefault(); event.stopPropagation();
-      if (event.key === 'Escape') { dismiss(); input.focus(); return; }
+      if (event.key === 'Escape') { input.focus(); dismiss(); return; }
       const buttons = [...results.querySelectorAll('button:not(:disabled)')], index = buttons.indexOf(target);
       buttons[(index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length]?.focus(); return;
     }
@@ -244,9 +319,14 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
         event.preventDefault(); move(grabbed, state.ids.indexOf(grabbed) + (['ArrowLeft', 'ArrowUp'].includes(event.key) ? -1 : 1));
       } else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); grabbed = null; render(); tell('Show dropped in its current position.'); }
     }
-    const viewport = target.closest('.scroll-board');
+    if (target.matches('.ratings-point-hit[data-episode]') && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+      event.preventDefault();
+      const series = target.closest('.comparison-overlay-series'), points = [...series.querySelectorAll('.ratings-point-hit[data-episode]')], index = points.indexOf(target);
+      points[event.key === 'Home' ? 0 : event.key === 'End' ? points.length - 1 : Math.max(0, Math.min(points.length - 1, index + (event.key === 'ArrowRight' ? 1 : -1)))]?.focus(); return;
+    }
+    const viewport = target.closest('.scroll-board,.ratings-chart-wrap');
     if (target === viewport && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
-      event.preventDefault(); viewport.scrollLeft = event.key === 'Home' ? 0 : event.key === 'End' ? viewport.scrollWidth : viewport.scrollLeft + (event.key === 'ArrowRight' ? 160 : -160);
+      event.preventDefault(); viewport.scrollLeft = event.key === 'Home' ? 0 : event.key === 'End' ? viewport.scrollWidth - viewport.clientWidth : viewport.scrollLeft + (event.key === 'ArrowRight' ? 1 : -1) * Math.min(160, viewport.clientWidth / 2);
     }
   };
   host.ondragstart = event => {
@@ -261,7 +341,10 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
     event.preventDefault(); move(dragId, state.ids.indexOf(Number(card.dataset.show))); dragId = null;
   };
   host.ondragend = () => { dragId = null; host.querySelectorAll('.is-dragging').forEach(card => card.classList.remove('is-dragging')); };
-  const outside = event => { if (!host.querySelector('.compare-search').contains(event.target)) dismiss(); };
+  const outside = event => {
+    if (!host.querySelector('.compare-search').contains(event.target)) dismiss();
+    if (!content.querySelector('.compare-view')?.contains(event.target)) closeView();
+  };
   document.addEventListener('pointerdown', outside);
   save.onclick = async () => {
     if (save.disabled) return;
@@ -276,7 +359,7 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
   window.addEventListener('couchside-ratings', enriched);
   render(); state.ids.forEach(id => loader.ensure(id));
   return () => {
-    disposed = true; clearTimeout(timer); ++searchToken; loader.dispose();
+    disposed = true; clearTimeout(timer); ++searchToken; loader.dispose(); observer?.disconnect(); cancelAnimationFrame(resizeFrame); timelineCleanup();
     document.removeEventListener('pointerdown', outside); window.removeEventListener('couchside-ratings', enriched);
     host.onclick = host.onchange = host.onkeydown = host.ondragstart = host.ondragover = host.ondrop = host.ondragend = null;
     input.oninput = input.onfocus = save.onclick = null;
