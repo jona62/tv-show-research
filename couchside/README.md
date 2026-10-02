@@ -295,8 +295,10 @@ files, kept together under the build's stamp and each checked against the hash
 from another. The app opens without waiting for the network, and without one it
 still opens on the home page and My List it last showed. The page kept is fetched
 again behind each start and kept when it is still the same build, so a refreshed
-catalogue shows on the next load; a deploy brings a new worker, which takes over
-once the page that found it has loaded, so the next load is the new build.
+catalogue shows on the next load. A deploy brings a new worker, which takes over
+as soon as the app's modules are ready, without waiting for posters. An untouched
+page refreshes once to show that build; a page with interaction or form work uses
+it on the next normal navigation, preserving what the user is doing.
 Posters, backdrops and thumbnails are fetched once, with CORS, and kept apart from
 any build: up to 1,000 small images and 40 large ones, the least recently shown
 going first. The page keeps what the server has told it, too: a title, a genre's

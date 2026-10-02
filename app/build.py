@@ -11,7 +11,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
-from tools.public_bundle import bundle_styles, output_path, reset_public
+from tools.public_bundle import (TOUCH_FORMS_SCRIPT, bundle_styles, copy_touch_forms,
+                                 inject_touch_forms, output_path, reset_public)
 
 PUBLIC = HERE / 'public'
 CLIENT = HERE / 'client'
@@ -33,6 +34,7 @@ def main():
     engine = Engine(MODEL)
 
     reset_public(PUBLIC)
+    touch_forms_version = copy_touch_forms(PUBLIC)
     for name in ASSETS:
         if name.endswith('.css'):
             bundle_styles(CLIENT / name, PUBLIC / output_path(name))
@@ -42,8 +44,9 @@ def main():
 
     # The badge states the page's own size as served, filled in, so settle on a figure
     # that includes itself. The server fills in its own model later; this one measures.
-    template = (CLIENT / 'index.template.html').read_text()
-    others = sum((PUBLIC / output_path(name)).stat().st_size for name in (*ASSETS, 'favicon.svg'))
+    template = inject_touch_forms((CLIENT / 'index.template.html').read_text(), touch_forms_version)
+    others = sum((PUBLIC / output_path(name)).stat().st_size
+                 for name in (*ASSETS, TOUCH_FORMS_SCRIPT, 'favicon.svg'))
     label = '00.0 KB'
     for _ in range(4):
         badge = label
@@ -53,7 +56,7 @@ def main():
 
     sizes = {'index.html': len(page.encode()),
              **{str(output_path(name)): (PUBLIC / output_path(name)).stat().st_size
-                for name in (*ASSETS, 'favicon.svg')}}
+                for name in (*ASSETS, TOUCH_FORMS_SCRIPT, 'favicon.svg')}}
     total = sum(sizes.values())
     for name, size in sizes.items():
         print(f'  {name:<34} {size / 1000:7.1f} KB')

@@ -33,7 +33,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
-from tools.public_bundle import bundle_styles, output_path, reset_public
+from tools.public_bundle import (TOUCH_FORMS_SCRIPT, bundle_styles, copy_touch_forms,
+                                 inject_touch_forms, output_path, reset_public)
 
 APP = HERE.parent / 'app'
 PUBLIC = HERE / 'public'
@@ -42,8 +43,9 @@ BACKEND = HERE / 'backend'
 OWN = ('style.css', 'main.js', 'format.js', 'gestures.js', 'start.js', 'ratings.js',
        'episode-ratings.js', 'episode-timeline.js', 'show-cards.js', 'title-sections.js', 'filter-state.js', 'filters.js', 'network.js',
        'accounts.js', 'account-state.js', 'taste.js', 'list-transfer.js', 'compare.js',
-       'rating-views.js', 'rating-snapshots.js', 'snapshot-images.js')
+       'rating-views.js', 'rating-snapshots.js', 'snapshot-images.js', 'app-updates.js')
 SHARED = ('transfer.js', 'qr.js', 'fresh.js', 'starters.js')
+CLASSIC = (TOUCH_FORMS_SCRIPT,)
 # Shared packages are copied into backend/ so this app deploys by itself.
 MODULES = ('engine.py', 'taste.py', 'titles.py', 'fallback.py', 'follow.py', 'facets.py', 'neighbours.py', 'fresh.py',
            'starters.py')
@@ -55,7 +57,7 @@ ICONS = ('favicon.ico', 'favicon.svg', 'apple-touch-icon.png', 'icon-192.png', '
          'icon-maskable-512.png')
 # What the service worker keeps with the page, whatever the app's files come to be, and
 # what the page and the offline page show besides.
-KEPT = (*OWN, *SHARED, 'offline.html', 'favicon.svg', 'icon-192.png', 'tmdb.svg')
+KEPT = (*OWN, *SHARED, *CLASSIC, 'offline.html', 'favicon.svg', 'icon-192.png', 'tmdb.svg')
 
 
 def module_path(app, name):
@@ -174,6 +176,7 @@ def main():
     from backend.recommendation.library import DESCRIPTION
 
     reset_public(PUBLIC)
+    copy_touch_forms(PUBLIC)
     for name in OWN:
         if name.endswith('.css'):
             bundle_styles(CLIENT / name, built(name), extras=(CLIENT / 'taste.css', CLIENT / 'compare.css'))
@@ -183,20 +186,23 @@ def main():
         shutil.copyfile(APP / 'client' / name, built(name))
     for name in BRAND:
         shutil.copyfile(HERE / 'assets/brand' / name, built(name))
-    needs = imports([name for name in (*OWN, *SHARED) if name.endswith('.js')])
+    needs = imports([name for name in (*OWN, *SHARED, *CLASSIC) if name.endswith('.js')])
     versions = version_modules(needs)
     versions['style.css'] = digest(built('style.css').read_bytes())
     versions.update({name: digest(built(name).read_bytes()) for name in ICONS})
     (PUBLIC / 'manifest.webmanifest').write_text(json.dumps(manifest(DESCRIPTION, versions), indent=2, ensure_ascii=False) + '\n')
     (PUBLIC / 'robots.txt').write_text(ROBOTS)
-    built('404.html').write_text(LOOSE.format(
+    built('404.html').write_text(inject_touch_forms(LOOSE.format(
         title='Lost your way?', action='Couchside home', style=versions['style.css'], icon=versions['favicon.svg'],
-        body='There is nothing at this address. Everything worth watching starts on the home page.'))
-    built('offline.html').write_text(LOOSE.format(
+        body='There is nothing at this address. Everything worth watching starts on the home page.'),
+        versions[TOUCH_FORMS_SCRIPT]))
+    built('offline.html').write_text(inject_touch_forms(LOOSE.format(
         title='You are offline', action='Try again', style=versions['style.css'], icon=versions['favicon.svg'],
-        body='Couchside needs a connection to find shows for you. Your ratings and My List are safe on this device.'))
+        body='Couchside needs a connection to find shows for you. Your ratings and My List are safe on this device.'),
+        versions[TOUCH_FORMS_SCRIPT]))
 
     page = (CLIENT / 'index.template.html').read_text().replace('__DESCRIPTION__', DESCRIPTION)
+    page = inject_touch_forms(page, versions[TOUCH_FORMS_SCRIPT])
     if page.count(SCRIPT) != 1:
         raise SystemExit('index.template.html should load main.js once.')
     # Every module main.js needs is asked for beside it, but those the page runs itself.
@@ -216,7 +222,7 @@ def main():
 
     # As sent: the server gzips each file once, at the most (server.py).
     sizes = {name: (len(body := built(name).read_bytes()), len(gzip.compress(body, 9, mtime=0)))
-             for name in ('index.html', *OWN, *SHARED, 'favicon.svg')}
+             for name in ('index.html', *OWN, *SHARED, *CLASSIC, 'favicon.svg')}
     for name, (size, packed) in sizes.items():
         print(f'  {name:<14} {size / 1000:7.1f} KB {packed / 1000:7.1f} KB gzipped')
     total, packed = (sum(s[n] for s in sizes.values()) / 1000 for n in (0, 1))

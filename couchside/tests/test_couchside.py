@@ -1881,14 +1881,14 @@ check('every module the page imports is built and served as JavaScript', 'gestur
 
 # The service worker keeps the page and files of one build, each checked against the hash
 # build.py wrote into it, and fetches the images it keeps under a policy of its own.
-from build import OWN, SHARED  # noqa: E402
+from build import OWN, SHARED, CLASSIC  # noqa: E402
 status, headers, worker = fetch('/sw.js')
 stamp = re.search(rb"^const VERSION = '([0-9a-f]{12})';", worker, re.M)
 kept = json.loads(re.search(rb'^const FILES = (\{.*\});$', worker, re.M)[1])
 check('every page says it is the build the service worker keeps', stamp and server.BUILD == stamp[1].decode()
       and all(fetch(path)[1].get('X-Build') == server.BUILD for path in ('/', '/browse', '/?show=169')))
 check('the service worker keeps every app and shared file, each with the hash of what is served',
-      {f'/{output_path(name)}' for name in (*OWN, *SHARED)} <= set(kept) and all(
+      {f'/{output_path(name)}' for name in (*OWN, *SHARED, *CLASSIC)} <= set(kept) and all(
           hashlib.sha256(fetch(path)[2]).hexdigest()[:16] == digest for path, digest in kept.items()))
 check('it keeps what the offline page needs', {'/pages/offline.html', '/assets/styles/style.css', '/assets/icons/favicon.svg'} <= set(kept))
 pages = json.loads(re.search(rb'^const PAGES = (\[.*\]);$', worker, re.M)[1].replace(b"'", b'"'))
@@ -1987,8 +1987,8 @@ while queue:
         if module not in dependencies:
             dependencies.add(module)
             queue.append(module)
-check('the page asks for its styles, main.js and every module main.js imports by their hashes, beside main.js',
-      {name.decode() for name, _version in asked_by_hash} == {'style.css', 'main.js', *dependencies}
+check('the page asks for its styles, early scripts and every module by their hashes',
+      {name.decode() for name, _version in asked_by_hash} == {'style.css', 'main.js', *CLASSIC, *dependencies}
       and page_root.count(b'rel="modulepreload"') + page_root.count(b'<script type="module" async') == len(dependencies),
       asked_by_hash)
 check('and runs start.js, which asks for the home page, as soon as it is here',

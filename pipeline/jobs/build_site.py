@@ -10,11 +10,13 @@ import pandas as pd
 
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT))
-from tools.public_bundle import bundle_styles, output_path, reset_public
+from tools.public_bundle import (TOUCH_FORMS_SCRIPT, bundle_styles, copy_touch_forms,
+                                 inject_touch_forms, output_path, reset_public)
 
 SITE=ROOT/'site'
 PUBLIC=SITE/'public'
 reset_public(PUBLIC)
+touch_forms_version=copy_touch_forms(PUBLIC)
 OUT=ROOT/'research/output'
 (OUT/'site-qa').mkdir(parents=True,exist_ok=True)
 esc=html.escape
@@ -31,8 +33,9 @@ def footer(size):
     return f'''<footer><p>A personal study · September 2026</p><p>Data: <a href="https://www.tvmaze.com/">TVmaze</a> · <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a></p><p>Style inspired by <a href="https://kishvanchee.com/">Kishore Vancheeshwaran</a> · Hosted on <a href="https://rigbox.dev/">Rigbox</a></p><a class="club-badge" href="https://512kb.club/" aria-label="512KB Club — this page uses {size} of uncompressed resources"><span>512KB CLUB</span><span>{size}</span></a><p class="club-caption">Initial page resources · new results use additional small requests</p></footer>'''
 
 def document(title,body,size='000.0 KB',interactive=False):
-    return f'''<!doctype html>
+    page=f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="description" content="Explore your TV taste across international shows, animation, documentaries, and more. Personal recommendations, adjustable features, and research notes."><title>{esc(title)} · TV Taste Notes</title><link rel="icon" type="image/svg+xml" href="/assets/icons/favicon.svg"><link rel="stylesheet" href="/assets/styles/style.css">{'<script type="module" src="/assets/scripts/app.js"></script>' if interactive else ''}</head><body><a class="skip" href="#main">Skip to research</a><header><a class="masthead" href="/">TV Taste Notes</a><nav aria-label="Main navigation"><a href="/#your-list">Your list</a><a href="/#explore">Explore</a><a href="/#findings">Findings</a><a href="/#recommendations">Watch next</a><a href="/pages/research.html">Research notes</a></nav></header><main id="main">{body}</main>{footer(size)}</body></html>'''
+    return inject_touch_forms(page,touch_forms_version)
 
 sys.path.insert(0,str(SITE))
 from backend.recommender import Engine, DEFAULT_PROFILE, DEFAULT_SETTINGS
@@ -66,7 +69,8 @@ for filename,content,interactive in [('index.html',body,True),('research.html',r
     size='000.0 KB'
     for _ in range(3):
         page=document('Find your next show' if interactive else 'Research notes',content,size,interactive)
-        total=len(page.encode())+sum((PUBLIC/output_path(name)).stat().st_size for name in ('style.css','favicon.svg'))
+        total=len(page.encode())+sum((PUBLIC/output_path(name)).stat().st_size
+                                   for name in ('style.css','favicon.svg',TOUCH_FORMS_SCRIPT))
         if interactive:total+=sum((PUBLIC/output_path(name)).stat().st_size for name in ('app.js','chart.js','radar.js'))
         size=f'{total/1000:05.1f} KB'
     (PUBLIC/output_path(filename)).write_text(page)

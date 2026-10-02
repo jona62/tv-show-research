@@ -1,7 +1,9 @@
 /* Keep editable text large enough to avoid iOS focus zoom. This fallback must
    stay outside @layer and pointer queries: older Safari ignores layers, and
    input hardware must not decide whether readable form text is protected.
-   The px declaration also protects browsers without CSS max() support. */
+   The shared early script compensates for Safari Page Zoom below 100%; a
+   computed 16px font alone can otherwise render too small. The px fallback
+   also protects browsers without CSS variables or max() support. */
 input,
 select,
 textarea,
@@ -10,7 +12,8 @@ textarea,
 [role="textbox"],
 [role="textbox"] * {
   font-size: 16px !important;
-  font-size: max(16px, 1rem) !important;
+  font-size: var(--touch-form-font-floor, 16px) !important;
+  font-size: max(16px, 1rem, var(--touch-form-font-floor, 16px)) !important;
 }
 
 /* Native WebKit search/select appearances can ignore author font sizes.
@@ -29,6 +32,7 @@ select { -webkit-appearance: menulist-button; appearance: menulist-button; }
   [role="textbox"],
   [role="textbox"] * {
     font-size: 16px !important;
-    font-size: max(16px, 1rem) !important;
+    font-size: var(--touch-form-font-floor, 16px) !important;
+    font-size: max(16px, 1rem, var(--touch-form-font-floor, 16px)) !important;
   }
 }

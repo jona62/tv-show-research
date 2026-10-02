@@ -91,7 +91,7 @@ def check(name, ok, detail=''):
 engine = server.ENGINE
 PUBLIC = ROOT / 'app' / 'public'
 ASSETS = ('assets/styles/style.css', 'assets/icons/favicon.svg',
-          *(f'assets/scripts/{name}.js' for name in ('main', 'fit', 'similar', 'transfer', 'qr', 'fresh', 'visits', 'starters')))
+          *(f'assets/scripts/{name}.js' for name in ('main', 'fit', 'similar', 'transfer', 'qr', 'fresh', 'visits', 'starters', 'touch-forms')))
 
 # 1. The model is the one MODEL_DIR leads to, read from where the link led at startup.
 check('the server reads the version the link leads to', server.MODEL == Path(os.path.realpath(VERSION)))

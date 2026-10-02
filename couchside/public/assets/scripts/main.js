@@ -6,6 +6,7 @@ import { mountTaste } from './taste.js?v=94c80891be4e9edb';
 import { mergeTransferredList } from './list-transfer.js?v=bf96d9f9d5d965e6';
 import { apiFetch } from './network.js?v=4038b4a1107593ef';
 import { mountAccounts } from './accounts.js?v=5eadc4519564f154';
+import { startAppUpdates } from './app-updates.js?v=6fd21e40c7dc0bdb';
 import {filtersFor,filterKey,selectShows,setFilters} from './filter-state.js?v=2a62eef7fd5aeeda';
 import {filterBar} from './filters.js?v=d657b07fba74e1f3';
 import { cachedRatings, ratings, seasons as ratingSeasons } from './ratings.js?v=2a0509d86dd759f5';
@@ -32,6 +33,7 @@ import { REST, LOOP_WAIT, goesRound, loopCopies, copiesOf, lapHome, restPlace, t
 import { KEY, DEFAULTS, REACH, VERSION, MAX_RATED, fresh, tidy, stored, FRESH_KEY, readMemory, remembered, opened,
   newVisit, keepVisit, tasteOf, homeBody, packed, PAGE_KEY, take, sanitize } from './start.js?v=dd8f0fc9dfb5b7ce';
 
+startAppUpdates();
 const boot = JSON.parse(document.getElementById('boot').textContent);
 const $ = id => document.getElementById(id);
 const RATES = [
@@ -4797,21 +4799,6 @@ window.addEventListener('online', () => {
   if (!home) loadHome();
   if (view === 'browse') { browseKey = null; renderBrowse(); }
 });
-// The service worker (sw.js) starts the app from the build it keeps, online or not, and
-// keeps the posters. A new build it finds waits until this page has loaded all its own
-// files, then takes over, so the next load is the new build whole.
-if ('serviceWorker' in navigator && window.isSecureContext) {
-  const takeOver = worker => worker?.postMessage('take-over');
-  const register = () => navigator.serviceWorker.register('/sw.js').then(reg => {
-    takeOver(reg.waiting);
-    reg.addEventListener('updatefound', () => {
-      const worker = reg.installing;
-      worker?.addEventListener('statechange', () => { if (worker.state === 'installed') takeOver(worker); });
-    });
-  }).catch(() => {});
-  if (document.readyState === 'complete') register(); else window.addEventListener('load', register);
-}
-
 /* ---------------------------------------------------------------- start */
 if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 // A wide screen shows the featured show over its TMDB backdrop, so the connection to TMDB's

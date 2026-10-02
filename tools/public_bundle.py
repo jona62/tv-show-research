@@ -1,9 +1,13 @@
 """Shared placement rules for generated browser bundles; no runtime dependency."""
 from pathlib import Path
+import hashlib
+import re
 import shutil
 
 ENTRYPOINTS = frozenset(('index.html', 'sw.js', 'manifest.webmanifest', 'robots.txt'))
 DIRECTORIES = ('assets/scripts', 'assets/styles', 'assets/icons', 'assets/images', 'pages', 'data')
+TOUCH_FORMS_SCRIPT = 'touch-forms.js'
+VIEWPORT_META = re.compile(r'''<meta\b[^>]*\bname\s*=\s*["']viewport["'][^>]*>''', re.I)
 
 
 def output_path(name):
@@ -39,6 +43,30 @@ def reset_public(folder):
         shutil.rmtree(folder)
     for relative in ('', *DIRECTORIES):
         (folder / relative).mkdir(parents=True, exist_ok=True)
+
+
+def copy_touch_forms(public):
+    """Copy the shared early classic script and return its content version."""
+    source = Path(__file__).resolve().parents[1] / 'shared/client' / TOUCH_FORMS_SCRIPT
+    destination = Path(public) / output_path(TOUCH_FORMS_SCRIPT)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, destination)
+    return hashlib.sha256(destination.read_bytes()).hexdigest()[:16]
+
+
+def inject_touch_forms(page, version):
+    """Set the font floor before the parser reaches any form controls.
+
+    A classic external script respects the apps' self-only script policies. It
+    deliberately has no async, defer or module attribute, so it runs immediately.
+    """
+    if len(VIEWPORT_META.findall(page)) != 1:
+        raise ValueError('A public page needs exactly one viewport meta for the early form guard.')
+    path = f'/{output_path(TOUCH_FORMS_SCRIPT)}'
+    if path in page:
+        raise ValueError('The early form guard is already included in this page.')
+    script = f'<script src="{path}?v={version}"></script>'
+    return VIEWPORT_META.sub(lambda match: match[0] + '\n' + script, page, count=1)
 
 
 def bundle_styles(source, destination, *, extras=()):
