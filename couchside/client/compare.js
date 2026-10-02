@@ -241,6 +241,7 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
     if (!content.contains(active)) return null;
     return active.dataset.compareSeason ? `[data-compare-season="${active.dataset.compareSeason}"]`
       : active.closest('.compare-picker') ? `[data-compare-picker="${active.closest('.compare-picker').dataset.picker}"]`
+        : active.closest('.comparison-zoom-picker') ? '[data-zoom-menu]'
         : active.dataset.zoomAction ? `[data-zoom-action="${active.dataset.zoomAction}"]`
         : active.dataset.episode && active.dataset.showId ? `.ratings-point-hit[data-show-id="${active.dataset.showId}"][data-episode="${active.dataset.episode}"]`
           : active.classList.contains('ratings-chart-wrap') ? '.ratings-chart-wrap'
@@ -288,6 +289,10 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
         const before = board.querySelector(selector), after = replacement.querySelector(selector);
         before?.replaceWith(after);
       }
+      const oldTrendLabel = board.querySelector('.ratings-chart-label-trend');
+      const nextTrendLabel = replacement.querySelector('.ratings-chart-label-trend');
+      if (oldTrendLabel) nextTrendLabel ? oldTrendLabel.replaceWith(nextTrendLabel) : oldTrendLabel.remove();
+      else if (nextTrendLabel) board.querySelector('.comparison-overlay-frame').append(nextTrendLabel);
     } else board.replaceChildren(...replacement.childNodes);
     timelineView.bind(board, plan);
     timelineCleanup = bindComparisonTimeline(board, timelineModel, host.querySelector('.compare-page'));
@@ -409,7 +414,12 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
       case 'move': move(id, state.ids.indexOf(id) + Number(button.dataset.direction)); break;
       case 'grab': grabbed = grabbed === id ? null : id; render(); content.querySelector(`[data-action="grab"][data-id="${id}"]`)?.focus(); tell(grabbed ? 'Show grabbed. Use arrow keys to move, Space to drop.' : 'Show position saved.'); break;
       case 'invert': if (state.view === 'grid') { state.inverted = !state.inverted; render(); } break;
-      case 'averages': state.averages = !state.averages; render(); break;
+      case 'averages':
+        state.averages = !state.averages;
+        if (state.view === 'timeline') {
+          button.setAttribute('aria-pressed', String(state.averages)); paintTimeline(true); persist();
+        } else render();
+        break;
     }
     if (button.dataset.cell) {
       const [row, column] = button.dataset.cell.split(':').map(Number), cell = matrix.rows[row]?.cells[column];

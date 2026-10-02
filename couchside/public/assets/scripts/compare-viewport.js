@@ -1,5 +1,9 @@
-import { html } from './ratings.js?v=2a0509d86dd759f5';
+import { html, icon } from './ratings.js?v=2a0509d86dd759f5';
 
+let viewportCount = 0;
+const resetIcon = '<svg class="ratings-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11a9 9 0 1 1 2.7 6.4M3 5v6h6"/></svg>';
+
+const choices = [['episodes', 'Episodes'], ['ratings', 'Ratings'], ['both', 'Both']];
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
 const initial = () => ({ zoomX: 1, startIndex: 0, low: null, high: null });
 
@@ -30,11 +34,15 @@ function zoomed(value, source, factor, axis, anchor) {
 
 // State and event targets live outside the SVG that is reprojected on each frame.
 export function createComparisonViewport({ changed = () => {} } = {}) {
-  let view = initial(), source, plan, scope, board, controller, frame, drag, touch, gesture;
-  let suppressClick = 0, disposed = false, foreignTouch = false;
+  let view = initial(), source, plan, scope, axis = 'both', board, controller, frame, drag, touch, gesture;
+  let suppressClick = 0, disposed = false, foreignTouch = false, nativeTouchCount = 0;
+  const menuId = `comparison-zoom-options-${++viewportCount}`;
   const controls = document.createElement('div');
-  controls.className = 'comparison-zoom-controls'; controls.dataset.comparisonZoomControls = '';
-  html(controls, `<div class="comparison-zoom-actions" role="group" aria-label="Timeline zoom"><button class="round small" type="button" data-zoom-action="out" aria-label="Zoom out timeline" title="Zoom out">−</button><button class="round small" type="button" data-zoom-action="in" aria-label="Zoom in timeline" title="Zoom in">+</button><button class="link comparison-zoom-reset" type="button" data-zoom-action="reset" aria-label="Reset timeline zoom" title="Show the full comparison">Reset</button></div><p class="comparison-zoom-range" role="status" aria-live="polite"></p>`);
+  controls.className = 'comparison-zoom-controls'; controls.dataset.comparisonZoomControls = ''; controls.dataset.axis = axis;
+  html(controls, `<div class="comparison-zoom-actions" role="group" aria-label="Timeline zoom"><div class="ratings-picker comparison-zoom-picker"><button class="ratings-view-button" type="button" data-zoom-menu aria-haspopup="listbox" aria-expanded="false" aria-controls="${menuId}" title="Zoom type: Both"><span class="zoom-mode-label">Both</span>${icon('down')}</button><div class="ratings-view-options" id="${menuId}" role="listbox" aria-label="Zoom type" hidden>${choices.map(([value, name]) => `<button type="button" role="option" tabindex="-1" data-zoom-choice="${value}" aria-selected="${value === axis}"><span>${name}</span>${icon('check')}</button>`).join('')}</div></div><button class="round small" type="button" data-zoom-action="out" aria-label="Zoom out timeline" title="Zoom out">−</button><button class="round small" type="button" data-zoom-action="in" aria-label="Zoom in timeline" title="Zoom in">+</button><button class="round small comparison-zoom-reset" type="button" data-zoom-action="reset" aria-label="Reset timeline zoom" title="Reset timeline zoom">${resetIcon}</button></div><p class="ratings-credit comparison-zoom-range" role="status" aria-live="polite"></p>`);
+  const trigger = controls.querySelector('[data-zoom-menu]'), menu = controls.querySelector('[role="listbox"]');
+  const close = (focus = false) => { menu.hidden = true; trigger.setAttribute('aria-expanded', 'false'); if (focus) trigger.focus({ preventScroll: true }); };
+  const open = () => { menu.hidden = false; trigger.setAttribute('aria-expanded', 'true'); menu.querySelector('[aria-selected="true"]')?.focus({ preventScroll: true }); };
   const hideTip = () => { const tip = board?.closest('.compare-page')?.querySelector('.ratings-tooltip'); if (tip) tip.hidden = true; };
   const publish = (immediate = false) => {
     hideTip(); cancelAnimationFrame(frame);
@@ -50,8 +58,8 @@ export function createComparisonViewport({ changed = () => {} } = {}) {
     const current = bounded(view, source);
     return { index: current.startIndex + current.span / 2, rating: (current.low + current.high) / 2 };
   };
-  const controlZoom = factor => update(zoomed(view, source, factor, 'both', centre()), true);
-  const inChart = target => target instanceof Element && !target.closest('.comparison-zoom-controls') && Boolean(target.closest('.comparison-overlay-frame'));
+  const controlZoom = factor => update(zoomed(view, source, factor, axis, centre()), true);
+  const inChart = target => target instanceof Element && board?.contains(target) && !target.closest('.comparison-zoom-controls') && Boolean(target.closest('.comparison-overlay-frame'));
   function location(clientX, clientY) {
     const svg = board.querySelector('.ratings-timeline'), bounds = svg.getBoundingClientRect();
     if (!Number.isFinite(clientX)) clientX = bounds.left + bounds.width / 2;
@@ -73,12 +81,12 @@ export function createComparisonViewport({ changed = () => {} } = {}) {
   }
   function wheel(event) {
     if (!inChart(event.target) || !plan?.live || !event.cancelable) return;
-    event.preventDefault();
+    event.preventDefault(); close();
     const units = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 300 : 1;
     if (!event.ctrlKey && !event.metaKey && Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
       const current = bounded(view, source); update({ ...current, startIndex: current.startIndex + event.deltaX * units / plan.spacing }); return;
     }
-    const anchor = location(event.clientX, event.clientY), direction = event.shiftKey || anchor.inAxis ? 'ratings' : anchor.inXAxis ? 'episodes' : 'both';
+    const anchor = location(event.clientX, event.clientY), direction = event.shiftKey || anchor.inAxis ? 'ratings' : anchor.inXAxis ? 'episodes' : axis;
     update(zoomed(view, source, Math.exp(-clamp(event.deltaY * units, -160, 160) * .005), direction, anchor));
   }
   function pointerDown(event) {
@@ -117,11 +125,14 @@ export function createComparisonViewport({ changed = () => {} } = {}) {
   }
   function touchMove(event) {
     if (!touch) return;
+    // Another finger can begin outside the board without sending touchstart here.
+    foreignTouch = event.touches.length > 2 || [...event.touches].some(item => !board.contains(item.target) || !inChart(item.target));
+    if (foreignTouch) { touch = gesture = null; return; }
     const points = touches(event);
     if (points.length === 2 && touch.points.length === 2) {
       if (event.cancelable) event.preventDefault(); event.stopPropagation();
       const middle = midpoint(points), ratio = distance(points) / Math.max(24, distance(touch.points));
-      const next = zoomed(touch.before, source, clamp(ratio, .05, 20), 'both', touch.anchor);
+      const next = zoomed(touch.before, source, clamp(ratio, .05, 20), axis, touch.anchor);
       const spacing = (plan.width - 64) / next.span;
       next.startIndex -= (middle.x - touch.middle.x) / spacing;
       const shift = (middle.y - touch.middle.y) / touch.anchor.rowHeight * (next.high - next.low);
@@ -141,20 +152,31 @@ export function createComparisonViewport({ changed = () => {} } = {}) {
     if (!event.touches.length) foreignTouch = false;
   }
   function gestureStart(event) {
-    if (foreignTouch || !inChart(event.target) || !plan?.live) return;
+    // Native pinches belong to touchMove; this fallback is for a trackpad.
+    if (nativeTouchCount || foreignTouch || !inChart(event.target) || !plan?.live) return;
     if (event.cancelable) event.preventDefault();
     gesture = { before: bounded(view, source), anchor: location(event.clientX, event.clientY) };
   }
   function gestureMove(event) {
-    if (!gesture) return;
+    if (!gesture || nativeTouchCount || foreignTouch) return;
     if (event.cancelable) event.preventDefault();
     if (touch?.points.length === 2) return;
     suppressClick = performance.now() + 400;
-    update(zoomed(gesture.before, source, clamp(event.scale || 1, .05, 20), 'both', gesture.anchor));
+    update(zoomed(gesture.before, source, clamp(event.scale || 1, .05, 20), axis, gesture.anchor));
   }
   function keydown(event) {
     if (event.ctrlKey || event.metaKey || event.altKey) return;
-    if (controls.contains(event.target)) return;
+    const option = event.target.closest('[data-zoom-choice]');
+    if (controls.contains(event.target)) {
+      if (event.key === 'Escape' && !menu.hidden) { event.preventDefault(); event.stopPropagation(); close(true); }
+      else if (event.target === trigger && ['ArrowDown', 'ArrowUp'].includes(event.key)) { event.preventDefault(); open(); }
+      else if (!menu.hidden && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+        event.preventDefault(); const buttons = [...menu.querySelectorAll('button')], index = buttons.indexOf(event.target);
+        buttons[event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length]?.focus();
+      } else if (option && ['Enter', ' '].includes(event.key)) { event.preventDefault(); event.stopPropagation(); choose(option.dataset.zoomChoice); }
+      else if (event.key === 'Tab' && !menu.hidden) close(true);
+      return;
+    }
     if (!event.target.matches('.ratings-chart-wrap')) return;
     const current = bounded(view, source), next = { ...current }, step = current.span * .15;
     if (['+', '='].includes(event.key)) controlZoom(1.5);
@@ -168,23 +190,44 @@ export function createComparisonViewport({ changed = () => {} } = {}) {
     event.preventDefault(); event.stopPropagation();
     if (!['+', '=', '-', '0'].includes(event.key)) update(next, true);
   }
+  function choose(value, focus = true) { if (!choices.some(([id]) => id === value)) return; axis = value; controls.dataset.axis = value; close(focus); updateControls(); }
   function click(event) {
     if (performance.now() < suppressClick && inChart(event.target)) { event.preventDefault(); event.stopImmediatePropagation(); return; }
     const button = event.target.closest('button'); if (!button || !controls.contains(button)) return;
-    if (button.dataset.zoomAction) { event.preventDefault(); button.dataset.zoomAction === 'reset' ? reset() : controlZoom(button.dataset.zoomAction === 'in' ? 1.5 : 1 / 1.5); }
+    if (button.hasAttribute('data-zoom-menu')) { event.preventDefault(); menu.hidden ? open() : close(); }
+    else if (button.dataset.zoomChoice) { event.preventDefault(); choose(button.dataset.zoomChoice); }
+    else if (button.dataset.zoomAction) { event.preventDefault(); close(); button.dataset.zoomAction === 'reset' ? reset() : controlZoom(button.dataset.zoomAction === 'in' ? 1.5 : 1 / 1.5); }
   }
   function updateControls() {
     if (!source || !plan) return;
     controls.hidden = !board?.querySelector('.ratings-timeline');
+    const lastPlot = plan.showTrend ? plan.trend : plan.raw;
+    controls.style.setProperty('--comparison-zoom-bottom', `${plan.height - lastPlot.bottom + 12}px`);
+    trigger.querySelector('.zoom-mode-label').textContent = choices.find(([id]) => id === axis)[1];
+    trigger.setAttribute('aria-label', `Zoom type: ${choices.find(([id]) => id === axis)[1]}`);
+    trigger.title = trigger.getAttribute('aria-label');
+    menu.querySelectorAll('[data-zoom-choice]').forEach(button => button.setAttribute('aria-selected', String(button.dataset.zoomChoice === axis)));
     const current = bounded(view, source), span = current.high - current.low;
-    controls.querySelector('[data-zoom-action="in"]').disabled = current.zoomX >= Math.max(1, source.maxCount - 1) && span <= .5;
-    controls.querySelector('[data-zoom-action="out"]').disabled = current.zoomX <= 1 && span >= 10;
+    controls.querySelector('[data-zoom-action="in"]').disabled = (axis === 'ratings' || current.zoomX >= Math.max(1, source.maxCount - 1)) && (axis === 'episodes' || span <= .5);
+    controls.querySelector('[data-zoom-action="out"]').disabled = (axis === 'ratings' || current.zoomX <= 1) && (axis === 'episodes' || span >= 10);
     controls.querySelector('.comparison-zoom-range').textContent = `Episodes ${Math.floor(current.startIndex) + 1}–${Math.min(source.maxCount, Math.ceil(current.startIndex + current.span) + 1)} of ${source.maxCount} · Ratings ${current.low.toFixed(2).replace(/\.00$/, '')}–${current.high.toFixed(2).replace(/\.00$/, '')}`;
   }
+  const outside = event => { if (!controls.contains(event.target)) close(); };
+  // A released or scrolling finger can leave the board's local event stream.
+  const nativeTouches = event => {
+    nativeTouchCount = event.touches.length; gesture = null;
+    if (!nativeTouchCount) {
+      if (touch?.moved) suppressClick = performance.now() + 400;
+      touch = null; foreignTouch = false;
+    }
+  };
+  for (const name of ['touchstart', 'touchend', 'touchcancel']) document.addEventListener(name, nativeTouches, { capture: true, passive: true });
+  document.addEventListener('pointerdown', outside);
   return {
+    setAxis(value) { choose(value, false); },
     prepare(nextSource, nextScope) {
       source = nextSource;
-      if (scope !== nextScope) { scope = nextScope; view = initial(); drag = touch = gesture = null; foreignTouch = false; board?.classList.remove('is-panning'); }
+      if (scope !== nextScope) { scope = nextScope; view = initial(); drag = touch = gesture = null; foreignTouch = false; board?.classList.remove('is-panning'); close(); }
     },
     options() { return Number.isFinite(view.low) ? bounded(view, source) : { zoomX: 1, startIndex: 0 }; },
     bind(nextBoard, nextPlan) {
@@ -200,6 +243,7 @@ export function createComparisonViewport({ changed = () => {} } = {}) {
         listen('touchend', touchEnd); listen('touchcancel', touchEnd);
         listen('gesturestart', gestureStart, { passive: false }); listen('gesturechange', gestureMove, { passive: false });
         listen('gestureend', () => { gesture = null; });
+        listen('focusout', event => { if (controls.contains(event.target) && !controls.contains(event.relatedTarget)) close(); });
       }
       updateControls();
     },
@@ -211,10 +255,12 @@ export function createComparisonViewport({ changed = () => {} } = {}) {
     },
     suspend() {
       cancelAnimationFrame(frame); controller?.abort(); board?.classList.remove('is-panning'); board = null;
-      drag = touch = gesture = null; foreignTouch = false;
+      drag = touch = gesture = null; foreignTouch = false; close();
     },
     dispose() {
-      disposed = true; cancelAnimationFrame(frame); controller?.abort();
+      disposed = true; cancelAnimationFrame(frame); controller?.abort(); document.removeEventListener('pointerdown', outside);
+      for (const name of ['touchstart', 'touchend', 'touchcancel']) document.removeEventListener(name, nativeTouches, true);
+      nativeTouchCount = 0;
       drag = touch = gesture = null; controls.remove();
     },
   };

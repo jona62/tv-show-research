@@ -105,6 +105,12 @@ class ComparisonZoom(unittest.TestCase):
     def choose(page, key, value):
         layout.ComparisonCardLayout.choose(page, key, value)
 
+    def choose_zoom(self, page, value):
+        page.locator('[data-zoom-menu]').click()
+        page.locator(f'[data-zoom-choice="{value}"]').click()
+        self.assertFalse(page.get_by_role('listbox', name='Zoom type', exact=True).is_visible())
+        self.assertEqual(page.locator('[data-zoom-menu]').get_attribute('aria-expanded'), 'false')
+
     @staticmethod
     def settle(page):
         page.evaluate('''async()=>await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))''')
@@ -132,9 +138,9 @@ class ComparisonZoom(unittest.TestCase):
             span:+svg.dataset.span,low:+svg.dataset.min,high:+svg.dataset.max,width:+svg.getAttribute('width')
         })''')
 
-    def assert_same_domain(self, actual, expected):
+    def assert_same_domain(self, actual, expected, message=None):
         for key in ('zoomX', 'start', 'end', 'span', 'low', 'high'):
-            self.assertAlmostEqual(actual[key], expected[key], delta=.000001, msg=key)
+            self.assertAlmostEqual(actual[key], expected[key], delta=.000001, msg=f'{message}: {key}' if message else key)
 
     def assert_bounded_domain(self, domain, count):
         self.assertGreaterEqual(domain['zoomX'], 1)
@@ -188,6 +194,14 @@ class ComparisonZoom(unittest.TestCase):
             target.dispatchEvent(event);return event.defaultPrevented;
         }''', {'kind': kind, 'points': points, 'target': target})
 
+    @staticmethod
+    def synthetic_gesture(page, kind, scale, point):
+        return page.locator('.ratings-timeline').evaluate('''(node,args)=>{
+            const event=new Event(args.kind,{bubbles:true,cancelable:true});
+            Object.defineProperties(event,{scale:{value:args.scale},clientX:{value:args.x},clientY:{value:args.y}});
+            node.dispatchEvent(event);return event.defaultPrevented;
+        }''', {'kind': kind, 'scale': scale, 'x': point['x'], 'y': point['y']})
+
     def capture_snapshot(self, page):
         before = page.evaluate('window.savedSnapshots.length')
         page.locator('.compare-save').click()
@@ -208,6 +222,58 @@ class ComparisonZoom(unittest.TestCase):
             self.assertLessEqual(header['scrollWidth'], header['width'] + 1, header['text'])
             self.assertGreaterEqual(header['left'], header['frameLeft'])
             self.assertLessEqual(header['right'], header['frameRight'] + 1)
+
+    def assert_floating_controls(self, page, mobile):
+        controls = page.locator('.comparison-zoom-controls')
+        controls.scroll_into_view_if_needed()
+        measured = controls.evaluate('''node=>{
+            const r=node.getBoundingClientRect(),frame=node.closest('.comparison-overlay-frame'),f=frame.getBoundingClientRect();
+            const svg=frame.querySelector('.ratings-timeline'),s=svg.getBoundingClientRect(),matrix=svg.getScreenCTM();
+            const plot=svg.querySelector('.ratings-trend-plot')||svg.querySelector('.ratings-episode-plot');
+            const clipId=plot.getAttribute('clip-path').match(/#([^)]*)/)[1];
+            const clip=svg.querySelector('[id="'+clipId+'"] rect'),y=+clip.getAttribute('y'),height=+clip.getAttribute('height');
+            const top=new DOMPoint(0,y).matrixTransform(matrix).y,bottom=new DOMPoint(0,y+height).matrixTransform(matrix).y;
+            return {rightGap:s.right-r.right,bottomGap:bottom-r.bottom,left:r.left,top:r.top,right:r.right,bottom:r.bottom,
+                plotTop:top,plotBottom:bottom,svgRight:s.right,axisRight:frame.querySelector('.ratings-chart-axis').getBoundingClientRect().right,
+                frameFooter:parseFloat(getComputedStyle(frame).paddingBottom),
+                inside:node.closest('.comparison-overlay-frame')===document.querySelector('.comparison-overlay-frame'),
+                targets:[...node.querySelectorAll('[data-zoom-menu],[data-zoom-action]')].map(button=>{
+                    const box=button.getBoundingClientRect();return {width:box.width,height:box.height};
+                })};
+        }''')
+        self.assertTrue(measured['inside'])
+        for gap, expected in (('rightGap', 8), ('bottomGap', 4)):
+            self.assertAlmostEqual(measured[gap], expected, delta=1, msg=gap)
+        self.assertGreaterEqual(measured['top'], measured['plotTop'], 'Floating controls stay inside the last visible plot')
+        self.assertLessEqual(measured['bottom'], measured['plotBottom'])
+        self.assertGreaterEqual(measured['left'], measured['axisRight'] + 7, 'The rating-axis gutter remains readable')
+        self.assertLessEqual(measured['right'], measured['svgRight'] + 1)
+        self.assertEqual(measured['frameFooter'], 0, 'Overlay controls do not add a footer below the chart')
+        self.assertGreaterEqual(measured['left'], 0)
+        self.assertEqual(len(measured['targets']), 4)
+        if mobile:
+            for target in measured['targets']:
+                self.assertGreaterEqual(target['width'], 44)
+                self.assertGreaterEqual(target['height'], 44)
+
+    def assert_upward_menu(self, page, mobile):
+        menu = page.get_by_role('listbox', name='Zoom type', exact=True)
+        measured = menu.evaluate('''node=>{
+            const r=node.getBoundingClientRect(),controls=node.closest('.comparison-zoom-controls').getBoundingClientRect();
+            return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,controlsTop:controls.top,
+                controlsRight:controls.right,viewportWidth:innerWidth,viewportHeight:innerHeight,
+                targets:[...node.querySelectorAll('button')].map(button=>{const r=button.getBoundingClientRect();return {width:r.width,height:r.height};})};
+        }''')
+        self.assertLessEqual(measured['bottom'], measured['controlsTop'] - 5)
+        self.assertAlmostEqual(measured['right'], measured['controlsRight'] - 1, delta=1)
+        self.assertGreaterEqual(measured['left'], 0)
+        self.assertGreaterEqual(measured['top'], 0)
+        self.assertLessEqual(measured['right'], measured['viewportWidth'])
+        self.assertLessEqual(measured['bottom'], measured['viewportHeight'])
+        if mobile:
+            for target in measured['targets']:
+                self.assertGreaterEqual(target['width'], 44)
+                self.assertGreaterEqual(target['height'], 44)
 
     def test_wheel_anchors_both_domains_and_mouse_drag_pans_without_selecting_an_episode(self):
         page, errors = self.open_fixture()
@@ -254,14 +320,16 @@ class ComparisonZoom(unittest.TestCase):
                 page, errors = self.open_fixture(width, page_zoom, count=1181)
                 baseline = self.domain(page)
                 self.assert_one_line_headers(page)
-                self.assertEqual(page.locator('[data-zoom-menu],[data-zoom-choice]').count(), 0)
+                self.assertEqual(page.get_by_role('button', name='Zoom type: Both', exact=True).count(), 1)
+                self.assertEqual(page.locator('[data-zoom-choice]').count(), 3)
                 self.assertEqual(page.locator('[data-zoom-action]').count(), 3)
-                self.assertTrue(page.locator('[data-zoom-action]').evaluate_all('''buttons=>buttons.every(button=>
-                    button.closest('.comparison-overlay-frame')===document.querySelector('.comparison-overlay-frame'))'''))
-                if width < 760:
-                    self.assertTrue(page.locator('[data-zoom-action]').evaluate_all('''buttons=>buttons.every(button=>{
-                        const r=button.getBoundingClientRect();return r.width>=44&&r.height>=44;
-                    })'''))
+                self.assert_floating_controls(page, width < 760)
+                page.locator('[data-action="averages"]').click()
+                self.assertEqual(page.locator('.ratings-chart-label-trend').count(), 0)
+                self.assert_floating_controls(page, width < 760)
+                page.locator('[data-action="averages"]').click()
+                self.assertEqual(page.locator('.ratings-chart-label-trend').count(), 1)
+                self.assert_floating_controls(page, width < 760)
                 page.get_by_role('button', name='Zoom in timeline', exact=True).focus()
                 page.keyboard.press('Space')
                 page.keyboard.press('Enter')
@@ -291,6 +359,141 @@ class ComparisonZoom(unittest.TestCase):
                 if width < 760:
                     self.assertGreaterEqual(page.locator('#compare-search').evaluate('node=>parseFloat(getComputedStyle(node).fontSize)'), 16 * 100 / page_zoom)
                 self.assertFalse(errors, errors)
+
+    def test_zoom_type_menu_opens_upward_and_closes_after_selection_escape_or_outside(self):
+        for width, page_zoom in ((1280, 100), (390, 100), (320, 100), (390, 85)):
+            with self.subTest(width=width, page_zoom=page_zoom):
+                page, errors = self.open_fixture(width, page_zoom)
+                baseline = self.domain(page)
+                trigger = page.locator('[data-zoom-menu]')
+                menu = page.get_by_role('listbox', name='Zoom type', exact=True)
+                self.assert_floating_controls(page, width < 760)
+                for value, name in (('episodes', 'Episodes'), ('ratings', 'Ratings'), ('both', 'Both')):
+                    self.choose_zoom(page, value)
+                    self.assert_floating_controls(page, width < 760)
+                    self.assertEqual(trigger.get_attribute('aria-label'), 'Zoom type: ' + name)
+                    self.assertTrue(trigger.evaluate('node=>node===document.activeElement'))
+                    self.assert_same_domain(self.domain(page), baseline, 'Changing zoom type does not change the visible data')
+                    trigger.press('ArrowDown')
+                    self.assertTrue(menu.is_visible())
+                    self.assert_upward_menu(page, width < 760)
+                    selected = page.locator(f'[data-zoom-choice="{value}"]')
+                    self.assertEqual(selected.get_attribute('aria-selected'), 'true')
+                    self.assertTrue(selected.evaluate('node=>node===document.activeElement'))
+                    selected.press('Space')
+                    self.settle(page)
+                    self.assertFalse(menu.is_visible(), 'Choosing the current type must remain dismissed after keyup')
+                    self.assertTrue(trigger.evaluate('node=>node===document.activeElement'))
+                self.choose_zoom(page, 'episodes')
+                page.locator('[data-action="averages"]').click()
+                self.assert_floating_controls(page, width < 760)
+                trigger.click()
+                self.assert_upward_menu(page, width < 760)
+                page.keyboard.press('Escape')
+                page.locator('[data-action="averages"]').click()
+                trigger.press('ArrowDown')
+                page.keyboard.press('Home')
+                self.assertEqual(page.evaluate('document.activeElement.dataset.zoomChoice'), 'episodes')
+                page.keyboard.press('ArrowDown')
+                page.keyboard.press('Enter')
+                self.settle(page)
+                self.assertEqual(trigger.get_attribute('aria-label'), 'Zoom type: Ratings')
+                self.assertFalse(menu.is_visible(), 'Enter selection must not reopen the trigger')
+                trigger.press('ArrowUp'); page.keyboard.press('Escape')
+                self.assertFalse(menu.is_visible())
+                self.assertTrue(trigger.evaluate('node=>node===document.activeElement'))
+                trigger.click(); page.locator('#compare-search').click()
+                self.assertFalse(menu.is_visible())
+                trigger.press('ArrowDown'); page.keyboard.press('Tab')
+                self.assertFalse(menu.is_visible())
+                self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), page.evaluate('innerWidth') + 1)
+                self.assertFalse(errors, errors)
+
+    def test_selected_type_scopes_buttons_wheel_and_keyboard_but_axis_shortcuts_remain_explicit(self):
+        page, errors = self.open_fixture()
+        baseline = self.domain(page)
+        for mode in ('episodes', 'ratings', 'both'):
+            with self.subTest(mode=mode):
+                self.choose_zoom(page, mode)
+                for action in ('button', 'wheel', 'keyboard'):
+                    page.locator('[data-zoom-action="reset"]').click()
+                    if action == 'button':
+                        page.locator('[data-zoom-action="in"]').click()
+                    elif action == 'wheel':
+                        point = self.central_point(page)
+                        self.wheel(page, point['x'], point['y'])
+                    else:
+                        region = page.get_by_role('region', name='Comparison timeline', exact=True)
+                        region.focus(); region.press('Equal')
+                    self.settle(page)
+                    zoomed = self.domain(page)
+                    if mode == 'ratings':
+                        self.assertAlmostEqual(zoomed['zoomX'], baseline['zoomX'])
+                    else:
+                        self.assertGreater(zoomed['zoomX'], baseline['zoomX'])
+                    if mode == 'episodes':
+                        self.assertAlmostEqual(zoomed['low'], baseline['low'], delta=.000000001)
+                        self.assertAlmostEqual(zoomed['high'], baseline['high'], delta=.000000001)
+                    else:
+                        self.assertLess(zoomed['high'] - zoomed['low'], baseline['high'] - baseline['low'])
+                    page.locator('[data-zoom-action="out"]').click()
+                    smaller = self.domain(page)
+                    if mode != 'ratings':
+                        self.assertLess(smaller['zoomX'], zoomed['zoomX'])
+                    if mode != 'episodes':
+                        self.assertGreater(smaller['high'] - smaller['low'], zoomed['high'] - zoomed['low'])
+                page.locator('[data-zoom-action="reset"]').click()
+                self.assert_same_domain(self.domain(page), baseline)
+                self.assertEqual(page.locator('.comparison-zoom-controls').get_attribute('data-axis'), mode)
+
+        self.choose_zoom(page, 'episodes')
+        point = self.central_point(page)
+        ratings = self.wheel(page, point['x'], point['y'], modifier='Shift')
+        self.assertEqual(ratings['zoomX'], baseline['zoomX'])
+        self.assertLess(ratings['high'] - ratings['low'], baseline['high'] - baseline['low'])
+        page.locator('[data-zoom-action="reset"]').click()
+        self.choose_zoom(page, 'ratings')
+        point = self.central_point(page)
+        axis_y = page.locator('.ratings-timeline').evaluate('''svg=>new DOMPoint(0,268).matrixTransform(svg.getScreenCTM()).y''')
+        episodes = self.wheel(page, point['x'], axis_y)
+        self.assertGreater(episodes['zoomX'], baseline['zoomX'])
+        self.assertAlmostEqual(episodes['low'], baseline['low'], delta=.000000001)
+        self.assertAlmostEqual(episodes['high'], baseline['high'], delta=.000000001)
+        self.assertEqual(page.locator('.comparison-zoom-controls').get_attribute('data-axis'), 'ratings', 'A one-off axis shortcut does not change the chosen type')
+        self.assertFalse(errors, errors)
+
+    def test_selected_type_scopes_owned_pinch_and_standalone_trackpad_gestures(self):
+        page, errors = self.open_fixture(390, 85)
+        baseline = self.domain(page)
+        for mode in ('episodes', 'ratings', 'both'):
+            self.choose_zoom(page, mode)
+            for transport in ('touch', 'gesture'):
+                with self.subTest(mode=mode, transport=transport):
+                    page.locator('[data-zoom-action="reset"]').click()
+                    point = self.central_point(page)
+                    if transport == 'touch':
+                        self.assertTrue(self.synthetic_touch(page, 'touchstart', [
+                            {'x': point['x'] - 30, 'y': point['y']}, {'x': point['x'] + 30, 'y': point['y']}]))
+                        self.assertTrue(self.synthetic_touch(page, 'touchmove', [
+                            {'x': point['x'] - 60, 'y': point['y']}, {'x': point['x'] + 60, 'y': point['y']}]))
+                        self.synthetic_touch(page, 'touchend', [])
+                    else:
+                        self.assertTrue(self.synthetic_gesture(page, 'gesturestart', 1, point))
+                        self.assertTrue(self.synthetic_gesture(page, 'gesturechange', 2, point))
+                        self.synthetic_gesture(page, 'gestureend', 2, point)
+                    self.settle(page)
+                    zoomed = self.domain(page)
+                    if mode == 'ratings':
+                        self.assertAlmostEqual(zoomed['zoomX'], baseline['zoomX'])
+                    else:
+                        self.assertGreater(zoomed['zoomX'], baseline['zoomX'])
+                    if mode == 'episodes':
+                        self.assertAlmostEqual(zoomed['low'], baseline['low'], delta=.000000001)
+                        self.assertAlmostEqual(zoomed['high'], baseline['high'], delta=.000000001)
+                    else:
+                        self.assertLess(zoomed['high'] - zoomed['low'], baseline['high'] - baseline['low'])
+                    self.assert_bounded_domain(zoomed, 200)
+        self.assertFalse(errors, errors)
 
     def test_shift_wheel_bounds_clipped_targets_and_point_tooltip_use_the_visible_data(self):
         page, errors = self.open_fixture()
@@ -365,6 +568,7 @@ class ComparisonZoom(unittest.TestCase):
         page.get_by_role('button', name='Zoom in timeline', exact=True).click()
         changed = self.domain(page)
         self.assertGreater(changed['zoomX'], 1)
+        self.choose_zoom(page, 'episodes')
         self.assertEqual(self.capture_snapshot(page), original, 'Snapshot data and complete plot geometry are independent of chart exploration')
         self.assert_same_domain(self.domain(page), changed)
         self.assert_posters_retained(page)
@@ -373,20 +577,30 @@ class ComparisonZoom(unittest.TestCase):
         for view in ('grid', 'timeline'):
             self.choose(page, 'view', view)
             self.assert_posters_retained(page)
+        self.assertEqual(page.locator('[data-zoom-menu]').get_attribute('aria-label'), 'Zoom type: Episodes')
         self.assert_same_domain(self.domain(page), changed)
-        for _ in range(2):
+        page.evaluate('window.retainedTimeline=document.querySelector(".ratings-timeline")')
+        self.assertEqual(page.locator('.ratings-chart-label-trend').count(), 1)
+        for caption_present in (False, True):
             page.locator('[data-action="averages"]').click()
             self.assert_same_domain(self.domain(page), changed)
+            self.assertEqual(page.locator('.ratings-chart-label-trend').count(), int(caption_present))
+            self.assertTrue(page.locator('.ratings-timeline').evaluate('svg=>svg===window.retainedTimeline'))
+            if caption_present:
+                self.assertIn('average', page.locator('.ratings-chart-label-trend').text_content().lower())
+            self.assert_floating_controls(page, False)
         for arrangement in ('compact', 'side', 'row'):
             self.choose(page, 'timelineLayout', arrangement)
             self.assert_same_domain(self.domain(page), changed)
             self.assert_posters_retained(page)
+            self.assertEqual(page.locator('[data-zoom-menu]').get_attribute('aria-label'), 'Zoom type: Episodes')
         page.evaluate('window.resolveColour(42184,"#79bcee")')
         page.wait_for_function('document.querySelector("[data-show=\\\"42184\\\"]").style.getPropertyValue("--show-colour")==="#79bcee"')
         self.assert_same_domain(self.domain(page), changed)
         page.set_viewport_size({'width': 920, 'height': 1000}); self.settle(page)
         self.assert_same_domain(self.domain(page), changed)
         self.assert_posters_retained(page)
+        self.assertEqual(page.locator('[data-zoom-menu]').get_attribute('aria-label'), 'Zoom type: Episodes')
 
         self.choose(page, 'mode', 'single')
         self.assertEqual(tuple(self.domain(page)[key] for key in ('zoomX', 'start', 'low', 'high')), (1, 0, baseline['low'], baseline['high']))
@@ -497,18 +711,109 @@ class ComparisonZoom(unittest.TestCase):
         self.assertFalse(self.synthetic_touch(page, 'touchmove', [
             {**foreign, 'x': foreign['x'] - 30}, {**inside, 'x': inside['x'] + 30}]))
         for kind, scale in (('gesturestart', 1), ('gesturechange', 2)):
-            self.assertFalse(page.locator('.ratings-timeline').evaluate('''(node,args)=>{
-                const event=new Event(args.kind,{bubbles:true,cancelable:true});
-                Object.defineProperties(event,{scale:{value:args.scale},clientX:{value:args.x},clientY:{value:args.y}});
-                node.dispatchEvent(event);return event.defaultPrevented;
-            }''', {'kind': kind, 'scale': scale, 'x': point['x'], 'y': point['y']}))
+            self.assertFalse(self.synthetic_gesture(page, kind, scale, point))
         self.synthetic_touch(page, 'touchend', [])
+        self.settle(page)
+        self.assert_same_domain(self.domain(page), before)
+
+        # Safari can send gesturestart before the second touchstart. A finger
+        # that starts outside never reaches the board's touchstart listener.
+        self.synthetic_touch(page, 'touchstart', [inside])
+        self.assertFalse(self.synthetic_gesture(page, 'gesturestart', 1, point))
+        self.assertFalse(self.synthetic_touch(page, 'touchstart', [
+            {**inside, 'target': '.ratings-timeline'}, foreign], target='.compare-header'))
+        self.assertFalse(self.synthetic_gesture(page, 'gesturechange', 2, point))
+        self.assertFalse(self.synthetic_touch(page, 'touchmove', [inside, foreign]))
+        self.synthetic_touch(page, 'touchend', [])
+        self.synthetic_gesture(page, 'gestureend', 2, point)
         self.settle(page)
         self.assert_same_domain(self.domain(page), before)
         self.assertTrue(self.synthetic_touch(page, 'touchstart', [
             {'x': point['x'] - 30, 'y': point['y']}, inside]), 'A later pinch entirely on the graph remains usable')
         self.synthetic_touch(page, 'touchend', [])
         self.assertFalse(errors, errors)
+
+    def test_dispose_cancels_pending_plot_updates_and_detaches_menu_events(self):
+        page, errors = self.open_fixture()
+        self.choose_zoom(page, 'ratings')
+        point = self.central_point(page)
+        before = self.domain(page)
+        result = page.evaluate('''point=>{
+            const svg=document.querySelector('.ratings-timeline');
+            const controls=document.querySelector('.comparison-zoom-controls');
+            const trigger=controls.querySelector('[data-zoom-menu]');
+            const menu=controls.querySelector('[role="listbox"]');
+            window.disposedSVG=svg;
+            svg.dispatchEvent(new WheelEvent('wheel',{bubbles:true,cancelable:true,deltaY:-160,clientX:point.x,clientY:point.y}));
+            window.disposeComparison();
+            trigger.click();
+            return {controlsConnected:controls.isConnected,menuOpened:!menu.hidden};
+        }''', point)
+        self.settle(page)
+        self.assertFalse(result['controlsConnected'])
+        self.assertFalse(result['menuOpened'])
+        after = page.evaluate('''()=>{const d=window.disposedSVG.dataset;return {
+            zoomX:+d.zoomX,start:+d.startIndex,end:+d.endIndex,span:+d.span,low:+d.min,high:+d.max};}''')
+        self.assert_same_domain(after, before, 'A queued animation must not repaint after disposal')
+        self.assertFalse(errors, errors)
+
+    def test_native_fingers_block_gesture_fallback_after_vertical_yield_or_partial_lift(self):
+        page, errors = self.open_fixture(390, 85)
+        initial = self.domain(page)
+        for sequence in ('vertical-yield', 'partial-pinch-lift'):
+            with self.subTest(sequence=sequence):
+                page.locator('[data-zoom-action="reset"]').click()
+                point = self.central_point(page)
+                inside = {'x': point['x'], 'y': point['y'], 'target': '.ratings-timeline'}
+                outside = {'x': point['x'] + 50, 'y': point['y'], 'target': '.compare-header'}
+                if sequence == 'vertical-yield':
+                    self.synthetic_touch(page, 'touchstart', [inside])
+                    self.assertFalse(self.synthetic_touch(page, 'touchmove', [{**inside, 'y': inside['y'] + 40}]))
+                    self.synthetic_touch(page, 'touchstart', [inside, outside], target='.compare-header')
+                else:
+                    self.synthetic_touch(page, 'touchstart', [inside, {**inside, 'x': inside['x'] + 50}])
+                    self.synthetic_touch(page, 'touchend', [inside])
+                self.assertFalse(self.synthetic_gesture(page, 'gesturestart', 1, point))
+                self.assertFalse(self.synthetic_gesture(page, 'gesturechange', 2, point))
+                self.settle(page)
+                self.assert_same_domain(self.domain(page), initial, 'A native finger still down cannot become a standalone trackpad gesture')
+                # The final lift can occur outside the board after the page has
+                # accepted vertical scrolling. Document capture must see it.
+                self.synthetic_touch(page, 'touchcancel' if sequence == 'vertical-yield' else 'touchend', [], target='.compare-header')
+                self.assertTrue(self.synthetic_gesture(page, 'gesturestart', 1, point))
+                self.assertTrue(self.synthetic_gesture(page, 'gesturechange', 2, point))
+                self.synthetic_gesture(page, 'gestureend', 2, point)
+                self.settle(page)
+                recovered = self.domain(page)
+                self.assertGreater(recovered['zoomX'], initial['zoomX'])
+                self.assertLess(recovered['high'] - recovered['low'], initial['high'] - initial['low'])
+        self.assertFalse(errors, errors)
+
+    def test_held_touch_pan_suppresses_release_click_including_an_outside_lift(self):
+        for release_target in ('.ratings-timeline', '.compare-header'):
+            with self.subTest(release_target=release_target):
+                page, errors = self.open_fixture(390, 85)
+                page.locator('[data-zoom-action="in"]').click()
+                point = self.central_point(page)
+                start = {'x': point['x'], 'y': point['y']}
+                self.synthetic_touch(page, 'touchstart', [start])
+                self.assertTrue(self.synthetic_touch(page, 'touchmove', [{**start, 'x': start['x'] - 40}]))
+                self.settle(page)
+                # Outlast the move's click-suppression window before lifting.
+                page.wait_for_timeout(450)
+                self.synthetic_touch(page, 'touchend', [], target=release_target)
+                target = self.point(page, point['id'])
+                prevented = target.evaluate('''node=>{
+                    const event=new MouseEvent('click',{bubbles:true,cancelable:true});
+                    node.dispatchEvent(event);return event.defaultPrevented;
+                }''')
+                self.assertTrue(prevented, 'The final lift renews suppression even after a long hold')
+                self.assertFalse(page.locator('#compare-ratings-hover').is_visible())
+                page.wait_for_timeout(450)
+                centre = self.point_center(page, point['id'])
+                page.mouse.click(centre['x'], centre['y'])
+                self.assertTrue(page.locator('#compare-ratings-hover').is_visible(), 'An ordinary later click remains usable')
+                self.assertFalse(errors, errors)
 
 
 if __name__ == '__main__':
