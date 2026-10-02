@@ -1,0 +1,10 @@
+Use case: stylized-concept
+Asset type: square raster app icon concept for Couchside, a TV discovery app
+Primary request: a polished sculptural 3D amber sofa, warm and inviting but extremely simple and recognizable at tiny favicon sizes.
+Scene/backdrop: opaque flat full-bleed matte charcoal #141414 reaching all four square image edges.
+Subject: one centered iconic sofa viewed straight on with a slight view of its seat, broad softly rounded backrest, two substantial rounded arms, one broad clean seat cushion, and a simple sturdy base. Keep the silhouette balanced, compact, unmistakably sofa-shaped. Amber #ffc53d upholstery with subtle warm coral #ff6a3d in the shaded lower surfaces.
+Style/medium: refined high-end sculptural 3D app icon, smooth satin upholstery, simplified clean forms without seams or texture.
+Composition/framing: perfectly square image. Entire sofa and every essential element strictly contained inside the central 60% of image width and height, leaving ample charcoal space on every side. Center the symbol around the image center. All essential content fits within a circle of radius 32% of image width, for safe circular and rounded-square app masking.
+Lighting/mood: restrained soft studio lighting from upper left, understated afterglow warmth, crisp readable silhouette, very subtle nearby grounded shadow.
+Constraints: this is a single standalone icon asset. Background remains opaque and reaches all edges, do not draw a rounded-square tile or outer frame, do not preview on a phone, do not create a board or multiple icons. The sofa must remain clear at 16px.
+Avoid: text, lettering, labels, watermark, border, outer rounded-square silhouette, decorative props, pillow, TV screen, play triangle, tiny details, fine seams, photographic room, elaborate reflections, strong glow.

@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f3e9">
+  <title>Couchside — four icon concepts</title>
+  <style>
+    :root { color-scheme: light; --paper:#f7f3e9; --ink:#252720; --muted:#6c6d60; --rule:#d9d5c7; --accent:#bb4c2d; --soft:#ede7d7; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font-family:"Avenir Next","Trebuchet MS",sans-serif; font-size:15px; line-height:1.5; }
+    button, a { -webkit-tap-highlight-color:transparent; }
+    a { color:inherit; text-underline-offset:4px; text-decoration-thickness:1px; }
+    a:hover { color:var(--accent); }
+    button:focus-visible, a:focus-visible, summary:focus-visible { outline:3px solid var(--accent); outline-offset:5px; }
+    .sheet { width:min(1376px,100%); margin:auto; padding:32px 48px 30px; }
+    .masthead { display:flex; align-items:baseline; justify-content:space-between; gap:24px; border-bottom:1px solid var(--ink); padding-bottom:18px; }
+    .brand { font-family:Georgia,serif; font-size:26px; letter-spacing:-.8px; }
+    .eyebrow { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:2px; }
+    .intro { display:grid; grid-template-columns:1.1fr 1fr; align-items:end; gap:80px; padding:46px 0 44px; }
+    h1 { font-family:Georgia,serif; font-size:clamp(36px,4.5vw,62px); line-height:1.06; letter-spacing:-2.4px; font-weight:400; margin:0; max-width:580px; }
+    .intro-copy { margin:0 0 3px; max-width:465px; color:var(--muted); font-size:15px; line-height:1.7; }
+    .intro-copy strong { color:var(--ink); font-weight:500; }
+    .grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:28px; }
+    .concept { min-width:0; border-top:1px solid var(--rule); padding-top:15px; }
+    .concept.is-selected { border-top-color:var(--accent); }
+    .choice { width:100%; border:0; padding:0; text-align:left; cursor:pointer; background:none; color:inherit; font:inherit; }
+    .number-row { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:20px; margin-bottom:23px; font-size:10px; letter-spacing:1.1px; text-transform:uppercase; color:var(--muted); }
+    .selection-label { visibility:hidden; color:var(--accent); letter-spacing:.5px; }
+    .is-selected .selection-label { visibility:visible; }
+    .art { display:grid; place-items:center; margin:0 0 22px; min-height:170px; }
+    .hero-icon { width:156px; height:156px; border-radius:24%; display:block; box-shadow:0 7px 12px -9px #25272080; transition:transform .2s ease; }
+    .choice:hover .hero-icon { transform:translateY(-4px); }
+    .choice h2 { font-family:Georgia,serif; font-size:26px; font-weight:400; line-height:1.15; letter-spacing:-.5px; margin:0 0 10px; }
+    .description { display:block; color:var(--muted); font-size:13px; line-height:1.65; min-height:65px; }
+    .size-tests { display:flex; align-items:flex-end; gap:18px; border-top:1px solid var(--rule); margin-top:18px; padding-top:17px; }
+    .size-test { margin:0; min-width:0; }
+    .sample-height { height:60px; display:flex; align-items:center; }
+    .home-icon { width:60px; height:60px; border-radius:24%; display:block; }
+    .favicon { display:block; image-rendering:auto; }
+    figcaption { margin-top:9px; color:var(--muted); font-size:9px; line-height:1.4; white-space:nowrap; }
+    .downloads { margin:20px 0 5px; font-size:11px; display:flex; flex-wrap:wrap; gap:8px 16px; }
+    details { margin:9px 0 0; color:var(--muted); font-size:11px; }
+    summary { cursor:pointer; width:fit-content; }
+    .all-files { display:flex; flex-direction:column; align-items:flex-start; gap:8px; margin:12px 0 0; }
+    .preview { margin-top:44px; padding:29px 32px; background:var(--soft); display:grid; grid-template-columns:1.3fr 1fr; gap:32px; align-items:center; }
+    .preview h3 { font-family:Georgia,serif; font-size:32px; line-height:1.15; font-weight:400; letter-spacing:-.8px; margin:8px 0 10px; }
+    .preview p { margin:0; color:var(--muted); font-size:13px; max-width:480px; line-height:1.7; }
+    .masks { display:flex; align-items:flex-start; justify-content:flex-end; gap:48px; }
+    .mask-example { margin:0; width:100px; text-align:center; }
+    .mask-example img { display:block; width:60px; height:60px; margin:0 auto; }
+    .mask-example .round-square { border-radius:24%; }
+    .mask-example .circle { border-radius:50%; }
+    .app-label { display:block; font-size:11px; margin-top:9px; color:var(--ink); }
+    .mask-example figcaption { margin-top:8px; white-space:normal; }
+    .footer { display:flex; justify-content:space-between; gap:32px; padding-top:20px; color:var(--muted); font-size:10px; }
+    @media (max-width:1050px) { .sheet { padding:28px 32px; } .grid { gap:20px; } .hero-icon { width:140px; height:140px; } .size-tests { gap:12px; } .intro { gap:40px; } }
+    @media (max-width:860px) { .grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:34px 32px; } .hero-icon { width:164px; height:164px; } .description { min-height:44px; } .intro { gap:24px; } .preview { grid-template-columns:1fr 1fr; padding:26px; } .masks { gap:18px; } }
+    @media (max-width:560px) { .sheet { padding:22px 20px; } .masthead { padding-bottom:15px; } .brand { font-size:24px; } .masthead .eyebrow { font-size:8px; letter-spacing:1.3px; } .intro { display:block; padding:31px 0; } h1 { font-size:42px; letter-spacing:-1.7px; max-width:340px; } .intro-copy { margin-top:20px; font-size:13px; } .grid { gap:28px 20px; } .art { min-height:140px; margin-bottom:18px; } .hero-icon { width:140px; height:140px; } .choice h2 { font-size:23px; } .description { font-size:12px; min-height:79px; } .number-row { margin-bottom:15px; font-size:9px; letter-spacing:.5px; } .size-tests { gap:9px; } .home-icon { width:60px; height:60px; } figcaption { font-size:8px; } .downloads { gap:8px 13px; } .preview { display:block; margin-top:34px; padding:24px 22px; } .preview h3 { font-size:29px; } .masks { justify-content:flex-start; gap:28px; margin-top:25px; } .footer { display:block; line-height:1.6; } .footer span { display:block; margin-top:5px; } }
+    @media (max-width:370px) { .sheet { padding-left:16px; padding-right:16px; } .grid { gap:28px 16px; } .hero-icon { width:128px; height:128px; } .size-tests { gap:7px; } .size-test:first-child figcaption { max-width:60px; white-space:normal; } }
+    @media (prefers-reduced-motion:reduce) { .hero-icon { transition:none; } }
+    .round-link { display:flex; align-items:baseline; flex-wrap:wrap; gap:10px 24px; background:var(--soft); padding:14px 18px; margin-top:20px; }
+    .round-link a { font-size:14px; font-weight:600; color:var(--accent); }
+    .round-link span { font-size:11px; color:var(--muted); }
+  </style>
+</head>
+<body>
+  <main class="sheet">
+    <header class="masthead">
+      <div class="brand">Couchside</div>
+      <div class="eyebrow">Icon studies · Four directions</div>
+    </header>
+    <div class="round-link"><a href="round-2/index.html">Round 2: more depth, warmer color</a><span>New refinements of Soft Seat, Afterglow and Couchside C.</span></div>
+    <div class="intro">
+      <h1>Four ways to<br>feel at home.</h1>
+      <p class="intro-copy">A new set of app icon concepts, from a soft seat to a simple signature. <strong>Select a direction to preview its Home Screen and circular crops.</strong> These are comparison concepts; selecting one only changes this preview.</p>
+    </div>
+    <section class="grid" aria-label="Compare four app icon concepts">
+      <article class="concept is-selected" data-concept="01-soft-seat">
+        <button class="choice" aria-pressed="true" data-name="Soft Seat" data-description="A warm, welcoming sofa silhouette. Broad curves and generous cushions make the simplest expression of Couchside." aria-label="Preview Soft Seat">
+          <span class="number-row"><span>01 / The familiar</span><span class="selection-label">Selected</span></span>
+          <span class="art"><img class="hero-icon" src="01-soft-seat/icon-512.png" alt="Soft Seat icon: a warm amber sofa on charcoal" width="156" height="156"></span>
+          <h2>Soft Seat</h2>
+          <span class="description">An inviting sofa, reduced to soft curves and a confident silhouette.</span>
+        </button>
+        <div class="size-tests" aria-label="Actual size samples">
+          <figure class="size-test"><div class="sample-height"><img class="home-icon" src="01-soft-seat/apple-touch-icon.png" alt="Soft Seat at Home Screen size" width="60" height="60"></div><figcaption>Home Screen · 60 px</figcaption></figure>
+          <figure class="size-test"><div class="sample-height"><img class="favicon" src="01-soft-seat/favicon-16.png" alt="Soft Seat favicon at 16 pixels" width="16" height="16"></div><figcaption>16 px</figcaption></figure>
+          <figure class="size-test"><div class="sample-height"><img class="favicon" src="01-soft-seat/favicon-32.png" alt="Soft Seat favicon at 32 pixels" width="32" height="32"></div><figcaption>32 px</figcaption></figure>
+        </div>
+        <div class="downloads"><a href="01-soft-seat/icon-512.png" download>PNG · 512 px</a><a href="01-soft-seat/favicon.ico" download>Favicon</a></div>
+        <details><summary>All files &amp; source prompt</summary><div class="all-files"><a href="01-soft-seat/master.png" download>Original master</a><a href="01-soft-seat/icon-192.png" download>PNG · 192 px</a><a href="01-soft-seat/apple-touch-icon.png" download>Apple touch icon · 180 px</a><a href="01-soft-seat/icon-maskable-512.png" download>Maskable icon · 512 px</a><a href="01-soft-seat/favicon-32.png" download>Favicon PNG · 32 px</a><a href="01-soft-seat/favicon-16.png" download>Favicon PNG · 16 px</a><a href="01-soft-seat/prompt.txt">Source prompt</a></div></details>
+      </article>
+      <article class="concept" data-concept="02-screen-seat">
+        <button class="choice" aria-pressed="false" data-name="Screen Seat" data-description="A screen and a seat in one compact mark. Warm curves give the television a relaxed, comfortable character." aria-label="Preview Screen Seat">
+          <span class="number-row"><span>02 / The discovery</span><span class="selection-label">Selected</span></span>
+          <span class="art"><img class="hero-icon" src="02-screen-seat/icon-512.png" alt="Screen Seat icon: an amber screen and sofa emblem on charcoal" width="156" height="156"></span>
+          <h2>Screen Seat</h2>
+          <span class="description">The screen meets the sofa: a compact emblem for the next great show.</span>
+        </button>
+        <div class="size-tests" aria-label="Actual size samples">
+          <figure class="size-test"><div class="sample-height"><img class="home-icon" src="02-screen-seat/apple-touch-icon.png" alt="Screen Seat at Home Screen size" width="60" height="60"></div><figcaption>Home Screen · 60 px</figcaption></figure>
+          <figure class="size-test"><div class="sample-height"><img class="favicon" src="02-screen-seat/favicon-16.png" alt="Screen Seat favicon at 16 pixels" width="16" height="16"></div><figcaption>16 px</figcaption></figure>
+          <figure class="size-test"><div class="sample-height"><img class="favicon" src="02-screen-seat/favicon-32.png" alt="Screen Seat favicon at 32 pixels" width="32" height="32"></div><figcaption>32 px</figcaption></figure>
+        </div>
+        <div class="downloads"><a href="02-screen-seat/icon-512.png" download>PNG · 512 px</a><a href="02-screen-seat/favicon.ico" download>Favicon</a></div>
+        <details><summary>All files &amp; source prompt</summary><div class="all-files"><a href="02-screen-seat/master.png" download>Original master</a><a href="02-screen-seat/icon-192.png" download>PNG · 192 px</a><a href="02-screen-seat/apple-touch-icon.png" download>Apple touch icon · 180 px</a><a href="02-screen-seat/icon-maskable-512.png" download>Maskable icon · 512 px</a><a href="02-screen-seat/favicon-32.png" download>Favicon PNG · 32 px</a><a href="02-screen-seat/favicon-16.png" download>Favicon PNG · 16 px</a><a href="02-screen-seat/prompt.txt">Source prompt</a></div></details>
+      </article>
+      <article class="concept" data-concept="03-afterglow">
+        <button class="choice" aria-pressed="false" data-name="Afterglow" data-description="A sculptural amber sofa with quiet depth and soft studio light. The most tactile direction, with a clean silhouette at small sizes." aria-label="Preview Afterglow">
+          <span class="number-row"><span>03 / The atmosphere</span><span class="selection-label">Selected</span></span>
+          <span class="art"><img class="hero-icon" src="03-afterglow/icon-512.png" alt="Afterglow icon: a sculptural amber sofa on charcoal" width="156" height="156"></span>
+          <h2>Afterglow</h2>
+          <span class="description">A sculptural sofa with satin warmth, gentle light, and a little depth.</span>
+        </button>
+        <div class="size-tests" aria-label="Actual size samples">
+          <figure class="size-test"><div class="sample-height"><img class="home-icon" src="03-afterglow/apple-touch-icon.png" alt="Afterglow at Home Screen size" width="60" height="60"></div><figcaption>Home Screen · 60 px</figcaption></figure>
+          <figure class="size-test"><div class="sample-height"><img class="favicon" src="03-afterglow/favicon-16.png" alt="Afterglow favicon at 16 pixels" width="16" height="16"></div><figcaption>16 px</figcaption></figure>
+          <figure class="size-test"><div class="sample-height"><img class="favicon" src="03-afterglow/favicon-32.png" alt="Afterglow favicon at 32 pixels" width="32" height="32"></div><figcaption>32 px</figcaption></figure>
+        </div>
+        <div class="downloads"><a href="03-afterglow/icon-512.png" download>PNG · 512 px</a><a href="03-afterglow/favicon.ico" download>Favicon</a></div>
+        <details><summary>All files &amp; source prompt</summary><div class="all-files"><a href="03-afterglow/master.png" download>Original master</a><a href="03-afterglow/icon-192.png" download>PNG · 192 px</a><a href="03-afterglow/apple-touch-icon.png" download>Apple touch icon · 180 px</a><a href="03-afterglow/icon-maskable-512.png" download>Maskable icon · 512 px</a><a href="03-afterglow/favicon-32.png" download>Favicon PNG · 32 px</a><a href="03-afterglow/favicon-16.png" download>Favicon PNG · 16 px</a><a href="03-afterglow/prompt.txt">Source prompt</a></div></details>
+      </article>
+      <article class="concept" data-concept="04-couchside-c">
+        <button class="choice" aria-pressed="false" data-name="Couchside C" data-description="A bold geometric C with a subtle furniture character. Simple amber geometry gives Couchside a distinctive brand signature." aria-label="Preview Couchside C">
+          <span class="number-row"><span>04 / The signature</span><span class="selection-label">Selected</span></span>
+          <span class="art"><img class="hero-icon" src="04-couchside-c/icon-512.png" alt="Couchside C icon: a bold geometric amber C on charcoal" width="156" height="156"></span>
+          <h2>Couchside C</h2>
+          <span class="description">A furniture-inspired monogram: bold, compact, and unmistakably Couchside.</span>
+        </button>
+        <div class="size-tests" aria-label="Actual size samples">
+          <figure class="size-test"><div class="sample-height"><img class="home-icon" src="04-couchside-c/apple-touch-icon.png" alt="Couchside C at Home Screen size" width="60" height="60"></div><figcaption>Home Screen · 60 px</figcaption></figure>
+          <figure class="size-test"><div class="sample-height"><img class="favicon" src="04-couchside-c/favicon-16.png" alt="Couchside C favicon at 16 pixels" width="16" height="16"></div><figcaption>16 px</figcaption></figure>
+          <figure class="size-test"><div class="sample-height"><img class="favicon" src="04-couchside-c/favicon-32.png" alt="Couchside C favicon at 32 pixels" width="32" height="32"></div><figcaption>32 px</figcaption></figure>
+        </div>
+        <div class="downloads"><a href="04-couchside-c/icon-512.png" download>PNG · 512 px</a><a href="04-couchside-c/favicon.ico" download>Favicon</a></div>
+        <details><summary>All files &amp; source prompt</summary><div class="all-files"><a href="04-couchside-c/master.png" download>Original master</a><a href="04-couchside-c/icon-192.png" download>PNG · 192 px</a><a href="04-couchside-c/apple-touch-icon.png" download>Apple touch icon · 180 px</a><a href="04-couchside-c/icon-maskable-512.png" download>Maskable icon · 512 px</a><a href="04-couchside-c/favicon-32.png" download>Favicon PNG · 32 px</a><a href="04-couchside-c/favicon-16.png" download>Favicon PNG · 16 px</a><a href="04-couchside-c/prompt.txt">Source prompt</a></div></details>
+      </article>
+    </section>
+    <section class="preview" aria-label="Selected concept crop preview">
+      <div aria-live="polite" aria-atomic="true">
+        <div class="eyebrow">Selected crop preview</div>
+        <h3 id="selected-name">Soft Seat</h3>
+        <p id="selected-description">A warm, welcoming sofa silhouette. Broad curves and generous cushions make the simplest expression of Couchside.</p>
+      </div>
+      <div class="masks">
+        <figure class="mask-example"><img id="selected-home" class="round-square" src="01-soft-seat/apple-touch-icon.png" alt="Soft Seat in a rounded-square Home Screen crop" width="60" height="60"><span class="app-label">Couchside</span><figcaption>Home Screen<br>Rounded square · 60 px</figcaption></figure>
+        <figure class="mask-example"><img id="selected-android" class="circle" src="01-soft-seat/icon-maskable-512.png" alt="Soft Seat in a circular Android crop" width="60" height="60"><span class="app-label">Couchside</span><figcaption>Android<br>Circular mask · 60 px</figcaption></figure>
+      </div>
+    </section>
+    <footer class="footer"><span>One concept, consistent artwork across app icons and favicons.</span><span>Crop simulations are illustrative. Device icon shapes may vary.</span></footer>
+  </main>
+  <script>
+    document.querySelectorAll('.choice').forEach(button => {
+      button.addEventListener('click', () => {
+        const concept = button.closest('.concept');
+        document.querySelectorAll('.concept').forEach(card => {
+          const selected = card === concept;
+          card.classList.toggle('is-selected', selected);
+          card.querySelector('.choice').setAttribute('aria-pressed', String(selected));
+        });
+        const folder = concept.dataset.concept;
+        const name = button.dataset.name;
+        document.getElementById('selected-name').textContent = name;
+        document.getElementById('selected-description').textContent = button.dataset.description;
+        const home = document.getElementById('selected-home');
+        home.src = folder + '/apple-touch-icon.png';
+        home.alt = name + ' in a rounded-square Home Screen crop';
+        const android = document.getElementById('selected-android');
+        android.src = folder + '/icon-maskable-512.png';
+        android.alt = name + ' in a circular Android crop';
+      });
+    });
+  </script>
+</body>
+</html>

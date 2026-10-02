@@ -42,25 +42,26 @@ MODULES = ('engine.py', 'taste.py', 'titles.py', 'fallback.py', 'follow.py', 'fa
            'starters.py')
 BRAND = ('favicon.ico', 'favicon.svg', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png',
          'icon-maskable-512.png', 'og.jpg', 'tmdb.svg')
+ICONS = ('favicon.ico', 'favicon.svg', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png',
+         'icon-maskable-512.png')
 # What the service worker keeps with the page, whatever the app's files come to be, and
 # what the page and the offline page show besides.
 KEPT = (*OWN, *SHARED, 'offline.html', 'favicon.svg', 'icon-192.png', 'tmdb.svg')
-def manifest(description):
+def manifest(description, versions):
     return {
     'id': '/', 'name': 'Couchside', 'short_name': 'Couchside', 'description': description,
     'start_url': '/', 'scope': '/', 'display': 'standalone', 'orientation': 'any',
     'background_color': '#141414', 'theme_color': '#141414', 'lang': 'en', 'dir': 'ltr',
     'categories': ['entertainment', 'lifestyle'],
     'icons': [
-        {'src': '/icon-192.png', 'sizes': '192x192', 'type': 'image/png', 'purpose': 'any'},
-        {'src': '/icon-512.png', 'sizes': '512x512', 'type': 'image/png', 'purpose': 'any'},
-        {'src': '/icon-maskable-512.png', 'sizes': '512x512', 'type': 'image/png', 'purpose': 'maskable'},
-        {'src': '/favicon.svg', 'sizes': 'any', 'type': 'image/svg+xml'},
+        {'src': f'/icon-192.png?v={versions["icon-192.png"]}', 'sizes': '192x192', 'type': 'image/png', 'purpose': 'any'},
+        {'src': f'/icon-512.png?v={versions["icon-512.png"]}', 'sizes': '512x512', 'type': 'image/png', 'purpose': 'any'},
+        {'src': f'/icon-maskable-512.png?v={versions["icon-maskable-512.png"]}', 'sizes': '512x512', 'type': 'image/png', 'purpose': 'maskable'},
     ],
     # A long press on the installed icon offers these, Search first; a short name fits under an icon.
     'shortcuts': [
         {'name': name, 'short_name': short, 'url': url,
-         'icons': [{'src': '/icon-192.png', 'sizes': '192x192', 'type': 'image/png'}]}
+         'icons': [{'src': f'/icon-192.png?v={versions["icon-192.png"]}', 'sizes': '192x192', 'type': 'image/png'}]}
         for name, short, url in (('Search', 'Search', '/search'), ('My List', 'My List', '/list'),
                                  ('Browse', 'Browse', '/browse'), ('New & Popular', 'New', '/new'))
     ],
@@ -68,8 +69,8 @@ def manifest(description):
 ROBOTS = 'User-agent: *\nDisallow: /api/\n'
 # A module's imports of the others beside it: from './x.js', import './x.js' and import('./x.js').
 IMPORT = re.compile(r'''(\b(?:from|import)\s*\(?\s*['"])\./([\w.-]+\.js)(['"])''')
-# The page's own scripts and styles, which it asks for by their versions.
-LINKED = re.compile(r'''\b(src|href)="/([\w.-]+\.(?:js|css))"''')
+# The page's own scripts, styles and icons, which it asks for by their versions.
+LINKED = re.compile(r'''\b(src|href)="/([\w.-]+\.(?:js|css|ico|svg|png))"''')
 SCRIPT = '<script type="module" src="/main.js"></script>'
 # The two pages the app serves without itself: a path that leads nowhere, and no connection.
 LOOSE = '''<!doctype html>
@@ -80,7 +81,7 @@ LOOSE = '''<!doctype html>
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#141414">
 <title>{title} · Couchside</title>
-<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v={icon}">
 <link rel="stylesheet" href="/style.css?v={style}">
 </head>
 <body class="loose">
@@ -162,13 +163,14 @@ def main():
     needs = imports([name for name in (*OWN, *SHARED) if name.endswith('.js')])
     versions = version_modules(needs)
     versions['style.css'] = digest((PUBLIC / 'style.css').read_bytes())
-    (PUBLIC / 'manifest.webmanifest').write_text(json.dumps(manifest(DESCRIPTION), indent=2, ensure_ascii=False) + '\n')
+    versions.update({name: digest((PUBLIC / name).read_bytes()) for name in ICONS})
+    (PUBLIC / 'manifest.webmanifest').write_text(json.dumps(manifest(DESCRIPTION, versions), indent=2, ensure_ascii=False) + '\n')
     (PUBLIC / 'robots.txt').write_text(ROBOTS)
     (PUBLIC / '404.html').write_text(LOOSE.format(
-        title='Lost your way?', action='Couchside home', style=versions['style.css'],
+        title='Lost your way?', action='Couchside home', style=versions['style.css'], icon=versions['favicon.svg'],
         body='There is nothing at this address. Everything worth watching starts on the home page.'))
     (PUBLIC / 'offline.html').write_text(LOOSE.format(
-        title='You are offline', action='Try again', style=versions['style.css'],
+        title='You are offline', action='Try again', style=versions['style.css'], icon=versions['favicon.svg'],
         body='Couchside needs a connection to find shows for you. Your ratings and My List are safe on this device.'))
 
     page = (HERE / 'index.template.html').read_text().replace('__DESCRIPTION__', DESCRIPTION)

@@ -1815,8 +1815,9 @@ check('a HEAD for nothing is a bodiless 404', status == 404 and body == b'')
 status, headers, body = fetch('/', method='HEAD')
 check('a HEAD for the page answers without a body', status == 200 and body == b'' and int(headers['Content-Length']) > 1000)
 check('the page links its icons and manifest', all(tag in page_root for tag in (
-    b'rel="manifest" href="/manifest.webmanifest"', b'rel="apple-touch-icon" href="/apple-touch-icon.png"',
-    b'href="/favicon.ico"', b'name="apple-mobile-web-app-capable" content="yes"')))
+    b'rel="manifest" href="/manifest.webmanifest"', b'name="apple-mobile-web-app-capable" content="yes"'))
+    and re.search(rb'rel="apple-touch-icon" href="/apple-touch-icon\.png\?v=[0-9a-f]{16}" sizes="180x180"', page_root)
+    and re.search(rb'href="/favicon\.ico\?v=[0-9a-f]{16}"', page_root))
 check('no build placeholder survives', not re.search(rb'__[A-Z_]+__', page_root))
 check('iOS never zooms into a field, and the page runs under the notch',
       b'initial-scale=1, maximum-scale=1, viewport-fit=cover' in page_root and b'user-scalable' not in page_root)
@@ -1849,7 +1850,8 @@ check('the manifest can be installed', manifest['display'] == 'standalone' and m
       and {'192x192', '512x512'} <= {i['sizes'] for i in manifest['icons']}
       and any(i.get('purpose') == 'maskable' for i in manifest['icons']))
 check('every manifest icon and shortcut resolves', all(fetch(i['src'])[0] == 200 for i in manifest['icons'])
-      and all(fetch(sc['url'])[0] == 200 for sc in manifest['shortcuts']))
+      and all(fetch(sc['url'])[0] == 200 and all(fetch(i['src'])[0] == 200 for i in sc['icons'])
+              for sc in manifest['shortcuts']))
 check('the manifest offers its shortcuts, Search first', [sc['url'] for sc in manifest['shortcuts']] == ['/search', '/list', '/browse', '/new']
       and all(0 < len(sc['short_name']) <= 12 for sc in manifest['shortcuts']))
 for path, kind in [('/favicon.ico', 'image/x-icon'), ('/favicon.svg', 'image/svg+xml'), ('/apple-touch-icon.png', 'image/png'),
@@ -1949,14 +1951,18 @@ check('a picture is not gzipped again', status == 200 and headers.get('Content-E
       and body.startswith(b'\x89PNG'))
 check('an error goes whole', fetch('/api/extra?id=abc', headers=GZ)[1].get('Content-Encoding') is None)
 
-# The page asks for its styles and scripts by the hash of what they hold, and each import
+# The page asks for its styles, scripts and icons by the hash of what they hold, and each import
 # between the scripts names the hash of the module it imports, so an address means the same
-# bytes for as long as it is asked for: those are kept a year, and the same files by their
-# plain names are checked each time, as the page is.
+# bytes for as long as it is asked for: those are kept a year. Plain scripts and styles
+# are checked each time, as the page is; plain icons are kept a day.
 kept_for_a_year = 'public, max-age=31536000, immutable'
 asked_by_hash = re.findall(rb'(?:src|href)="/([\w.-]+\.(?:js|css))\?v=([0-9a-f]{16})"', page_root)
 imports_by_hash = [(name, version) for source in ('main.js', 'starters.js', 'start.js')
                    for name, version in re.findall(rb"from '\./([\w.-]+\.js)\?v=([0-9a-f]{16})'", fetch(f'/{source}')[2])]
+icons_by_hash = re.findall(rb'href="/([\w.-]+\.(?:ico|svg|png))\?v=([0-9a-f]{16})"', page_root)
+manifest_icons = [*manifest['icons'], *(i for sc in manifest['shortcuts'] for i in sc['icons'])]
+icons_by_hash.extend((name.encode(), version.encode()) for icon in manifest_icons
+                     for name, version in re.findall(r'^/([\w.-]+\.png)\?v=([0-9a-f]{16})$', icon['src']))
 check('the page asks for its styles, main.js and every module main.js imports by their hashes, beside main.js',
       {name.decode() for name, _version in asked_by_hash} == {'style.css', 'main.js', *imported}
       and page_root.count(b'rel="modulepreload"') + page_root.count(b'<script type="module" async') == len(imported),
@@ -1967,7 +1973,7 @@ check('and every import between them names the hash of the module it imports',
       {name.decode() for name, _version in imports_by_hash} == set(imported)
       and not any(re.search(rb"""(?:from|import)\s*\(?\s*['"]\./[\w.-]+\.js['"]""", fetch(f'/{name}')[2])
                   for name in ('main.js', *imported)))
-for name, version in dict.fromkeys(asked_by_hash + imports_by_hash):
+for name, version in dict.fromkeys(asked_by_hash + imports_by_hash + icons_by_hash):
     status, headers, body = fetch(f'/{name.decode()}?v={version.decode()}')
     check(f'/{name.decode()} by its hash is those very bytes, kept a year', status == 200
           and hashlib.sha256(body).hexdigest()[:16] == version.decode() and headers.get('Cache-Control') == kept_for_a_year)
@@ -1979,8 +1985,9 @@ check('by a hash that is not its own it is checked every time too', fetch('/main
 check('the service worker is always checked', fetch('/sw.js')[1].get('Cache-Control') == 'no-cache')
 check('icons and pictures by their plain names are kept a day', all(
     fetch(path)[1].get('Cache-Control') == 'public, max-age=86400' for path in ('/icon-192.png', '/og.jpg', '/favicon.svg', '/tmdb.svg')))
-check('the pages served without the app ask for the styles by their hash too', all(
-    f'href="/style.css?v={hashlib.sha256(fetch("/style.css")[2]).hexdigest()[:16]}"'.encode() in fetch(path)[2]
+check('the pages served without the app ask for the styles and favicon by their hashes too', all(
+    all(f'href="/{name}?v={hashlib.sha256(fetch(f"/{name}")[2]).hexdigest()[:16]}"'.encode() in fetch(path)[2]
+        for name in ('style.css', 'favicon.svg'))
     for path in ('/nope', '/offline.html')))
 check('robots stay out of the api', b'Disallow: /api/' in fetch('/robots.txt')[2])
 check('powerful features are switched off', 'camera=()' in fetch('/')[1].get('Permissions-Policy', ''))

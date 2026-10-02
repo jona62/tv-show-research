@@ -232,10 +232,10 @@ JSON answers, SVG and the manifest. Hover descriptions make the card responses
 larger; the release fixture's home page compresses from 140 KB to 41 KB. Each file
 is gzipped once and kept, every answer says it varies by
 Accept-Encoding, and gzipped bytes carry their own ETag. The page asks for its
-scripts and styles by the hash of what they hold (`/main.js?v=...`, written by
+scripts, styles and icons by the hash of what they hold (`/main.js?v=...`, written by
 `build.py`, which also names each module's hash in the imports between them), so
-those addresses are kept a year; the same files by their plain names, the page and
-the service worker are checked every time, and icons are kept a day. The page lists
+those addresses are kept a year; unversioned scripts and styles, the page and the
+service worker are checked every time, and unversioned icons are kept a day. The page lists
 every module `main.js` imports, so they load beside it, and the service worker takes
 the files the page has just loaded from the browser's cache rather than again. A
 small module, `start.js`, reads the list, begins the tab's visit when it has none
@@ -260,11 +260,18 @@ the page and is pushed away. The skeletons shimmer, and hold still under reduced
 motion; the rows still to come at the foot of the home page shimmer only while they
 are on screen.
 
-`brand/` holds the icon as SVG, drawn twice: an outline sofa for 16 to 48 pixels
-and a fuller one for home screens. `brand/make.py` renders the favicon, Apple and
-Android icons, the maskable icon and the share image, which lays real posters out
-in headless Chrome. It needs rsvg-convert, ImageMagick and Chrome, and runs by
-hand; the outputs are committed and `build.py` copies them into `public/`.
+`brand/icon-master.png` holds the selected Afterglow Ember sofa artwork, with its
+ImageGen prompt in `brand/icon-prompt.txt`. The favicon and home-screen icons use
+the same opaque, full-bleed composition; each platform applies its own corners or
+mask. `brand/make.py` derives every icon size from the raster master with
+ImageMagick and renders the share image's poster wall in headless Chrome. The SVG
+files embed the same artwork, with a compact 128-pixel image for the favicon. The
+script needs ImageMagick and Chrome and runs by hand; the outputs are committed
+and `build.py` copies them into `public/`.
+`build.py` versions the icon URLs by their content, including manifest shortcuts,
+so a changed icon gets a fresh address. The manifest offers the app-size PNGs;
+the browser favicon is linked separately. An existing iOS Home Screen installation
+may need to be added again to pick up a changed icon.
 `brand/tmdb.svg` is TMDB's own logo, fetched unchanged from themoviedb.org for
 the credit TMDB asks for, and copied the same way.
 

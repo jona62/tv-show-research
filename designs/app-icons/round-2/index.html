@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f3e9">
+  <title>Couchside — depth studies</title>
+  <style>
+    :root { color-scheme: light; --paper:#f7f3e9; --ink:#252720; --muted:#6c6d60; --rule:#d9d5c7; --accent:#bb4c2d; --soft:#ede7d7; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font-family:"Avenir Next","Trebuchet MS",sans-serif; font-size:15px; line-height:1.5; }
+    button, a { -webkit-tap-highlight-color:transparent; }
+    a { color:inherit; text-underline-offset:4px; text-decoration-thickness:1px; }
+    a:hover { color:var(--accent); }
+    button:focus-visible, a:focus-visible, summary:focus-visible { outline:3px solid var(--accent); outline-offset:5px; }
+    .sheet { width:min(1376px,100%); margin:auto; padding:32px 48px 30px; }
+    .masthead { display:flex; align-items:baseline; justify-content:space-between; gap:24px; border-bottom:1px solid var(--ink); padding-bottom:18px; }
+    .brand { font-family:Georgia,serif; font-size:26px; letter-spacing:-.8px; }
+    .eyebrow { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:2px; }
+    .intro { display:grid; grid-template-columns:1.1fr 1fr; align-items:end; gap:80px; padding:46px 0 44px; }
+    h1 { font-family:Georgia,serif; font-size:clamp(36px,4.5vw,62px); line-height:1.06; letter-spacing:-2.4px; font-weight:400; margin:0; max-width:580px; }
+    .intro-copy { margin:0 0 3px; max-width:465px; color:var(--muted); font-size:15px; line-height:1.7; }
+    .intro-copy strong { color:var(--ink); font-weight:500; }
+    .grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:28px; }
+    .concept { min-width:0; border-top:1px solid var(--rule); padding-top:15px; }
+    .concept.is-selected { border-top-color:var(--accent); }
+    .choice { width:100%; border:0; padding:0; text-align:left; cursor:pointer; background:none; color:inherit; font:inherit; }
+    .number-row { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:20px; margin-bottom:23px; font-size:10px; letter-spacing:1.1px; text-transform:uppercase; color:var(--muted); }
+    .selection-label { visibility:hidden; color:var(--accent); letter-spacing:.5px; }
+    .is-selected .selection-label { visibility:visible; }
+    .is-chosen .selection-label { visibility:visible; }
+    .chosen-note { display:block; color:var(--accent); font-size:12px; margin-top:12px; }
+    .art { display:grid; place-items:center; margin:0 0 22px; min-height:170px; }
+    .hero-icon { width:156px; height:156px; border-radius:24%; display:block; box-shadow:0 7px 12px -9px #25272080; transition:transform .2s ease; }
+    .choice:hover .hero-icon { transform:translateY(-4px); }
+    .concept-name { display:block; min-height:60px; font-family:Georgia,serif; font-size:26px; font-weight:400; line-height:1.15; letter-spacing:-.5px; margin:0 0 10px; }
+    .description { display:block; color:var(--muted); font-size:13px; line-height:1.65; min-height:65px; }
+    .size-tests { display:flex; align-items:flex-end; gap:18px; border-top:1px solid var(--rule); margin-top:18px; padding-top:17px; }
+    .size-test { margin:0; min-width:0; }
+    .sample-height { height:60px; display:flex; align-items:center; }
+    .home-icon { width:60px; height:60px; border-radius:24%; display:block; }
+    .favicon { display:block; image-rendering:auto; }
+    figcaption { margin-top:9px; color:var(--muted); font-size:9px; line-height:1.4; white-space:nowrap; }
+    .downloads { margin:20px 0 5px; font-size:11px; display:flex; flex-wrap:wrap; gap:8px 16px; }
+    details { margin:9px 0 0; color:var(--muted); font-size:11px; }
+    summary { cursor:pointer; width:fit-content; }
+    .all-files { display:flex; flex-direction:column; align-items:flex-start; gap:8px; margin:12px 0 0; }
+    .preview { margin-top:44px; padding:29px 32px; background:var(--soft); display:grid; grid-template-columns:1.3fr 1fr; gap:32px; align-items:center; }
+    .preview h3 { font-family:Georgia,serif; font-size:32px; line-height:1.15; font-weight:400; letter-spacing:-.8px; margin:8px 0 10px; }
+    .preview p { margin:0; color:var(--muted); font-size:13px; max-width:480px; line-height:1.7; }
+    .masks { display:flex; align-items:flex-start; justify-content:flex-end; gap:48px; }
+    .mask-example { margin:0; width:100px; text-align:center; }
+    .mask-example img { display:block; width:60px; height:60px; margin:0 auto; }
+    .mask-example .round-square { border-radius:24%; }
+    .mask-example .circle { border-radius:50%; }
+    .app-label { display:block; font-size:11px; margin-top:9px; color:var(--ink); }
+    .mask-example figcaption { margin-top:8px; white-space:normal; }
+    .footer { display:flex; justify-content:space-between; gap:32px; padding-top:20px; color:var(--muted); font-size:10px; }
+    @media (max-width:1050px) { .sheet { padding:28px 32px; } .grid { gap:20px; } .hero-icon { width:140px; height:140px; } .size-tests { gap:12px; } .intro { gap:40px; } }
+    @media (max-width:860px) { .grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:34px 32px; } .hero-icon { width:164px; height:164px; } .description { min-height:44px; } .concept-name { min-height:60px; } .intro { gap:24px; } .preview { grid-template-columns:1fr 1fr; padding:26px; } .masks { gap:18px; } }
+    @media (max-width:560px) { .sheet { padding:22px 20px; } .masthead { padding-bottom:15px; } .brand { font-size:24px; } .masthead .eyebrow { font-size:8px; letter-spacing:1.3px; } .intro { display:block; padding:31px 0; } h1 { font-size:42px; letter-spacing:-1.7px; max-width:340px; } .intro-copy { margin-top:20px; font-size:13px; } .grid { gap:28px 20px; } .art { min-height:140px; margin-bottom:18px; } .hero-icon { width:140px; height:140px; } .concept-name { display:block; min-height:60px; font-size:23px; } .description { font-size:12px; min-height:79px; } .number-row { margin-bottom:15px; font-size:9px; letter-spacing:.5px; } .size-tests { gap:9px; } .home-icon { width:60px; height:60px; } figcaption { font-size:8px; } .downloads { gap:8px 13px; } .preview { display:block; margin-top:34px; padding:24px 22px; } .preview h3 { font-size:29px; } .masks { justify-content:flex-start; gap:28px; margin-top:25px; } .footer { display:block; line-height:1.6; } .footer span { display:block; margin-top:5px; } }
+    @media (max-width:370px) { .sheet { padding-left:16px; padding-right:16px; } .grid { gap:28px 16px; } .hero-icon { width:128px; height:128px; } .size-tests { gap:7px; } .size-test:first-child figcaption { max-width:60px; white-space:normal; } }
+    @media (prefers-reduced-motion:reduce) { .hero-icon { transition:none; } }
+
+    .back-link { font-size:11px; letter-spacing:.2px; }
+    .reference { display:flex; align-items:center; gap:20px; padding:19px 0; border-top:1px solid var(--rule); border-bottom:1px solid var(--rule); margin:0 0 34px; }
+    .reference img { width:60px; height:60px; border-radius:24%; display:block; }
+    .reference-copy { max-width:460px; }
+    .reference-copy p { font-size:12px; line-height:1.6; color:var(--muted); margin:4px 0 0; }
+    .palette { margin-left:auto; display:flex; align-items:center; gap:16px; }
+    .palette-swatch { width:120px; height:16px; border-radius:2px; background:linear-gradient(90deg,#ffc53d,#ff6a3d); }
+    .palette-values { font-size:10px; line-height:1.8; color:var(--muted); }
+    .evolution { display:flex; align-items:center; gap:15px; margin-top:16px; padding-top:15px; border-top:1px solid var(--rule); }
+    .evolution figure { margin:0; }
+    .evolution img { display:block; width:44px; height:44px; border-radius:24%; }
+    .evolution figcaption { font-size:9px; margin-top:5px; }
+    .evolution-line { width:24px; height:1px; background:var(--rule); margin-bottom:18px; }
+    .visually-hidden { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+    @media (max-width:560px) { .reference { gap:15px; flex-wrap:wrap; padding:17px 0; margin-bottom:27px; } .reference-copy { flex:1; } .reference .eyebrow { font-size:9px; letter-spacing:1.2px; } .palette { margin:0 0 0 75px; gap:12px; } .palette-swatch { width:95px; } .concept-name { font-size:23px; min-height:54px; } .description { min-height:80px; } .evolution { gap:10px; } }
+  </style>
+</head>
+<body>
+  <main class="sheet">
+    <header class="masthead">
+      <div class="brand">Couchside</div>
+      <a class="back-link" href="../index.html">View the first round</a>
+    </header>
+    <div class="intro">
+      <h1>More depth.<br>Same warm welcome.</h1>
+      <p class="intro-copy">Four refinements of Soft Seat, Afterglow and Couchside C, with more sculptural depth and today’s amber-to-coral palette. <strong>Select a direction to preview its Home Screen and circular crops.</strong> Selection only changes this comparison preview.<span class="chosen-note">Selected for Couchside: <strong>Afterglow Ember</strong></span></p>
+    </div>
+    <aside class="reference" aria-label="Current app icon and color reference">
+      <img src="current-icon.png" alt="Current Couchside app icon, used as the palette reference" width="60" height="60">
+      <div class="reference-copy"><div class="eyebrow">Today’s icon / Color reference</div><p>The current warm palette guides this round: amber highlights, coral shading, and a charcoal backdrop.</p></div>
+      <div class="palette"><span class="palette-swatch" aria-hidden="true"></span><span class="palette-values">Amber #ffc53d<br>Coral #ff6a3d</span></div>
+    </aside>
+    <section class="grid" aria-labelledby="options-heading">
+      <h2 class="visually-hidden" id="options-heading">Four refined app icon concepts</h2>
+      <article class="concept" data-concept="05-soft-seat-studio" aria-label="Soft Seat Studio">
+        <button class="choice" aria-pressed="false" data-name="Soft Seat Studio" data-description="Soft Seat takes on a sculptural finish. Rounded cushions, amber highlights and coral shading add depth to the familiar sofa silhouette." aria-label="Preview Soft Seat Studio">
+          <span class="number-row"><span>05 / Refined</span><span class="selection-label">Preview</span></span>
+          <span class="art"><img class="hero-icon" src="05-soft-seat-studio/icon-512.png" alt="Soft Seat Studio icon: a sculpted amber-to-coral sofa on charcoal" width="156" height="156"></span>
+          <span class="concept-name">Soft Seat Studio</span>
+          <span class="description">The welcoming silhouette, shaped into a tactile seat with warmer light and deeper shadows.</span>
+        </button>
+        <div class="evolution" aria-label="Original and refined concept comparison">
+          <figure><img src="../01-soft-seat/icon-512.png" alt="Original Soft Seat concept" width="44" height="44"><figcaption>Original</figcaption></figure>
+          <span class="evolution-line" aria-hidden="true"></span>
+          <figure><img src="05-soft-seat-studio/icon-512.png" alt="Refined Soft Seat Studio concept" width="44" height="44"><figcaption>Refined</figcaption></figure>
+        </div>
+        <div class="size-tests" aria-label="Actual size samples">
+          <figure class="size-test"><div class="sample-height"><img class="home-icon" src="05-soft-seat-studio/apple-touch-icon.png" alt="Soft Seat Studio at Home Screen size" width="60" height="60"></div><figcaption>Home Screen · 60 px</figcaption></figure>
+          <figure class="size-test"><div class="sample-height"><img class="favicon" src="05-soft-seat-studio/favicon-16.png" alt="Soft Seat Studio favicon at 16 pixels" width="16" height="16"></div><figcaption>16 px</figcaption></figure>
+          <figure class="size-test"><div class="sample-height"><img class="favicon" src="05-soft-seat-studio/favicon-32.png" alt="Soft Seat Studio favicon at 32 pixels" width="32" height="32"></div><figcaption>32 px</figcaption></figure>
+        </div>
+        <div class="downloads"><a href="05-soft-seat-studio/icon-512.png" download>PNG · 512 px</a><a href="05-soft-seat-studio/favicon.ico" download>Favicon</a></div>
+        <details><summary>All files &amp; source prompt</summary><div class="all-files"><a href="05-soft-seat-studio/master.png" download>Original master</a><a href="05-soft-seat-studio/icon-192.png" download>PNG · 192 px</a><a href="05-soft-seat-studio/apple-touch-icon.png" download>Apple touch icon · 180 px</a><a href="05-soft-seat-studio/icon-maskable-512.png" download>Maskable icon · 512 px</a><a href="05-soft-seat-studio/favicon-48.png" download>Favicon PNG · 48 px</a><a href="05-soft-seat-studio/favicon-32.png" download>Favicon PNG · 32 px</a><a href="05-soft-seat-studio/favicon-16.png" download>Favicon PNG · 16 px</a><a href="05-soft-seat-studio/prompt.txt">Source prompt</a></div></details>
+      </article>
+      <article class="concept is-selected is-chosen" data-concept="06-afterglow-ember" aria-label="Afterglow Ember">
+        <button class="choice" aria-pressed="true" data-name="Afterglow Ember" data-description="Afterglow returns with stronger volume and a richer amber-to-coral finish. Soft lighting brings out the cushions, arms and base." aria-label="Preview Afterglow Ember">
+          <span class="number-row"><span>06 / Refined</span><span class="selection-label">Chosen</span></span>
+          <span class="art"><img class="hero-icon" src="06-afterglow-ember/icon-512.png" alt="Afterglow Ember icon: an amber sofa with coral shading on charcoal" width="156" height="156"></span>
+          <span class="concept-name">Afterglow Ember</span>
+          <span class="description">A richer studio-lit sofa, with amber high points and a coral warmth through the lower surfaces.</span>
+        </button>
+        <div class="evolution" aria-label="Original and refined concept comparison">
+          <figure><img src="../03-afterglow/icon-512.png" alt="Original Afterglow concept" width="44" height="44"><figcaption>Original</figcaption></figure>
+          <span class="evolution-line" aria-hidden="true"></span>
+          <figure><img src="06-afterglow-ember/icon-512.png" alt="Refined Afterglow Ember concept" width="44" height="44"><figcaption>Refined</figcaption></figure>
+        </div>
+        <div class="size-tests" aria-label="Actual size samples">
+          <figure class="size-test"><div class="sample-height"><img class="home-icon" src="06-afterglow-ember/apple-touch-icon.png" alt="Afterglow Ember at Home Screen size" width="60" height="60"></div><figcaption>Home Screen · 60 px</figcaption></figure>
+          <figure class="size-test"><div class="sample-height"><img class="favicon" src="06-afterglow-ember/favicon-16.png" alt="Afterglow Ember favicon at 16 pixels" width="16" height="16"></div><figcaption>16 px</figcaption></figure>
+          <figure class="size-test"><div class="sample-height"><img class="favicon" src="06-afterglow-ember/favicon-32.png" alt="Afterglow Ember favicon at 32 pixels" width="32" height="32"></div><figcaption>32 px</figcaption></figure>
+        </div>
+        <div class="downloads"><a href="06-afterglow-ember/icon-512.png" download>PNG · 512 px</a><a href="06-afterglow-ember/favicon.ico" download>Favicon</a></div>
+        <details><summary>All files &amp; source prompt</summary><div class="all-files"><a href="06-afterglow-ember/master.png" download>Original master</a><a href="06-afterglow-ember/icon-192.png" download>PNG · 192 px</a><a href="06-afterglow-ember/apple-touch-icon.png" download>Apple touch icon · 180 px</a><a href="06-afterglow-ember/icon-maskable-512.png" download>Maskable icon · 512 px</a><a href="06-afterglow-ember/favicon-48.png" download>Favicon PNG · 48 px</a><a href="06-afterglow-ember/favicon-32.png" download>Favicon PNG · 32 px</a><a href="06-afterglow-ember/favicon-16.png" download>Favicon PNG · 16 px</a><a href="06-afterglow-ember/prompt.txt">Source prompt</a></div></details>
+      </article>
+      <article class="concept" data-concept="07-sculpted-c" aria-label="Sculpted C">
+        <button class="choice" aria-pressed="false" data-name="Sculpted C" data-description="The C monogram becomes a sculpted object. Rounded edges and a warm amber-to-coral finish add substance while preserving a clear letterform." aria-label="Preview Sculpted C">
+          <span class="number-row"><span>07 / Refined</span><span class="selection-label">Preview</span></span>
+          <span class="art"><img class="hero-icon" src="07-sculpted-c/icon-512.png" alt="Sculpted C icon: a dimensional amber-to-coral C monogram on charcoal" width="156" height="156"></span>
+          <span class="concept-name">Sculpted C</span>
+          <span class="description">A bold C with beveled volume: a clean brand mark, now with a more dimensional finish.</span>
+        </button>
+        <div class="evolution" aria-label="Original and refined concept comparison">
+          <figure><img src="../04-couchside-c/icon-512.png" alt="Original Couchside C concept" width="44" height="44"><figcaption>Original</figcaption></figure>
+          <span class="evolution-line" aria-hidden="true"></span>
+          <figure><img src="07-sculpted-c/icon-512.png" alt="Refined Sculpted C concept" width="44" height="44"><figcaption>Refined</figcaption></figure>
+        </div>
+        <div class="size-tests" aria-label="Actual size samples">
+          <figure class="size-test"><div class="sample-height"><img class="home-icon" src="07-sculpted-c/apple-touch-icon.png" alt="Sculpted C at Home Screen size" width="60" height="60"></div><figcaption>Home Screen · 60 px</figcaption></figure>
+          <figure class="size-test"><div class="sample-height"><img class="favicon" src="07-sculpted-c/favicon-16.png" alt="Sculpted C favicon at 16 pixels" width="16" height="16"></div><figcaption>16 px</figcaption></figure>
+          <figure class="size-test"><div class="sample-height"><img class="favicon" src="07-sculpted-c/favicon-32.png" alt="Sculpted C favicon at 32 pixels" width="32" height="32"></div><figcaption>32 px</figcaption></figure>
+        </div>
+        <div class="downloads"><a href="07-sculpted-c/icon-512.png" download>PNG · 512 px</a><a href="07-sculpted-c/favicon.ico" download>Favicon</a></div>
+        <details><summary>All files &amp; source prompt</summary><div class="all-files"><a href="07-sculpted-c/master.png" download>Original master</a><a href="07-sculpted-c/icon-192.png" download>PNG · 192 px</a><a href="07-sculpted-c/apple-touch-icon.png" download>Apple touch icon · 180 px</a><a href="07-sculpted-c/icon-maskable-512.png" download>Maskable icon · 512 px</a><a href="07-sculpted-c/favicon-48.png" download>Favicon PNG · 48 px</a><a href="07-sculpted-c/favicon-32.png" download>Favicon PNG · 32 px</a><a href="07-sculpted-c/favicon-16.png" download>Favicon PNG · 16 px</a><a href="07-sculpted-c/prompt.txt">Source prompt</a></div></details>
+      </article>
+      <article class="concept" data-concept="08-cushion-c" aria-label="Cushion C">
+        <button class="choice" aria-pressed="false" data-name="Cushion C" data-description="A furniture-inspired C with a cushioned character. Soft forms and warm color explore a more tactile version of the signature mark." aria-label="Preview Cushion C">
+          <span class="number-row"><span>08 / Refined</span><span class="selection-label">Preview</span></span>
+          <span class="art"><img class="hero-icon" src="08-cushion-c/icon-512.png" alt="Cushion C icon: a softly cushioned amber-to-coral C monogram on charcoal" width="156" height="156"></span>
+          <span class="concept-name">Cushion C</span>
+          <span class="description">A softer, upholstered take on the C, bringing the monogram closer to a comfortable seat.</span>
+        </button>
+        <div class="evolution" aria-label="Original and refined concept comparison">
+          <figure><img src="../04-couchside-c/icon-512.png" alt="Original Couchside C concept" width="44" height="44"><figcaption>Original</figcaption></figure>
+          <span class="evolution-line" aria-hidden="true"></span>
+          <figure><img src="08-cushion-c/icon-512.png" alt="Refined Cushion C concept" width="44" height="44"><figcaption>Refined</figcaption></figure>
+        </div>
+        <div class="size-tests" aria-label="Actual size samples">
+          <figure class="size-test"><div class="sample-height"><img class="home-icon" src="08-cushion-c/apple-touch-icon.png" alt="Cushion C at Home Screen size" width="60" height="60"></div><figcaption>Home Screen · 60 px</figcaption></figure>
+          <figure class="size-test"><div class="sample-height"><img class="favicon" src="08-cushion-c/favicon-16.png" alt="Cushion C favicon at 16 pixels" width="16" height="16"></div><figcaption>16 px</figcaption></figure>
+          <figure class="size-test"><div class="sample-height"><img class="favicon" src="08-cushion-c/favicon-32.png" alt="Cushion C favicon at 32 pixels" width="32" height="32"></div><figcaption>32 px</figcaption></figure>
+        </div>
+        <div class="downloads"><a href="08-cushion-c/icon-512.png" download>PNG · 512 px</a><a href="08-cushion-c/favicon.ico" download>Favicon</a></div>
+        <details><summary>All files &amp; source prompt</summary><div class="all-files"><a href="08-cushion-c/master.png" download>Original master</a><a href="08-cushion-c/icon-192.png" download>PNG · 192 px</a><a href="08-cushion-c/apple-touch-icon.png" download>Apple touch icon · 180 px</a><a href="08-cushion-c/icon-maskable-512.png" download>Maskable icon · 512 px</a><a href="08-cushion-c/favicon-48.png" download>Favicon PNG · 48 px</a><a href="08-cushion-c/favicon-32.png" download>Favicon PNG · 32 px</a><a href="08-cushion-c/favicon-16.png" download>Favicon PNG · 16 px</a><a href="08-cushion-c/prompt.txt">Source prompt</a></div></details>
+      </article>
+    </section>
+    <section class="preview" aria-label="Selected concept crop preview">
+      <div aria-live="polite" aria-atomic="true">
+        <div class="eyebrow">Selected crop preview</div>
+        <h2 id="selected-name" style="font-family:Georgia,serif;font-size:32px;line-height:1.15;font-weight:400;letter-spacing:-.8px;margin:8px 0 10px">Afterglow Ember</h2>
+        <p id="selected-description">Afterglow returns with stronger volume and a richer amber-to-coral finish. Soft lighting brings out the cushions, arms and base.</p>
+      </div>
+      <div class="masks">
+        <figure class="mask-example"><img id="selected-home" class="round-square" src="06-afterglow-ember/apple-touch-icon.png" alt="Afterglow Ember in a rounded-square Home Screen crop" width="60" height="60"><span class="app-label">Couchside</span><figcaption>Home Screen<br>Rounded square · 60 px</figcaption></figure>
+        <figure class="mask-example"><img id="selected-android" class="circle" src="06-afterglow-ember/icon-maskable-512.png" alt="Afterglow Ember in a circular Android crop" width="60" height="60"><span class="app-label">Couchside</span><figcaption>Android<br>Circular mask · 60 px</figcaption></figure>
+      </div>
+    </section>
+    <footer class="footer"><span>Round 2 / More depth, warmer color.</span><span>Crop simulations are illustrative. Device icon shapes may vary.</span></footer>
+  </main>
+  <script>
+    document.querySelectorAll('.choice').forEach(button => {
+      button.addEventListener('click', () => {
+        const concept = button.closest('.concept');
+        document.querySelectorAll('.concept').forEach(card => {
+          const selected = card === concept;
+          card.classList.toggle('is-selected', selected);
+          card.querySelector('.choice').setAttribute('aria-pressed', String(selected));
+        });
+        const folder = concept.dataset.concept;
+        const name = button.dataset.name;
+        document.getElementById('selected-name').textContent = name;
+        document.getElementById('selected-description').textContent = button.dataset.description;
+        const home = document.getElementById('selected-home');
+        home.src = folder + '/apple-touch-icon.png';
+        home.alt = name + ' in a rounded-square Home Screen crop';
+        const android = document.getElementById('selected-android');
+        android.src = folder + '/icon-maskable-512.png';
+        android.alt = name + ' in a circular Android crop';
+      });
+    });
+  </script>
+</body>
+</html>

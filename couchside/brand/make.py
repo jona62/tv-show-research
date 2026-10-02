@@ -1,19 +1,20 @@
-"""Render Couchside's icons and share image from the SVGs beside this file.
+"""Render Couchside's icons and share image from the selected raster master.
 
     .venv/bin/python couchside/brand/make.py
 
-Needs rsvg-convert and ImageMagick (brew install librsvg imagemagick) and Google
-Chrome for the share image, which lays real posters out as HTML. The outputs are
+Needs ImageMagick (brew install imagemagick) and Google Chrome for the share
+image, which lays real posters out as HTML. The outputs are
 committed, and couchside/build.py copies them into public/, so neither the
 server nor a deploy needs any of these tools.
 
-- small.svg is the mark drawn for 16 to 48 pixels: an outline sofa that stays
-  legible in a browser tab. It becomes favicon.svg and favicon.ico.
-- icon.svg is the app icon with its own rounded corners, for Android and the
-  manifest. icon-full.svg fills the square for Apple, which rounds the corners
-  itself. icon-maskable.svg keeps the sofa inside the circle Android may crop to.
+- icon-master.png is the selected Afterglow Ember artwork; icon-prompt.txt
+  preserves its ImageGen prompt. Every platform uses the same full-bleed,
+  opaque composition, with the operating system applying its own mask.
+- The SVGs are self-contained wrappers of the same artwork, retained for
+  compatibility. favicon.svg embeds a compact 128-pixel PNG; the other wrappers
+  embed the 512-pixel icon used by the app and share image.
 """
-import json
+import base64
 import shutil
 import subprocess
 import sys
@@ -29,23 +30,31 @@ def run(*args):
     subprocess.run(args, check=True, capture_output=True)
 
 
-def svg_to_png(source, size, out):
-    run('rsvg-convert', '-w', str(size), '-h', str(size), str(HERE / source), '-o', str(out))
+def raster_icon(size, out):
+    run('magick', str(HERE / 'icon-master.png'), '-resize', f'{size}x{size}', '-strip', str(out))
+
+
+def svg_wrapper(png):
+    encoded = base64.b64encode(png.read_bytes()).decode('ascii')
+    return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">\n'
+            f'  <image width="512" height="512" href="data:image/png;base64,{encoded}"/>\n'
+            '</svg>\n')
 
 
 def icons():
+    for size, name in ((16, 'favicon-16.png'), (32, 'favicon-32.png'), (48, 'favicon-48.png'),
+                       (180, 'apple-touch-icon.png'), (192, 'icon-192.png'), (512, 'icon-512.png')):
+        raster_icon(size, HERE / name)
+    run('magick', *(str(HERE / f'favicon-{size}.png') for size in (16, 32, 48)),
+        str(HERE / 'favicon.ico'))
+    shutil.copyfile(HERE / 'icon-512.png', HERE / 'icon-maskable-512.png')
+    full = svg_wrapper(HERE / 'icon-512.png')
+    for name in ('icon.svg', 'icon-full.svg', 'icon-maskable.svg'):
+        (HERE / name).write_text(full)
     with tempfile.TemporaryDirectory() as tmp:
-        sizes = []
-        for size in (16, 32, 48):
-            png = Path(tmp) / f'{size}.png'
-            svg_to_png('small.svg', size, png)
-            sizes.append(str(png))
-        run('magick', *sizes, str(HERE / 'favicon.ico'))
-    shutil.copyfile(HERE / 'small.svg', HERE / 'favicon.svg')
-    svg_to_png('icon-full.svg', 180, HERE / 'apple-touch-icon.png')
-    svg_to_png('icon.svg', 192, HERE / 'icon-192.png')
-    svg_to_png('icon.svg', 512, HERE / 'icon-512.png')
-    svg_to_png('icon-maskable.svg', 512, HERE / 'icon-maskable-512.png')
+        png = Path(tmp) / 'favicon-128.png'
+        raster_icon(128, png)
+        (HERE / 'favicon.svg').write_text(svg_wrapper(png))
 
 
 def share_image():

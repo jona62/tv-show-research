@@ -1,0 +1,7 @@
+Use case: logo-brand
+Asset type: one square production app icon concept for Couchside, a premium TV discovery app.
+Primary request: create a distinctive graphic sofa symbol called "Soft Seat". This is new brand exploration. A low, inviting modern two-seat couch with broad rounded arms and two generous cushions, front-on, bold uninterrupted silhouette, warm amber #ffc53d shifting subtly into coral #ff6a3d. Flat graphic design with carefully shaped curves and quiet warmth, excellent negative space. Simplify to a few large shapes, visually elegant and memorable, with no legs or tiny seams.
+Scene/backdrop: solid opaque charcoal #141414, full bleed reaching all four image edges. The entire image is the app icon, not a mockup.
+Composition: exactly square, couch centered at x50% y50%, occupies about 58% width and 38% height; all essential artwork within central circle radius32% of image width, generous clear background to keep rounded-square and circular Home Screen crops safe.
+Text: none.
+Constraints: one icon only, no board or alternate views, no labels, no typography, no mockup phone, no surrounding border, no outer rounded-corner tile, no transparent corners, no grain, no shadow, no watermark. Render crisp smooth antialiased bold vector-like geometry, readable at 16px, no thin lines.

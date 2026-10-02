@@ -1,0 +1,9 @@
+Use case: logo-brand
+Asset type: square raster app icon concept for Couchside, a TV discovery app
+Primary request: a distinctive geometric amber C monogram whose bold simple shape subtly suggests a sofa through a broad curved back, seat and squared-off arms.
+Scene/backdrop: opaque flat full-bleed charcoal #141414 reaching all four square image edges.
+Subject: one centered thick geometric C symbol, opening clearly on the right. The letter is an inventive furniture-inspired monogram: a substantial rounded upper-left back flows down into an L-shaped lower-left seat support and broad lower seat; the right-facing terminal shapes hint at sofa arms. Maintain one continuous iconic silhouette with a generous dark negative-space central opening. It should read both as a capital C and as a cozy sofa brand mark.
+Style/medium: crisp flat graphic brand mark with confident geometry, subtly softened corners, strictly minimal solid amber #ffc53d shape, no gradients or shading.
+Composition/framing: perfectly square image. All of the mark is strictly contained inside the central 60% of image width and height, centered on the image center. Every essential part fits within a circle of radius 32% of image width for safe circular and rounded-square masking. Bold proportions and generous negative space preserve recognition at 16px.
+Constraints: one standalone icon asset; opaque full-bleed background, no rounded-square tile, no outer frame, no app mockup, no board or multiple icons.
+Avoid: text beyond the single C symbol, words, labels, watermark, border, play triangle, television screen, sofa illustration beside the monogram, thin strokes, fine details, gradients, shadows, 3D, texture.

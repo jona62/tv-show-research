@@ -1,0 +1,7 @@
+Use case: logo-brand
+Asset type: one square production app icon concept for Couchside, a premium TV discovery app.
+Primary request: create a distinctive emblem called "Screen Seat": combine a cozy sofa and a television into ONE strong integrated graphic symbol. A wide softly rounded retro screen frame in warm amber #ffc53d to coral #ff6a3d, with a very simple small sofa-shaped negative-space opening making the bottom of the screen a seat. An elegant continuous outline with bold thick curves, clear visual idea, modern flat graphic style. Feels like settling into the next great show. No play triangle since this app discovers shows rather than playing them.
+Scene/backdrop: solid opaque charcoal #141414, full bleed reaching all four image edges. The entire image is the app icon, not a mockup.
+Composition: exactly square, symbol centered x50% y50%, occupies about 54% width and 45% height; all essential artwork within central circle radius32% of image width, generous clear background to keep rounded-square and circular Home Screen crops safe.
+Text: none.
+Constraints: one icon only, no board or alternate views, no labels, no typography, no mockup phone, no surrounding border, no outer rounded-corner tile, no transparent corners, no grain, no shadow, no watermark. Bold crisp smooth geometry readable at16px, no antennae or fiddly detail.
