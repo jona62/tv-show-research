@@ -1,5 +1,5 @@
 // Render only the captured comparison; live UI changes cannot alter a pending export.
-import { comparisonOverlayPlan } from './comparison-timeline.js?v=b10e3ebb0c446434';
+import { comparisonOverlayPlan } from './comparison-timeline.js?v=08136e7a421ad31d';
 import { smoothPath } from './episode-timeline.js?v=803e207689055be8';
 import { band, score } from './ratings.js?v=2a0509d86dd759f5';
 

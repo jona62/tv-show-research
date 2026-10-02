@@ -1,26 +1,12 @@
 // Shared episode positions and rating scale for live comparisons and snapshots.
 import { timelineModel, smoothPath } from './episode-timeline.js';
 import { average, band, esc, score } from './ratings.js';
+import { comparisonPosterColours } from './poster-colours.js';
+export { comparisonShowColour } from './poster-colours.js';
 
 const RAW = { top: 36, bottom: 244 }, TREND = { top: 338, bottom: 426 };
-const PALETTE = ['#ffb020', '#91b9dc', '#d594d8', '#8bcd9b', '#fb9288', '#7ad7d2',
-  '#d7c781', '#b5a3f2', '#efb4cd', '#a8cce8', '#d9b189', '#a7d5bf', '#e6c889',
-  '#9fcbd3', '#d2b5e7', '#e5ac9b', '#c2d18e'];
-// Keep the approved show identities consistent across rearrangements and exports.
-const SHOW_COLOURS = { 169: '#ffb020', 16149: '#d594e8', 30770: '#88bdf2',
-  43031: '#71cec4', 1505: '#f58d7b' };
 const ordinate = (rating, low, row) => row.bottom - (rating - low) * (row.bottom - row.top) / (10 - low);
 const position = (index, spacing) => 20 + index * spacing;
-
-export function comparisonShowColour(showId) {
-  if (SHOW_COLOURS[Number(showId)]) return SHOW_COLOURS[Number(showId)];
-  let hash = Math.imul(Number(showId) ^ (Number(showId) >>> 16), 0x45d9f3b);
-  hash = (hash ^ (hash >>> 16)) >>> 0;
-  const base = PALETTE[hash % PALETTE.length];
-  // Independent channel tints add identities without changing the muted palette.
-  return '#' + [1, 3, 5].map(offset => Math.max(64, Math.min(250,
-    parseInt(base.slice(offset, offset + 2), 16) + ((hash >>> (offset * 3)) % 31 - 15))).toString(16).padStart(2, '0')).join('');
-}
 
 function overlayAxis(maxCount, width, spacing) {
   const step = Math.max(1, Math.ceil(56 / spacing)), labels = [], episodeTicks = [];
@@ -45,6 +31,7 @@ function overlayAxis(maxCount, width, spacing) {
 
 export function comparisonOverlayPlan(model, availableWidth = 960) {
   const shows = model.shows || [], showTrend = model.averages !== false;
+  const colours = comparisonPosterColours(shows);
   const maxCount = shows.reduce((maximum, show) => Math.max(maximum, show.episodes.length), 0);
   const lowest = shows.reduce((minimum, show) => show.episodes.reduce((value, episode) =>
     Number.isFinite(episode.rating) ? Math.min(value, episode.rating) : value, minimum), Infinity);
@@ -62,7 +49,7 @@ export function comparisonOverlayPlan(model, availableWidth = 960) {
       x: position(index, spacing), y: point.rating == null ? null : ordinate(point.rating, low, row) });
     const points = nativePoints.map((point, index) => transform(point, index)), rated = points.filter(point => point.rating != null);
     const trendPoints = (native?.series[0].trendPoints || []).map(point => transform(point, indices.get(point.x), TREND));
-    return { show, colour: comparisonShowColour(show.id), points, runs: rated.length ? [rated] : [],
+    return { show, colour: colours.get(show.id), points, runs: rated.length ? [rated] : [],
       trendPoints, trend: trendPoints.length ? [trendPoints] : [],
       trendRuns: (native?.series[0].trendRuns || []).map(run => run.map(point => transform(point, indices.get(point.x), TREND))),
       mean: average(show.episodes) };

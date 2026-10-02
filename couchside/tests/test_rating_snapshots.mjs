@@ -241,18 +241,20 @@ test('the pending download freezes selected view, ratings, show order and season
 
 test('pending comparison timeline export freezes layout, point mode, averages and independent selected seasons', async () => {
   const model=timelineCompare({mode:'single',timelineLayout:'compact',pointStyle:'rating',averages:false,
-    shows:timelineCompare().shows.slice(0,2).map((show,index)=>({...show,season:index+2}))});
+    shows:timelineCompare().shows.slice(0,2).map((show,index)=>({...show,season:index+2,colour:index?'#d47e6e':'#56ec55'}))});
   const expected=structuredClone(model), drawing=harness(); let resolveImages, requested;
   const pending=prepareRatingSnapshot(model,{...drawing,loadImages:captured=>{
     requested=captured;return new Promise(resolve=>{resolveImages=resolve;});
   }});
   model.view='grid';model.timelineLayout='side';model.pointStyle='none';model.averages=true;model.mode='all';
   model.shows.reverse();model.shows[0].season=1999;model.shows[0].episodes[0].rating=1;model.shows[0].poster='new.jpg';
+  model.shows[0].colour='#123456';model.shows[1].colour='#abcdef';
   assert.deepEqual(requested,expected);resolveImages(artFor(expected));
   const result=await pending;
   assert.deepEqual(result.model,expected);assert.match(result.filename,/-timeline-single-season\.png$/);
   assert.ok(!drawing.canvases[0].texts.some(text=>text.value==='5-episode average'));
   assert.ok(drawing.canvases[0].posters.every(poster=>poster.width===120&&poster.height===180));
+  assert.deepEqual(new Set(drawing.canvases[0].pathColors),new Set(['#56ec55','#d47e6e']), 'The exported lines retain the colors captured before images finish loading');
 });
 
 test('PNG encoding failures release the canvas and explicitly reject the snapshot', async () => {

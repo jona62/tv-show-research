@@ -189,3 +189,52 @@ test('failed loads can retry and exports use the original full portrait', async 
   assert.equal(loader.entries.get(1).show.art, 'https://static.tvmaze.com/uploads/images/original_untouched/0/1.jpg');
   loader.dispose();
 });
+
+test('artwork sampling never blocks ready ratings, and a snapshot freezes the displayed color', async () => {
+  const colour = deferred(); let changes = 0;
+  const loader = createComparisonLoader({ loadRatings: async id => show(id, [episode(1, 1, 8)]),
+    metadata: async id => show(id, []), colourLoader: () => colour.promise, changed: () => changes++ });
+  loader.ensure(1); await settle();
+  assert.equal(loader.entries.get(1).status, 'ready');
+  const captured = freezeComparison(state, loader.entries), before = changes;
+  colour.resolve('#56EC55'); await settle();
+  const sampled = freezeComparison(state, loader.entries);
+  assert.equal(sampled.shows[0].colour, '#56ec55'); assert.equal(changes, before + 1);
+  assert.notEqual(captured.shows[0].colour, sampled.shows[0].colour);
+  assert.equal(loader.entries.get(1).show.posterColour, '#56ec55');
+  loader.entries.get(1).show.posterColour = '#d47e6e';
+  assert.equal(sampled.shows[0].colour, '#56ec55', 'Saved colors are immutable even if live artwork changes');
+  loader.dispose();
+});
+
+test('late artwork colors cannot overwrite a removed, retried or disposed show', async () => {
+  for (const replacement of ['remove', 'retry', 'dispose']) {
+    const old = deferred(), current = deferred(); let samples = 0, changes = 0;
+    const loader = createComparisonLoader({ loadRatings: async id => show(id, [episode(1, 1, 8)]),
+      metadata: async id => show(id, []), colourLoader: () => ++samples === 1 ? old.promise : current.promise,
+      changed: () => changes++ });
+    loader.ensure(1); await settle();
+    if (replacement === 'dispose') loader.dispose();
+    else {
+      if (replacement === 'remove') loader.remove(1);
+      loader.ensure(1, true); await settle(); current.resolve('#d47e6e'); await settle();
+    }
+    const before = changes; old.resolve('#56ec55'); await settle();
+    assert.equal(changes, before, 'Discarded generations cannot notify the mounted comparison');
+    if (replacement === 'dispose') assert.equal(loader.entries.size, 0);
+    else assert.equal(loader.entries.get(1).show.posterColour, '#d47e6e');
+    loader.dispose();
+  }
+});
+
+test('unavailable or unsafe artwork colors preserve a ready comparison and safe fallback', async () => {
+  for (const colourLoader of [async () => null, async () => { throw Error('CORS'); }, async () => '#00ff00;background:red']) {
+    const loader = createComparisonLoader({ loadRatings: async id => show(id, [episode(1, 1, 8)]),
+      metadata: async id => show(id, []), colourLoader });
+    loader.ensure(1); await settle();
+    assert.equal(loader.entries.get(1).status, 'ready');
+    assert.equal(loader.entries.get(1).show.posterColour, undefined);
+    assert.match(freezeComparison(state, loader.entries).shows[0].colour, /^#[0-9a-f]{6}$/);
+    loader.dispose();
+  }
+});

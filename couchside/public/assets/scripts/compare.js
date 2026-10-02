@@ -1,8 +1,9 @@
 import { apiFetch } from './network.js?v=4038b4a1107593ef';
 import { esc, html, icon, legend, ratings, ratingSources } from './ratings.js?v=2a0509d86dd759f5';
 import { compareMatrix, ratingTableHTML, seasonName } from './rating-views.js?v=2168d19db732fbe1';
-import { comparisonOverlayHTML, comparisonShowColour } from './comparison-timeline.js?v=b10e3ebb0c446434';
+import { comparisonOverlayHTML, comparisonShowColour } from './comparison-timeline.js?v=08136e7a421ad31d';
 import { bindComparisonTimeline } from './compare-timeline-interactions.js?v=1df7ff031af8a1c4';
+import { comparisonPosterColours, loadPosterColour, validPosterColour } from './poster-colours.js?v=0a5c074f14836db9';
 
 const STORAGE_KEY = 'couchside.comparison-v1', MAX_SHOWS = 40;
 const validId = id => Number.isInteger(id) && id > 0 && id <= 2147483647;
@@ -101,7 +102,7 @@ function fullPoster(show) {
 }
 
 // Removing a show invalidates its pending work; a late answer cannot re-add it.
-export function createComparisonLoader({ loadRatings = ratings, metadata = loadMetadata, changed = () => {} } = {}) {
+export function createComparisonLoader({ loadRatings = ratings, metadata = loadMetadata, colourLoader = loadPosterColour, changed = () => {} } = {}) {
   const entries = new Map(), requests = new Map();
   let disposed = false;
   const ensure = (id, retry = false) => {
@@ -111,8 +112,15 @@ export function createComparisonLoader({ loadRatings = ratings, metadata = loadM
     Promise.all([loadRatings(id), metadata(id, controller.signal)]).then(([data, card]) => {
       if (disposed || requests.get(id)?.token !== token) return;
       if (!card || card.id !== id || !Array.isArray(data.episodes)) throw Error('This show could not be loaded.');
-      entries.set(id, { status: 'ready', show: { ...card, ...data, id, name: card.name || data.name,
-        poster: card.poster, art: fullPoster(card), sources: ratingSources(data) } });
+      const entry = { status: 'ready', show: { ...card, ...data, id, name: card.name || data.name,
+        poster: card.poster, art: fullPoster(card), sources: ratingSources(data) } };
+      entries.set(id, entry);
+      // Show ratings immediately; artwork sampling cannot delay a usable comparison.
+      // Entry identity rejects late colours after removal, retry, or disposal.
+      Promise.resolve().then(() => colourLoader(entry.show)).then(colour => {
+        if (disposed || entries.get(id) !== entry || !validPosterColour(colour)) return;
+        entry.show.posterColour = colour.toLowerCase(); changed(id, 'colour');
+      }).catch(() => { /* Unavailable artwork retains its stable fallback. */ });
     }).catch(error => {
       if (!disposed && requests.get(id)?.token === token) entries.set(id, { status: 'error', error: error.message || 'This show could not be loaded.' });
     }).finally(() => {
@@ -137,28 +145,43 @@ function controlsHTML(state) {
   return `<div class="ratings-controls compare-toolbar"><div class="ratings-card-choices compare-scope" role="group" aria-label="Comparison scope"><button type="button" data-action="mode" data-mode="all" aria-pressed="${state.mode === 'all'}">All seasons</button><button type="button" data-action="mode" data-mode="single" aria-pressed="${state.mode === 'single'}">Single season</button></div><div class="compare-view-controls"><div class="ratings-picker compare-view"><button type="button" class="ratings-view-button" data-action="view-picker" aria-label="Comparison view: ${label}" aria-haspopup="listbox" aria-expanded="false" aria-controls="comparison-view-options">${icon(state.view)}<span>${label}</span>${icon('down')}</button><div id="comparison-view-options" class="ratings-view-options" role="listbox" aria-label="Comparison view" hidden>${layouts.map(([id, name]) => `<button type="button" role="option" aria-selected="${id === state.view}" data-action="view" data-view="${id}">${icon(id)}<span>${name}</span>${icon('check')}</button>`).join('')}</div></div><button class="chip" type="button" data-action="invert" aria-pressed="${state.inverted}"${timeline ? ' disabled title="Applies to episode matrix" aria-describedby="comparison-invert-note"' : ''}>Inverted</button></div><button class="chip" type="button" data-action="averages" aria-pressed="${state.averages}">Show averages</button></div>${timeline ? `<p id="comparison-invert-note" class="ratings-credit">Inverted applies to the episode matrix.</p><div class="compare-timeline-settings"><label>Timeline arrangement<select data-compare-option="timelineLayout" aria-label="Timeline arrangement">${choiceOptions(timelineLayouts, state.timelineLayout)}</select></label><label>Episode points<select data-compare-option="pointStyle" aria-label="Episode points">${choiceOptions(pointStyles, state.pointStyle)}</select></label></div>` : ''}`;
 }
 
-function cardHTML(id, index, state, entry, grabbed, timeline = false) {
+function cardHTML(id, index, state, entry, grabbed, colour) {
   const show = entry?.show, name = show?.name || `Show ${id}`, ready = entry?.status === 'ready';
-  const body = ready ? `<div class="compare-show-title">${show.poster || show.art ? `<img class="compare-poster" src="${esc(timeline ? show.art || show.poster : show.poster || show.art)}" alt="${timeline ? esc(name) + ' poster' : ''}" loading="lazy">` : timeline ? '<span class="compare-poster compare-poster-empty" aria-hidden="true"></span>' : ''}<div><h4><button type="button" class="link compare-title" data-action="open" data-id="${id}">${esc(name)}</button></h4><p class="note">${esc(show.year || '')}${show.year ? ' · ' : ''}${seasonNumbers(show).length} ${seasonNumbers(show).length === 1 ? 'season' : 'seasons'}</p></div></div>`
-    : entry?.status === 'error' ? `<p class="note" role="status">${esc(entry.error)}</p><button type="button" class="link" data-action="retry" data-id="${id}">Try again</button>`
-      : `<p class="note" role="status">Loading show…</p><span class="skel compare-card-skeleton" aria-hidden="true"></span>`;
-  return `<article class="compare-card${grabbed === id ? ' is-grabbed' : ''}" draggable="true" data-show="${id}" aria-label="${esc(name)}"${timeline ? ` style="--show-colour:${comparisonShowColour(id)}"` : ''}><div class="compare-card-top"><button class="icon-btn compare-reorder-handle" type="button" data-action="grab" data-id="${id}" aria-label="Reorder ${esc(name)}. Press Space to grab, arrow keys to move, Space to drop." aria-pressed="${grabbed === id}" title="Reorder">${actionIcon('grip')}</button><button class="icon-btn compare-remove" type="button" data-action="remove" data-id="${id}" aria-label="Remove ${esc(name)}" title="Remove">${icon('close')}</button></div>${body}<div class="compare-card-bottom"><div class="compare-reorder-actions"><button class="round small" type="button" data-action="move" data-id="${id}" data-direction="-1" aria-label="Move ${esc(name)} earlier" title="Move earlier"${index === 0 ? ' disabled' : ''}>${actionIcon('left')}</button><button class="round small" type="button" data-action="move" data-id="${id}" data-direction="1" aria-label="Move ${esc(name)} later" title="Move later"${index === state.ids.length - 1 ? ' disabled' : ''}>${actionIcon('right')}</button></div>${ready && state.mode === 'single' && seasonNumbers(show).length ? `<select data-compare-season="${id}" aria-label="Season for ${esc(name)}">${options(seasonNumbers(show), state.seasons[id])}</select>` : `<span class="muted">${state.mode === 'all' ? 'All seasons' : ready ? 'No episodes yet' : ''}</span>`}</div></article>`;
+  const seasons = ready ? seasonNumbers(show) : [];
+  const poster = show?.art || show?.poster;
+  const artwork = ready && poster ? `<img class="compare-poster" src="${esc(poster)}" alt="${esc(name)} poster" loading="lazy">`
+    : `<span class="compare-poster compare-poster-empty${entry?.status === 'loading' ? ' skel' : ''}" aria-hidden="true"></span>`;
+  const title = ready ? `<button type="button" class="link compare-title" data-action="open" data-id="${id}">${esc(name)}</button>` : esc(name);
+  const meta = ready ? `${esc(show.year || '')}${show.year ? ' · ' : ''}${seasons.length} ${seasons.length === 1 ? 'season' : 'seasons'}`
+    : entry?.status === 'error' ? esc(entry.error) : 'Loading show…';
+  const scope = ready && state.mode === 'single' && seasons.length
+    ? `<select data-compare-season="${id}" aria-label="Season for ${esc(name)}">${options(seasons, state.seasons[id])}</select>`
+    : `<span class="muted">${state.mode === 'all' ? 'All seasons' : ready ? 'No episodes yet' : ''}</span>`;
+  return `<article class="compare-card${state.mode === 'all' ? ' compare-card-all' : ''}${grabbed === id ? ' is-grabbed' : ''}" draggable="true" data-show="${id}" aria-label="${esc(name)}" style="--show-colour:${colour || comparisonShowColour(show || id)}">
+    <div class="compare-card-top"><button class="icon-btn compare-reorder-handle" type="button" data-action="grab" data-id="${id}" aria-label="Reorder ${esc(name)}. Press Space to grab, arrow keys to move, Space to drop." aria-pressed="${grabbed === id}" title="Reorder">${actionIcon('grip')}</button><button class="icon-btn compare-remove" type="button" data-action="remove" data-id="${id}" aria-label="Remove ${esc(name)}" title="Remove">${icon('close')}</button></div>
+    <div class="compare-card-art">${artwork}</div>
+    <div class="compare-card-title"><h4>${title}</h4>${entry?.status === 'error' ? `<button type="button" class="link compare-retry" data-action="retry" data-id="${id}">Try again</button>` : ''}</div>
+    <p class="note compare-card-meta"${ready ? '' : ' role="status"'}>${meta}</p>
+    <div class="compare-card-actions"><div class="compare-reorder-actions"><button class="round small" type="button" data-action="move" data-id="${id}" data-direction="-1" aria-label="Move ${esc(name)} earlier" title="Move earlier"${index === 0 ? ' disabled' : ''}>${actionIcon('left')}</button><button class="round small" type="button" data-action="move" data-id="${id}" data-direction="1" aria-label="Move ${esc(name)} later" title="Move later"${index === state.ids.length - 1 ? ' disabled' : ''}>${actionIcon('right')}</button></div>${state.mode === 'all' ? '<span class="compare-card-all-scope">All seasons</span>' : ''}</div>
+    ${state.mode === 'single' ? `<div class="compare-card-scope">${scope}</div>` : ''}
+  </article>`;
 }
 
 export function freezeComparison(state, entries) {
   state = validateComparison(state);
+  const shows = state.ids.map(id => entries.get(id)?.show).filter(Boolean), colours = comparisonPosterColours(shows);
   return structuredClone({ kind: 'compare', view: state.view, timelineLayout: state.timelineLayout, pointStyle: state.pointStyle,
     title: 'Compare shows', mode: state.mode,
-    inverted: state.inverted, averages: state.averages, shows: state.ids.map(id => entries.get(id)?.show).filter(Boolean).map(show => {
+    inverted: state.inverted, averages: state.averages, shows: shows.map(show => {
       const season = state.seasons[show.id] || seasonNumbers(show)[0];
-      return { id: show.id, name: show.name, poster: show.art || show.poster, year: show.year, ...(season != null ? { season } : {}),
+      return { id: show.id, name: show.name, colour: colours.get(show.id), poster: show.art || show.poster, year: show.year, ...(season != null ? { season } : {}),
         sources: show.sources || ratingSources(show), cacheFetchedAt: show.cacheFetchedAt,
         episodes: state.mode === 'all' ? show.episodes : show.episodes.filter(episode => episode.season === season) };
     }) });
 }
 
 export function mountCompare(host, { search = '', replaceURL = () => {}, openShow = () => {}, saveSnapshot = async () => {},
-  announce = () => {}, metadata, loadRatings, searchShows = query => answer(`/api/search?q=${encodeURIComponent(query)}`) } = {}) {
+  announce = () => {}, metadata, loadRatings, colourLoader, searchShows = query => answer(`/api/search?q=${encodeURIComponent(query)}`) } = {}) {
   const state = parseComparison(search, storedComparison());
   let disposed = false, grabbed = null, dragId = null, timer, searchToken = 0, saving = false, query = '', found = [], searchMessage = '';
   let matrix, timelineCleanup = () => {}, resizeFrame, observedWidth = 0;
@@ -167,7 +190,9 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
   const content = host.querySelector('.compare-content'), save = host.querySelector('.compare-save'), live = host.querySelector('.compare-status');
   const tell = message => { live.textContent = message; announce(message); };
   const persist = () => { rememberComparison(state); replaceURL(comparisonStateURL(state)); };
-  const loader = createComparisonLoader({ metadata, loadRatings, changed: () => { if (!disposed) render(); } });
+  const loader = createComparisonLoader({ metadata, loadRatings, colourLoader, changed: (id, reason) => {
+    if (!disposed) { if (reason === 'colour') refreshPosterColours(); else render(); }
+  } });
   const dismiss = () => { results.hidden = true; input.setAttribute('aria-expanded', 'false'); };
   const rememberFocus = () => {
     const active = document.activeElement;
@@ -195,6 +220,12 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
     const viewport = board.querySelector('.ratings-chart-wrap'); if (viewport) viewport.scrollLeft = scroll;
     if (focus) board.querySelector(focus)?.focus({ preventScroll: true });
   }
+  function refreshPosterColours() {
+    const model = freezeComparison(state, loader.entries);
+    for (const show of model.shows) content.querySelector(`.compare-card[data-show="${show.id}"]`)?.style.setProperty('--show-colour', show.colour);
+    // Sampling must not replace cards or close a menu while someone is using it.
+    if (state.view === 'timeline') paintTimeline();
+  }
   const closeView = (focus = false) => {
     const trigger = content.querySelector('[data-action="view-picker"]'), menu = content.querySelector('#comparison-view-options');
     if (menu) menu.hidden = true;
@@ -220,17 +251,19 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
     const model = freezeComparison(state, loader.entries), ready = model.shows.length === state.ids.length;
     const timeline = state.view === 'timeline', controls = controlsHTML(state);
     matrix = timeline ? null : compareMatrix(model);
-    const cards = `<div class="compare-cards${timeline ? ' compare-timeline-posters' : ''}" aria-label="Shows in comparison, in order">${state.ids.map((id, index) => cardHTML(id, index, state, loader.entries.get(id), grabbed, timeline)).join('')}</div>`;
-    const board = timeline ? `<div class="compare-timeline-layout layout-${state.timelineLayout}">${cards}<div class="compare-timeline-plots">${state.pointStyle === 'rating' ? legend() : ''}<div class="compare-board" data-timeline-board></div></div></div>`
+    const colours = new Map(model.shows.map(show => [show.id, show.colour]));
+    const cards = !state.ids.length ? '' : `<div class="compare-cards compare-timeline-posters${state.mode === 'all' ? ' scope-all' : ''}" aria-label="Shows in comparison, in order">${state.ids.map((id, index) => cardHTML(id, index, state, loader.entries.get(id), grabbed, colours.get(id))).join('')}</div>`;
+    const plot = timeline ? `${state.pointStyle === 'rating' ? legend() : ''}<div class="compare-board" data-timeline-board></div>`
       : `${legend()}<div class="compare-board">${ratingTableHTML(matrix)}</div>`;
-    html(content, `${timeline ? '' : cards}${controls}${model.shows.length ? `${model.shows.some(show => seasonNumbers(show).some(season => season >= 1900)) ? '<p class="ratings-credit">Calendar-year season labels are preserved in episode descriptions.</p>' : ''}${board}<p class="ratings-credit">${timeline ? 'Episode ratings · Same rating scale · Each show ends at its last episode' : state.mode === 'all' ? 'Average episode rating per season · Seasons align by number' : 'Episode ratings · Each show uses its selected season'}</p><p class="ratings-credit">${esc([...new Set(model.shows.flatMap(show => show.sources.split(' / ')))].filter(Boolean).join(' / '))} episode ratings · Out of 10</p>${ready ? '' : '<p class="note" role="status">Some shows are still loading. Save image is available when all selected shows are ready.</p>'}` : `${timeline ? cards : ''}<p class="note">${state.ids.length ? 'Loading your comparison…' : 'Find a show to compare.'}</p>`}`);
+    const board = `<div class="compare-timeline-layout layout-${state.timelineLayout}">${cards}<div class="compare-timeline-plots">${plot}</div></div>`;
+    html(content, `${controls}${model.shows.length ? `${model.shows.some(show => seasonNumbers(show).some(season => season >= 1900)) ? '<p class="ratings-credit">Calendar-year season labels are preserved in episode descriptions.</p>' : ''}${board}<p class="ratings-credit">${timeline ? 'Episode ratings · Same rating scale · Each show ends at its last episode' : state.mode === 'all' ? 'Average episode rating per season · Seasons align by number' : 'Episode ratings · Each show uses its selected season'}</p><p class="ratings-credit">${esc([...new Set(model.shows.flatMap(show => show.sources.split(' / ')))].filter(Boolean).join(' / '))} episode ratings · Out of 10</p>${ready ? '' : '<p class="note" role="status">Some shows are still loading. Save image is available when all selected shows are ready.</p>'}` : `<div class="compare-timeline-layout layout-${state.timelineLayout}">${cards}</div><p class="note">${state.ids.length ? 'Loading your comparison…' : 'Find a show to compare.'}</p>`}`);
     if (timeline) {
       paintTimeline();
       const plots = content.querySelector('.compare-timeline-plots');
       if (plots) { observedWidth = plots.clientWidth; observer?.observe(plots); }
       const viewport = content.querySelector('.ratings-chart-wrap'); if (viewport) viewport.scrollLeft = scroll;
-      const gallery = content.querySelector('.compare-cards'); if (gallery) gallery.scrollLeft = posterScroll;
     }
+    const gallery = content.querySelector('.compare-cards'); if (gallery) gallery.scrollLeft = posterScroll;
     save.disabled = saving || !state.ids.length || !ready; save.setAttribute('aria-busy', String(saving));
     if (focus) (content.querySelector(focus) || content.querySelector(`[data-action="grab"][data-id="${document.activeElement?.dataset?.id || ''}"]`))?.focus({ preventScroll: true });
     persist();

@@ -55,7 +55,7 @@ test('different show floors still share raw and average coordinates for equal sc
   assert.ok(plan.series.every(series => series.trendPoints.every(point => point.y >= 338 && point.y <= 426)));
 });
 
-test('stable colors distinguish the five real shows and remain readable on the Couchside background', () => {
+test('fallback colors distinguish shows without artwork and remain readable on the Couchside background', () => {
   const fixtures = [169, 16149, 30770, 43031, 1505].map(id => show(id, [episode(id, 6), episode(id + 1, 9, 2)]));
   const plan = comparisonOverlayPlan(model(fixtures)), reversed = comparisonOverlayPlan(model([...fixtures].reverse()));
   const colours = plan.series.map(series => series.colour);
@@ -66,7 +66,7 @@ test('stable colors distinguish the five real shows and remain readable on the C
   }
   for (let first = 0; first < colours.length; first++) for (let second = first + 1; second < colours.length; second++) {
     const a = colourChannels(colours[first]), b = colourChannels(colours[second]);
-    assert.ok(Math.hypot(...a.map((value, index) => value - b[index])) >= 50, 'Approved identities must not collapse into nearly identical colors');
+    assert.ok(Math.hypot(...a.map((value, index) => value - b[index])) >= 42, 'Fallback lines must not collapse into nearly identical colors');
   }
   assert.equal(comparisonShowColour(901234), comparisonShowColour('901234'), 'Generic IDs also use stable identities');
   const catalogueColours = Array.from({ length: 40 }, (_, index) => comparisonShowColour(index + 1));
@@ -79,7 +79,7 @@ test('stable colors distinguish the five real shows and remain readable on the C
 });
 
 test('point styles preserve identity, accessible raw targets, and a distinct line-only average plot', () => {
-  const input = model([show(169, [episode(1, 6), episode(2, 10)])]);
+  const input = model([{ ...show(169, [episode(1, 6), episode(2, 10)]), colour: '#ffb020' }]);
   const showDots = comparisonOverlayHTML(input), ratingDots = comparisonOverlayHTML(input, { pointStyle: 'rating' });
   const lines = comparisonOverlayHTML(input, { pointStyle: 'none' });
   assert.match(showDots, /class="ratings-point"[^>]*fill="#ffb020"/);

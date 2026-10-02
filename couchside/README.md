@@ -48,7 +48,11 @@ rebuilt every night. Nothing plays. It is for finding your next show.
   separate shared graphs; shorter shows end at their final episode. Choose a full
   poster row, compact row or posters on the side, and points that match show lines,
   use rating colours or remain hidden until inspected. The defaults are full posters
-  in a row and points matching show lines. Overall averages count every rated episode
+  in a row and points matching show lines. Both views share the same poster cards,
+  with aligned reorder buttons and season selectors. All seasons sits beside the
+  arrows; a single-season selector sits below them. Line colors come from each
+  poster's strongest color family, adjusted for readability and captured in snapshots.
+  Overall averages count every rated episode
   equally and exclude unrated entries. Save image keeps the full posters, current
   order and options; the page's link keeps them too. Comparisons do not change My List
   or your taste.
