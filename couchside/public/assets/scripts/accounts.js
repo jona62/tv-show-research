@@ -1,5 +1,5 @@
 import { createPollLeadership } from './account-polling.js?v=51e6158044c60f45';
-import { AccountSync } from './account-state.js?v=8a7923884b155f21';
+import { AccountSync, ACTIVE_KEY } from './account-state.js?v=8a7923884b155f21';
 
 const STATUS = {
   checking: 'Checking your account…',
@@ -87,17 +87,34 @@ export function watchAccount(sync, { doc = document, win = window, clock = Date.
   return stop;
 }
 
-export function mountAccounts({ getState, applyState, fresh, sanitize, toast = () => {}, onStatus = () => {} }) {
+export function mountAccounts({ getState, applyState, fresh, sanitize, toast = () => {}, onStatus = () => {},
+  onContext = () => {} }) {
   const panel = document.getElementById('account-access');
   const dialog = document.getElementById('auth');
   const body = document.getElementById('auth-body');
   const heading = document.getElementById('auth-h');
   let formBusy = false;
   let formVersion = 0;
-  const sync = new AccountSync({ getState, applyState, fresh, sanitize, onStatus: status => {
+  let contextSuspensions = 0;
+  const sync = new AccountSync({ getState, applyState: (state, options) => {
+    // Revoke feature access before the old owner's asynchronous UI paint ends.
+    notifyContext();
+    return applyState(state, options);
+  }, fresh, sanitize, onStatus: status => {
     renderPanel(status);
+    notifyContext();
     onStatus(status);
   } });
+
+  const context = () => sync.connected && sync.csrf && !contextSuspensions
+    ? { user: sync.user, csrf: sync.csrf } : { user: null, csrf: null };
+  function notifyContext() { onContext(context()); }
+  async function accountTransition(action) {
+    ++contextSuspensions;
+    notifyContext();
+    try { return await action(); }
+    finally { --contextSuspensions; notifyContext(); }
+  }
 
   function renderPanel({ status = sync.status, message = '', user = sync.user, connected = sync.connected } = {}) {
     const section = element('div', 'account-panel');
@@ -122,7 +139,7 @@ export function mountAccounts({ getState, applyState, fresh, sanitize, toast = (
       if (connected) actions.append(button('Change password', () => openForm('password')));
       actions.append(button('Sign out', async event => {
         event.currentTarget.disabled = true;
-        try { await sync.logout(); toast('Signed out. This device’s guest list is restored.'); }
+        try { await accountTransition(() => sync.logout()); toast('Signed out. This device’s guest list is restored.'); }
         catch (error) { toast(error.message); renderPanel(); }
       }));
     } else {
@@ -224,7 +241,7 @@ export function mountAccounts({ getState, applyState, fresh, sanitize, toast = (
         current_password: current?.value };
       for (const input of form.querySelectorAll('input,button')) input.disabled = true;
       try {
-        await sync.authenticate(kind, payload);
+        await accountTransition(() => sync.authenticate(kind, payload));
         if (version === formVersion) dialog.close();
         toast(kind === 'signup' ? 'Your account is ready.' : kind === 'password' ? 'Password changed.' : 'Signed in.');
       } catch (failure) {
@@ -248,7 +265,18 @@ export function mountAccounts({ getState, applyState, fresh, sanitize, toast = (
   const closeForm = () => {
     if (!formBusy) body.querySelector('form')?.reset();
   };
-  const otherTab = event => { void sync.storageChanged(event, { refresh: stopWatching.shouldRefresh() }); };
+  const otherTab = event => {
+    const update = () => sync.storageChanged(event, { refresh: stopWatching.shouldRefresh() });
+    let owner = null;
+    if (event.key === ACTIVE_KEY) {
+      try { owner = JSON.parse(event.newValue || 'null')?.id; } catch { /* Invalid owner marker. */ }
+    }
+    // Storage notifications can switch owners before storageChanged finishes
+    // painting. Suspend feature access synchronously at that boundary.
+    if (event.key === ACTIVE_KEY && String(owner ?? '') !== String(sync.user?.id ?? '')) {
+      void accountTransition(update);
+    } else { void update(); }
+  };
   dialog.addEventListener('close', closeForm);
   window.addEventListener('storage', otherTab);
   const stopWatching = watchAccount(sync);
@@ -259,6 +287,7 @@ export function mountAccounts({ getState, applyState, fresh, sanitize, toast = (
     ready: () => sync.ready(),
     refresh: () => sync.refresh(),
     sync: () => sync.flush(),
+    context,
     destroy() {
       sync.destroy();
       stopWatching();

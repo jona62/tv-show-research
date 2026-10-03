@@ -28,6 +28,11 @@ FIXTURES = {s['id']: s for s in json.loads((HERE / 'data.js').read_text().remove
 server.PAGE = server.PAGE.replace('</head>', '<link rel="stylesheet" href="/ratings-mock.css"></head>')
 
 
+def tracking_preview():
+    """Frozen public catalog snapshot with invented personal progress."""
+    return json.loads((HERE / 'watch-tracking-fixtures.json').read_text())
+
+
 def episodes(raw):
     if not isinstance(raw, list):
         raise ValueError('not an episode list')
@@ -44,6 +49,9 @@ class Preview(server.Handler):
         parts = urlsplit(self.path)
         path = parts.path
         self.cache_control = 'no-store'
+        if path == '/api/tracking-preview':
+            self.send_json(tracking_preview())
+            return
         if path == '/api/ratings-preview':
             try:
                 show_id = int(parse_qs(parts.query).get('id', ['0'])[0])
@@ -59,14 +67,31 @@ class Preview(server.Handler):
         assets = {'/ratings-mock.js': 'ratings-mock.js', '/ratings-mock.css': 'ratings-mock.css',
                   '/ratings-core.js': 'ratings-core.js', '/ratings-home.js': 'ratings-home.js',
                   '/title-sections.js': 'title-sections.js',
+                  '/watch-tracking.js': 'watch-tracking.js', '/watch-tracking.css': 'watch-tracking.css',
                   '/ratings-data.js': 'data.js'}
         if path in assets:
             self.send_body((HERE / assets[path]).read_bytes(), 'text/css' if path.endswith('.css') else 'text/javascript')
             return
         if path == '/assets/scripts/main.js':
             source = (APP / 'public/assets/scripts/main.js').read_text()
+            if "from './watch-tracking.js" in source:
+                source = source.replace('startAppUpdates();', '/* Local preview: no service worker. */', 1)
+                self.send_body(source.encode(), 'text/javascript')
+                return
             if "from './episode-ratings.js" in source:
                 source = source.replace("if ('serviceWorker' in navigator && window.isSecureContext)", 'if (false)')
+                source = source.replace('startAppUpdates();', '/* Local design preview: no service worker. */', 1)
+                source = "import { mountTrackingTitle, mountEpisodeProgress, renderTrackingList, trackingListButton } from '/watch-tracking.js';\n" + source
+                hooks = {
+                    '  paintOut(t, c);\n  mountTitleSections': '  paintOut(t, c);\n  mountTrackingTitle(t);\n  mountTitleSections',
+                    'function renderList() {\n': 'function renderList() {\n  renderTrackingList();\n',
+                    '  li.append(still, text);\n  return li;': '  li.append(still, text);\n  mountEpisodeProgress(li, ep, season);\n  return li;',
+                    'function listButton(c, kind) {\n': 'function listButton(c, kind) {\n  return trackingListButton(c, kind, icon, () => ({ ...c, ...info(c.id) }));\n',
+                    "search:page==='list'": 'search:false',
+                }
+                for before, after in hooks.items():
+                    assert before in source, 'Tracking mount point changed; update the preview adapter.'
+                    source = source.replace(before, after, 1)
                 self.send_body(source.encode(), 'text/javascript')
                 return
             needle = '  T.episodes.hidden = false;\n  loadSeason(first.number).then(painted);'
@@ -102,6 +127,11 @@ class Preview(server.Handler):
             assert update in source, 'Episode reveal point changed; update the mockup adapter.'
             source = source.replace(update, update + '\n  T.ratingsUpdate?.();')
             source = source.replace("if ('serviceWorker' in navigator && window.isSecureContext)", 'if (false)')
+            self.send_body(source.encode(), 'text/javascript')
+            return
+        if path == '/assets/scripts/start.js':
+            source = (APP / 'public/assets/scripts/start.js').read_text()
+            source = source.replace('return fresh();', 'return { ...fresh(), onboarded: true };', 1)
             self.send_body(source.encode(), 'text/javascript')
             return
         super().do_GET()

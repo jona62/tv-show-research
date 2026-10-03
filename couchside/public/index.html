@@ -30,8 +30,8 @@
 <!--start.js asks for the home page as soon as it arrives, while main.js is still on its way-->
 <script type="module" async src="/assets/scripts/start.js?v=94868a66c8ad1095" fetchpriority="high"></script>
 <link rel="preconnect" href="https://static.tvmaze.com" crossorigin>
-<link rel="stylesheet" href="/assets/styles/style.css?v=4275de4669d0197b">
-<script type="module" src="/assets/scripts/main.js?v=c7f648487e74fc24"></script>
+<link rel="stylesheet" href="/assets/styles/style.css?v=778e4abea46882ab">
+<script type="module" src="/assets/scripts/main.js?v=48ca59e673065720"></script>
 <link rel="modulepreload" href="/assets/scripts/episode-ratings.js?v=8440eeb3817e63af">
 <link rel="modulepreload" href="/assets/scripts/compare.js?v=db5ee2732b76a522">
 <link rel="modulepreload" href="/assets/scripts/title-sections.js?v=c735de07fc7f1d99">
@@ -39,7 +39,9 @@
 <link rel="modulepreload" href="/assets/scripts/taste.js?v=38f3f65aed9cad54">
 <link rel="modulepreload" href="/assets/scripts/list-transfer.js?v=bf96d9f9d5d965e6">
 <link rel="modulepreload" href="/assets/scripts/network.js?v=4038b4a1107593ef">
-<link rel="modulepreload" href="/assets/scripts/accounts.js?v=cbafc754f53af2ad">
+<link rel="modulepreload" href="/assets/scripts/accounts.js?v=f68e1951bdf329a9">
+<link rel="modulepreload" href="/assets/scripts/features.js?v=f67cf12dc64da47a">
+<link rel="modulepreload" href="/assets/scripts/watch-tracking.js?v=e82d5b183ce1a83b">
 <link rel="modulepreload" href="/assets/scripts/app-updates.js?v=6fd21e40c7dc0bdb">
 <link rel="modulepreload" href="/assets/scripts/metadata.js?v=61237fd7da1aa410">
 <link rel="modulepreload" href="/assets/scripts/show-artwork.js?v=919c7a8ac41304f6">
@@ -63,6 +65,7 @@
 <link rel="modulepreload" href="/assets/scripts/compare-viewport.js?v=caaae4ed372c3b78">
 <link rel="modulepreload" href="/assets/scripts/account-polling.js?v=51e6158044c60f45">
 <link rel="modulepreload" href="/assets/scripts/account-state.js?v=8a7923884b155f21">
+<link rel="modulepreload" href="/assets/scripts/watch-tracking-state.js?v=2d55de94e424a726">
 <link rel="modulepreload" href="/assets/scripts/snapshot-images.js?v=58ed772a708f7e6c">
 <link rel="modulepreload" href="/assets/scripts/comparison-timeline-export.js?v=813a00856f75b802">
 </head>
@@ -224,6 +227,13 @@
     </select>
   </label>
   <p class="note">Your account keeps this recommendation choice across devices. Card style is saved on this device.</p>
+  <section id="experimental-customization" class="experimental-customization" hidden>
+    <label class="experimental-toggle" for="experimental-mode">
+      <span><strong>Experimental mode</strong><span>Try watch tracking in My List and on show pages.</span></span>
+      <input id="experimental-mode" data-experimental-toggle type="checkbox" role="switch" aria-describedby="experimental-mode-note">
+    </label>
+    <p id="experimental-mode-note" class="note">This choice is saved on this device for your account. Your viewing progress syncs across devices.</p>
+  </section>
 </div></dialog>
 
 <dialog id="reset-confirm" class="modal small" aria-labelledby="reset-h"><div class="sheet pad">

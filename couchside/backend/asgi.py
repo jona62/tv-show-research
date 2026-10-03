@@ -164,6 +164,10 @@ class Application:
         path = scope['path']
         if path.startswith('/api/account/'):
             return 'password' if path.rsplit('/', 1)[-1] in ('signup', 'login', 'password') else 'account'
+        if path in ('/api/features', '/api/tracking'):
+            return 'account'
+        if path == '/api/tracking/catalogue':
+            return 'live'
         if scope['method'] == 'POST' and path in ('/api/home', '/api/browse', '/api/title', '/api/taste'):
             return 'engine'
         if path in (*self.server.LIVE_ROUTES, *self.server.PEOPLE_ROUTES, '/api/backdrop', '/api/icon', '/api/search'):
@@ -178,7 +182,9 @@ class Application:
             expected = int(lengths[0])
         except ValueError:
             expected = 0
-        if scope['path'].startswith('/api/account/'):
+        if scope['path'] == '/api/tracking':
+            limit = 4096
+        elif scope['path'].startswith('/api/account/'):
             route = scope['path'].rsplit('/', 1)[-1]
             limit = 262144 if route in ('signup', 'login', 'state') else 4096
         else:
@@ -273,6 +279,8 @@ class Application:
                 raise asyncio.CancelledError()
 
     async def response(self, scope, receive, request):
+        if scope['path'] in ('/api/features', '/api/tracking', '/api/tracking/catalogue'):
+            request.cache_control = 'private, no-store'
         try:
             body = await self.upload(scope, receive) if scope['method'] == 'POST' else b''
             request.rfile = io.BytesIO(body)

@@ -1,0 +1,215 @@
+{
+  "date": "2026-10-03",
+  "environment": "Native Safari on Landing iPhone 16 Simulator, iOS 18.6",
+  "device_udid": "6A741E3C-8636-4C22-8969-A2DBC92D50FC",
+  "origin": "http://localhost:18092",
+  "method": "Isolated real AccountRoutes/SQLite test session; actual built Couchside UI; native Simulator taps and native Safari Page Zoom menus. External QA-only metrics measured pre-focus scale, active control font, shared floor, layout width and orientation. Scroll helper revealed status without focusing it.",
+  "source_proof": {
+    "native_qa_page_main_version": "c59e2380c08166d0",
+    "final_public_main_version": "48ca59e673065720",
+    "note": "Native page was loaded before later JavaScript and stylesheet builds. The early font-floor guard version still matches the current build. The full native-loaded stylesheet was not byte-reverified after later UI changes; measured control fonts and focus scales apply to the native-loaded versions shown here. Module behavior and later Remove buttons are covered separately by root integration tests. This local origin was first visited during this QA run.",
+    "guard_and_style": {
+      "touch-forms.js": {
+        "qa_page_version": "b396a8dd24140a5f",
+        "final_page_version": "b396a8dd24140a5f",
+        "served_sha256": "b396a8dd24140a5f869fdd75249c02a5fb2c47604739aab4b72ba60e299aa965",
+        "matches_current_public_bytes": true,
+        "current_public_sha256": "b396a8dd24140a5f869fdd75249c02a5fb2c47604739aab4b72ba60e299aa965"
+      },
+      "style.css": {
+        "qa_page_version": "e548fc3e4936745c",
+        "final_page_version": "778e4abea46882ab",
+        "current_public_sha256": "778e4abea46882ab34989f5261da93f1f42f9037847b8f29da111860a9c956cf",
+        "later_served_sha256": "778e4abea46882ab34989f5261da93f1f42f9037847b8f29da111860a9c956cf",
+        "later_served_matches_current_public_bytes": true,
+        "native_loaded_bytes_reverified": false,
+        "native_version_matches_current_public_version": false
+      }
+    }
+  },
+  "measurements": [
+    {
+      "control": "experimental-mode",
+      "page_zoom_percent": 100,
+      "orientation": "portrait-primary",
+      "before_scale": 1.0,
+      "focused_scale": 1.0,
+      "font_px": 16,
+      "floor_px": 16,
+      "layout_width": 393,
+      "software_keyboard_visible": false,
+      "interaction": "Real native tap toggled owner-scoped device preference on; checkbox target font measured, not a text-keyboard focus.",
+      "screenshot": "real-tracking-native-100-portrait-mode.png"
+    },
+    {
+      "control": "My List search (input without an ID)",
+      "page_zoom_percent": 100,
+      "orientation": "portrait-primary",
+      "before_scale": 1.0,
+      "focused_scale": 1.0,
+      "font_px": 16,
+      "floor_px": 16,
+      "layout_width": 393,
+      "software_keyboard_visible": true,
+      "interaction": "Fresh real tap with visible software keyboard; no text entered.",
+      "screenshot": "real-tracking-native-100-portrait-search.png"
+    },
+    {
+      "control": "tracking-status",
+      "page_zoom_percent": 100,
+      "orientation": "portrait-primary",
+      "before_scale": 1.0,
+      "focused_scale": 1.0,
+      "font_px": 16,
+      "floor_px": 16,
+      "layout_width": 393,
+      "software_keyboard_visible": false,
+      "interaction": "Real native tap opened picker; screenshot includes picker and readable metrics. Dismissed without changing value.",
+      "screenshot": "real-tracking-native-100-portrait-status.png"
+    },
+    {
+      "control": "tracking-through",
+      "page_zoom_percent": 100,
+      "orientation": "portrait-primary",
+      "before_scale": 1.0,
+      "focused_scale": 1.0,
+      "font_px": 16,
+      "floor_px": 16,
+      "layout_width": 393,
+      "software_keyboard_visible": false,
+      "interaction": "Real native tap opened picker; dismissed without choosing another value. Active selector metrics captured after dismissal.",
+      "screenshot": "real-tracking-native-100-portrait-through.png"
+    },
+    {
+      "control": "tracking-status",
+      "page_zoom_percent": 100,
+      "orientation": "landscape-secondary",
+      "before_scale": 1.0,
+      "focused_scale": 1.0,
+      "font_px": 16,
+      "floor_px": 16,
+      "layout_width": 852,
+      "software_keyboard_visible": false,
+      "interaction": "Real native tap opened picker; dismissed without choosing another value. Active selector metrics captured after dismissal.",
+      "screenshot": "real-tracking-native-100-landscape-status.png"
+    },
+    {
+      "control": "tracking-through",
+      "page_zoom_percent": 100,
+      "orientation": "landscape-secondary",
+      "before_scale": 1.0,
+      "focused_scale": 1.0,
+      "font_px": 16,
+      "floor_px": 16,
+      "layout_width": 852,
+      "software_keyboard_visible": false,
+      "interaction": "Real native tap opened picker; dismissed without choosing another value. Active selector metrics captured after dismissal.",
+      "screenshot": "real-tracking-native-100-landscape-through.png"
+    },
+    {
+      "control": "My List search (input without an ID)",
+      "page_zoom_percent": 85,
+      "orientation": "portrait-primary",
+      "before_scale": 0.85,
+      "focused_scale": 0.85,
+      "font_px": 19,
+      "floor_px": 19,
+      "layout_width": 462,
+      "software_keyboard_visible": true,
+      "interaction": "Fresh real tap with visible software keyboard; no text entered.",
+      "screenshot": "real-tracking-native-85-portrait-search.png"
+    },
+    {
+      "control": "tracking-status",
+      "page_zoom_percent": 85,
+      "orientation": "portrait-primary",
+      "before_scale": 0.85,
+      "focused_scale": 0.85,
+      "font_px": 19,
+      "floor_px": 19,
+      "layout_width": 462,
+      "software_keyboard_visible": false,
+      "interaction": "Real native tap opened picker; screenshot includes picker and readable metrics. Dismissed without changing value.",
+      "screenshot": "real-tracking-native-85-portrait-status.png"
+    },
+    {
+      "control": "tracking-through",
+      "page_zoom_percent": 85,
+      "orientation": "portrait-primary",
+      "before_scale": 0.85,
+      "focused_scale": 0.85,
+      "font_px": 19,
+      "floor_px": 19,
+      "layout_width": 462,
+      "software_keyboard_visible": false,
+      "interaction": "Real native tap opened picker; dismissed without choosing another value. Active selector metrics captured after dismissal.",
+      "screenshot": "real-tracking-native-85-portrait-through.png"
+    },
+    {
+      "control": "tracking-status",
+      "page_zoom_percent": 85,
+      "orientation": "landscape-secondary",
+      "before_scale": 0.85,
+      "focused_scale": 0.85,
+      "font_px": 19,
+      "floor_px": 19,
+      "layout_width": 1002,
+      "software_keyboard_visible": false,
+      "interaction": "Real native tap opened picker; dismissed without choosing another value. Active selector metrics captured after dismissal.",
+      "screenshot": "real-tracking-native-85-landscape-status.png"
+    },
+    {
+      "control": "tracking-through",
+      "page_zoom_percent": 85,
+      "orientation": "landscape-secondary",
+      "before_scale": 0.85,
+      "focused_scale": 0.85,
+      "font_px": 19,
+      "floor_px": 19,
+      "layout_width": 1002,
+      "software_keyboard_visible": false,
+      "interaction": "Real native tap opened picker; dismissed without choosing another value. Active selector metrics captured after dismissal.",
+      "screenshot": "real-tracking-native-85-landscape-through.png"
+    }
+  ],
+  "conclusion": "Both real tracking selects independently retained pre-focus scale at 100% and 85% Page Zoom in portrait and landscape. Fonts and shared floor were 16px at 100% and 19px at 85%. Real list search also retained scale with its visible software keyboard in portrait at both zoom levels.",
+  "same_document_page_zoom": {
+    "observed_changes": [
+      "100 to 85",
+      "85 to 100",
+      "100 to 85",
+      "85 to 100",
+      "100 to 85",
+      "85 to 100"
+    ],
+    "observed_floor_px": [
+      16,
+      19,
+      16,
+      19,
+      16,
+      19,
+      16
+    ]
+  },
+  "limits": [
+    "Simulator evidence, not a physical iPhone test.",
+    "No native iPad or split-view rerun.",
+    "Real-client software keyboard search was tested in portrait; no independent landscape text-input focus was measured in this real-client run. Both new tracking selects were independently tapped in landscape at both zoom levels.",
+    "Experimental checkbox was measured at 100% portrait only; select and search floor compensation at 85% was measured separately.",
+    "Pinch zoom was preserved in viewport configuration but no native pinch gesture was rerun.",
+    "Metrics overlay and authentication bootstrap exist only in a temporary test server and are absent from production source.",
+    "Cua Simulator scrolling did not move the title; QA scrollIntoView helper revealed the control, followed by a real native tap."
+  ],
+  "restored_state": {
+    "orientation": "portrait-primary",
+    "page_zoom_percent": 100,
+    "viewport_scale": 1,
+    "floor_px": 16,
+    "software_keyboard_visible": false,
+    "native_safari_left_open": true,
+    "test_account_device_experimental_preference": "on",
+    "native_progress_writes": false,
+    "screenshot": "real-tracking-native-restored.png"
+  }
+}

@@ -5,7 +5,9 @@ import { enhanceShowCard,receiveMatrices,matrixPreference } from './show-cards.j
 import { mountTaste } from './taste.js?v=38f3f65aed9cad54';
 import { mergeTransferredList } from './list-transfer.js?v=bf96d9f9d5d965e6';
 import { apiFetch } from './network.js?v=4038b4a1107593ef';
-import { mountAccounts } from './accounts.js?v=cbafc754f53af2ad';
+import { mountAccounts } from './accounts.js?v=f68e1951bdf329a9';
+import { createFeatureFlags, mountExperimentalMode } from './features.js?v=f67cf12dc64da47a';
+import { mountWatchTracking, mountTrackingTitle, mountEpisodeProgress, renderTrackingList } from './watch-tracking.js?v=e82d5b183ce1a83b';
 import { startAppUpdates } from './app-updates.js?v=6fd21e40c7dc0bdb';
 import { updateMetadata } from './metadata.js?v=61237fd7da1aa410';
 import { backdropURL, displayPoster, createBackdropPrefetcher, bindBackdropIntent } from './show-artwork.js?v=919c7a8ac41304f6';
@@ -85,11 +87,14 @@ const ICONS = {
 // has asked for the home page with them already).
 let state = stored;
 let accounts = null;
+let featureFlags = null;
+let watchTracking = null;
 let tastePanel = null;
 let accountOwner = '';
 let accountEpoch = 0;
 
 function save() {
+  watchTracking?.refresh();
   tastePanel?.refresh();
   if (accounts) { accounts.changed(); return; }
   try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* private mode */ }
@@ -911,6 +916,7 @@ function renderHomeLoading() {
 }
 
 function renderHome() {
+  watchTracking?.refresh();
   $('hero').hidden=!home.hero;
   // The featured shows, the visit's hero first; a page kept from before them has its hero alone.
   if (home.hero) renderFeatured(home.featured?.length ? home.featured : [home.hero]);
@@ -2145,6 +2151,14 @@ function toggleList(c) {
   settleHome(c.id);
 }
 
+function removeSavedButton(c) {
+  const remove = button('list-remove', 'Remove from My List', () => {
+    if (inList(c.id)) toggleList({ ...c, ...info(c.id) });
+  }, 'close');
+  remove.setAttribute('aria-label', `Remove ${c.name} from My List`);
+  return remove;
+}
+
 function rateButtons(c, weights = RATES.map(r => r.weight), size = '') {
   return RATES.filter(r => weights.includes(r.weight)).map(r => {
     const b = button(`round ${r.icon}${size ? ` ${size}` : ''}`, '', () => rate({ ...c, ...info(c.id) }, r.weight), r.icon);
@@ -2459,6 +2473,7 @@ function buildTitle(c) {
     snapshot.disabled = !canSaveTitleSnapshot(t) || t.snapshotBusy;
   };
   paintOut(t, c);
+  mountTrackingTitle(t);
   mountTitleSections(t, { revealButton, paintReveal, unfold, busy, edges });
   for(const [page,section] of [['more',more],['fans',fans]]){
     const controls=filterBar(page,{genres:boot.genres,languages:boot.languages||[],compact:true,onChange:()=>{
@@ -3160,6 +3175,7 @@ function episodeEl(ep, season) {
   if (ep.airdate) text.append(el('span', longDate(ep.airdate), 'ep-date'));
   if (ep.summary) text.append(el('p', ep.summary));
   li.append(still, text);
+  mountEpisodeProgress(li, ep, season);
   return li;
 }
 
@@ -4015,6 +4031,7 @@ function fill(grid, items, options = () => ({})) {
     const li = el('li');
     const o = options(c);
     li.append(cardEl(c, o));
+    if (o.removeSaved) li.append(removeSavedButton(c));
     if (o.titled) {
       li.append(showCaption(c, o.also));
       return li;
@@ -4040,11 +4057,12 @@ function hydrateList(){
 }
 function renderList() {
   hydrateList();
+  renderTrackingList();
   const saved = selectShows(state.saved.slice().reverse().map(s => ({ ...s, ...(known.get(s.id) || {}) })),'list',listQuery);
   $('list-note').textContent = saved.length
     ? `${saved.length} show${saved.length === 1 ? '' : 's'} saved for later.`
     : state.saved.length?'No saved shows match these filters.':'Nothing saved yet. Tap My List on any show and it waits here.';
-  fill($('list-grid'), saved);
+  fill($('list-grid'), saved, () => ({ removeSaved: true }));
 
   const filters = $('rated-filter');
   filters.replaceChildren(...Object.entries(GROUPS).map(([key, [label, test]]) => {
@@ -4900,6 +4918,7 @@ function applyAccountState(incoming, context) {
   const next = sanitize({ ...incoming, profile: incoming.profile.map(describe), saved: incoming.saved.map(describe) });
   if (JSON.stringify(next) === JSON.stringify(state)) return;
   state = next;
+  watchTracking?.refresh();
   tastePanel?.refresh();
   // A cached personalised page belongs to the list that produced it.
   homeAbort?.abort();
@@ -4929,6 +4948,7 @@ tastePanel = mountTaste({ dialog: $('taste'), body: $('taste-body'),
   getProfile: () => state.profile.map(({ id, weight }) => ({ id, weight })),
   getSettings: () => state.settings, getOwner: () => accountOwner, request: post });
 accounts = mountAccounts({ getState: () => state, applyState: applyAccountState, fresh, sanitize, toast,
+  onContext: () => featureFlags?.accountChanged(),
   onStatus: ({ user }) => {
     const owner = user?.id || '';
     if (owner !== accountOwner) {
@@ -4943,6 +4963,15 @@ accounts = mountAccounts({ getState: () => state, applyState: applyAccountState,
     }
     $('account-counts').textContent = user?.email || 'On this device';
   } });
+featureFlags = createFeatureFlags({ getAccount: () => accounts.context() });
+mountExperimentalMode(featureFlags, $('experimental-customization'));
+watchTracking = mountWatchTracking({ features: featureFlags, getAccount: () => accounts.context(),
+  getSaved: () => state.saved, getShow: id => ({ ...info(id), ...(known.get(id) || {}) }),
+  removeSaved: show => { if (inList(show.id)) toggleList(show); },
+  selectLibrary: shows => selectShows(shows, 'list', listQuery),
+  onRefresh: () => { if (view === 'list') renderList(); },
+  onExpired: () => { void featureFlags.refresh(); void accounts.refresh(); } });
+featureFlags.accountChanged();
 renderHomeLoading();
 await accounts.ready();
 updateCounts();

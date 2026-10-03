@@ -36,8 +36,9 @@ from . import follow
 from .recommendation import starters
 from . import tmdb
 from .request_limits import Requests
-from .accounts import AccountService
+from .accounts import AccountError, AccountService
 from .account_http import AccountRoutes
+from .tracking import TrackingService
 from .backdrops import Backdrops, image_kind, backdrop_width
 from .seo import SEO, bootstrap as seo_bootstrap
 from . import telemetry
@@ -56,6 +57,8 @@ ARTWORK_SLOTS = threading.BoundedSemaphore(8)
 REQUESTS = Requests()
 _accounts = None
 _accounts_lock = threading.Lock()
+_tracking = None
+_tracking_lock = threading.Lock()
 
 
 def accounts():
@@ -68,8 +71,35 @@ def accounts():
     return _accounts
 
 
+def tracking_catalogue(show_id):
+    """Authoritative public episodes; no browser-supplied ownership or release data."""
+    if show_id not in ENGINE.by_id and not newer(show_id):
+        raise AccountError(400, 'That show is not in this catalog.')
+    if not LIVE_SLOTS.acquire(blocking=False):
+        raise AccountError(503, 'Episode details are busy. Try again shortly.', retry_after=2)
+    try:
+        value = RATINGS.get(show_id)
+    except LiveError as exc:
+        raise AccountError(exc.status, str(exc), retry_after=exc.retry_after) from None
+    finally:
+        LIVE_SLOTS.release()
+    index = ENGINE.by_id.get(show_id)
+    return {**value, 'revision': str(value['revision']),
+            'ended': bool(LIBRARY.ended[index]) if index is not None else False}
+
+
+def tracking():
+    """Viewing data is lazy and uses the existing persistent account database."""
+    global _tracking
+    with _tracking_lock:
+        if _tracking is None:
+            _tracking = TrackingService(accounts(), tracking_catalogue,
+                authorize=lambda connection, row: ACCOUNT_ROUTES.features.enabled_for(dict(row), 'watch_tracking'))
+    return _tracking
+
+
 ACCOUNT_ROUTES = AccountRoutes(accounts, https_only=os.environ.get('ACCOUNT_HTTPS_ONLY') == '1',
-                               origin=os.environ.get('ACCOUNT_ORIGIN'))
+                               origin=os.environ.get('ACCOUNT_ORIGIN'), tracking=tracking)
 # The app keeps its page in the path, so these are the page too and a refresh stays put.
 PAGES = ('/', '/index.html', '/new', '/list', '/search', '/browse', '/welcome', '/compare')
 POSTS = ('/api/home', '/api/title', '/api/shows', '/api/browse', '/api/taste')
@@ -639,7 +669,10 @@ class Handler(SimpleHTTPRequestHandler):
     def do_HEAD(self):
         self.cache_control = None
         parts = urlsplit(self.path)
-        if parts.path in PAGES:
+        if parts.path in ('/api/features', '/api/tracking', '/api/tracking/catalogue'):
+            if self.admitted():
+                ACCOUNT_ROUTES.handle(self, parts.path)
+        elif parts.path in PAGES:
             self.send_page(parse_qs(parts.query), head=True)
         elif self.discovery_file(parts.path, head=True):
             return
@@ -658,6 +691,8 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_body(body, 'application/json; charset=utf-8', status, validate, head=head, extra=extra)
 
     def admitted(self):
+        if urlsplit(self.path).path in ('/api/features', '/api/tracking', '/api/tracking/catalogue'):
+            self.cache_control = 'private, no-store'
         wait = REQUESTS.take(self.client_address[0], self.headers.get('X-Forwarded-For', ''))
         if not wait:
             return True

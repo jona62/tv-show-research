@@ -148,6 +148,49 @@ class TransportTests(IsolatedAsyncioTestCase):
         self.assertNotIn(b'etag', headers)
         self.assertNotIn(b'content-encoding', headers)
 
+    async def test_feature_identity_is_cookie_owned_and_private_on_all_transport_paths(self):
+        from backend.feature_flags import FeatureFlags
+        from backend.accounts import AccountError
+        path = Path(self.folder.name) / 'test-feature-flags.json'
+        path.write_text(json.dumps({'version': 1, 'enabled': True, 'user_ids': ['feature-admin'],
+                                    'emails': [], 'features': {'watch_tracking': True}}))
+        token, seen = 'a' * 43, []
+        class Service:
+            def identity(self, actual):
+                seen.append(actual)
+                return {'id': 'feature-admin', 'email': 'private@example.com'}
+        with patch.object(self.server.ACCOUNT_ROUTES, 'service', return_value=Service()), \
+                patch.object(self.server.ACCOUNT_ROUTES, 'features', FeatureFlags(path)):
+            status, headers, body = await self.request('/api/features', headers=(
+                (b'cookie', b'other=1'), (b'cookie', ('couchside-dev-session=' + token).encode()),
+                (b'accept-encoding', b'gzip'), (b'if-none-match', b'*')))
+            self.assertEqual(status, 200)
+            self.assertEqual(json.loads(body), {'user_id': 'feature-admin', 'experimental_allowed': True,
+                                               'features': {'watch_tracking': True}})
+            self.assertEqual(seen, [token])
+            self.assertEqual(headers[b'cache-control'], b'private, no-store')
+            self.assertNotIn(b'etag', headers)
+            self.assertNotIn(b'content-encoding', headers)
+            self.assertNotIn(b'private@example.com', body)
+            status, headers, body = await self.request('/api/features?user_id=feature-admin')
+            self.assertEqual(json.loads(body)['experimental_allowed'], False)
+            self.assertEqual(seen, [token], 'guest feature reads must not authenticate browser-supplied identities')
+            status, headers, body = await self.request('/api/features', 'HEAD')
+            self.assertEqual((status, body), (405, b''))
+            self.assertEqual(headers[b'cache-control'], b'private, no-store')
+            with patch.object(Service, 'identity', side_effect=AccountError(401, 'Expired')):
+                _, headers, body = await self.request('/api/features', headers=(
+                    (b'cookie', ('couchside-dev-session=' + token).encode()),))
+            self.assertEqual(json.loads(body)['user_id'], None)
+            self.assertIn(b'Max-Age=0', headers[b'set-cookie'])
+        status, headers, _ = await self.request('/api/tracking', 'POST', headers=(
+            (b'content-length', b'4097'),))
+        self.assertEqual(status, 413)
+        self.assertEqual(headers[b'cache-control'], b'private, no-store')
+        self.assertEqual(self.app.lane({'path': '/api/features', 'method': 'GET'}), 'account')
+        self.assertEqual(self.app.lane({'path': '/api/tracking', 'method': 'POST'}), 'account')
+        self.assertEqual(self.app.lane({'path': '/api/tracking/catalogue', 'method': 'GET'}), 'live')
+
     async def test_explicit_gateway_trust_keeps_account_attempt_limits_per_client(self):
         from backend.account_http import AccountRoutes
         from backend.accounts import AccountError

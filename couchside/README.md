@@ -92,7 +92,9 @@ rebuilt every night. Nothing plays. It is for finding your next show.
 - **New & Popular** has the Top 10, new shows this year ranked for you, and
   premieres coming soon with their dates.
 - **My List** holds what you saved, and every show you rated, filterable by
-  rating. You may rate up to 3,000 shows; past 60 the ratings show 60 at a time,
+  rating. Saved cards have a visible Remove from My List action on desktop and
+  touch screens, without opening show details. Removing a bookmark keeps ratings
+  and any viewing progress. You may rate up to 3,000 shows; past 60 the ratings show 60 at a time,
   newest first, with *Show more* and a box that finds any of them by name.
 - **Search** finds a show however it is typed: with typos, odd spacing or
   punctuation, by another of its titles in any language (the card then says
@@ -183,6 +185,21 @@ online backup API rather than copying a live database without its WAL. Deployed
 `ACCOUNT_HTTPS_ONLY=1` requires secure cookies behind the HTTPS reverse proxy.
 `ACCOUNT_ORIGIN` may set an explicit public origin; otherwise the request's host
 is used. Local HTTP account access requires a loopback host and connection.
+
+## Experimental watch tracking
+
+Eligible signed-in users can enable Experimental mode under Customization. It
+starts off; turning it off restores the ordinary interface and keeps viewing
+history. The static backend JSON allowlist currently contains only
+`jonathanjamesm66@gmail.com`, with support for normal authenticated account IDs.
+Guests and other accounts cannot access the private tracking endpoints.
+
+Tracking records Watching, Paused, Finished or Dropped, individual episodes and
+exact watched-through progress, with Undo. Caught up is derived from fresh,
+complete released episode data. My List bookmarks and taste ratings remain
+independent. Progress saves to the account's persistent database and refreshes
+across devices; Experimental mode is a separate preference on each device.
+See [the static flag and tracking data contract](docs/watch-tracking.md).
 
 ## Episode ratings
 

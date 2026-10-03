@@ -262,7 +262,8 @@ def trim_episode_ratings(raw):
         seen.add(e['id'])
         out.append({'id': e['id'], 'season': e['season'], 'number': e['number'], 'name': e['name'],
                     'runtime': whole(e.get('runtime')), 'rating': score(e.get('rating')),
-                    'airdate': shaped(e, 'airdate', DAY), 'image': picture(e.get('image')),
+                    'airdate': shaped(e, 'airdate', DAY), 'airstamp': shaped(e, 'airstamp', STAMP),
+                    'image': picture(e.get('image')),
                     'summary': plain(e.get('summary'), WHOLE_SUMMARY)})
     return sorted(out, key=lambda e: (e['season'], e['number'], e['id']))
 

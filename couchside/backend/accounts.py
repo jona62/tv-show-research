@@ -181,6 +181,12 @@ class AccountService:
                         'csrf': row['csrf'], 'revision': row['revision'], 'unchanged': True}
             return self._response(row, row['csrf'], self._removals(connection, row['id'], since if owner == row['id'] else 0))
 
+    def identity(self, token):
+        """Authenticate lightweight private reads without decoding preference state."""
+        with self.store.connection() as connection:
+            row = self._session_row(connection, token)
+            return {'id': row['id'], 'email': row['email']}
+
     def save(self, token, csrf, state, revision, removed=None):
         state, expected_revision = compact_state(state), validate_revision(revision)
         removed = compact_removed(removed, state)

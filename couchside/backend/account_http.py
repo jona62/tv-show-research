@@ -12,9 +12,10 @@ import re
 import sqlite3
 import threading
 import time
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from .accounts import AccountError
+from .feature_flags import FeatureFlags
 from .request_limits import Budget, address, trusted_proxy_ips
 
 PREFIX = '/api/account/'
@@ -33,11 +34,13 @@ def loopback(host):
 
 
 class AccountRoutes:
-    def __init__(self, service, https_only=False, origin=None):
+    def __init__(self, service, https_only=False, origin=None, features=None, tracking=None):
         trusted_proxy_ips()
         self.service = service
         self.https_only = https_only
         self.origin = origin.rstrip('/') if origin else None
+        self.features = features if features is not None else FeatureFlags()
+        self.tracking = tracking
         workers = max(1, int(os.environ.get('COUCHSIDE_WORKERS', '1')))
         self.attempts = Budget(rate=1 / (60 * workers), burst=max(1, 10 / workers))
         self.read_slots = threading.BoundedSemaphore(16)
@@ -77,13 +80,13 @@ class AccountRoutes:
         value = f'{name}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={0 if clear else 30 * 86400}'
         return value + ('; Secure' if secure else '')
 
-    def reply(self, handler, value, status=200, headers=()):
+    def reply(self, handler, value, status=200, headers=(), private=False):
         # Session responses are never cached, tagged or compressed.
-        handler.cache_control = 'no-store'
+        handler.cache_control = 'private, no-store' if private else 'no-store'
         body = json.dumps(value, ensure_ascii=False, allow_nan=False, separators=(',', ':')).encode()
         sent = handler.answer(body, 'application/json; charset=utf-8', status,
                               extra=headers, pack=lambda _: None)
-        if sent is not None:
+        if sent is not None and handler.command != 'HEAD':
             handler.wfile.write(sent)
 
     def payload(self, handler, route, origin):
@@ -135,11 +138,45 @@ class AccountRoutes:
         return payload
 
     def handle(self, handler, path):
-        if not path.startswith(PREFIX):
+        private = path in ('/api/features', '/api/tracking', '/api/tracking/catalogue')
+        if not path.startswith(PREFIX) and not private:
             return False
         route = path[len(PREFIX):]
         try:
             origin, cookie, secure = self.context(handler)
+            if path == '/api/features':
+                if handler.command != 'GET':
+                    raise AccountError(405, 'Use GET to read feature availability.')
+                token, user = self.token(handler, cookie), None
+                headers = ()
+                if token:
+                    try:
+                        user = self.service().identity(token)
+                    except AccountError as exc:
+                        if exc.status != 401:
+                            raise
+                        headers = (('Set-Cookie', self.cookie(cookie, '', secure, clear=True)),)
+                self.reply(handler, self.features.envelope(user), headers=headers, private=True)
+                return True
+            if path in ('/api/tracking', '/api/tracking/catalogue'):
+                if self.tracking is None:
+                    raise AccountError(503, 'Viewing progress is temporarily unavailable.')
+                token = self.token(handler, cookie)
+                if handler.command == 'GET' and path == '/api/tracking':
+                    response = self.tracking().read(token)
+                elif handler.command == 'GET' and path == '/api/tracking/catalogue':
+                    query = parse_qs(urlsplit(handler.path).query)
+                    ids = query.get('id', [])
+                    if set(query) != {'id'} or len(ids) != 1 or not re.fullmatch(r'[1-9][0-9]{0,15}', ids[0]) or int(ids[0]) > 2**53 - 1:
+                        raise AccountError(400, 'Choose a valid show for viewing progress.')
+                    response = self.tracking().catalogue(token, int(ids[0]))
+                elif handler.command == 'POST' and path == '/api/tracking':
+                    payload = self.payload(handler, 'tracking', origin)
+                    response = self.tracking().mutate(token, handler.headers.get('X-CSRF-Token', ''), payload)
+                else:
+                    raise AccountError(405, 'Use GET or POST for viewing progress.')
+                self.reply(handler, response, private=True)
+                return True
             if handler.command == 'GET' and route == 'session':
                 revisions, owners = handler.headers.get_all('X-Account-Revision', []), handler.headers.get_all('X-Account-Owner', [])
                 conditional = handler.headers.get_all('X-Account-Conditional', [])
@@ -186,10 +223,10 @@ class AccountRoutes:
                 # Early rejection can leave unread bytes; retire the connection.
                 handler.close_connection = True
             headers = (('Retry-After', str(exc.retry_after or 2)),) if exc.status in (429, 503) else ()
-            self.reply(handler, {'error': exc.message, **(exc.data or {})}, exc.status, headers)
+            self.reply(handler, {'error': exc.message, **(exc.data or {})}, exc.status, headers, private=private)
         except (sqlite3.Error, OSError):
             logging.error('Account storage is unavailable')
             handler.close_connection = True
             self.reply(handler, {'error': 'Accounts are temporarily unavailable. Try again shortly.'}, 503,
-                       (('Retry-After', '5'),))
+                       (('Retry-After', '5'),), private=private)
         return True

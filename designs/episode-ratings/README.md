@@ -11,6 +11,51 @@ uses Couchside’s existing generated app, navigation, typography, title sheet,
 episode sheet and settings menu. The preview adapter serves additions without
 editing the shipped app bundle.
 
+## Watch tracking
+
+The existing preview at [My List](http://localhost:8766/list),
+[show progress](http://localhost:8766/list?show=618&rating-view=list&rating-season=3),
+and [Home](http://localhost:8766/) now uses the real account-backed feature.
+Sign in with an eligible account, open Customization, and enable Experimental
+mode. It defaults off, and guests and unlisted accounts retain the ordinary UI.
+The static backend JSON allowlist contains only `jonathanjamesm66@gmail.com`.
+Current UI screenshots: [account progress](real-tracking-desktop.png) and
+[Customization](real-tracking-customization.png), captured with an isolated test account.
+
+Viewing history saves independently of taste ratings and My List bookmarks.
+Removing a bookmark keeps progress; disabling Experimental mode preserves all
+viewing history. Both ordinary saved cards and experimental tracking cards offer
+Remove from My List directly, without opening show details. My List combines saved and tracked shows, with Want to watch,
+Watching, Caught up, Finished, Paused and Dropped filters. Show details offer
+individual episode marks, exact progress editing, unknown Finished, removal,
+and Undo. Home adds Continue watching. The [implemented API and data model](../../couchside/docs/watch-tracking.md)
+describes persistent account ownership, revisions, release dates, and static
+flags. Bulk progress changes explicitly correct later aired episodes to unwatched.
+
+The original sample mockup source remains in `watch-tracking.js` and
+`watch-tracking.css` for design reference. Its [frozen public fixtures](watch-tracking-fixtures.json)
+and invented personal progress never enter production account data. The
+[broader proposal](watch-tracking-data.md) and [example payloads](watch-tracking-example.json)
+remain available, with the implemented contract linked at the top of the proposal.
+
+Original sample screenshots: [desktop](watch-tracking-desktop.png),
+[phone](watch-tracking-mobile.png), [title](watch-tracking-detail.png),
+[progress editor](watch-tracking-edit.png), and [Home](watch-tracking-home-mobile.png).
+
+Validation includes real account HTTP/SQLite writes, reload persistence,
+independent episode gaps, Undo, toggle off/on, ordinary-user denial, account
+switch race rejection, concurrent-write conflicts, and idempotent retries.
+The [real-client native checks](real-tracking-native-checks.json) record both
+tracking selects at 100% and 85% Page Zoom in both orientations, and list search
+with the software keyboard in portrait. The report identifies loaded asset
+versions and the limits of that run.
+The shared Safari font-floor suite passes. Original native iPhone Simulator
+checks cover 100% and 85% Page Zoom, both orientations, the software keyboard,
+and same-document Page Zoom changes; [measurements](watch-tracking-native-checks.json)
+record the coverage limits. Physical devices and native iPad split view were not
+rerun. An older broad touch-form runtime suite times out on six obsolete
+comparison selectors; targeted tracking checks and the shared guard suite pass.
+
 ## Episode controls
 
 Only two view controls remain: an icon menu for Episode list, Grid, Wrapped and

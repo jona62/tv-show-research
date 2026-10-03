@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "enabled": true,
+  "user_ids": [],
+  "emails": ["jonathanjamesm66@gmail.com"],
+  "features": {
+    "watch_tracking": true
+  }
+}

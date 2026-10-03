@@ -1,0 +1,31 @@
+{
+  "date": "2026-10-03",
+  "environment": "Native Safari on Landing iPhone 16 Simulator, iOS 18.6",
+  "device_udid": "6A741E3C-8636-4C22-8969-A2DBC92D50FC",
+  "origin": "http://localhost:8766",
+  "method": "Native Safari Page Zoom menu, real Simulator taps, software keyboard, native select menus, and optional watch-focus=1 metrics overlay. No synthetic field focus.",
+  "measurements": [
+    {"control": "tracking-find", "page_zoom_percent": 100, "orientation": "portrait-primary", "before_scale": 1, "focused_scale": 1, "font_px": 16, "floor_px": 16, "layout_width": 393, "software_keyboard_visible": true, "interaction": "real tap", "screenshot": "watch-tracking-native-100-portrait-search.png"},
+    {"control": "tracking-find", "page_zoom_percent": 100, "orientation": "landscape-secondary", "before_scale": 1, "focused_scale": 1, "font_px": 16, "floor_px": 16, "layout_width": 852, "software_keyboard_visible": true, "interaction": "retained focus through rotation; no independent landscape refocus baseline", "screenshot": "watch-tracking-native-100-landscape-search.png"},
+    {"control": "tracking-status", "page_zoom_percent": 100, "orientation": "portrait-primary", "before_scale": 1, "focused_scale": 1, "font_px": 16, "floor_px": 16, "layout_width": 393, "interaction": "real tap; native select menu visible", "screenshot": "watch-tracking-native-100-portrait-status.png"},
+    {"control": "tracking-through", "page_zoom_percent": 100, "orientation": "portrait-primary", "before_scale": 1, "focused_scale": 1, "font_px": 16, "floor_px": 16, "layout_width": 393, "interaction": "real tap; native picker dismissed without changing value; select remained active", "screenshot": "watch-tracking-native-100-portrait-through.png"},
+    {"control": "tracking-find", "page_zoom_percent": 85, "orientation": "portrait-primary", "before_scale": 0.85, "focused_scale": 0.85, "font_px": 19, "floor_px": 19, "layout_width": 462, "software_keyboard_visible": true, "interaction": "real tap after orientation round trip", "screenshot": "watch-tracking-native-85-portrait-search.png"},
+    {"control": "tracking-find", "page_zoom_percent": 85, "orientation": "landscape-secondary", "before_scale": 0.85, "focused_scale": 0.85030, "font_px": 19, "floor_px": 19, "layout_width": 1002, "software_keyboard_visible": true, "interaction": "retained focus through rotation; native scale normalization observed; no independent landscape refocus baseline", "screenshot": null},
+    {"control": "tracking-status", "page_zoom_percent": 85, "orientation": "portrait-primary", "before_scale": 0.85, "focused_scale": 0.85, "font_px": 19, "floor_px": 19, "layout_width": 462, "interaction": "real tap; native select menu visible", "screenshot": "watch-tracking-native-85-portrait-status.png"},
+    {"control": "tracking-status", "page_zoom_percent": 85, "orientation": "landscape-secondary", "before_scale": 0.85, "focused_scale": 0.85, "font_px": 19, "floor_px": 19, "layout_width": 1002, "interaction": "real tap; native select menu visible", "screenshot": "watch-tracking-native-85-landscape-status.png"},
+    {"control": "tracking-through", "page_zoom_percent": 85, "orientation": "landscape-secondary", "before_scale": 0.85, "focused_scale": 0.85, "font_px": 19, "floor_px": 19, "layout_width": 1002, "interaction": "real tap; native picker dismissed without changing value; select remained active", "screenshot": "watch-tracking-native-85-landscape-through.png"},
+    {"control": "tracking-through", "page_zoom_percent": 85, "orientation": "portrait-primary", "before_scale": 0.85, "focused_scale": 0.85, "font_px": 19, "floor_px": 19, "layout_width": 462, "interaction": "real tap after rotation back; native picker dismissed without changing value; select remained active", "screenshot": "watch-tracking-native-85-portrait-through.png"}
+  ],
+  "same_document_page_zoom": {"changes": ["85 to 100", "100 to 85", "85 to 100"], "observed_floor_px": [19, 16, 19, 16]},
+  "conclusion": "All independently measured native focus cases kept the pre-focus viewport scale. The shared floor rendered at 16px for 100% Page Zoom and 19px for 85%, including both tracking selects in portrait and landscape at reduced zoom.",
+  "limits": [
+    "Simulator evidence, not a physical iPhone test.",
+    "Search stayed focused with the software keyboard through landscape rotation; a separate new landscape search focus baseline was not measured.",
+    "100% landscape episode select was tapped and its native picker opened, but the older QA overlay clipped its scale reading, so that case is excluded from scale proof.",
+    "85% landscape search metrics were observed in the CUA screenshot but no standalone PNG was saved for that case.",
+    "No native iPad or split-view testing, physical-device testing, or pinch-zoom stability rerun in this task.",
+    "Only 100% and 85% native Page Zoom were tested in this task.",
+    "Simulator drag and scroll did not move the page through CUA; the optional QA button used scrollIntoView without focus to reveal the status select. Native taps performed the focus actions."
+  ],
+  "restored_state": {"orientation": "portrait-primary", "page_zoom_percent": 100, "viewport_scale": 1, "floor_px": 16, "software_keyboard_visible": false, "native_safari_left_open": true, "account_or_list_data_erased": false, "progress_changes_saved": false}
+}
