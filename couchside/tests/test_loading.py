@@ -161,7 +161,9 @@ class RouteLoading(unittest.TestCase):
         card.hover(position={'x': 12, 'y': 12})
         card.get_by_role('button', name='Add Game of Thrones to compare', exact=True).click()
         page.locator('#compare:not([hidden])').wait_for()
-        page.wait_for_timeout(1200)
+        page.locator('.compare-save:not(:disabled)').wait_for()
+        page.locator('#home .ratings-card-matrix[data-show="82"][data-matrix-state="ready"]').first.wait_for(state='attached')
+        page.wait_for_timeout(4800)
         self.assertEqual(fixture.count('/api/episode-matrices'), 1, 'Hidden card retries must not fetch')
         fixture.matrix_pending = False
         page.locator('.links [data-page="home"]').click()

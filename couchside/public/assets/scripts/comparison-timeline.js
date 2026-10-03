@@ -1,6 +1,6 @@
 // Shared episode positions and rating scale for live comparisons and snapshots.
-import { timelineModel, smoothPath } from './episode-timeline.js?v=803e207689055be8';
-import { average, band, esc, score } from './ratings.js?v=2a0509d86dd759f5';
+import { timelineModel, smoothPath } from './episode-timeline.js?v=d5bd5f2216ee1dbd';
+import { average, band, esc, score } from './ratings.js?v=70517fd9f1cddac1';
 import { comparisonPosterColours } from './poster-colours.js?v=0a5c074f14836db9';
 export { comparisonShowColour } from './poster-colours.js?v=0a5c074f14836db9';
 

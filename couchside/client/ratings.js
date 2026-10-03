@@ -1,4 +1,5 @@
 import { apiFetch } from './network.js';
+import { fullRatings, publicData } from './public-data.js';
 export const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export const score = n => n == null ? 'Unrated' : Number(n).toFixed(1);
 export const code = e => `S${e.season} E${e.number}`;
@@ -43,10 +44,11 @@ export function legend() {
 }
 const loaded = new Map();
 const MAX_CACHED = 160;
-const CACHED_FOR = 30 * 60 * 1000;
+const CACHED_FOR = 5 * 60 * 1000;
 export const cachedRatings = id => {
   const held = loaded.get(id);
-  if (held && Date.now() - held.at < CACHED_FOR) return held.value;
+  if (held && Date.now() - held.at < CACHED_FOR &&
+      (!Number.isFinite(held.value.expiresAt) || Date.now() < held.value.expiresAt * 1000)) return held.value;
   if (held) { loaded.delete(id); cache.delete(id); }
 };
 const cache = new Map();
@@ -87,11 +89,38 @@ export const freshMatrix = id => {
   const held=matrices.get(id),full=cachedRatings(id);
   return full&&!full.refreshing?full:held&&Date.now()-held.at<CACHED_FOR&&!held.value.refreshing?held.value:null;
 };
-export async function matrixRatings(ids) {
-  const response = await apiFetch(`/api/episode-matrices?ids=${[...new Set(ids)].slice(0,40).join(',')}`);
-  const body = await response.json();
-  if (!response.ok || !Array.isArray(body.shows) || !Array.isArray(body.pending)) throw Error(body.error || 'Ratings are unavailable.');
-  acceptMatrices(body);
+const matrixFlights = new Map(), matrixQueue = new Map();
+let matrixTimer;
+async function drainMatrices() {
+  matrixTimer = null;
+  const jobs = [...matrixQueue.values()]; matrixQueue.clear();
+  for (let offset = 0; offset < jobs.length; offset += 40) {
+    const batch = jobs.slice(offset, offset + 40), ids = batch.map(job => job.id).sort((a, b) => a - b);
+    try {
+      const response = await apiFetch(`/api/episode-matrices?ids=${ids.join(',')}`), body = await response.json();
+      if (!response.ok || !Array.isArray(body.shows) || !Array.isArray(body.pending)) throw Error(body.error || 'Ratings are unavailable.');
+      acceptMatrices(body);
+      for (const job of batch) job.resolve({ show: body.shows.find(show => show.id === job.id), pending: body.pending.includes(job.id) });
+    } catch (error) { batch.forEach(job => job.reject(error)); }
+    finally { batch.forEach(job => matrixFlights.delete(job.id)); }
+  }
+}
+export async function matrixRatings(ids, { refresh = false } = {}) {
+  const unique = [...new Set(ids)].slice(0, 40);
+  if (unique.some(id => !Number.isInteger(id) || id <= 0)) throw Error('Choose valid shows.');
+  const result = await Promise.all(unique.map(id => {
+    const held = !refresh && freshMatrix(id);
+    if (held) return { show: held, pending: false };
+    if (!matrixFlights.has(id)) {
+      matrixFlights.set(id, new Promise((resolve, reject) => {
+        matrixQueue.set(id, { id, resolve, reject });
+        if (!matrixTimer) matrixTimer = setTimeout(drainMatrices, 30);
+      }));
+    }
+    return matrixFlights.get(id);
+  }));
+  const body = { shows: result.map(value => value.show).filter(Boolean), pending: unique.filter((id, i) => result[i].pending) };
+  if (!refresh) for (const id of [...body.pending, ...body.shows.filter(show => show.refreshing).map(show => show.id)]) followEnrichment(id);
   return body;
 }
 // Feed answers carry saved matrices so card construction does not need another trip.
@@ -99,6 +128,7 @@ export function acceptMatrices(body) {
   if (!body || !Array.isArray(body.shows)) return;
   for (const value of body.shows) {
     matrices.delete(value.id);matrices.set(value.id, {at:Date.now(),value});
+    if (!value.refreshing) publicData.stopFollowing(value.id);
     const full = cachedRatings(value.id);
     if (full) {
       let changed=full.sources!==value.sources;
@@ -110,32 +140,46 @@ export function acceptMatrices(body) {
           Object.assign(e,{rating:picked.rating,rating_source:picked.rating_source,rating_votes:picked.rating_votes});
         }
       }
-      full.sources=value.sources;
+      full.sources=value.sources; full.refreshing=value.refreshing === true;
       if(changed&&typeof window!=='undefined')window.dispatchEvent(new CustomEvent('couchside-ratings',{detail:value.id}));
     }
   }
   while (matrices.size > MAX_MATRICES) matrices.delete(matrices.keys().next().value);
   saveMatrices();
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('couchside-matrices', { detail: body }));
 }
-function followEnrichment(id, attempt=0) {
-  setTimeout(async()=>{
-    try {
-      const body=await matrixRatings([id]);
-      if(attempt<7&&body.shows.some(s=>s.id===id&&s.refreshing))followEnrichment(id,attempt+1);
-    } catch { /* Keep the answer already displayed. */ }
-  },4000);
+function ratingsVisible(id) {
+  const doc = globalThis.document;
+  if (!doc?.querySelectorAll) return true;
+  const cards = doc.querySelectorAll(`.ratings-card-matrix[data-show="${id}"], .compare-card[data-show="${id}"]`);
+  for (const node of cards) {
+    if (!node.isConnected || node.closest('[inert]') || !node.getClientRects().length) continue;
+    if (node.classList.contains('compare-card')) return true;
+    const bounds = node.getBoundingClientRect();
+    if (bounds.top < innerHeight + 600 && bounds.bottom > -600 && bounds.left < innerWidth + 220 && bounds.right > -220) return true;
+  }
+  return Boolean(doc.querySelector('#title[open]') &&
+    Number(new URLSearchParams(globalThis.location?.search || '').get('show')) === id);
+}
+function followEnrichment(id) {
+  publicData.follow(id, async () => {
+    const full = cachedRatings(id);
+    if (full && !full.refreshing) return false;
+    const body = await matrixRatings([id], { refresh: true });
+    return body.pending.includes(id) || body.shows.some(show => show.id === id && show.refreshing);
+  }, failed => { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('couchside-matrices-failed', { detail: failed })); }, ratingsVisible);
 }
 export function ratings(id) {
   const held = cachedRatings(id);
   if (held) return Promise.resolve(held);
   if(!cache.has(id)) {
     const request=async()=>{
-      const response=await apiFetch(`/api/episode-ratings?id=${id}`),body=await response.json();
-      if(!response.ok)throw Error(body.error||'Ratings are unavailable.');
+      const body = await fullRatings(id);
       if(!Array.isArray(body.episodes))throw Error('Ratings are unavailable.');
       loaded.set(id,{at:Date.now(),value:body});
       while(loaded.size>MAX_CACHED){const oldest=loaded.keys().next().value;loaded.delete(oldest);cache.delete(oldest);}
-      if(body.refreshing)followEnrichment(id);
+      if(body.refreshing)followEnrichment(id);else publicData.stopFollowing(id);
+      if(typeof window!=='undefined')window.dispatchEvent(new CustomEvent('couchside-matrices',{detail:{shows:[body],pending:[]}}));
       return body;
     };
     const pending=request().catch(error=>{cache.delete(id);throw error;});

@@ -19,7 +19,8 @@ class ProtocolMetrics:
         self.gate_wait = deque(maxlen=20000)
         self.statuses, self.journeys, self.users, self.cache_headers = (Counter() for _ in range(4))
         self.application = Counter()
-        self.latencies = {name: Counter() for name in ('successful', 'api_successful', 'failed', 'expected_non_2xx')}
+        self.latencies = {name: Counter() for name in ('successful', 'api_successful', 'api_user_successful', 'failed', 'expected_non_2xx')}
+        self.endpoints = {}
         self.journey_latencies = {}
         self.decoded_bytes = self.requests = self.retries = self.gate_blocked = 0
         self.generator_cpu_warnings = 0
@@ -39,9 +40,11 @@ class ProtocolMetrics:
         finally:
             if blocked:
                 self.waiting -= 1
-        self.gate_wait.append((time.monotonic() - began) * 1000)
+        waited = (time.monotonic() - began) * 1000
+        self.gate_wait.append(waited)
         self.active += 1
         self.peak_active = max(self.active, self.peak_active)
+        return waited
 
     def leave(self):
         self.active -= 1
@@ -63,6 +66,10 @@ class ProtocolMetrics:
         self.latencies[bucket][milliseconds] += 1
         if bucket == 'successful' and context.get('api'):
             self.latencies['api_successful'][milliseconds] += 1
+            user_ms = min(120000, max(0, round(response_time + context.get('gate_ms', 0))))
+            self.latencies['api_user_successful'][user_ms] += 1
+            endpoint = self.endpoints.setdefault(context.get('name', 'api'), Counter())
+            endpoint[user_ms] += 1
 
     def completed_journey(self, name, elapsed_ms):
         histogram = self.journey_latencies.setdefault(name, Counter())
@@ -78,13 +85,15 @@ class ProtocolMetrics:
                 if percentile not in quantiles and cumulative >= count * percentile / 100:
                     quantiles[percentile] = milliseconds
         return {'count': count, 'p50_ms': quantiles.get(50), 'p95_ms': quantiles.get(95),
-                'p99_ms': quantiles.get(99), 'resolution_ms': 1, 'upper_bucket_ms': 120000}
+                'p99_ms': quantiles.get(99), 'max_ms': max(histogram, default=None),
+                'under_100_ms': sum(count for ms, count in histogram.items() if ms < 100),
+                'resolution_ms': 1, 'upper_bucket_ms': 120000}
 
     def summary(self):
         waits = sorted(self.gate_wait)
         percentile = lambda fraction: waits[min(len(waits) - 1, int(len(waits) * fraction))] if waits else 0
         public_config = {k: v for k, v in asdict(self.config).items()
-                         if k not in ('accounts_path', 'metrics_directory')}
+                         if k not in ('accounts_path', 'metrics_directory', 'gateway_key_path')}
         counts = {name: sum(histogram.values()) for name, histogram in self.latencies.items()}
         definitive = {'total': counts['successful'] + counts['failed'] + counts['expected_non_2xx'],
                       'successful_2xx': counts['successful'], 'failed': counts['failed'],
@@ -97,6 +106,7 @@ class ProtocolMetrics:
                 'statuses': dict(self.statuses), 'journey_counts': dict(self.journeys),
                 'application_events': dict(self.application),
                 'request_latency': {name: self.latency_summary(histogram) for name, histogram in self.latencies.items()},
+                'endpoint_user_latency': {name: self.latency_summary(histogram) for name, histogram in self.endpoints.items()},
                 'completed_journey_latency': {name: self.latency_summary(histogram)
                                               for name, histogram in self.journey_latencies.items()},
                 'user_counts': dict(self.users), 'retries': self.retries,
@@ -116,7 +126,7 @@ class ProtocolMetrics:
                                 'Persistent mode keeps an independent connection pool per virtual user. '
                                 'Pooled mode shares a bounded backend pool, approximating a reverse proxy; '
                                 'it does not test the target holding 10,000 direct TCP connections.',
-                                'Locust response latency excludes time queued at the generator gate.',
+                                'api_user_successful and endpoint_user_latency include time queued at the generator gate; Locust response latency excludes it.',
                                 'Completed journey latency includes generator queueing, request retries/backoff '
                                 'and pauses within the journey; it excludes think time between journeys.',
                                 'Random choices repeat for the same seed, worker layout and user ordinal; '

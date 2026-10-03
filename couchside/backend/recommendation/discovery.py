@@ -85,6 +85,10 @@ class Discovery:
     def __init__(self, library, store, path):
         self.library, self.store = library, store
         self.lock, self.views = threading.Lock(), OrderedDict()
+        engine = library.e
+        self.sort_keys = {kind: [sort_key(show, kind, engine.popularity[i])
+                                 for i, show in enumerate(engine.shows)]
+                          for kind in ('rating', 'newest', 'name', 'popular')}
         self.counts = {}
         try:
             with gzip.open(path, 'rt') as stream:
@@ -126,10 +130,15 @@ class Discovery:
             view = copy(self.library)
             view.__class__ = FilteredLibrary
             view.rules, view.base = filters, self.library
-            view.allowed = {i for i in range(view.e.n) if fits(self.record(i), filters)}
+            limits = any(k in filters for k in ('hours', 'episodes', 'seasons'))
+            if set(filters) <= {'sort'}:
+                view.allowed = range(view.e.n)
+            else:
+                record = self.record if limits else view.e.shows.__getitem__
+                view.allowed = {i for i in range(view.e.n) if fits(record(i), filters)}
             # Pagination is kept by the full request hash across metadata snapshots.
             # A new count must not discard rows already laid out for a scrolling visit.
-            view._pools = {}
+            view._pools = OrderedDict()
             take = lambda values: [i for i in values if i in view.allowed]
             for field in ('shelf', 'top10', 'popular', 'acclaimed', 'fresh', 'soon', 'classics', 'popular_pool'):
                 setattr(view, field, take(getattr(view, field)))
@@ -145,6 +154,8 @@ class Discovery:
         sort = rules.get('sort', 'relevance')
         if sort in ('relevance', 'added'):
             return items
+        if sort in self.sort_keys:
+            return sorted(items, key=self.sort_keys[sort].__getitem__)
         return sorted(items, key=lambda i: sort_key(self.record(i), sort, self.library.e.popularity[i]))
 
 

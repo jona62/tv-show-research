@@ -1,4 +1,4 @@
-import { average, band, esc, score } from './ratings.js?v=2a0509d86dd759f5';
+import { average, band, esc, score } from './ratings.js?v=70517fd9f1cddac1';
 
 export const seasonName = season => Number(season) >= 1900 ? `${season} season` : `Season ${season}`;
 export const seasonCode = season => Number(season) >= 1900 ? String(season) : `S${season}`;

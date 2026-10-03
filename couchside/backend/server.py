@@ -1,4 +1,10 @@
-"""Serve Couchside with the standard HTTP server and a shared urllib3 outbound client."""
+"""Couchside HTTP routes, also used by the bounded ASGI production runtime."""
+# Dispatch before loading the model: the supervisor must not hold an unused copy,
+# and each spawned worker initializes its own SQLite connections and thread pools.
+if __name__ == '__main__':
+    from .runtime import launch
+    launch()
+    raise SystemExit
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as Unfinished
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -22,7 +28,7 @@ from .recommendation.discovery import Discovery, read_filters, fits, sort_key
 from .fallback import Remote, answer
 from .recommendation.library import Library, DESCRIPTION, MAX_SAVED
 from .recommendation.insights import Insights
-from .live import (Live, LiveError, Icons, KINOCHECK, ITUNES, trim_videos, trim_seasons,
+from .live import (Live, LiveError, Icons, KINOCHECK, ITUNES, SHOW, trim_videos, trim_seasons,
                   match_rating, itunes_search)
 from .people import PERSON, GUESTS, WIKIDATA, WIKIPEDIA, Biographies, trim_person, trim_guests, credits, public
 from .recommendation.related import Related
@@ -35,6 +41,7 @@ from .account_http import AccountRoutes
 from .backdrops import Backdrops, image_kind, backdrop_width
 from .seo import SEO, bootstrap as seo_bootstrap
 from . import telemetry
+from .public_api import PublicAPI
 
 HERE = Path(__file__).resolve().parents[1]
 PUBLIC = HERE / 'public'
@@ -274,6 +281,9 @@ PUBLIC_SEO = SEO(ENGINE, LIBRARY)
 # Every page says which build it is, read with the page at startup, so the service worker
 # keeps a page only beside files of the same build.
 BUILD = build_of(PUBLIC)
+PUBLIC_API = PublicAPI(LIBRARY, RATINGS, hashlib.sha256(
+    f'{MODEL}:{(MODEL / "catalog.json.gz").stat().st_mtime_ns}:{BUILD}'.encode()).hexdigest()[:24],
+    known=lambda show_id: show_id in ENGINE.by_id or newer(show_id))
 LOST = (PUBLIC / 'pages/404.html').read_bytes() if (PUBLIC / 'pages/404.html').exists() else b''
 FILES = Built()
 PACKED_PAGES = Pages()
@@ -296,6 +306,31 @@ gc.freeze()
 def newer(show_id):
     """Whether show_id may be a show TVmaze added since the catalogue was built (NEWEST)."""
     return type(show_id) is int and NEWEST < show_id <= NEWEST + NEWER_REACH
+
+
+def cached_newer_cards(ids):
+    """Batch only metadata already cached by search/details; no upstream fan-out."""
+    cards = []
+    for show_id in ids:
+        if not newer(show_id):
+            continue
+        with ADDED.lock:
+            added = ADDED.shows.get(show_id)
+        if added:
+            cards.append(dict(added[0]))
+            continue
+        path = SHOW.format(id=show_id)
+        with LIVE.lock:
+            cached = LIVE.cache.get(path)
+        if not cached:
+            cached = EPISODE_STORE.get_live(path)
+        about = cached[1].get('about') if cached else None
+        if about:
+            cards.append(dict(about))
+    return cards
+
+
+PUBLIC_API.cards_for_missing = cached_newer_cards
 
 
 def backdrop_source(show_id):
@@ -608,6 +643,9 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_page(parse_qs(parts.query), head=True)
         elif self.discovery_file(parts.path, head=True):
             return
+        elif parts.path in ('/api/show-cards', '/api/episode-ratings-batch'):
+            if self.admitted():
+                self.public_data(parts.path, parse_qs(parts.query))
         elif parts.path == '/api/backdrop':
             if self.admitted():
                 self.backdrop(parse_qs(parts.query), head=True)
@@ -638,10 +676,14 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if ACCOUNT_ROUTES.handle(self, path):
             return
+        if path in ('/api/show-cards', '/api/episode-ratings-batch'):
+            self.public_data(path, query)
+            return
         if path == '/healthz':
             self.send_json({'status': 'ok'})
             return
         if path == '/api/search':
+            EPISODE_STORE.sync_metadata()
             q = query.get('q', [''])[0]
             if len(q) > 100:
                 self.send_json({'error': 'Search terms must be 100 characters or fewer.'}, 400)
@@ -681,6 +723,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.icon(query.get('host', [''])[0])
             return
         if path == '/api/starters':
+            EPISODE_STORE.sync_metadata()
             try:
                 seed, rnd, picked, lang, count = starters.parse(query, self.headers.get('Accept-Language', ''))
             except ValueError as exc:
@@ -697,6 +740,22 @@ class Handler(SimpleHTTPRequestHandler):
         if self.discovery_file(path):
             return
         super().do_GET()
+
+    def public_data(self, path, query):
+        try:
+            prepared = PUBLIC_API.get(path, query)
+            selected = prepared.select(self.headers.get('Accept-Encoding', ''),
+                                       self.headers.get('If-None-Match'), head=self.command == 'HEAD')
+            self.cache_control = prepared.cache_control
+            self.send_response(selected.status)
+            for key, value in selected.headers:
+                if key.lower() != 'cache-control':
+                    self.send_header(key, value)
+            self.end_headers()
+            if selected.body:
+                self.wfile.write(selected.body)
+        except ValueError as exc:
+            self.send_json({'error': str(exc)}, 400, head=self.command == 'HEAD')
 
     def discovery_file(self, path, head=False):
         if path == '/robots.txt':
@@ -890,6 +949,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json({'error': 'Busy right now. Try again in a moment.'}, 503)
             return
         try:
+            EPISODE_STORE.sync_metadata()
             if route == '/api/shows':
                 self.send_json(decorate({'shows': LIBRARY.cards(read_ids(payload))}, payload.get('matrix') is True))
             elif not isinstance(payload, dict):
@@ -959,16 +1019,40 @@ class Handler(SimpleHTTPRequestHandler):
         pass
 
 
-if __name__ == '__main__':
-    telemetry.configure_from_env()
+ADDED_SNAPSHOT = (Path(os.environ.get('RATINGS_CACHE') or HERE.parent / 'data/cache/episode-ratings.sqlite3').parent /
+                  f'couchside-added-{PUBLIC_API.catalogue_version}.json')
+
+
+def start_worker():
+    """Every spawned worker follows model changes and warms its own semantic index."""
     follow.start(os.environ.get('MODEL_DIR') or SOURCE, MODEL)
     # What searching by meaning reads is built behind the first requests, not before them.
     threading.Thread(target=RELATED.warm, daemon=True).start()
+
+
+BACKGROUND_THREADS = []
+
+
+def start_background():
+    """Provider warming has one elected owner per host, backed by shared WAL caches."""
     # The shows TVmaze has added since the catalogue, read at once and about hourly after.
-    threading.Thread(target=ADDED.run, name='added', daemon=True).start()
+    worker = threading.Thread(target=ADDED.run, kwargs={'snapshot': ADDED_SNAPSHOT}, name='added', daemon=True)
+    BACKGROUND_THREADS.append(worker)
+    worker.start()
     # Warm a broader catalogue gradually, leaving live-request capacity for visitors.
     # Data stays on the workspace volume, so this work also benefits later visits.
     popular = sorted(range(ENGINE.n), key=lambda i: (ENGINE.popularity[i], ENGINE.shows[i].get('rating') or 0), reverse=True)
     RATINGS.start(ENGINE.shows[i]['id'] for i in popular[:2000])
-    port = int(os.environ.get('PORT', '8082'))
-    ThreadingHTTPServer(('0.0.0.0', port), partial(Handler, directory=str(PUBLIC))).serve_forever()
+
+
+def stop_background(timeout=15):
+    """Keep elected ownership until provider work drains or the process exits."""
+    ADDED.stop.set()
+    RATINGS.stop.set()
+    RATINGS.ready.set()
+    deadline = time.monotonic() + timeout
+    workers = (*BACKGROUND_THREADS, *RATINGS.workers)
+    for worker in workers:
+        if worker.ident is not None:
+            worker.join(max(0, deadline - time.monotonic()))
+    return not any(worker.is_alive() for worker in workers)

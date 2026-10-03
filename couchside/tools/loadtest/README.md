@@ -22,10 +22,12 @@ Start the actual backend with disposable accounts and copied caches:
   --port 18120 --data-dir /tmp/couchside-load-run --cache-mode warm
 ```
 
-The server binds loopback only, preserves production's admission/concurrency
-limits, and never alters the original databases. Warm mode copies SQLite through
+The server uses the production Uvicorn/ASGI transport, binds loopback only,
+preserves per-client/provider budgets and bounded execution queues, and never
+alters the original databases. Warm mode copies SQLite through
 its backup API, including committed WAL data. Cold mode starts empty caches.
-Background refresh/prewarm jobs are excluded from this controlled run.
+Background refresh/prewarm jobs run normally. `--no-background` is an explicitly
+labeled diagnostic option, rather than the default capacity configuration.
 Account fixtures are provisioned before timing; signup throughput is not measured.
 The private account pool has file permissions 0600 and must not be committed or
 attached to reports. The server blocks physical upstream calls by default.
@@ -49,17 +51,29 @@ The default stages are 100 and 1,000 persistent users followed by 10,000 pooled
 users. Persistent mode gives each user its own normal keep-alive connection.
 Pooled mode shares backend transport connections, approximating a reverse proxy's
 upstream pool; it does not measure the gateway's ability to accept 10,000 clients.
-Only the isolated server translates synthetic identity headers to distinct proxy
-client addresses. Real remote targets never receive these headers.
+Only isolated test servers translate synthetic identities to distinct proxy client
+addresses. A remote isolated target requires `--allow-remote`,
+`--synthetic-identities` and `--gateway-key-path` with a private signing key whose
+audience matches the exact target origin. `gateway:create_app` refuses to start
+without the disposable-directory marker and explicit isolation environment.
+Production does not import this gateway; unsigned requests retain their real
+address. Keep signing keys and account fixtures outside reports and Git.
 
 The runner records generator/server CPU, RSS, threads, file descriptors and host
 memory, and interrupts a stage at the configured resource limits. An aborted
 stage is a failed or incomplete capacity experiment, never a passed test. Locust
 may exit nonzero when requests fail; the status distribution explains failures.
 Default experimental targets are at most 1% failed completed requests and at most
-one second for successful API p95. These are configurable test targets, not an
+100 ms for successful API p95, including generator queueing. These are configurable test targets, not an
 agreed production SLA. Final request-event totals govern acceptance; the raw CSV
 is a periodic snapshot. Started users and measured peak concurrency remain separate.
+
+For a separate Linux application VM, run `sample_server.py --pid-file PID_FILE
+--output resources.jsonl --seconds 240` beside the server. It samples the parent
+and its worker processes, file descriptors, threads and guest CPU steal. RSS sums
+can count shared pages more than once; CPU 100% represents one logical core.
+Pass `--server-metrics` when the runner can read the shared telemetry file;
+otherwise retain start/end snapshots and compute per-process counter deltas.
 
 Run actual browser journeys independently or during a chosen backend stage:
 

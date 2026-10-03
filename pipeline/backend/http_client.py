@@ -14,6 +14,7 @@ import hashlib
 import io
 import json
 import os
+import secrets
 import sqlite3
 import threading
 import time
@@ -76,7 +77,36 @@ class State:
             CREATE TABLE IF NOT EXISTS http_limits (host TEXT PRIMARY KEY, next REAL, pause REAL);
             CREATE TABLE IF NOT EXISTS http_cache (key TEXT PRIMARY KEY, fetched REAL, headers TEXT, body BLOB);
             CREATE INDEX IF NOT EXISTS http_cache_fetched ON http_cache(fetched);
+            CREATE TABLE IF NOT EXISTS http_leases (key TEXT PRIMARY KEY, owner TEXT, expires REAL);
+            CREATE INDEX IF NOT EXISTS http_leases_expires ON http_leases(expires);
         ''')
+
+    def acquire(self, key, owner, lifetime):
+        """One cache writer across processes; abandoned writers expire automatically."""
+        now = self.clock()
+        with self.lock:
+            try:
+                self.db.execute('BEGIN IMMEDIATE')
+                self.db.execute('DELETE FROM http_leases WHERE expires<=?', (now,))
+                row = self.db.execute('SELECT owner FROM http_leases WHERE key=?', (key,)).fetchone()
+                if row:
+                    self.db.commit()
+                    return False
+                count = self.db.execute('SELECT COUNT(*) FROM http_leases').fetchone()[0]
+                if count >= 512:
+                    self.db.commit()
+                    return None
+                self.db.execute('INSERT INTO http_leases VALUES (?, ?, ?)',
+                                (key, owner, now + min(120, max(1, lifetime))))
+                self.db.commit()
+                return True
+            except BaseException:
+                self.db.rollback()
+                raise
+
+    def release(self, key, owner):
+        with self.lock, self.db:
+            self.db.execute('DELETE FROM http_leases WHERE key=? AND owner=?', (key, owner))
 
     def delay(self, host, gap):
         """Reserve only an immediately available turn, so cancelled readers leave no queue."""
@@ -234,6 +264,32 @@ class Client:
         except sqlite3.Error:
             raise URLError('Network admission is temporarily unavailable') from None
 
+    def _shared(self, key, ttl, deadline, kind):
+        owner, waiting = secrets.token_hex(16), False
+        while True:
+            held = self.state.get(key, ttl)
+            if held:
+                telemetry.cache('shared_http_disk', 'hit', kind)
+                return held, None
+            remaining = deadline - self.clock()
+            if remaining <= 0:
+                raise URLError('Upstream answer is still loading')
+            try:
+                acquired = self.state.acquire(key, owner, remaining + 1)
+                if acquired:
+                    # The previous writer may have published between our first
+                    # read and the lease transaction. Recheck before any I/O.
+                    held = self.state.get(key, ttl)
+                    if held:
+                        telemetry.cache('shared_http_disk', 'hit', kind)
+                    return held, owner
+            except sqlite3.Error:
+                raise URLError('Network admission is temporarily unavailable') from None
+            if not waiting:
+                telemetry.cache('shared_http_lease', 'coalesced' if acquired is False else 'blocked', kind)
+                waiting = True
+            self.sleep(min(.05, remaining))
+
     def get(self, url, headers=None, timeout=6, budget=15, max_bytes=5 * 1024 * 1024,
             ttl=0, stale=0, force=False, attempts=3, on_attempt=None, validate=None):
         if urlsplit(url).scheme not in ('https', 'http'):
@@ -258,11 +314,19 @@ class Client:
                 return pending.result(timeout=budget)
             except TimeoutError:
                 raise URLError('Upstream answer is still loading') from None
+        lease = None
         try:
             try:
-                value = self._send(url, headers or {}, timeout, self.clock() + budget, max_bytes, attempts, on_attempt)
-                if validate:
-                    validate(value.body)
+                deadline = self.clock() + budget
+                private = any(name.lower() in ('authorization', 'cookie') for name in (headers or {}))
+                value, fetched = None, False
+                if ttl and not force and not private:
+                    value, lease = self._shared(key, ttl, deadline, kind)
+                if value is None:
+                    value = self._send(url, headers or {}, timeout, deadline, max_bytes, attempts, on_attempt)
+                    if validate:
+                        validate(value.body)
+                    fetched = True
             except (HTTPError, URLError) as error:
                 # Missing records and rejected credentials are not temporary outages.
                 held = self.state.get(key, stale) if stale and (not isinstance(error, HTTPError) or error.code in RETRY.status_forcelist) else None
@@ -271,7 +335,7 @@ class Client:
                 telemetry.cache('shared_http_disk', 'stale', kind)
                 value = Response(held.body, held.headers, held.status, stale=True)
             else:
-                if ttl:
+                if ttl and fetched:
                     try:
                         self.state.put(key, value)
                     except sqlite3.Error:
@@ -282,6 +346,11 @@ class Client:
             pending.set_exception(error)
             raise
         finally:
+            if lease is not None:
+                try:
+                    self.state.release(key, lease)
+                except sqlite3.Error:
+                    pass  # Expiry recovers if this process cannot release its token.
             with self.lock:
                 self.inflight.pop(key, None)
 

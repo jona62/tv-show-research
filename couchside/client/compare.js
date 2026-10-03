@@ -1,4 +1,5 @@
 import { apiFetch } from './network.js';
+import { showCard, publicData } from './public-data.js';
 import { esc, html, icon, legend, ratings, ratingSources } from './ratings.js';
 import { compareMatrix, ratingTableHTML, seasonName } from './rating-views.js';
 import { comparisonOverlayHTML, comparisonOverlayPlan, comparisonShowColour } from './comparison-timeline.js';
@@ -110,12 +111,9 @@ async function answer(path, options = {}) {
   if (!response.ok) throw Error(body.error || 'Shows are unavailable. Try again.');
   return body;
 }
-const post = (path, body, signal) => answer(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
-async function loadMetadata(id, signal) {
-  const body = await post('/api/shows', { ids: [id] }, signal);
-  const show = body.shows?.find(item => item.id === id);
-  return show || (await post('/api/title', { id }, signal)).show;
-}
+// The shared public reader collects the comparison's IDs into one metadata
+// request. Disposal only rejects this view's late generation, never another view.
+const loadMetadata = id => showCard(id);
 function fullPoster(show) {
   if (show.art) return show.art;
   if (!show.poster) return null;
@@ -366,6 +364,8 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
   function add(id) {
     if (state.ids.includes(id)) { tell('This show is already in your comparison.'); return; }
     if (state.ids.length >= MAX_SHOWS) { tell('Compare up to 40 shows at once. Remove one to add another.'); return; }
+    const selected = found.find(show => show.id === id);
+    if (selected) void publicData.cache.put('card', [selected]);
     state.ids.push(id); query = ''; input.value = ''; ++searchToken; found = []; searchGroups = []; searchOpen = false; searchMessage = ''; renderSearch();
     render(); loader.ensure(id); input.focus(); tell('Show added to comparison.');
   }

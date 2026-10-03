@@ -41,6 +41,7 @@ from .engine import CO_POWER, CO_TIE, CO_WEIGHT, DEFAULT_SETTINGS, FORMAT_GROUPS
 from .fresh import dither, pick_one, spread, shuffle_rows, ROW_EPSILON, ROW_KEY
 from .starters import Starters
 from .taste import COUNTRIES, decade as decade_of
+from .response_cache import Answers, response
 from .. import telemetry
 
 IMAGE = 'https://static.tvmaze.com/uploads/images/{size}/{bucket}/{image}.jpg'
@@ -333,10 +334,10 @@ class Taste:
         scores = self.scores if scoring is None else self.e.rank(
             self.candidates, scoring, self.negatives, self.affinities, self.settings, self.positives)
         ids = self.lib.ids
-        ranked = sorted((i for i in self.candidates if scores[i] > 0), key=lambda i: (-scores[i], ids[i]))
-        if getattr(self.lib, 'rules', {}).get('sort', 'relevance') != 'relevance':
+        ranked = [i for i in self.candidates if scores[i] > 0]
+        if getattr(self.lib, 'rules', {}).get('sort', 'relevance') not in ('relevance', 'added'):
             return self.lib.discovery.order(ranked, self.lib.rules)
-        return ranked
+        return sorted(ranked, key=lambda i: (-scores[i], ids[i]))
 
     def score_others(self, indices):
         """Scores for shows outside the pool (rated, obscure, filtered out), worked out
@@ -2679,6 +2680,7 @@ class Library:
         # whether a first request has its page laid out behind it (ahead), one at a time.
         self.kept, self.kept_lock = OrderedDict(), threading.Lock()
         self.ahead, self.laying = True, threading.BoundedSemaphore(1)
+        self.can_keep_ahead = lambda: True
 
     def _home_setup(self):
         """What the home page needs that is the same for everyone."""
@@ -2724,7 +2726,8 @@ class Library:
         for family in ('genre', 'theme', 'subgenre'):
             for bit, label in enumerate(a.labels.get(family, ())):
                 self.values[(family, label)] = bit
-        self._pools = {}
+        self._pools, self._pool_lock = OrderedDict(), threading.Lock()
+        self.answers = Answers()
 
     # ------------------------------------------------------------ shapes
 
@@ -2838,8 +2841,14 @@ class Library:
         rating a quarter of rated shows reach. The same for everyone with those settings."""
         key = tuple(sorted((k, v) for k, v in settings.items() if k in (
             'language', 'type', 'status', 'year_min', 'runtime_min', 'rating_min', 'known_min')))
-        telemetry.cache('catalogue_pool', 'hit' if key in self._pools else 'miss')
-        if key not in self._pools:
+        with self._pool_lock:
+            held = self._pools.get(key)
+            if held is not None:
+                self._pools.move_to_end(key)
+                telemetry.cache('catalogue_pool', 'hit')
+                return held
+        telemetry.cache('catalogue_pool', 'miss')
+        if held is None:
             e = self.e
             kind = settings['type']
             formats = None if kind == 'all' else set(FORMAT_GROUPS.get(kind, (kind,)))
@@ -2851,10 +2860,12 @@ class Library:
                 below += counts[v]
             ratings = sorted(e.shows[i]['rating'] for i in pool if e.shows[i]['rating'])
             q75 = ratings[int(0.75 * (len(ratings) - 1))] if ratings else 10.0
-            if len(self._pools) > 16:
-                self._pools.clear()
-            self._pools[key] = {'popularity': table, 'rating_q75': q75, 'pool': pool}
-        return self._pools[key]
+            held = {'popularity': table, 'rating_q75': q75, 'pool': pool}
+            with self._pool_lock:
+                self._pools[key] = held
+                while len(self._pools) > 32:
+                    self._pools.popitem(last=False)
+        return held
 
     # ------------------------------------------------------------ micro-genres
 
@@ -3027,6 +3038,7 @@ class Library:
         candidates = [i for i in pool if i not in out]
         return profile, settings, positives, negatives, rated, candidates, fresh
 
+    @response
     def home(self, body):
         """The home page, or the next rows of it. A first request gets the featured shows,
         the visit's hero first, and the first eight rows, and has the page laid out to its end
@@ -3110,6 +3122,9 @@ class Library:
         as a browser asks as soon as the first rows are on screen: at once the rows it
         laid out, today's, and behind it the page laid out to its end, one page at a
         time. Nothing when it is kept already."""
+        if not self.can_keep_ahead():
+            telemetry.cache('home_pages', 'blocked')
+            return
         with self.kept_lock:
             self.forget()
             if ask in self.kept or not self.laying.acquire(blocking=False):
@@ -3262,6 +3277,7 @@ class Library:
             order = [by_key.get(key, (key, '', 'row', [])) for key, _ids, _tier in shown] + rest
         return order
 
+    @response
     def browse(self, body):
         """Rows for one genre or format: ranked for you once you have rated something,
         by popularity before that."""
@@ -3292,6 +3308,7 @@ class Library:
             out.add('more', f'More {noun}', shelf[ROW:])
         return {'genre': key, 'title': label, 'personal': bool(taste), 'rows': out.rows}
 
+    @response
     def title(self, body):
         show_id = body.get('id') if isinstance(body, dict) else None
         if type(show_id) is not int or show_id not in self.e.by_id:

@@ -1,5 +1,5 @@
 import {filtersFor,setFilters} from './filter-state.js?v=2a62eef7fd5aeeda';
-import {icon,html} from './ratings.js?v=2a0509d86dd759f5';
+import {icon,html} from './ratings.js?v=70517fd9f1cddac1';
 
 const node = (tag,cls,text) => { const n=document.createElement(tag); if(cls)n.className=cls; if(text)n.textContent=text; return n; };
 const button = (text,action,cls='menu-item') => { const b=node('button',cls,text); b.type='button'; b.onclick=action; return b; };

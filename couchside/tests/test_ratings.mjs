@@ -218,9 +218,9 @@ let calls = 0;
 let answer;
 globalThis.fetch = () => { calls++; return new Promise(resolve => { answer = resolve; }); };
 const first = ratings(169), second = ratings(169);
-await new Promise(done=>setTimeout(done,0));
+await new Promise(done=>setTimeout(done,35));
 assert.equal(calls, 1, 'concurrent cards and title views share one request');
-answer(new Response(JSON.stringify({id:169,episodes})));
+answer(new Response(JSON.stringify({shows:[{id:169,episodes}],pending:[]})));
 assert.equal(await first, await second);
 assert.deepEqual(cachedRatings(169).episodes, episodes);
 await ratings(169);
@@ -229,7 +229,7 @@ assert.equal(calls, 1, 'completed data is reused by new cards');
 globalThis.fetch = async () => new Response(JSON.stringify({error:'Unavailable'}),{status:502});
 await assert.rejects(ratings(82), /Unavailable/);
 assert.equal(cachedRatings(82), undefined);
-globalThis.fetch = async () => new Response(JSON.stringify({id:82,episodes:[]}));
+globalThis.fetch = async () => new Response(JSON.stringify({shows:[{id:82,episodes:[]}],pending:[]}));
 assert.deepEqual((await ratings(82)).episodes, [], 'a failed request can be retried');
 let batchUrl;
 globalThis.fetch = async url => {
@@ -238,7 +238,7 @@ globalThis.fetch = async url => {
     {season:1,number:1,name:'<Pilot>',rating:9.1,rating_source:'TMDB',rating_votes:100},
   ]}],pending:[526]}));
 };
-const batch=await matrixRatings([169,526,169]);
+const batch=await matrixRatings([169,526,169], {refresh:true});
 assert.equal(batchUrl,'/api/episode-matrices?ids=169,526');
 assert.deepEqual(batch.pending,[526]);
 assert.equal(cachedMatrix(169).episodes[0].rating,9.1);
@@ -247,3 +247,20 @@ assert.equal(cachedRatings(169).episodes[0].rating_source,'TMDB');
 assert.match(compactMatrix(cachedMatrix(169)),/TMDB/);
 assert.equal(ratingSources(batch.shows[0]),'TMDB');
 console.log('Episode palette, charts, missing data, shared request cache and compact batches passed.');
+
+// Overlapping callers (cards and enrichment) share a canonical per-show batch.
+let compactCalls = 0;
+globalThis.fetch = async url => {
+  compactCalls++;
+  assert.equal(url, '/api/episode-matrices?ids=111,222,333');
+  return new Response(JSON.stringify({ shows: [111,222,333].map(id => ({ id, sources: 'TVmaze', refreshing: false,
+    episodes: [{season:1,number:1,name:'Pilot',rating:8}] })), pending: [] }));
+};
+const [leftBatch, rightBatch] = await Promise.all([
+  matrixRatings([111,222], {refresh:true}), matrixRatings([222,333], {refresh:true}),
+]);
+assert.equal(compactCalls, 1);
+assert.deepEqual(leftBatch.shows.map(show=>show.id), [111,222]);
+assert.deepEqual(rightBatch.shows.map(show=>show.id), [222,333]);
+await matrixRatings([111,222]);
+assert.equal(compactCalls,1,'fresh completed matrices need no repeat trip');

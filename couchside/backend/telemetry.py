@@ -15,11 +15,12 @@ import threading
 import time
 
 BOUNDS = (1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 30000)
-LAYERS = frozenset(('shared_http_disk', 'shared_http_inflight', 'live_memory',
+LAYERS = frozenset(('shared_http_disk', 'shared_http_inflight', 'shared_http_lease', 'live_memory',
                     'live_detail_disk', 'live_inflight', 'live_stale', 'search_memory',
-                    'episodes_memory', 'episodes_disk', 'episodes_inflight',
+                    'episodes_memory', 'episodes_disk', 'episodes_inflight', 'episodes_full_memory',
+                    'public_json', 'public_json_inflight',
                     'artwork_source_memory', 'artwork_source_inflight', 'artwork_inflight', 'icons_memory',
-                    'static_memory', 'page_gzip', 'home_pages', 'catalogue_pool'))
+                    'static_memory', 'page_gzip', 'home_pages', 'catalogue_pool', 'recommendation_answers'))
 OUTCOMES = frozenset(('hit', 'miss', 'stale', 'coalesced', 'expired', 'corrupt', 'negative', 'blocked'))
 PROVIDERS = {'api.tvmaze.com': 'tvmaze', 'api.themoviedb.org': 'tmdb',
              'static.tvmaze.com': 'tvmaze_image', 'image.tmdb.org': 'tmdb_image',
@@ -27,7 +28,7 @@ PROVIDERS = {'api.tvmaze.com': 'tvmaze', 'api.themoviedb.org': 'tmdb',
              'query.wikidata.org': 'wikidata', 'en.wikipedia.org': 'wikipedia',
              'icons.duckduckgo.com': 'icons'}
 ROUTES = frozenset(('home', 'browse', 'new', 'search', 'related', 'show', 'title', 'live',
-                    'episodes', 'episode', 'episode-ratings', 'episode-matrices', 'matrices', 'matrix', 'backdrop', 'rating', 'extra', 'shows',
+                    'episodes', 'episode', 'episode-ratings', 'episode-ratings-batch', 'show-cards', 'episode-matrices', 'matrices', 'matrix', 'backdrop', 'rating', 'extra', 'shows',
                     'trailer', 'watch', 'person', 'biography', 'icon', 'starters', 'taste',
                     'register', 'login', 'logout', 'session', 'state', 'password', 'forgot',
                     'reset', 'verify', 'compare', 'list', 'welcome', 'robots.txt', 'sitemap.xml'))
@@ -178,6 +179,8 @@ def record_request(method, path, status, duration_ms, bytes=0, cache=None):
     group = f'{status // 100}xx' if isinstance(status, int) and 100 <= status < 600 else 'other'
     recorder.add(prefix + '.requests')
     recorder.add(prefix + '.status.' + group)
+    if status == 499:
+        recorder.add(prefix + '.cancelled')
     recorder.add(prefix + '.bytes', max(0, bytes))
     if cache in {'hit', 'miss', 'not_modified'}:
         recorder.add(prefix + '.cache.' + cache)

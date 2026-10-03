@@ -1,17 +1,13 @@
 """Run the actual backend on loopback with disposable databases and unchanged limits."""
 from argparse import ArgumentParser
 from contextlib import closing
-from functools import partial
-from http.server import ThreadingHTTPServer
 from pathlib import Path
 import hashlib
 import json
 import os
 import secrets
-import signal
 import sqlite3
 import sys
-import threading
 import time
 
 APP = Path(__file__).resolve().parents[2]
@@ -74,6 +70,7 @@ def main():
     parser.add_argument('--copy-from', type=Path, default=ROOT / 'data/cache')
     parser.add_argument('--accounts', type=int, default=2000)
     parser.add_argument('--allow-outbound', action='store_true')
+    parser.add_argument('--no-background', action='store_true', help='Explicit diagnostic mode; normal startup is enabled by default.')
     args = parser.parse_args()
     if not 0 <= args.port <= 65535 or args.accounts < 0:
         parser.error('Choose a valid port and a nonnegative account count.')
@@ -94,31 +91,28 @@ def main():
     telemetry.configure_from_env()
     prepare_accounts(directory, args.accounts)
     from backend import server
+    from backend.asgi import Application, handler_type
+    import uvicorn
 
-    class IsolatedHandler(server.Handler):
-        def parse_request(self):
-            parsed = super().parse_request()
-            if parsed:
-                identity = self.headers.get('X-Couchside-Load-Identity') or self.headers.get('X-Couchside-Loadtest-User')
-                if identity and len(identity) <= 128:
-                    # Emulate distinct clients behind a trusted proxy, only on this loopback test server.
-                    value = int.from_bytes(hashlib.sha256(identity.encode()).digest()[:12], 'big')
-                    forwarded = 'fd00:0:' + ':'.join(f'{(value >> shift) & 65535:x}' for shift in (80, 64, 48, 32, 16, 0))
-                    self.headers.replace_header('X-Forwarded-For', forwarded) if 'X-Forwarded-For' in self.headers else self.headers.add_header('X-Forwarded-For', forwarded)
-            return parsed
-
-    listener = ThreadingHTTPServer(('127.0.0.1', args.port), partial(IsolatedHandler, directory=str(server.PUBLIC)))
-    def finish(_signal, _frame):
-        threading.Thread(target=listener.shutdown, daemon=True).start()
-    signal.signal(signal.SIGTERM, finish)
-    signal.signal(signal.SIGINT, finish)
-    print(json.dumps({'ready': True, 'port': listener.server_port, 'cache_mode': args.cache_mode,
+    class IsolatedHandler(handler_type(server.Handler)):
+        def __init__(self, scope, body):
+            super().__init__(scope, body)
+            identity = self.headers.get('X-Couchside-Load-Identity') or self.headers.get('X-Couchside-Loadtest-User')
+            if identity and len(identity) <= 128:
+                # Only this loopback fixture trusts synthetic load identities.
+                value = int.from_bytes(hashlib.sha256(identity.encode()).digest()[:12], 'big')
+                forwarded = 'fd00:0:' + ':'.join(f'{(value >> shift) & 65535:x}' for shift in (80, 64, 48, 32, 16, 0))
+                self.headers.replace_header('X-Forwarded-For', forwarded) if 'X-Forwarded-For' in self.headers else self.headers.add_header('X-Forwarded-For', forwarded)
+    application = Application(handler=IsolatedHandler, background=not args.no_background)
+    print(json.dumps({'starting': True, 'port': args.port, 'cache_mode': args.cache_mode,
                       'outbound_allowed': args.allow_outbound, 'accounts': args.accounts,
-                      'admission_api_rps': 24, 'engine_slots': 3}), flush=True)
+                      'runtime': 'uvicorn-asgi', 'background': not args.no_background,
+                      'global_api_rps_limit': None, 'engine_workers': 1}), flush=True)
     try:
-        listener.serve_forever(poll_interval=.2)
+        uvicorn.run(application, host='127.0.0.1', port=args.port, proxy_headers=False,
+                    access_log=False, server_header=False, ws='none', timeout_keep_alive=5,
+                    limit_concurrency=12000, backlog=2048)
     finally:
-        listener.server_close()
         telemetry.stop()
 
 

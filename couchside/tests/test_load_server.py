@@ -196,36 +196,50 @@ class IsolatedServerSafetyTests(TestCase):
             self.assertTrue(all(body['accounts'][0]['password'] not in value for value in passwords))
 
     def test_launcher_overrides_live_store_paths_and_blocks_outbound_by_default(self):
+        from backend import asgi
+        import uvicorn
         source = self.make_cache(self.root / 'source')
         target = self.root / 'owned'
         paths = {}
-        listener = Mock(server_port=18199)
-        def serving(**kwargs):
+        application = Mock(name='isolated_asgi_application')
+        def serving(app, **kwargs):
             for key in ('ACCOUNT_DB', 'OUTBOUND_CACHE', 'RATINGS_CACHE', 'ARTWORK_CACHE'):
                 paths[key] = Path(os.environ[key]).resolve()
             paths['no_outbound'] = os.environ['COUCHSIDE_LOAD_TEST_NO_OUTBOUND']
-        listener.serve_forever.side_effect = serving
+            self.assertEqual(os.environ['ACCOUNT_HTTPS_ONLY'], '0')
+            self.assertNotIn('ACCOUNT_ORIGIN', os.environ)
         arguments = ['isolated_server.py', '--port', '0', '--data-dir', str(target), '--copy-from', str(source), '--accounts', '2']
         inherited = {key: str(source / name) for key, name in (
             ('ACCOUNT_DB', 'live-accounts.sqlite3'), ('OUTBOUND_CACHE', 'http.sqlite3'),
             ('RATINGS_CACHE', 'episode-ratings.sqlite3'), ('ARTWORK_CACHE', 'artwork.sqlite3'))}
         inherited['COUCHSIDE_LOAD_TEST_NO_OUTBOUND'] = '0'
+        inherited['ACCOUNT_ORIGIN'] = 'https://live.example.com'
         output = io.StringIO()
         with patch.dict(os.environ, inherited), patch.object(sys, 'argv', arguments), \
-                patch.object(isolated, 'ThreadingHTTPServer', return_value=listener) as http, \
-                patch.object(isolated.signal, 'signal'), redirect_stdout(output):
+                patch.object(asgi, 'Application', return_value=application) as create_application, \
+                patch.object(uvicorn, 'run', side_effect=serving) as run, \
+                patch.object(telemetry, 'stop', wraps=telemetry.stop) as stop, redirect_stdout(output):
             isolated.main()
-        self.assertEqual(http.call_args.args[0], ('127.0.0.1', 0))
+            stop.assert_called_once()
+        self.assertEqual(create_application.call_count, 1)
+        self.assertTrue(create_application.call_args.kwargs['background'])
+        self.assertEqual(run.call_args.args, (application,))
+        self.assertEqual(run.call_args.kwargs, {
+            'host': '127.0.0.1', 'port': 0, 'proxy_headers': False,
+            'access_log': False, 'server_header': False, 'ws': 'none',
+            'timeout_keep_alive': 5, 'limit_concurrency': 12000, 'backlog': 2048,
+        })
         self.assertTrue(all(path.is_relative_to(target.resolve()) for key, path in paths.items() if key != 'no_outbound'))
         self.assertEqual(len({path for key, path in paths.items() if key != 'no_outbound'}), 4)
         self.assertEqual(paths['no_outbound'], '1')
         self.assertFalse((source / 'live-accounts.sqlite3').exists())
         ready = json.loads(output.getvalue().strip())
         self.assertFalse(ready['outbound_allowed'])
-        self.assertEqual(ready['admission_api_rps'], 24)
-        self.assertEqual(ready['engine_slots'], 3)
+        self.assertEqual(ready['runtime'], 'uvicorn-asgi')
+        self.assertTrue(ready['background'])
+        self.assertIsNone(ready['global_api_rps_limit'])
+        self.assertEqual(ready['engine_workers'], 1)
         self.assertNotIn('password', output.getvalue())
-        listener.server_close.assert_called_once()
 
 
 if __name__ == '__main__':

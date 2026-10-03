@@ -382,7 +382,7 @@ function setup(request, storage = memory(), initial = fresh()) {
   const sync = { user: user('alice'), connected: true, status: 'saved',
     ready: async () => { readyCalls++; }, refresh: async () => { calls++; } };
   const settle = () => new Promise(resolve => setImmediate(resolve));
-  const stop = watchAccount(sync, { doc, win, clock: () => now,
+  const stop = watchAccount(sync, { doc, win, clock: () => now, random: () => .5, idleLimit: 0,
     setTimer(callback, delay) { timers.set(++id, { callback, at: now + delay }); return id; },
     clearTimer(key) { timers.delete(key); } });
   const advance = async delay => {
@@ -425,6 +425,26 @@ function setup(request, storage = memory(), initial = fresh()) {
   assert.equal(timers.size, 0);
   win.dispatchEvent(new Event('focus')); await settle();
   assert.equal(calls, 4);
+}
+
+// An authenticated follower applies the leader's owner-scoped revision without
+// amplifying its poll; switching the active owner still validates the session.
+{
+  let calls = 0, currentOwner = 'alice';
+  const device = setup(async () => { calls++; return session(currentOwner, state([], [1]), 1); });
+  await device.sync.ready(); device.change(state([], [1, 3]));
+  const remote = { user: user('alice'), base: toWire(state([], [1, 2])), local: state([], [1, 2]),
+    revision: 2, pending: false, writer: 'leader', sequence: 1, seen: { leader: 1 }, removals: {}, deferred: [] };
+  await device.sync.storageChanged({ key: accountKey('alice'), newValue: JSON.stringify(remote) }, { refresh: false });
+  assert.equal(calls, 1, 'the leader revision does not trigger a follower GET');
+  assert.deepEqual(new Set(device.get().saved.map(show => show.id)), new Set([1, 2, 3]), 'unsaved local additions survive the leader update');
+  assert.equal(device.sync.revision, 2); assert.equal(device.sync.connected, true);
+  await device.sync.storageChanged({ key: accountKey('bob'), newValue: JSON.stringify({ ...remote, user: user('bob') }) }, { refresh: false });
+  assert.equal(device.sync.user.id, 'alice', 'other owners cannot populate this account');
+  currentOwner = 'bob';
+  await device.sync.storageChanged({ key: ACTIVE_KEY, newValue: JSON.stringify(user('bob')) }, { refresh: false });
+  assert.equal(calls, 2, 'an active-owner change always validates the authenticated session');
+  assert.equal(device.sync.user.id, 'bob'); device.sync.destroy();
 }
 
 console.log('Account isolation, guest restoration, deletion-aware merges, ordered saves, bounded conflicts, expiration recovery and request security passed.');

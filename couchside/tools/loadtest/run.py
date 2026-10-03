@@ -22,12 +22,18 @@ def latest_metrics(path):
         return {}
     with path.open() as source:
         lines = source.readlines()
+    workers = {}
     for line in reversed(lines):
         try:
-            return json.loads(line)
+            snapshot = json.loads(line)
+            workers.setdefault(snapshot.get('pid', 0), snapshot)
         except ValueError:
             pass
-    return {}
+    counters = {}
+    for snapshot in workers.values():
+        for key, count in snapshot.get('counters', {}).items():
+            counters[key] = counters.get(key, 0) + count
+    return {'workers': list(workers.values()), 'counters': counters}
 
 
 def server_delta(before, after):
@@ -74,6 +80,8 @@ def run_stage(args, stage, number, server):
                '--workload-think-max', str(args.think_max), '--workload-auth-fraction', str(args.auth_fraction)]
     if args.accounts:
         command.extend(('--workload-accounts-path', str(args.accounts)))
+    if args.gateway_key_path:
+        command.extend(('--workload-gateway-key-path', str(args.gateway_key_path)))
     if args.media:
         command.append('--workload-media')
     env = {**os.environ, 'COUCHSIDE_LOAD_ISOLATED': '1' if args.synthetic_identities else '0',
@@ -83,6 +91,7 @@ def run_stage(args, stage, number, server):
         generator = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, env=env, start_new_session=True)
         process = psutil.Process(generator.pid)
         began = time.monotonic()
+        began_utc = time.time()
         try:
             while generator.poll() is None:
                 sample = {'seconds': round(time.monotonic() - began, 3),
@@ -128,15 +137,19 @@ def run_stage(args, stage, number, server):
                              max((s['virtual_users'] for s in protocol.get('samples', [])), default=0))
     if not total and not aborted:
         aborted = 'The load generator did not initialize or produce requests; see generator.log.'
-    api_p95 = protocol.get('request_latency', {}).get('api_successful', {}).get('p95_ms')
+    api = protocol.get('request_latency', {}).get('api_user_successful', {})
+    api_p95 = api.get('p95_ms')
     acceptance = {'max_failure_rate': args.max_failure_rate, 'max_api_success_p95_ms': args.max_api_p95_ms,
                   'failure_rate': failures / total if total else None,
+                  'successful_api_under_100_ms_fraction': api.get('under_100_ms', 0) / api['count'] if api.get('count') else None,
+                  'includes_generator_queue': True,
                   'passed': not aborted and protocol.get('finished') is True
                   and total > 0 and failures / total <= args.max_failure_rate
                   and api_p95 is not None and api_p95 <= args.max_api_p95_ms
                   and peak_users >= stage['target_users']
                   and protocol.get('generator_cpu_warnings', 0) == 0}
     result = {**stage, 'actual_peak_users': peak_users,
+              'started_at': began_utc, 'ended_at': time.time(),
               'elapsed_seconds': time.monotonic() - began, 'aborted': aborted, 'exit_code': generator.returncode,
               'request_totals': {'completed': total, 'failed': failures, 'source': 'final request events'},
               'locust_aggregate_periodic_snapshot': aggregate, 'protocol': protocol, 'resources': samples,
@@ -167,10 +180,11 @@ def main():
     parser.add_argument('--abort-server-threads', type=int, default=512)
     parser.add_argument('--abort-memory-percent', type=float, default=85)
     parser.add_argument('--synthetic-identities', action='store_true')
+    parser.add_argument('--gateway-key-path', type=Path)
     parser.add_argument('--allow-remote', action='store_true')
     parser.add_argument('--media', action='store_true')
     parser.add_argument('--max-failure-rate', type=float, default=.01)
-    parser.add_argument('--max-api-p95-ms', type=float, default=1000)
+    parser.add_argument('--max-api-p95-ms', type=float, default=100)
     args = parser.parse_args()
     try:
         local = urlsplit(args.origin).hostname == 'localhost' or ipaddress.ip_address(urlsplit(args.origin).hostname).is_loopback
@@ -178,8 +192,11 @@ def main():
         local = False
     if not local and not args.allow_remote:
         parser.error('Use --allow-remote only with an explicitly chosen isolated target.')
-    if args.synthetic_identities and not local:
+    if args.synthetic_identities and not local and not args.gateway_key_path:
         parser.error('Synthetic client identities are supported only on the isolated loopback server.')
+    if args.gateway_key_path:
+        from gateway import key_from
+        key_from(args.gateway_key_path, args.origin)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     server = psutil.Process(args.server_pid) if args.server_pid else None
     metadata = {'schema': 1, 'origin': args.origin, 'seed': args.seed,

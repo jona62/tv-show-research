@@ -67,6 +67,10 @@ apps:
     start: mountpoint -q /home/developer/data && test -L /home/developer/tv-model && .venv/bin/python -m backend.server
     env:
       PORT: "8082"
+      # Verified compute bridge and edge gateway; never trust private IP ranges.
+      # Compute Caddy must also preserve X-Forwarded-For from this exact edge:
+      # app-side trust cannot recover a client address already discarded there.
+      COUCHSIDE_TRUSTED_PROXY_IPS: "172.16.0.1,100.107.153.113"
       MODEL_DIR: /home/developer/tv-model/current
       RELOAD_DELAY_SECONDS: "150"
       RATINGS_CACHE: /home/developer/tv-model/cache/episode-ratings.sqlite3

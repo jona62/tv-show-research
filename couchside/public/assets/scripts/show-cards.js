@@ -1,4 +1,4 @@
-import {matrixRatings,cachedMatrix,freshMatrix,ratingSources,compactMatrix,matrixSkeleton,icon,html,esc,acceptMatrices} from './ratings.js?v=2a0509d86dd759f5';
+import {matrixRatings,cachedMatrix,freshMatrix,ratingSources,compactMatrix,matrixSkeleton,icon,html,esc,acceptMatrices} from './ratings.js?v=70517fd9f1cddac1';
 const KEY='couchside.show-cards';
 let matrix=true;
 try{matrix=localStorage.getItem(KEY)!=='standard';}catch{}
@@ -42,18 +42,9 @@ function pump(){
   running=true;
   matrixRatings([...ids]).then(body=>{
     for(const s of body.shows)for(const tile of tilesFor(s.id))paintMatrix(tile,s);
-    const waiting=new Set([...body.pending,...body.shows.filter(s=>s.refreshing).map(s=>s.id)]);
-    const retry=batch.filter(node=>{
-      if(!waiting.has(Number(node.dataset.show))||!node.isConnected)return false;
-      if(!nearTile(node)){delete node.dataset.matrixAsked;visible.observe(node);return false;}
-      node.dataset.matrixRetries=String(Number(node.dataset.matrixRetries||0)+1);
-      if(document.hidden||Date.now()-Number(node.dataset.matrixStarted)<120000)return true;
-      if(node.dataset.matrixState!=='ready'){node.dataset.matrixState='error';node.setAttribute('aria-busy','false');html(node,'<span class="ratings-mini-empty">Ratings unavailable</span>');}
-      return false;
-    });
-    const tries=Math.min(...retry.map(node=>Number(node.dataset.matrixRetries)));
-    const delay=body.pending.length?Math.min(5000,500*2**Math.min(tries-1,4)):5000;
-    if(retry.length)setTimeout(()=>{for(const node of retry)if(!pending.includes(node))pending.push(node);pump();},delay);
+    for(const id of [...body.pending,...body.shows.filter(show=>show.refreshing).map(show=>show.id)]) {
+      for(const tile of tilesFor(id))if(tile.isConnected&&!tile.closest('[inert]'))visible.observe(tile);
+    }
   }).catch(()=>{
     for(const node of batch)if(node.dataset.matrixState!=='ready'){
       node.dataset.matrixState='error';html(node,'<span class="ratings-mini-empty">Ratings unavailable</span>');
@@ -61,9 +52,25 @@ function pump(){
     }
   }).finally(()=>{running=false;pump();});
 }
+
+// Cards and open comparisons share one per-show enrichment scheduler. A ready
+// cached matrix stays visible while new scores arrive without per-tile polling.
+window.addEventListener('couchside-matrices', event => {
+  for (const show of event.detail?.shows || []) for (const tile of tilesFor(show.id)) paintMatrix(tile, show);
+});
+window.addEventListener('couchside-matrices-failed', event => {
+  for (const tile of tilesFor(event.detail)) if (tile.dataset.matrixState !== 'ready') {
+    tile.dataset.matrixState = 'error'; tile.setAttribute('aria-busy', 'false');
+    html(tile, '<span class="ratings-mini-empty">Ratings unavailable</span>');
+  }
+});
 const visible=new IntersectionObserver(entries=>{
   for(const entry of entries){
     const node=entry.target;
+    if(!entry.isIntersecting){
+      if(!freshMatrix(Number(node.dataset.show)))delete node.dataset.matrixAsked;
+      continue;
+    }
     if(entry.isIntersecting&&matrix&&!node.dataset.matrixAsked){
       visible.unobserve(node);node.dataset.matrixAsked='true';
       node.dataset.matrixStarted=String(Date.now());

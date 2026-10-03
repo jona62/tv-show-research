@@ -7,6 +7,7 @@ from http.cookies import CookieError, SimpleCookie
 import ipaddress
 import json
 import logging
+import os
 import re
 import sqlite3
 import threading
@@ -14,7 +15,7 @@ import time
 from urllib.parse import urlsplit
 
 from .accounts import AccountError
-from .request_limits import Budget, address
+from .request_limits import Budget, address, trusted_proxy_ips
 
 PREFIX = '/api/account/'
 POSTS = {'signup', 'login', 'state', 'logout', 'password'}
@@ -33,10 +34,12 @@ def loopback(host):
 
 class AccountRoutes:
     def __init__(self, service, https_only=False, origin=None):
+        trusted_proxy_ips()
         self.service = service
         self.https_only = https_only
         self.origin = origin.rstrip('/') if origin else None
-        self.attempts = Budget(rate=1 / 60, burst=10)
+        workers = max(1, int(os.environ.get('COUCHSIDE_WORKERS', '1')))
+        self.attempts = Budget(rate=1 / (60 * workers), burst=max(1, 10 / workers))
         self.read_slots = threading.BoundedSemaphore(16)
         self.body_timeout = 10
 

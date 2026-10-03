@@ -1,17 +1,17 @@
-import { mountEpisodeRatings } from './episode-ratings.js?v=c4e6d874df401c35';
-import { mountCompare, comparisonURL } from './compare.js?v=de7e61929080a7ea';
+import { mountEpisodeRatings } from './episode-ratings.js?v=8440eeb3817e63af';
+import { mountCompare, comparisonURL } from './compare.js?v=db5ee2732b76a522';
 import { mountTitleSections } from './title-sections.js?v=c735de07fc7f1d99';
-import { enhanceShowCard,receiveMatrices,matrixPreference } from './show-cards.js?v=37508516f7b2ec15';
+import { enhanceShowCard,receiveMatrices,matrixPreference } from './show-cards.js?v=1cbaf89a306b5dd7';
 import { mountTaste } from './taste.js?v=38f3f65aed9cad54';
 import { mergeTransferredList } from './list-transfer.js?v=bf96d9f9d5d965e6';
 import { apiFetch } from './network.js?v=4038b4a1107593ef';
-import { mountAccounts } from './accounts.js?v=829f2a48cb315d6e';
+import { mountAccounts } from './accounts.js?v=cbafc754f53af2ad';
 import { startAppUpdates } from './app-updates.js?v=6fd21e40c7dc0bdb';
 import { updateMetadata } from './metadata.js?v=61237fd7da1aa410';
 import { backdropURL, displayPoster, createBackdropPrefetcher, bindBackdropIntent } from './show-artwork.js?v=919c7a8ac41304f6';
 import {filtersFor,filterKey,selectShows,setFilters} from './filter-state.js?v=2a62eef7fd5aeeda';
-import {filterBar} from './filters.js?v=d657b07fba74e1f3';
-import { cachedRatings, ratings, seasons as ratingSeasons } from './ratings.js?v=2a0509d86dd759f5';
+import {filterBar} from './filters.js?v=a02e985fa09b92be';
+import { cachedRatings, ratings, seasons as ratingSeasons } from './ratings.js?v=70517fd9f1cddac1';
 import { encode, decode, LIMITS, codeFrom } from './transfer.js?v=2bfd019beccdb78d';
 import { matrix, svgPath } from './qr.js?v=d7f92f94bb8911ea';
 import { tieText, leaning } from './format.js?v=7ac003cc28be3a47';
@@ -2927,7 +2927,7 @@ async function shareTitle() {
 }
 async function saveRatingSnapshot(model) {
   const frozen = structuredClone(model);
-  const { downloadRatingSnapshot } = await import('./rating-snapshots.js?v=4129061c66f81f6d');
+  const { downloadRatingSnapshot } = await import('./rating-snapshots.js?v=23b291deea4b25ce');
   const result = await downloadRatingSnapshot(frozen);
   toast(result.pages.length > 1 ? 'Images saved together in one ZIP.' : 'Image saved.');
   return result;

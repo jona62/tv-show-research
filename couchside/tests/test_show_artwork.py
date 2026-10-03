@@ -70,6 +70,12 @@ class ArtworkFixture:
                     return self.send({'videos': []})
                 if parsed.path == '/api/rating':
                     return self.send({'rating': None, 'apple': None})
+                if parsed.path == '/api/show-cards':
+                    ids = list(map(int, parse_qs(parsed.query)['ids'][0].split(',')))
+                    return self.send({'shows': [show for show in fixture.shows if show['id'] in ids], 'catalogueVersion': 'fixture-one'})
+                if parsed.path == '/api/episode-ratings-batch':
+                    ids = parse_qs(parsed.query)['ids'][0].split(',')
+                    return self.send({'shows': [fixture.ratings(int(show_id)) for show_id in ids], 'pending': [], 'catalogueVersion': 'fixture-one'})
                 if parsed.path == '/api/episode-ratings':
                     return self.send(fixture.ratings(int(parse_qs(parsed.query)['id'][0])))
                 if parsed.path == '/api/episode-matrices':

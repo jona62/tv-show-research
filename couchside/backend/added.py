@@ -24,6 +24,9 @@ those a title page opens (server.newer). The next nightly build holds them all, 
 list starts again from nothing as the catalogue takes them in.
 """
 from datetime import date, datetime, timedelta, timezone
+import json
+import os
+from pathlib import Path
 import sys
 import threading
 import time
@@ -120,6 +123,7 @@ class Added:
         self.live, self.newest, self.reach, self.most = live, newest, reach, most
         self.gap, self.clock, self.sleep = gap, clock, sleep
         self.lock = threading.Lock()
+        self.stop = threading.Event()
         self.shows = {}         # id: (show, its title's words, their compact forms)
         self.waiting = set()    # ids an updates list named that are still to be asked for
         self.gone = set()       # ids TVmaze has no show for
@@ -142,6 +146,8 @@ class Added:
         are kept, the newest. Returns how many shows it kept, or None when the list could
         not be had. TVmaze busy or out of reach ends the round, and the shows still to ask
         about wait for the next."""
+        if self.stop.is_set():
+            return None
         try:
             changed = self.live.get(UPDATES.format(window=self.window()), trim_updates, ttl=0)
         except LiveError:
@@ -153,7 +159,7 @@ class Added:
             self.waiting.update(i for i in changed if self.newest < i <= last and i not in self.shows
                                 and i not in self.gone)
         kept, asked = 0, False
-        while True:
+        while not self.stop.is_set():
             with self.lock:
                 if not self.waiting:
                     break
@@ -162,7 +168,9 @@ class Added:
                     self.waiting.clear()
                     break
             if asked:
-                self.sleep(self.gap)
+                self.pause(self.gap)
+                if self.stop.is_set():
+                    break
             asked = True
             try:
                 about = self.live.show(show_id)['about']
@@ -183,16 +191,56 @@ class Added:
             kept += 1
         return kept
 
-    def run(self, every=EVERY, retry=RETRY):
+    def pause(self, delay):
+        # Preserve deterministic injected sleeps while allowing normal hour-long
+        # scheduling and two-second pacing waits to end promptly on shutdown.
+        if self.sleep is time.sleep:
+            self.stop.wait(delay)
+        else:
+            self.sleep(delay)
+
+    def publish(self, path):
+        with self.lock:
+            values = [show for show, *_rest in self.shows.values()]
+        target = Path(path)
+        temporary = target.with_suffix(f'.{os.getpid()}.tmp')
+        temporary.write_text(json.dumps(values, separators=(',', ':')))
+        os.replace(temporary, target)
+
+    def restore(self, path):
+        """Followers share the elected worker's added-show index without API reads."""
+        try:
+            target = Path(path)
+            changed = target.stat().st_mtime_ns
+            if changed == getattr(self, '_snapshot_at', None) or target.stat().st_size > 2 * 1024 * 1024:
+                return
+            values = json.loads(target.read_text())
+            if not isinstance(values, list) or len(values) > self.most:
+                return
+            restored = {}
+            for show in values:
+                if not isinstance(show, dict) or type(show.get('id')) is not int or not self.newest < show['id'] <= self.newest + self.reach:
+                    continue
+                words = read(show['name'])
+                restored[show['id']] = show, words, forms(words)
+            with self.lock:
+                self.shows = restored
+                self._snapshot_at = changed
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+
+    def run(self, every=EVERY, retry=RETRY, snapshot=None):
         """Keeps the list for as long as the server runs: a round at once, then one every
         hour, or after RETRY seconds when TVmaze could not be asked."""
-        while True:
+        while not self.stop.is_set():
             try:
                 done = self.refresh()
+                if snapshot and done is not None:
+                    self.publish(snapshot)
             except Exception as exc:  # noqa: BLE001 - a round that fails must not end the thread
                 print(f'Just-added shows: {type(exc).__name__}: {exc}', file=sys.stderr, flush=True)
                 done = None
-            self.sleep(every if done is not None else retry)
+            self.pause(every if done is not None else retry)
 
     def join(self, found, q, today=None):
         """A search's answer (fallback.answer's) with the just-added shows q matches: ahead

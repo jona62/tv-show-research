@@ -476,7 +476,16 @@ class Journey:
                             'timeline-layout': self.plan['timeline_layout'], 'point-style': self.plan['point_style'], 'averages': 1})
         await self.goto(page, '/compare?' + params, '.compare-save:not(:disabled)')
         await page.locator('[data-cell]').first.wait_for()
-        await page.locator('[data-cell]').first.hover()
+        # All-season cells are season averages, while single-season cells below
+        # represent individual episodes. Both expose the comparison tooltip.
+        first_cell = page.locator('[data-cell]').first
+        await first_cell.scroll_into_view_if_needed()
+        await page.evaluate('()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
+        if self.plan['mobile']:
+            await first_cell.tap()
+        else:
+            await first_cell.hover()
+        await page.get_by_role('tooltip').wait_for(state='visible')
         await page.locator('[data-compare-picker="view"]').click()
         await page.locator('[data-compare-choice="view"][data-value="timeline"]').click()
         chart = page.locator('.ratings-timeline').first
@@ -491,9 +500,25 @@ class Journey:
             values = await selector.locator('option').evaluate_all('options=>options.map(option=>option.value)')
             if len(values) > 1:
                 await selector.select_option(values[self.rng.randrange(len(values))])
+        await page.locator('[data-compare-picker="view"]').click()
+        await page.locator('[data-compare-choice="view"][data-value="grid"]').click()
+        episode = page.locator('[data-cell][data-episode]').first
+        await episode.scroll_into_view_if_needed()
+        await page.evaluate('()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
+        if self.plan['mobile']:
+            await episode.tap()
+        else:
+            await episode.hover()
+        tip = page.get_by_role('tooltip')
+        await tip.wait_for(state='visible')
+        if await episode.get_attribute('aria-describedby') != await tip.get_attribute('id'):
+            raise AssertionError('The single-season matrix episode did not expose its details tooltip.')
+        await page.locator('[data-compare-picker="view"]').click()
+        await page.locator('[data-compare-choice="view"][data-value="timeline"]').click()
         mover = page.locator('[data-action="move"][data-direction="1"]:not(:disabled)').first
         await mover.click()
-        return {'shows': len(self.plan['shows']), 'views': ['matrix', 'timeline'], 'single_season': True, 'reordered': True}
+        return {'shows': len(self.plan['shows']), 'views': ['matrix', 'timeline'], 'single_season': True,
+                'reordered': True, 'matrix_hover_verified': ['all-seasons', 'single-season']}
 
     def report(self, final_worker=None, fatal=None):
         for action in self.actions:

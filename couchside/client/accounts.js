@@ -1,3 +1,4 @@
+import { createPollLeadership } from './account-polling.js';
 import { AccountSync } from './account-state.js';
 
 const STATUS = {
@@ -26,58 +27,64 @@ const button = (label, handler, className = 'btn ghost') => {
 };
 
 export function watchAccount(sync, { doc = document, win = window, clock = Date.now,
-  setTimer = setTimeout, clearTimer = clearTimeout, interval = 60000 } = {}) {
-  let timer = null, flight = null, checked = -Infinity, failures = 0, stopped = false;
+  setTimer = setTimeout, clearTimer = clearTimeout, interval = 60000, random = Math.random, idleLimit = 4,
+  leadership: providedLeadership } = {}) {
+  let timer = null, flight = null, checked = -Infinity, failures = 0, idle = 0, stopped = false;
   const visible = () => doc.visibilityState !== 'hidden';
   const cancel = () => { clearTimer(timer); timer = null; };
+  const leadership = providedLeadership || createPollLeadership({ storage: sync.storage, clock,
+    changed: data => {
+      if (!sync.user || stopped || data.owner !== String(sync.user.id)) return;
+      // Revocation/expiration is a hint to authenticate again, never a remote
+      // instruction to trust credentials or replace a local account state.
+      if (data.verify) { void sync.refresh(); return; }
+      const key = `couchside-account-v1:${sync.user.id}`;
+      let newValue; try { newValue = sync.storage?.getItem(key); } catch { return; }
+      if (newValue) void sync.storageChanged?.({ key, newValue }, { refresh: false });
+    } });
+  const delay = () => Math.min(interval * 2 ** failures * (sync.pending ? 1 : 1 + idle), 300000);
   function schedule() {
     cancel();
     if (stopped || !visible()) return;
+    leadership.select(sync.user?.id);
+    const wait = delay();
     timer = setTimer(() => {
       timer = null;
-      // Guests have no remote list to poll. Sign-ins in another tab arrive
-      // through storage events; foreground and online checks still detect them.
-      if (sync.user && sync.status !== 'expired') void refresh();
-      else schedule();
-    }, Math.min(interval * 2 ** failures, 300000));
+      if (sync.user && sync.status !== 'expired') void refresh(); else schedule();
+    }, wait * (.9 + random() * .2));
   }
   function refresh(force = false) {
     if (stopped || !visible()) return;
     if (flight) return flight;
-    // Safari/browser activation often sends both visibility and focus after
-    // the first request has completed. These describe one foreground check.
     if (!force && clock() - checked < 5000) { schedule(); return; }
-    checked = clock();
-    cancel();
-    flight = Promise.resolve().then(() => sync.refresh()).catch(() => {}).finally(() => {
-      failures = sync.user && !sync.connected && sync.status !== 'expired'
-        ? Math.min(failures + 1, 3) : 0;
-      flight = null;
-      schedule();
+    checked = clock(); cancel();
+    const before = sync.revision;
+    flight = Promise.resolve().then(() => leadership.run(sync.user?.id, delay(), async () => {
+      await sync.refresh(); return { verify: sync.status === 'expired' };
+    })).catch(() => {}).finally(() => {
+      failures = sync.user && !sync.connected && sync.status !== 'expired' ? Math.min(failures + 1, 3) : 0;
+      idle = !failures && !sync.pending && sync.revision === before ? Math.min(idle + 1, idleLimit) : 0;
+      flight = null; if (sync.status === 'expired') leadership.release(); schedule();
     });
     return flight;
   }
-  const focus = () => { void refresh(); };
-  const online = () => { void refresh(true); };
-  const visibility = () => { if (visible()) focus(); else cancel(); };
+  const focus = () => { idle = 0; void refresh(); };
+  const online = () => { idle = 0; leadership.release(); void refresh(true); };
+  const visibility = () => { if (visible()) focus(); else { cancel(); leadership.release(); } };
   doc.addEventListener('visibilitychange', visibility);
-  win.addEventListener('focus', focus);
-  win.addEventListener('online', online);
-  // Initialize once; a focus event during startup shares that same request.
-  // Defer until mountAccounts has returned its handle to the app: restoring
-  // cached state may call the app's account integration during initialization.
+  win.addEventListener('focus', focus); win.addEventListener('online', online);
+  // Every tab validates its own initial session. Poll leadership only starts
+  // after initialization, so an account marker can never authenticate a tab.
   flight = Promise.resolve().then(() => sync.ready()).catch(() => {}).finally(() => {
-    checked = clock();
-    flight = null;
-    schedule();
+    checked = clock(); flight = null; schedule();
   });
-  return () => {
-    stopped = true;
-    cancel();
+  const stop = () => {
+    stopped = true; cancel(); leadership.release();
     doc.removeEventListener('visibilitychange', visibility);
-    win.removeEventListener('focus', focus);
-    win.removeEventListener('online', online);
+    win.removeEventListener('focus', focus); win.removeEventListener('online', online);
   };
+  stop.shouldRefresh = () => { leadership.select(sync.user?.id); return leadership.owns(); };
+  return stop;
 }
 
 export function mountAccounts({ getState, applyState, fresh, sanitize, toast = () => {}, onStatus = () => {} }) {
@@ -241,7 +248,7 @@ export function mountAccounts({ getState, applyState, fresh, sanitize, toast = (
   const closeForm = () => {
     if (!formBusy) body.querySelector('form')?.reset();
   };
-  const otherTab = event => { void sync.storageChanged(event); };
+  const otherTab = event => { void sync.storageChanged(event, { refresh: stopWatching.shouldRefresh() }); };
   dialog.addEventListener('close', closeForm);
   window.addEventListener('storage', otherTab);
   const stopWatching = watchAccount(sync);

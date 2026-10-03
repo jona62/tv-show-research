@@ -51,6 +51,7 @@ class Configuration:
     synthetic_identities: bool = False
     accounts_path: str = ''
     metrics_directory: str = ''
+    gateway_key_path: str = ''
 
     def validate(self, host, isolated=False):
         if self.think_min < 0 or self.think_max < self.think_min:
@@ -69,7 +70,12 @@ class Configuration:
                 local = hostname == 'localhost' or ipaddress.ip_address(hostname).is_loopback
             except ValueError:
                 local = False
-            if not isolated or not local:
+            signed_gateway = False
+            if self.gateway_key_path:
+                from gateway import key_from
+                key_from(self.gateway_key_path, host)
+                signed_gateway = True
+            if not isolated or not (local or signed_gateway):
                 raise ValueError('Synthetic identities and pooled connections require an explicitly isolated loopback target.')
 
 

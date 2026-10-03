@@ -118,6 +118,15 @@ class TelemetryTests(TestCase):
         telemetry.record_request('GET', 'http://[invalid', HTTPStatus.BAD_REQUEST, 1)
         self.assertEqual(self.counters()['http.GET.other.status.4xx'], 1)
 
+    def test_disconnected_requests_have_a_bounded_cancelled_counter(self):
+        for n in range(100):
+            telemetry.record_request('POST', f'/api/home?private={n}', 499, 10)
+        counts = self.counters()
+        self.assertEqual(counts['http.POST.api.home.cancelled'], 100)
+        self.assertEqual(counts['http.POST.api.home.status.4xx'], 100)
+        self.assertEqual(counts['http.POST.api.home.bytes'], 0)
+        self.assertLess(len(counts), 6)
+
     def test_retries_are_physical_attempts_and_cache_hits_are_not(self):
         reader, pool = self.reader((503, b'busy'), (200, b'{"value":1}'))
         self.assertEqual(reader.json(URL, ttl=60), {'value': 1})

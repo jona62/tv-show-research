@@ -1,7 +1,7 @@
 // Render only the captured comparison; live UI changes cannot alter a pending export.
-import { comparisonOverlayPlan } from './comparison-timeline.js?v=0c0eea8d96bab16d';
-import { smoothPath } from './episode-timeline.js?v=803e207689055be8';
-import { band, score } from './ratings.js?v=2a0509d86dd759f5';
+import { comparisonOverlayPlan } from './comparison-timeline.js?v=2d20603698429261';
+import { smoothPath } from './episode-timeline.js?v=d5bd5f2216ee1dbd';
+import { band, score } from './ratings.js?v=70517fd9f1cddac1';
 
 const RAW = { top: 36, bottom: 244 }, TREND = { top: 338, bottom: 426 };
 export const COMPARISON_HEADER_HEIGHT = 152;

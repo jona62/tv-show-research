@@ -1,8 +1,8 @@
-import {average, band, bands, ratingSources, score} from './ratings.js?v=2a0509d86dd759f5';
-import {timelineModel, timelineAxis, smoothPath} from './episode-timeline.js?v=803e207689055be8';
-import {detailMatrix, compareMatrix, seasonName, episodeCode} from './rating-views.js?v=2168d19db732fbe1';
+import {average, band, bands, ratingSources, score} from './ratings.js?v=70517fd9f1cddac1';
+import {timelineModel, timelineAxis, smoothPath} from './episode-timeline.js?v=d5bd5f2216ee1dbd';
+import {detailMatrix, compareMatrix, seasonName, episodeCode} from './rating-views.js?v=b273a6ffe2a54e91';
 import {loadSnapshotImages} from './snapshot-images.js?v=58ed772a708f7e6c';
-import {comparisonTimelineParts, drawComparisonTimeline, COMPARISON_HEADER_HEIGHT} from './comparison-timeline-export.js?v=ddd7ba5ccff0f9cb';
+import {comparisonTimelineParts, drawComparisonTimeline, COMPARISON_HEADER_HEIGHT} from './comparison-timeline-export.js?v=813a00856f75b802';
 
 // Every part stays below common mobile canvas limits, at twice its logical size.
 export const SNAPSHOT_LIMITS = Object.freeze({width:1600, height:1800, pixels:12_000_000, scale:2});

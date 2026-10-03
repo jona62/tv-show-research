@@ -37,6 +37,7 @@ def add_options(parser):
         ('warm-probability', float, .8), ('auth-fraction', float, .2), ('max-inflight', int, 64),
         ('retry-attempts', int, 1), ('accounts-path', str, ''), ('metrics-directory', str, ''),
         ('connection-model', str, 'persistent'),
+        ('gateway-key-path', str, ''),
     )
     for name, kind, default in options:
         parser.add_argument('--workload-' + name, type=kind, default=default,
@@ -60,13 +61,17 @@ def configuration(environment):
 
 @events.test_start.add_listener
 def start(environment, **_kwargs):
-    global RUNTIME, USER_NUMBERS, ACCOUNTS, COOKIE_NAME, SHARED_POOL
+    global RUNTIME, USER_NUMBERS, ACCOUNTS, COOKIE_NAME, SHARED_POOL, GATEWAY_KEY
     if isinstance(environment.runner, MasterRunner):
         return
     config = configuration(environment)
     COOKIE_NAME, ACCOUNTS = accounts_from(config.accounts_path)
     USER_NUMBERS = itertools.count()
     RUNTIME = ProtocolMetrics(config)
+    GATEWAY_KEY = None
+    if config.gateway_key_path:
+        from gateway import key_from
+        GATEWAY_KEY = key_from(config.gateway_key_path, environment.host)['key']
     if config.connection_model == 'pooled':
         SHARED_POOL = HTTPClientPool(concurrency=config.max_inflight,
                                     connection_timeout=CouchsideUser.connection_timeout,
@@ -135,6 +140,9 @@ class CouchsideUser(FastHttpUser):
         self.headers = {'Accept': 'application/json', 'User-Agent': 'Couchside isolated load test'}
         if config.synthetic_identities:
             self.headers['X-Couchside-Load-Identity'] = f'protocol:{config.worker_index}:{ordinal}'
+            if config.gateway_key_path:
+                from gateway import signature
+                self.headers['X-Couchside-Load-Signature'] = signature(GATEWAY_KEY, self.headers['X-Couchside-Load-Identity'])
         account_index = account_assignment(index, config.auth_fraction)
         self.account = deepcopy(ACCOUNTS[account_index]) if account_index is not None and account_index < len(ACCOUNTS) else None
         if account_index is not None and account_index >= len(ACCOUNTS):
@@ -158,11 +166,19 @@ class CouchsideUser(FastHttpUser):
         combined = {**self.headers, **(headers or {})}
         attempts = RUNTIME.config.retry_attempts + 1 if retry else 1
         for attempt in range(attempts):
-            RUNTIME.enter()
+            gate_ms = RUNTIME.enter()
             delay, result, transient = 0, None, False
             try:
-                arguments = {'name': name, 'headers': combined, 'catch_response': True,
-                             'context': {'api': path.startswith('/api/')}}
+                # FastHttpSession mutates its input headers. Its timeout fallback
+                # also inspects only lowercase content-type, so a reused dict can
+                # acquire text/plain and poison the next JSON retry.
+                attempt_headers = dict(combined)
+                if payload is not None:
+                    attempt_headers = {key: value for key, value in attempt_headers.items()
+                                       if key.lower() != 'content-type'}
+                    attempt_headers['content-type'] = 'application/json'
+                arguments = {'name': name, 'headers': attempt_headers, 'catch_response': True,
+                             'context': {'api': path.startswith('/api/'), 'gate_ms': gate_ms, 'name': name}}
                 if payload is not None:
                     arguments['json'] = payload
                 with self.client.request(method, path, **arguments) as response:
@@ -253,10 +269,9 @@ class CouchsideUser(FastHttpUser):
         # A copied link followed in another browser requires a document read; SPA changes do not.
         if self.persona.random.random() < .15:
             self.request('GET', route, 'compare/copied-link', json_response=False)
-        self.request('POST', '/api/shows', 'compare/show-cards', {'ids': ids, 'matrix': False})
-        self.matrices(ids, 'compare/episode-matrices')
-        for sid in self.persona.random.sample(ids, min(len(ids), self.persona.random.randint(1, 3))):
-            self.request('GET', f'/api/episode-ratings?id={sid}', 'compare/episode-ratings')
+        query = urlencode({'ids': ','.join(map(str, ids))})
+        self.request('GET', '/api/show-cards?' + query, 'compare/show-cards')
+        self.request('GET', '/api/episode-ratings-batch?' + query, 'compare/episode-ratings')
 
     def lists(self):
         sid = self.persona.edit_list()

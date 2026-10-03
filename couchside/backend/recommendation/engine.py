@@ -18,9 +18,13 @@ import math
 import re
 import struct
 import sys
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 from . import facets, fresh, neighbours
-from .taste import Attributes, Taste
+from .taste import Attributes, Taste, STRENGTH, QUALITY, bits as taste_bits, clamp
 from .titles import Titles
 
 RATINGS = (-1, 0, .35, .7, 1)
@@ -199,6 +203,12 @@ class Engine:
         # Shows share far fewer theme and genre combinations than there are shows (about
         # 17,000 and 1,300 across 90,000), so closeness is worked out once per combination.
         self.combos = {field: self.combinations(field) for field in ('theme_bits', 'genre_bits')}
+        self.numpy_combos = {}
+        if np is not None:
+            for field, (masks, counts, where) in self.combos.items():
+                if hasattr(np, 'bitwise_count') and max(masks, default=0).bit_length() <= 64:
+                    self.numpy_combos[field] = (np.asarray(masks, dtype=np.uint64),
+                                               np.asarray(counts, dtype=np.float64), np.asarray(where))
         # Wikidata's genres, makers, cast, franchises and subjects and TVmaze's networks,
         # when the model carries them (facets.py); a model without them ranks as before.
         self.facets = facets.load(model, self.n)
@@ -219,6 +229,10 @@ class Engine:
         self.theme_norm = [norm(s['theme_bits']) for s in self.shows]
         self.genre_norm = [norm(s['genre_bits']) for s in self.shows]
         self.attributes = Attributes(self, self.subgenres())
+        if np is not None:
+            self.numpy_columns = {id(column): np.asarray(column) for column in self.attributes.values.values()}
+            self.numpy_quality = np.asarray([clamp((s['rating'] - 7.2) / 1.2, 1.5) if s['rating'] else 0.
+                                             for s in self.shows])
         self.quick_picks = [self.card(self.by_id[i]) for i in QUICK_PICKS if i in self.by_id]
         self.titles = Titles(self.shows, self.popularity, model / 'search.json.gz')
 
@@ -424,9 +438,18 @@ class Engine:
         model has them, facets. No user profile is ever cached."""
         source = self.shows[index]
         text = array('f', [0]) * self.n
-        for term, value in self.text_items(index):
-            for k in range(self.col_ptr[term], self.col_ptr[term + 1]):
-                text[self.post_rows[k]] += value * self.post_values[k]
+        if np is not None:
+            vector = np.frombuffer(text, dtype=np.float32)
+            rows = np.frombuffer(self.post_rows, dtype=np.uint32)
+            values = np.frombuffer(self.post_values, dtype=np.float32)
+            for term, value in self.text_items(index):
+                lo, hi = self.col_ptr[term], self.col_ptr[term + 1]
+                at = rows[lo:hi]
+                vector[at] = vector[at].astype(np.float64) + value * values[lo:hi].astype(np.float64)
+        else:
+            for term, value in self.text_items(index):
+                for k in range(self.col_ptr[term], self.col_ptr[term + 1]):
+                    text[self.post_rows[k]] += value * self.post_values[k]
 
         def bits(field):
             masks, counts, where = self.combos[field]
@@ -434,7 +457,19 @@ class Engine:
             n = mine.bit_count()
             if not n:
                 return array('f', bytes(4 * self.n))
+            if np is not None and field in self.numpy_combos:
+                masks, counts, where = self.numpy_combos[field]
+                denominator = np.sqrt(n * counts)
+                table = np.divide(np.bitwise_count(masks & np.uint64(mine)), denominator,
+                                  out=np.zeros(len(masks)), where=denominator != 0)
+                found = array('f')
+                found.frombytes(np.take(table.astype(np.float32), where).tobytes())
+                return found
             table = [(mine & m).bit_count() / math.sqrt(n * c) if c else 0.0 for m, c in zip(masks, counts)]
+            if np is not None:
+                found = array('f')
+                found.frombytes(np.take(np.asarray(table, dtype=np.float32), where).tobytes())
+                return found
             return array('f', map(table.__getitem__, where))
         near = self.facets.similarity(index, self.facet_weights) if self.facets else None
         linked = self.cointerest(index)
@@ -462,6 +497,17 @@ class Engine:
         t, h, g, f = self.components(index)
         total = text + themes + genres
         a, b, c = text / total, themes / total, genres / total
+        if np is not None:
+            # Python's scalar implementation does each operation in double precision
+            # before one float32 store. Keep that order and rounding here too.
+            values = (a * np.frombuffer(t, dtype=np.float32).astype(np.float64)
+                      + b * np.frombuffer(h, dtype=np.float32).astype(np.float64)
+                      + c * np.frombuffer(g, dtype=np.float32).astype(np.float64))
+            if extra and f is not None:
+                values += extra / 100 * np.frombuffer(f, dtype=np.float32).astype(np.float64)
+            result = array('f')
+            result.frombytes(values.astype(np.float32).tobytes())
+            return result
         if not extra or f is None:
             return array('f', [a * x + b * y + c * z for x, y, z in zip(t, h, g)])
         d = extra / 100
@@ -871,6 +917,8 @@ class Ranking:
             share = self.settings['dislike'] / len(self.negatives)
             for p in self.negatives:
                 penalty = [a + share * x for a, x in zip(penalty, gather(aff[p['id']]))]
+        if np is not None:
+            return self._scores_vector(candidates, scores, hits, penalty)
         raw = []
         single = len(self.groups) == 1
         for n, i in enumerate(candidates):
@@ -891,6 +939,42 @@ class Ranking:
             self.group[i] = k
             if value > 0 and self.best[k] > 0:
                 scores[i] = value / self.best[k] * self.share[k]
+        return scores
+
+    def _factors_vector(self, taste, indices):
+        fit = np.zeros(len(indices), dtype=np.float64)
+        for column, contributions in taste.tables:
+            fit += np.asarray(contributions)[self.e.numpy_columns[id(column)][indices]]
+        for _family, masks, known, delta, offset, weight, limit, cache in taste.sets:
+            values = []
+            for i in indices:
+                if not known[i]:
+                    values.append(0.)
+                    continue
+                mask = masks[i]
+                hit = cache.get(mask)
+                if hit is None:
+                    hit = cache[mask] = weight * clamp(offset + sum(delta[bit] for bit in taste_bits(mask)), limit)
+                values.append(hit)
+            fit += values
+        return np.exp(STRENGTH * fit + QUALITY * self.e.numpy_quality[indices])
+
+    def _scores_vector(self, candidates, scores, hits, penalty):
+        index = np.asarray(candidates)
+        matrix = np.asarray(hits)
+        groups = np.argmax(matrix, axis=0)
+        close = matrix[groups, np.arange(len(candidates))] - penalty
+        raw = np.zeros(len(candidates), dtype=np.float64)
+        for group, taste in enumerate(self.tastes):
+            positions = np.flatnonzero((groups == group) & (close > 0))
+            raw[positions] = close[positions] * self._factors_vector(taste, index[positions])
+        if self.best is None:
+            self.best = [float(np.max(raw[groups == group], initial=0)) for group in range(len(self.groups))]
+        self.group.update(zip(candidates, groups.tolist()))
+        best = np.asarray(self.best)[groups]
+        result = np.divide(raw, best, out=np.zeros(len(candidates)), where=(raw > 0) & (best > 0))
+        result *= np.asarray(self.share)[groups]
+        np.frombuffer(scores, dtype=np.float32)[index] = result
         return scores
 
     def source(self, i, among=None):

@@ -1,4 +1,4 @@
-import {esc,score,code,average,band} from './ratings.js?v=2a0509d86dd759f5';
+import {esc,score,code,average,band} from './ratings.js?v=70517fd9f1cddac1';
 
 const AXIS_WIDTH=46, EPISODE_SPACE=1, SEASON_SPACE=72;
 const RAW={top:36,bottom:244}, TREND={top:338,bottom:426};

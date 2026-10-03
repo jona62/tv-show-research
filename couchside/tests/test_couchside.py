@@ -745,8 +745,9 @@ def watched(deeper, options, p):
 
 Deeper.best = watched
 with stub_tiers.installed(Page, tier_rows=counted):
-    # Pages kept from before the stand-ins went in are not theirs.
+    # Retained pages and computed answers from before these stand-ins are not theirs.
     lib.kept.clear()
+    lib.answers.clear()
     for shape, day in (('five shows', {}), ('twenty-five mixed', seeded('2026-10-05'))):
         body = {'settings': {}, 'list': [], **SHAPES[shape], **day}
         page_rows, answers = whole(body)
@@ -783,6 +784,7 @@ with stub_tiers.installed(Page, tier_rows=counted):
 
     # body, page_rows and today are the seeded page of twenty-five mixed shows from here.
     lib.kept.clear()
+    lib.answers.clear()
     built.clear()
     lib.home(body)
     check('the first rows build no tier past today\'s', not built and len(today) > FIRST_PAGE, dict(built))
@@ -797,6 +799,7 @@ with stub_tiers.installed(Page, tier_rows=counted):
     check('the requests for more after it build nothing, answered from the page kept, the page\'s next rows',
           not built and deeper_rows['rows'] == page_rows[deep + 1:deep + 1 + NEXT_PAGE], dict(built))
     lib.kept.clear()
+    lib.answers.clear()
     lib.ahead = True
     built.clear()
     lib.home(body)
@@ -842,6 +845,7 @@ with stub_tiers.installed(Page, tier_rows=counted):
 Deeper.best = choosing
 # Pages kept while the stand-ins were in are not the real ones.
 lib.kept.clear()
+lib.answers.clear()
 
 # 4j. Pages kept for the requests for more (library.Kept): the latest KEPT_PAGES, each for
 # KEPT_FOR, and one past its time is laid out again, the same.
@@ -851,6 +855,7 @@ with lib.kept_lock:
 check(f'at most {KEPT_PAGES} pages are kept, the latest asked for',
       len(lib.kept) == KEPT_PAGES and 'page-0' not in lib.kept and f'page-{KEPT_PAGES + 4}' in lib.kept)
 lib.kept.clear()
+lib.answers.clear()
 body = {'profile': PROFILE, 'settings': {}, 'list': [], **seeded('2026-10-05')}
 first = lib.home(body)
 more = lib.home({**body, 'shown': shown_of(first['rows'])})
@@ -859,6 +864,8 @@ check('a page is kept under what was asked, less the rows shown and how many mor
       kept_under({**body, 'shown': shown_of(first['rows']), 'count': 3}) == kept_under(body)
       and kept_under({**body, 'list': [169]}) != kept_under(body))
 kept.at -= KEPT_FOR + 1
+# This forced page expiry also outlives the shorter computed-answer TTL.
+lib.answers.clear()
 check('a page kept past its time is laid out again, the same',
       lib.home({**body, 'shown': shown_of(first['rows'])}) == more and lib.kept[kept_under(body)] is not kept)
 extras = lib.kept[kept_under(body)].laid[4]
@@ -873,6 +880,7 @@ check('but not what it cannot yet say: the rows past it, or whether any follow',
 check('nor rows that do not carry on from its own',
       so_far.answers(showing(rows[1:FIRST_PAGE]), 3) is None)
 lib.kept.clear()
+lib.answers.clear()
 
 # 5. A title page explains itself and finds what is like it.
 page = lib.title({'profile': PROFILE, 'settings': {}, 'id': reference['picks'][0]['id']})

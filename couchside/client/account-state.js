@@ -642,7 +642,7 @@ export class AccountSync {
     } finally { this.authenticating = false; }
   }
 
-  async storageChanged(event) {
+  async storageChanged(event, { refresh = true } = {}) {
     if (event.key === ACTIVE_KEY) {
       let active = null;
       try { active = identity(JSON.parse(event.newValue || 'null')); } catch { /* Removed or invalid owner marker. */ }
@@ -706,7 +706,7 @@ export class AccountSync {
       this.learnSeen(other);
       this.persistCache();
       if (changed) await this.paint();
-      await this.refresh();
+      if (refresh) await this.refresh();
     }
   }
 

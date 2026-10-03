@@ -1,4 +1,4 @@
-import { html } from './ratings.js?v=2a0509d86dd759f5';
+import { html } from './ratings.js?v=70517fd9f1cddac1';
 
 const resetIcon = '<svg class="ratings-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11a9 9 0 1 1 2.7 6.4M3 5v6h6"/></svg>';
 

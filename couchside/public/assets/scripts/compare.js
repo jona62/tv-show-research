@@ -1,11 +1,12 @@
 import { apiFetch } from './network.js?v=4038b4a1107593ef';
-import { esc, html, icon, legend, ratings, ratingSources } from './ratings.js?v=2a0509d86dd759f5';
-import { compareMatrix, ratingTableHTML, seasonName } from './rating-views.js?v=2168d19db732fbe1';
-import { comparisonOverlayHTML, comparisonOverlayPlan, comparisonShowColour } from './comparison-timeline.js?v=0c0eea8d96bab16d';
-import { bindComparisonMatrix, bindComparisonTimeline } from './compare-timeline-interactions.js?v=7e9cdad202dea29d';
+import { showCard, publicData } from './public-data.js?v=52d95472a87de18c';
+import { esc, html, icon, legend, ratings, ratingSources } from './ratings.js?v=70517fd9f1cddac1';
+import { compareMatrix, ratingTableHTML, seasonName } from './rating-views.js?v=b273a6ffe2a54e91';
+import { comparisonOverlayHTML, comparisonOverlayPlan, comparisonShowColour } from './comparison-timeline.js?v=2d20603698429261';
+import { bindComparisonMatrix, bindComparisonTimeline } from './compare-timeline-interactions.js?v=2065733c29193432';
 import { comparisonPosterColours, loadPosterColour, validPosterColour } from './poster-colours.js?v=0a5c074f14836db9';
 import { createComparisonPosters } from './compare-posters.js?v=76b3da553b4dd4e8';
-import { createComparisonViewport } from './compare-viewport.js?v=40a2db0add024520';
+import { createComparisonViewport } from './compare-viewport.js?v=caaae4ed372c3b78';
 
 const STORAGE_KEY = 'couchside.comparison-v1', MAX_SHOWS = 40;
 const validId = id => Number.isInteger(id) && id > 0 && id <= 2147483647;
@@ -110,12 +111,9 @@ async function answer(path, options = {}) {
   if (!response.ok) throw Error(body.error || 'Shows are unavailable. Try again.');
   return body;
 }
-const post = (path, body, signal) => answer(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
-async function loadMetadata(id, signal) {
-  const body = await post('/api/shows', { ids: [id] }, signal);
-  const show = body.shows?.find(item => item.id === id);
-  return show || (await post('/api/title', { id }, signal)).show;
-}
+// The shared public reader collects the comparison's IDs into one metadata
+// request. Disposal only rejects this view's late generation, never another view.
+const loadMetadata = id => showCard(id);
 function fullPoster(show) {
   if (show.art) return show.art;
   if (!show.poster) return null;
@@ -366,6 +364,8 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
   function add(id) {
     if (state.ids.includes(id)) { tell('This show is already in your comparison.'); return; }
     if (state.ids.length >= MAX_SHOWS) { tell('Compare up to 40 shows at once. Remove one to add another.'); return; }
+    const selected = found.find(show => show.id === id);
+    if (selected) void publicData.cache.put('card', [selected]);
     state.ids.push(id); query = ''; input.value = ''; ++searchToken; found = []; searchGroups = []; searchOpen = false; searchMessage = ''; renderSearch();
     render(); loader.ensure(id); input.focus(); tell('Show added to comparison.');
   }
