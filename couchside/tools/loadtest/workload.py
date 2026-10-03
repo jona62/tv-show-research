@@ -56,6 +56,14 @@ class Configuration:
     accounts_path: str = ''
     metrics_directory: str = ''
     gateway_key_path: str = ''
+    run_id: str = ''
+
+    def worker_inflight(self):
+        """Partition one aggregate wire budget without exceeding it."""
+        if self.max_inflight < self.worker_count:
+            raise ValueError('The aggregate in-flight cap must provide at least one slot per worker.')
+        slots, remainder = divmod(self.max_inflight, self.worker_count)
+        return slots + (self.worker_index < remainder)
 
     def validate(self, host, isolated=False):
         if self.think_min < 0 or self.think_max < self.think_min:
@@ -66,6 +74,7 @@ class Configuration:
             raise ValueError('Choose between zero and two safe-read retries.')
         if self.worker_count < 1 or not 0 <= self.worker_index < self.worker_count:
             raise ValueError('Each worker requires a unique index below the worker count.')
+        self.worker_inflight()
         if self.connection_model not in ('persistent', 'pooled'):
             raise ValueError('Choose persistent or pooled connections.')
         if self.synthetic_identities or self.connection_model == 'pooled':

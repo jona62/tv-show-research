@@ -18,6 +18,7 @@ class ProtocolMetrics:
         self.active = self.peak_active = self.waiting = self.peak_waiting = 0
         self.peak_virtual_users = 0
         self.gate_wait = deque(maxlen=20000)
+        self.gate_wait_histogram = Counter()
         self.statuses, self.journeys, self.users, self.cache_headers = (Counter() for _ in range(4))
         self.application = Counter()
         self.simulated_public_cache = Counter()
@@ -44,6 +45,7 @@ class ProtocolMetrics:
                 self.waiting -= 1
         waited = (time.monotonic() - began) * 1000
         self.gate_wait.append(waited)
+        self.gate_wait_histogram[min(120000, max(0, round(waited)))] += 1
         self.active += 1
         self.peak_active = max(self.active, self.peak_active)
         return waited
@@ -111,6 +113,10 @@ class ProtocolMetrics:
                 'statuses': dict(self.statuses), 'journey_counts': dict(self.journeys),
                 'application_events': dict(self.application),
                 'request_latency': {name: self.latency_summary(histogram) for name, histogram in self.latencies.items()},
+                'histograms': {'request_latency': {name: dict(values) for name, values in self.latencies.items()},
+                               'endpoint_user_latency': {name: dict(values) for name, values in self.endpoints.items()},
+                               'completed_journey_latency': {name: dict(values) for name, values in self.journey_latencies.items()},
+                               'gate_wait': dict(self.gate_wait_histogram)},
                 'endpoint_user_latency': {name: self.latency_summary(histogram) for name, histogram in self.endpoints.items()},
                 'completed_journey_latency': {name: self.latency_summary(histogram)
                                               for name, histogram in self.journey_latencies.items()},
@@ -166,6 +172,85 @@ class ProtocolMetrics:
         temporary = path.with_suffix('.json.tmp')
         temporary.write_text(json.dumps(self.summary(), indent=2))
         temporary.replace(path)
+
+    def sample_loop(self, environment):
+        while not self.stopped:
+            self.capture(environment)
+            gevent.sleep(5)
+
+
+class MasterMetrics:
+    """Observed master user totals and roster; the master produces no HTTP events."""
+
+    def __init__(self, config):
+        self.config = config
+        self.started = time.monotonic()
+        self.stopped = False
+        self.stopping = False
+        self.peak_virtual_users = self.current_users = 0
+        self.generator_cpu_warnings = 0
+        self.workers, self.reports, self.samples, self.errors = {}, {}, [], []
+
+    def report(self, client_id, report):
+        if not isinstance(report, dict):
+            return
+        if report.get('run_id') != self.config.run_id or report.get('worker_count') != self.config.worker_count:
+            self.errors.append('Worker report has a mismatched run identity or worker count.')
+            self.write()
+            return
+        index = report.get('worker_index')
+        if type(index) is not int or not 0 <= index < self.config.worker_count:
+            self.errors.append('Worker report has an unexpected index.')
+            self.write()
+            return
+        slots, remainder = divmod(self.config.max_inflight, self.config.worker_count)
+        if (type(report.get('user_count')) is not int or report['user_count'] < 0 or
+                report.get('max_inflight') != slots + (index < remainder)):
+            self.errors.append('Worker report has an invalid user count or assigned cap.')
+            self.write()
+            return
+        self.workers[client_id] = index
+        self.reports[client_id] = report
+        # Reports are asynchronous. This is a reported total, rather than a
+        # synchronized observation of every worker's current greenlets.
+        self.current_users = sum(value['user_count'] for value in self.reports.values())
+        self.peak_virtual_users = max(self.peak_virtual_users, self.current_users)
+        self.write()
+
+    def capture(self, environment):
+        runner = environment.runner
+        for client in runner.clients.all:
+            self.workers[client.id] = runner.get_worker_index(client.id)
+        final = list(self.reports.values())
+        if self.stopped and len(final) == self.config.worker_count and all(report.get('finished') is True for report in final):
+            self.current_users = sum(report['user_count'] for report in final)
+        else:
+            self.current_users = runner.user_count
+        self.peak_virtual_users = max(self.peak_virtual_users, self.current_users)
+        self.samples.append({'seconds': round(time.monotonic() - self.started, 3),
+                             'virtual_users': self.current_users})
+        self.write()
+
+    def summary(self):
+        return {'schema': 1, 'kind': 'locust-master-observation',
+                'configuration': {key: value for key, value in asdict(self.config).items()
+                                  if key not in ('accounts_path', 'metrics_directory', 'gateway_key_path')},
+                'run_id': self.config.run_id, 'worker_count': self.config.worker_count,
+                'aggregate_max_inflight': self.config.max_inflight,
+                'finished': self.stopped, 'current_users': self.current_users,
+                'peak_virtual_users': self.peak_virtual_users,
+                'peak_user_count_source': 'master reported actual worker totals; asynchronous reports',
+                'worker_clients': self.workers, 'worker_reports': self.reports,
+                'generator_cpu_warnings': self.generator_cpu_warnings,
+                'errors': sorted(set(self.errors)), 'samples': self.samples}
+
+    def write(self):
+        if self.config.metrics_directory:
+            path = Path(self.config.metrics_directory) / 'protocol-master.json'
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = path.with_suffix('.json.tmp')
+            temporary.write_text(json.dumps(self.summary(), indent=2))
+            temporary.replace(path)
 
     def sample_loop(self, environment):
         while not self.stopped:

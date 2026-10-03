@@ -6,6 +6,20 @@ Chromium, local storage, service workers, clipboard actions and image exports.
 Ten thousand virtual users are not ten thousand browser processes or simultaneous
 requests. Think time, ramp-up, connection pools and generator queueing are recorded.
 
+The runner defaults to one Locust process. Opt into local distributed workers with
+`--workers N` on a platform with fork support. Locust starts one master and N
+workers on the generator machine; the master controls the total users and spawn
+rate. This can move generation to the desktop without sharing the application's
+compute host. It does not establish that the desktop has enough generator capacity.
+Keep its process CPU warnings and resource samples in the result.
+
+`--max-inflight` is one **aggregate** wire-request cap in both modes. With N workers,
+the runner partitions the cap into positive local semaphore and connection-pool
+budgets whose sum equals the cap; for example, 7 slots across 3 workers gives
+3/2/2. Fewer slots than workers is rejected. Each worker has a distinct Locust
+index and interleaved user ordinals, so account and synthetic identities do not
+collide. Choices repeat only for the same seed, worker layout and ordinal.
+
 Install test dependencies in a separate virtual environment so Locust's gevent
 patches never affect the application server:
 
@@ -94,6 +108,36 @@ Default experimental targets are at most 1% failed completed requests and at mos
 100 ms for successful API p95, including generator queueing. These are configurable test targets, not an
 agreed production SLA. Final request-event totals govern acceptance; the raw CSV
 is a periodic snapshot. Started users and measured peak concurrency remain separate.
+
+Every stage carries a fresh run ID. Final worker files must match that ID, the
+expected indices, workload settings and assigned caps. Multiworker stages also
+require a matching final master file with the expected unique roster and zero
+remaining users. Missing, stale, unfinished or inconsistent files make acceptance
+explicitly incomplete. Use a new output directory for each run; unexpected worker
+files from an earlier layout also make a stage incomplete.
+If requested authenticated users lack account fixtures, the existing workload
+records those substitutions as `auth_fixture_unavailable`. Any positive count
+makes acceptance incomplete, with the missing-fixture count stated in the result;
+guest responses cannot certify the requested authenticated workload.
+
+Request, endpoint and journey percentiles are recomputed from summed raw 1 ms
+histograms, including final events during shutdown. Percentiles are never averaged.
+Expected guest 401 events remain separate from failures. API histograms are
+subsets of total requests and are not added again into the completed denominator.
+Multiworker gate-wait percentiles use the full completed-acquisition histogram,
+rounded to 1 ms and capped at 120 seconds; cancelled waits are excluded. The
+single-worker gate-wait fields retain their prior bounded-ring sample semantics.
+Master user peaks reflect actual reported worker totals, which arrive
+asynchronously, and never the global requested count broadcast to workers.
+Started users are reported separately. Summed per-worker active-request and
+waiting-user peaks are explicitly named upper bounds, not simultaneous peaks.
+Worker elapsed durations are not summed.
+
+For multiple workers, resource samples include the master and recursive child
+processes; summed RSS can count shared pages more than once. The runner signals
+its owned process group on abort, checks for remaining child processes, and keeps
+stages that fail clean shutdown incomplete. No worker master port is exposed
+outside loopback, and worker connection waits are bounded.
 
 For a separate Linux application VM, run `sample_server.py --pid-file PID_FILE
 --output resources.jsonl --seconds 240` beside the server. It samples the parent

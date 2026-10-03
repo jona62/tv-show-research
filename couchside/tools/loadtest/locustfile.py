@@ -4,6 +4,7 @@ Run in a separate Locust environment. Browser actions and cache reads are tested
 by browser_journeys.py; protocol traffic never represents a completed UI journey.
 """
 from copy import deepcopy
+from dataclasses import replace
 import itertools
 import os
 from pathlib import Path
@@ -15,15 +16,17 @@ import gevent
 from geventhttpclient.client import HTTPClientPool
 from locust import events, task
 from locust.contrib.fasthttp import FastHttpUser
-from locust.runners import MasterRunner, WorkerRunner
+from locust.runners import MasterRunner, WorkerRunner, STATE_STOPPING
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from protocol_metrics import ProtocolMetrics
+from protocol_metrics import MasterMetrics, ProtocolMetrics
 from workload import (Configuration, GENRES, Persona, SimulatedPublicCache,
                       account_assignment, accounts_from, shown_rows, sorted_public_ids)
 
 
 RUNTIME = None
+MASTER = None
+ENVIRONMENT = None
 USER_NUMBERS = itertools.count()
 ACCOUNTS = []
 COOKIE_NAME = ''
@@ -39,6 +42,7 @@ def add_options(parser):
         ('retry-attempts', int, 1), ('accounts-path', str, ''), ('metrics-directory', str, ''),
         ('connection-model', str, 'persistent'),
         ('gateway-key-path', str, ''),
+        ('run-id', str, ''),
     )
     for name, kind, default in options:
         parser.add_argument('--workload-' + name, type=kind, default=default,
@@ -59,14 +63,21 @@ def configuration(environment):
         arguments['worker_index'] = environment.runner.worker_index
     config = Configuration(**arguments)
     config.validate(environment.host, isolated=os.environ.get('COUCHSIDE_LOAD_ISOLATED') == '1')
+    if isinstance(environment.runner, WorkerRunner):
+        config = replace(config, max_inflight=config.worker_inflight())
     return config
 
 
 @events.test_start.add_listener
 def start(environment, **_kwargs):
-    global RUNTIME, USER_NUMBERS, ACCOUNTS, COOKIE_NAME, SHARED_POOL, GATEWAY_KEY
+    global RUNTIME, MASTER, ENVIRONMENT, USER_NUMBERS, ACCOUNTS, COOKIE_NAME, SHARED_POOL, GATEWAY_KEY
+    ENVIRONMENT = environment
     if isinstance(environment.runner, MasterRunner):
+        RUNTIME = None
+        MASTER = MasterMetrics(configuration(environment))
+        gevent.spawn(MASTER.sample_loop, environment)
         return
+    MASTER = None
     config = configuration(environment)
     COOKIE_NAME, ACCOUNTS = accounts_from(config.accounts_path)
     USER_NUMBERS = itertools.count()
@@ -96,10 +107,66 @@ def close_shared_pool(environment):
         SHARED_POOL = CouchsideUser.client_pool = None
         RUNTIME.pool_closed = True
         RUNTIME.write()
+    notify_worker_finished(environment)
+
+
+def protocol_report():
+    return {'run_id': RUNTIME.config.run_id, 'worker_index': RUNTIME.config.worker_index,
+            'worker_count': RUNTIME.config.worker_count, 'user_count': ENVIRONMENT.runner.user_count,
+            'max_inflight': RUNTIME.config.max_inflight,
+            'finished': RUNTIME.stopped and not ENVIRONMENT.runner.user_count and not RUNTIME.active,
+            'shared_pool_closed': RUNTIME.pool_closed}
+
+
+def notify_worker_finished(environment):
+    if isinstance(environment.runner, WorkerRunner):
+        environment.runner.send_message('couchside_worker_finished', protocol_report())
+
+
+@events.init.add_listener
+def register_final_worker_message(environment, **_kwargs):
+    if isinstance(environment.runner, MasterRunner):
+        def finished(environment, msg):
+            if MASTER:
+                MASTER.report(msg.node_id, msg.data)
+        environment.runner.register_message('couchside_worker_finished', finished)
+    elif isinstance(environment.runner, WorkerRunner):
+        def prepare(environment, msg):
+            # Stop users but keep the worker registered and its RPC loop alive
+            # so the master can send the final quit after receiving our report.
+            environment.runner.stop()
+        environment.runner.register_message('couchside_prepare_shutdown', prepare)
+
+
+@events.test_stopping.add_listener
+def drain_worker_reports(environment, **_kwargs):
+    if not MASTER or MASTER.stopping:
+        return
+    MASTER.stopping = True
+    MASTER.capture(environment)
+    # Locust quit otherwise closes the listener 0.5s after requesting worker
+    # shutdown, shorter than the configured stop grace. Mark stopping first so
+    # worker removal cannot trigger replacement user spawning during the wait.
+    environment.runner.update_state(STATE_STOPPING)
+    environment.runner.send_message('couchside_prepare_shutdown')
+    deadline = time.monotonic() + (environment.stop_timeout or 0) + 5
+    while time.monotonic() < deadline:
+        reports = list(MASTER.reports.values())
+        if (len(reports) == MASTER.config.worker_count and
+                all(report.get('finished') is True and report['user_count'] == 0 and
+                    (MASTER.config.connection_model != 'pooled' or report.get('shared_pool_closed') is True)
+                    for report in reports)):
+            return
+        gevent.sleep(.05)
+    MASTER.errors.append('Timed out waiting for complete final worker shutdown reports.')
+    MASTER.write()
 
 
 @events.test_stop.add_listener
 def stop(environment, **_kwargs):
+    if MASTER:
+        MASTER.stopped = True
+        MASTER.capture(environment)
     if RUNTIME:
         RUNTIME.stopped = True
         RUNTIME.capture(environment)
@@ -108,12 +175,18 @@ def stop(environment, **_kwargs):
                 close_shared_pool(environment)
             else:
                 gevent.spawn(close_shared_pool, environment)
+        elif not environment.runner.user_count and not RUNTIME.active:
+            notify_worker_finished(environment)
+        else:
+            gevent.spawn(close_shared_pool, environment)
 
 
 @events.cpu_warning.add_listener
 def cpu_warning(**_kwargs):
     if RUNTIME:
         RUNTIME.generator_cpu_warnings += 1
+    if MASTER:
+        MASTER.generator_cpu_warnings += 1
 
 
 @events.request.add_listener
@@ -125,8 +198,25 @@ def measured_request(response_time, response=None, exception=None, context=None,
 @events.spawning_complete.add_listener
 def spawned_users(user_count, **_kwargs):
     if RUNTIME:
-        RUNTIME.peak_virtual_users = max(RUNTIME.peak_virtual_users, user_count)
+        observed = ENVIRONMENT.runner.user_count if ENVIRONMENT and isinstance(ENVIRONMENT.runner, WorkerRunner) else user_count
+        RUNTIME.peak_virtual_users = max(RUNTIME.peak_virtual_users, observed)
         RUNTIME.write()
+    if MASTER:
+        # Distributed Locust's event argument is the target, even when reports
+        # did not reach it. Read the actual reported master total instead.
+        MASTER.capture(ENVIRONMENT)
+
+
+@events.report_to_master.add_listener
+def report_protocol(client_id, data, **_kwargs):
+    if RUNTIME and ENVIRONMENT:
+        data['couchside_protocol'] = protocol_report()
+
+
+@events.worker_report.add_listener
+def worker_protocol(client_id, data, **_kwargs):
+    if MASTER:
+        MASTER.report(client_id, data.get('couchside_protocol'))
 
 
 class CouchsideUser(FastHttpUser):
