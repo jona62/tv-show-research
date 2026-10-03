@@ -8,6 +8,3311 @@
   },
   "final_capacity_stages": {
     "status": "completed_failed_experimental_targets",
+    "source": "load-capacity-native-20261003",
+    "before_shared_proxy_reload": true,
+    "application_workers": 4,
+    "app_requested_vcpus": 4,
+    "app_ram_mib": 8192,
+    "generator_requested_vcpus": 1,
+    "generator_ram_mib": 1536,
+    "generator_max_inflight": 256,
+    "background_jobs": "normal startup and refresh enabled",
+    "application_reply_cache_per_worker": {
+      "entries": 10000,
+      "max_mib": 128,
+      "ttl_s": 60
+    },
+    "native_threads_per_worker": 1,
+    "outbound_guard": true,
+    "goal_concurrent_users": 10000,
+    "experimental_targets": {
+      "failed_completed_fraction_max": 0.01,
+      "successful_api_p95_with_generator_gate_max_ms": 100
+    },
+    "limitations": [
+      "All targets reached, but the 10k users include idle/generator-waiting sessions; only 256 wire requests could be active.",
+      "100/1000 persistent stages retain independent user transports; the 10k pooled stage does not test 10000 physical backend connections.",
+      "Stage response percentiles are successful-only; failure/status distributions and unfinished scripts matter.",
+      "Protocol script ends can contain failed API requests and guest account no-ops; they are not successful UI journeys.",
+      "Guest per-process CPU accounting does not establish physical host cores consumed.",
+      "Provider attempts are physically blocked and missing fixtures remain degraded; this does not certify provider capacity.",
+      "Cumulative per-worker telemetry includes background work and snapshot-boundary lag up to 1.387 seconds.",
+      "Persistent cache state carries forward from the prior run and between stages; no controlled distributed speedup is claimed.",
+      "Host cgroup samples select the last 5-second observation before each wall boundary; exact endpoint lags are recorded per stage and these are not steady-state-only utilization.",
+      "Completed counts use definitive final protocol events. The 1k periodic CSV snapshot omits 50 late completed requests and one late failure."
+    ],
+    "stages": [
+      {
+        "users": 100,
+        "peak_users": 100,
+        "connection_model": "persistent",
+        "spawn_per_second": 25.0,
+        "nominal_run_s": 60.0,
+        "wall_start": 1791005511.2831414,
+        "wall_end": 1791005577.5159614,
+        "elapsed_runner_s": 66.23282445099994,
+        "elapsed_protocol_s": 62.38509246000012,
+        "aborted": null,
+        "generator_exit_code": 1,
+        "request_totals": {
+          "completed": 895,
+          "failed": 58,
+          "source": "final request events"
+        },
+        "definitive_request_counts": {
+          "total": 895,
+          "successful_2xx": 757,
+          "failed": 58,
+          "expected_non_2xx": 80,
+          "api_successful_2xx": 646
+        },
+        "acceptance": {
+          "max_failure_rate": 0.01,
+          "max_api_success_p95_ms": 100.0,
+          "failure_rate": 0.06480446927374302,
+          "successful_api_under_100_ms_fraction": 0.0,
+          "includes_generator_queue": true,
+          "passed": false
+        },
+        "configuration": {
+          "seed": 20261003,
+          "worker_index": 0,
+          "worker_count": 1,
+          "think_min": 3.0,
+          "think_max": 12.0,
+          "warm_probability": 0.8,
+          "auth_fraction": 0.2,
+          "max_inflight": 256,
+          "connection_model": "persistent",
+          "retry_attempts": 1,
+          "media": true,
+          "live_details": false,
+          "synthetic_identities": true
+        },
+        "statuses": {
+          "200": 757,
+          "401_expected": 80,
+          "502": 46,
+          "0": 12
+        },
+        "completed_request_rate_per_s": 14.346376108584808,
+        "successful_2xx_rate_per_s": 12.134309177875641,
+        "throughput_denominator": "full protocol-observed elapsed interval including stop/grace; not steady-state offered arrival rate",
+        "successful_api_with_gate": {
+          "count": 646,
+          "p50_ms": 1355,
+          "p95_ms": 16580,
+          "p99_ms": 19018,
+          "max_ms": 19836,
+          "under_100_ms": 0,
+          "resolution_ms": 1,
+          "upper_bucket_ms": 120000
+        },
+        "successful_api_without_gate": {
+          "count": 646,
+          "p50_ms": 1355,
+          "p95_ms": 16580,
+          "p99_ms": 19018,
+          "max_ms": 19836,
+          "under_100_ms": 0,
+          "resolution_ms": 1,
+          "upper_bucket_ms": 120000
+        },
+        "endpoint_successful_user_latency": {
+          "search/substring": {
+            "count": 43,
+            "p50_ms": 822,
+            "p95_ms": 3018,
+            "p99_ms": 4595,
+            "max_ms": 4595,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "search/reordered": {
+            "count": 35,
+            "p50_ms": 590,
+            "p95_ms": 2496,
+            "p99_ms": 2652,
+            "max_ms": 2652,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "account/session": {
+            "count": 20,
+            "p50_ms": 684,
+            "p95_ms": 935,
+            "p99_ms": 1161,
+            "max_ms": 1161,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "compare/show-cards": {
+            "count": 43,
+            "p50_ms": 424,
+            "p95_ms": 2024,
+            "p99_ms": 2599,
+            "max_ms": 2599,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "browse/genre": {
+            "count": 53,
+            "p50_ms": 8045,
+            "p95_ms": 17213,
+            "p99_ms": 18849,
+            "max_ms": 18849,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "compare/episode-ratings": {
+            "count": 43,
+            "p50_ms": 1655,
+            "p95_ms": 7421,
+            "p99_ms": 8018,
+            "max_ms": 8018,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "home/feed": {
+            "count": 59,
+            "p50_ms": 8966,
+            "p95_ms": 19018,
+            "p99_ms": 19362,
+            "max_ms": 19362,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "search/typo": {
+            "count": 31,
+            "p50_ms": 1626,
+            "p95_ms": 3236,
+            "p99_ms": 3347,
+            "max_ms": 3347,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "home/scrolled-matrices": {
+            "count": 43,
+            "p50_ms": 821,
+            "p95_ms": 2465,
+            "p99_ms": 5892,
+            "max_ms": 5892,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "search/exact": {
+            "count": 32,
+            "p50_ms": 1264,
+            "p95_ms": 3307,
+            "p99_ms": 4364,
+            "max_ms": 4364,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "popular/catalog": {
+            "count": 27,
+            "p50_ms": 9833,
+            "p95_ms": 17494,
+            "p99_ms": 19345,
+            "max_ms": 19345,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "detail/title": {
+            "count": 40,
+            "p50_ms": 6034,
+            "p95_ms": 17951,
+            "p99_ms": 19836,
+            "max_ms": 19836,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "home/more-rows": {
+            "count": 15,
+            "p50_ms": 13603,
+            "p95_ms": 18940,
+            "p99_ms": 18940,
+            "max_ms": 18940,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "browse/scrolled-matrices": {
+            "count": 28,
+            "p50_ms": 684,
+            "p95_ms": 3336,
+            "p99_ms": 3655,
+            "max_ms": 3655,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "detail/episode-ratings": {
+            "count": 41,
+            "p50_ms": 491,
+            "p95_ms": 1749,
+            "p99_ms": 3372,
+            "max_ms": 3372,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "guest/list-show-lookup": {
+            "count": 19,
+            "p50_ms": 369,
+            "p95_ms": 2442,
+            "p99_ms": 2442,
+            "max_ms": 2442,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "search/punctuation": {
+            "count": 42,
+            "p50_ms": 1242,
+            "p95_ms": 3609,
+            "p99_ms": 4053,
+            "max_ms": 4053,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "account/list-save": {
+            "count": 4,
+            "p50_ms": 482,
+            "p95_ms": 1273,
+            "p99_ms": 1273,
+            "max_ms": 1273,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "detail/backdrop": {
+            "count": 17,
+            "p50_ms": 698,
+            "p95_ms": 1438,
+            "p99_ms": 1438,
+            "max_ms": 1438,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "lists/taste": {
+            "count": 11,
+            "p50_ms": 6792,
+            "p95_ms": 19420,
+            "p99_ms": 19420,
+            "max_ms": 19420,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          }
+        },
+        "gate": {
+          "max_waiting_users": 0,
+          "max_active_requests": 93,
+          "completed_wait_ms": {
+            "p50": 0.011345999155309983,
+            "p95": 0.01831600002333289,
+            "p99": 0.039231000300787855
+          },
+          "completed_wait_samples": 926
+        },
+        "journeys": {
+          "started_scripts": 339,
+          "script_ends": 307,
+          "unfinished_at_stop": 32,
+          "by_type_started": {
+            "home": 47,
+            "browse": 63,
+            "popular": 29,
+            "new": 18,
+            "search": 63,
+            "detail": 46,
+            "compare": 43,
+            "lists": 23,
+            "account": 7
+          },
+          "by_type_completed": {
+            "home": 38,
+            "browse": 52,
+            "popular": 27,
+            "new": 17,
+            "search": 60,
+            "detail": 40,
+            "compare": 43,
+            "lists": 23,
+            "account": 7
+          },
+          "counts_are_successful_ui_journeys": false
+        },
+        "application_events": {
+          "search_results": 1089,
+          "search_empty_responses": 0,
+          "account_unchanged_polls": 0,
+          "matrix_ready_shows": 557,
+          "matrix_pending_shows": 50
+        },
+        "generator": {
+          "cpu_warnings": 0,
+          "peak_guest_accounted_cpu_percent": 89.9,
+          "peak_rss_mib": 160.83
+        },
+        "server_resources": {
+          "samples": 65,
+          "measured_span_s": 67.224,
+          "average_guest_accounted_cpu_percent": 184.77,
+          "peak_guest_accounted_cpu_percent": 286.41,
+          "peak_rss_sum_mib": 2507.09,
+          "peak_threads": 82,
+          "peak_fds": 234,
+          "guest_reported_steal_percent": 68.62,
+          "rss_limit": "summed process RSS can double-count shared pages",
+          "cpu_limit": "guest per-process accounting is not physical host core utilization"
+        },
+        "cache": {
+          "public_json.api": {
+            "hit": 0,
+            "miss": 86,
+            "lookup_hit_percent": 0.0
+          },
+          "recommendation_answers.api": {
+            "hit": 1,
+            "miss": 201,
+            "lookup_hit_percent": 0.495
+          },
+          "home_pages.api": {
+            "hit": 0,
+            "miss": 4,
+            "blocked": 20,
+            "lookup_hit_percent": 0.0
+          },
+          "episodes_memory.api": {
+            "hit": 51,
+            "miss": 568,
+            "lookup_hit_percent": 8.239
+          },
+          "shared_http_disk.image": {
+            "hit": 17,
+            "miss": 26,
+            "lookup_hit_percent": 39.535
+          },
+          "live_detail_disk.api": {
+            "hit": 15,
+            "miss": 21,
+            "stale": 11,
+            "lookup_hit_percent": 41.667
+          },
+          "page_gzip.api": {
+            "hit": 88,
+            "miss": 23,
+            "lookup_hit_percent": 79.279
+          },
+          "artwork_source_memory.image": {
+            "hit": 17,
+            "miss": 47,
+            "lookup_hit_percent": 26.562
+          },
+          "live_memory.api": {
+            "hit": 0,
+            "miss": 89,
+            "lookup_hit_percent": 0.0
+          },
+          "episodes_full_memory.api": {
+            "hit": 25,
+            "miss": 252,
+            "lookup_hit_percent": 9.025
+          },
+          "shared_http_disk.api": {
+            "hit": 0,
+            "miss": 90,
+            "stale": 9,
+            "lookup_hit_percent": 0.0
+          },
+          "catalogue_pool.api": {
+            "hit": 223,
+            "miss": 8,
+            "lookup_hit_percent": 96.537
+          },
+          "episodes_disk.api": {
+            "hit": 679,
+            "miss": 139,
+            "lookup_hit_percent": 83.007
+          },
+          "live_stale.api": {
+            "hit": 2,
+            "miss": 0,
+            "lookup_hit_percent": 100.0
+          },
+          "search_memory.api": {
+            "hit": 0,
+            "miss": 16,
+            "lookup_hit_percent": 0.0
+          },
+          "episodes_inflight.api": {
+            "hit": 0,
+            "miss": 0,
+            "coalesced": 2,
+            "lookup_hit_percent": null
+          }
+        },
+        "upstream_counters": {
+          "upstream.tvmaze.blocked": 90,
+          "upstream.tvmaze_image.blocked": 26
+        },
+        "physical_upstream_attempts": 0,
+        "server_cancelled_observations": {
+          "total": 39,
+          "by_route": {
+            "http.POST.api.title.cancelled": 9,
+            "http.POST.api.browse.cancelled": 15,
+            "http.POST.api.home.cancelled": 13,
+            "http.GET.api.search.cancelled": 2
+          },
+          "scope": "completed disconnect/cancellation telemetry within snapshot window; not exact number of queued jobs avoided"
+        },
+        "snapshot_boundary_lag": [
+          {
+            "pid": 3006,
+            "start_lag_s": 0.963,
+            "end_lag_s": 0.557
+          },
+          {
+            "pid": 3007,
+            "start_lag_s": 0.204,
+            "end_lag_s": 0.948
+          },
+          {
+            "pid": 3008,
+            "start_lag_s": 0.586,
+            "end_lag_s": 0.764
+          },
+          {
+            "pid": 3009,
+            "start_lag_s": 0.167,
+            "end_lag_s": 0.195
+          }
+        ],
+        "host_scope_scheduling": {
+          "sample_start": 1791005511.1576753,
+          "sample_end": 1791005576.1580474,
+          "sample_span_s": 65.00037217140198,
+          "start_lag_s": 0.12546610832214355,
+          "end_lag_s": 1.3579139709472656,
+          "selection": "last 5-second sample at or before each stage wall boundary; includes startup/ramp/stop portions, not steady-state-only",
+          "scopes": {
+            "application": {
+              "cpu_max": "400000 100000",
+              "cpu_weight": "100",
+              "effective_cpuset": "0-23",
+              "host_charged_cpu_s": 53.909958,
+              "average_host_charged_cpus": 0.8293792204426579,
+              "nr_throttled_delta": 0,
+              "quota_throttled_s_delta": 0.0,
+              "cpu_pressure_percent": {
+                "some": 62.047249350588,
+                "full": 61.56517211082435
+              },
+              "memory_event_deltas": {
+                "low": 0,
+                "high": 0,
+                "max": 0,
+                "oom": 0,
+                "oom_kill": 0,
+                "oom_group_kill": 0
+              }
+            },
+            "generator": {
+              "cpu_max": "100000 100000",
+              "cpu_weight": "100",
+              "effective_cpuset": "0-23",
+              "host_charged_cpu_s": 15.439114,
+              "average_host_charged_cpus": 0.23752347077779812,
+              "nr_throttled_delta": 5,
+              "quota_throttled_s_delta": 0.015856,
+              "cpu_pressure_percent": {
+                "some": 7.206983350260039,
+                "full": 7.067868762174981
+              },
+              "memory_event_deltas": {
+                "low": 0,
+                "high": 0,
+                "max": 4,
+                "oom": 0,
+                "oom_kill": 0,
+                "oom_group_kill": 0
+              }
+            }
+          },
+          "host_cpu_some_pressure_percent": 84.06731711613429
+        }
+      },
+      {
+        "users": 1000,
+        "peak_users": 1000,
+        "connection_model": "persistent",
+        "spawn_per_second": 100.0,
+        "nominal_run_s": 75.0,
+        "wall_start": 1791005580.5278418,
+        "wall_end": 1791005674.016534,
+        "elapsed_runner_s": 93.48869669400028,
+        "elapsed_protocol_s": 86.87447514399992,
+        "aborted": null,
+        "generator_exit_code": 1,
+        "request_totals": {
+          "completed": 2134,
+          "failed": 181,
+          "source": "final request events"
+        },
+        "definitive_request_counts": {
+          "total": 2134,
+          "successful_2xx": 1442,
+          "failed": 181,
+          "expected_non_2xx": 511,
+          "api_successful_2xx": 761
+        },
+        "acceptance": {
+          "max_failure_rate": 0.01,
+          "max_api_success_p95_ms": 100.0,
+          "failure_rate": 0.08481724461105905,
+          "successful_api_under_100_ms_fraction": 0.0,
+          "includes_generator_queue": true,
+          "passed": false
+        },
+        "configuration": {
+          "seed": 20261004,
+          "worker_index": 0,
+          "worker_count": 1,
+          "think_min": 3.0,
+          "think_max": 12.0,
+          "warm_probability": 0.8,
+          "auth_fraction": 0.2,
+          "max_inflight": 256,
+          "connection_model": "persistent",
+          "retry_attempts": 1,
+          "media": true,
+          "live_details": false,
+          "synthetic_identities": true
+        },
+        "statuses": {
+          "200": 1442,
+          "401_expected": 511,
+          "502": 25,
+          "0": 154,
+          "503": 2
+        },
+        "completed_request_rate_per_s": 24.564177181649278,
+        "successful_2xx_rate_per_s": 16.59866143202355,
+        "throughput_denominator": "full protocol-observed elapsed interval including stop/grace; not steady-state offered arrival rate",
+        "successful_api_with_gate": {
+          "count": 761,
+          "p50_ms": 3733,
+          "p95_ms": 25103,
+          "p99_ms": 52265,
+          "max_ms": 53739,
+          "under_100_ms": 0,
+          "resolution_ms": 1,
+          "upper_bucket_ms": 120000
+        },
+        "successful_api_without_gate": {
+          "count": 761,
+          "p50_ms": 3496,
+          "p95_ms": 21968,
+          "p99_ms": 25025,
+          "max_ms": 26994,
+          "under_100_ms": 0,
+          "resolution_ms": 1,
+          "upper_bucket_ms": 120000
+        },
+        "endpoint_successful_user_latency": {
+          "detail/title": {
+            "count": 46,
+            "p50_ms": 19011,
+            "p95_ms": 23555,
+            "p99_ms": 25122,
+            "max_ms": 25122,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "home/feed": {
+            "count": 50,
+            "p50_ms": 17096,
+            "p95_ms": 23558,
+            "p99_ms": 26994,
+            "max_ms": 26994,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "search/typo": {
+            "count": 34,
+            "p50_ms": 6059,
+            "p95_ms": 53645,
+            "p99_ms": 53736,
+            "max_ms": 53736,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "compare/show-cards": {
+            "count": 65,
+            "p50_ms": 2424,
+            "p95_ms": 4882,
+            "p99_ms": 12295,
+            "max_ms": 12295,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "account/session": {
+            "count": 137,
+            "p50_ms": 2547,
+            "p95_ms": 4767,
+            "p99_ms": 12806,
+            "max_ms": 12913,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "detail/episode-ratings": {
+            "count": 45,
+            "p50_ms": 3150,
+            "p95_ms": 6425,
+            "p99_ms": 6620,
+            "max_ms": 6620,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "home/scrolled-matrices": {
+            "count": 28,
+            "p50_ms": 3608,
+            "p95_ms": 6418,
+            "p99_ms": 6424,
+            "max_ms": 6424,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "compare/episode-ratings": {
+            "count": 65,
+            "p50_ms": 3085,
+            "p95_ms": 6380,
+            "p99_ms": 9658,
+            "max_ms": 9658,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "detail/backdrop": {
+            "count": 19,
+            "p50_ms": 5357,
+            "p95_ms": 11600,
+            "p99_ms": 11600,
+            "max_ms": 11600,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "guest/list-show-lookup": {
+            "count": 27,
+            "p50_ms": 2254,
+            "p95_ms": 4882,
+            "p99_ms": 4893,
+            "max_ms": 4893,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "search/reordered": {
+            "count": 34,
+            "p50_ms": 3461,
+            "p95_ms": 52249,
+            "p99_ms": 52266,
+            "max_ms": 52266,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "search/punctuation": {
+            "count": 28,
+            "p50_ms": 3480,
+            "p95_ms": 52265,
+            "p99_ms": 53729,
+            "max_ms": 53729,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "search/substring": {
+            "count": 35,
+            "p50_ms": 3395,
+            "p95_ms": 47979,
+            "p99_ms": 52265,
+            "max_ms": 52265,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "search/exact": {
+            "count": 30,
+            "p50_ms": 3362,
+            "p95_ms": 53727,
+            "p99_ms": 53739,
+            "max_ms": 53739,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "popular/catalog": {
+            "count": 24,
+            "p50_ms": 16400,
+            "p95_ms": 23602,
+            "p99_ms": 23808,
+            "max_ms": 23808,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "home/more-rows": {
+            "count": 14,
+            "p50_ms": 12806,
+            "p95_ms": 21666,
+            "p99_ms": 21666,
+            "max_ms": 21666,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "account/list-save": {
+            "count": 8,
+            "p50_ms": 3111,
+            "p95_ms": 6392,
+            "p99_ms": 6392,
+            "max_ms": 6392,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "browse/genre": {
+            "count": 47,
+            "p50_ms": 17580,
+            "p95_ms": 25108,
+            "p99_ms": 25127,
+            "max_ms": 25127,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "browse/scrolled-matrices": {
+            "count": 22,
+            "p50_ms": 3101,
+            "p95_ms": 4671,
+            "p99_ms": 4895,
+            "max_ms": 4895,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "lists/taste": {
+            "count": 3,
+            "p50_ms": 21398,
+            "p95_ms": 22740,
+            "p99_ms": 22740,
+            "max_ms": 22740,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          }
+        },
+        "gate": {
+          "max_waiting_users": 732,
+          "max_active_requests": 256,
+          "completed_wait_ms": {
+            "p50": 0.005161999979463872,
+            "p95": 46259.27258199954,
+            "p99": 51679.08067400003
+          },
+          "completed_wait_samples": 2359
+        },
+        "journeys": {
+          "started_scripts": 734,
+          "script_ends": 257,
+          "unfinished_at_stop": 477,
+          "by_type_started": {
+            "home": 99,
+            "browse": 123,
+            "popular": 61,
+            "new": 50,
+            "search": 144,
+            "detail": 108,
+            "compare": 84,
+            "lists": 50,
+            "account": 15
+          },
+          "by_type_completed": {
+            "home": 25,
+            "browse": 47,
+            "popular": 24,
+            "new": 19,
+            "search": 11,
+            "detail": 20,
+            "compare": 65,
+            "lists": 32,
+            "account": 14
+          },
+          "counts_are_successful_ui_journeys": false
+        },
+        "application_events": {
+          "search_results": 970,
+          "search_empty_responses": 0,
+          "account_unchanged_polls": 2,
+          "matrix_ready_shows": 389,
+          "matrix_pending_shows": 40
+        },
+        "generator": {
+          "cpu_warnings": 0,
+          "peak_guest_accounted_cpu_percent": 98.5,
+          "peak_rss_mib": 824.11
+        },
+        "server_resources": {
+          "samples": 90,
+          "measured_span_s": 93.019,
+          "average_guest_accounted_cpu_percent": 152.96,
+          "peak_guest_accounted_cpu_percent": 295.33,
+          "peak_rss_sum_mib": 2688.57,
+          "peak_threads": 98,
+          "peak_fds": 391,
+          "guest_reported_steal_percent": 62.23,
+          "rss_limit": "summed process RSS can double-count shared pages",
+          "cpu_limit": "guest per-process accounting is not physical host core utilization"
+        },
+        "cache": {
+          "public_json.api": {
+            "hit": 0,
+            "miss": 130,
+            "lookup_hit_percent": 0.0
+          },
+          "recommendation_answers.api": {
+            "hit": 0,
+            "miss": 225,
+            "lookup_hit_percent": 0.0
+          },
+          "home_pages.api": {
+            "hit": 0,
+            "miss": 3,
+            "blocked": 23,
+            "lookup_hit_percent": 0.0
+          },
+          "episodes_memory.api": {
+            "hit": 98,
+            "miss": 343,
+            "lookup_hit_percent": 22.222
+          },
+          "shared_http_disk.image": {
+            "hit": 20,
+            "miss": 14,
+            "lookup_hit_percent": 58.824
+          },
+          "live_detail_disk.api": {
+            "hit": 12,
+            "miss": 11,
+            "stale": 6,
+            "lookup_hit_percent": 52.174
+          },
+          "artwork_source_memory.image": {
+            "hit": 16,
+            "miss": 29,
+            "lookup_hit_percent": 35.556
+          },
+          "shared_http_disk.api": {
+            "hit": 0,
+            "miss": 103,
+            "stale": 5,
+            "lookup_hit_percent": 0.0
+          },
+          "episodes_disk.api": {
+            "hit": 431,
+            "miss": 164,
+            "lookup_hit_percent": 72.437
+          },
+          "search_memory.api": {
+            "hit": 0,
+            "miss": 24,
+            "lookup_hit_percent": 0.0
+          },
+          "page_gzip.api": {
+            "hit": 696,
+            "miss": 1,
+            "lookup_hit_percent": 99.857
+          },
+          "live_memory.api": {
+            "hit": 0,
+            "miss": 91,
+            "lookup_hit_percent": 0.0
+          },
+          "episodes_full_memory.api": {
+            "hit": 149,
+            "miss": 257,
+            "lookup_hit_percent": 36.7
+          },
+          "catalogue_pool.api": {
+            "hit": 257,
+            "miss": 0,
+            "lookup_hit_percent": 100.0
+          },
+          "episodes_inflight.api": {
+            "hit": 0,
+            "miss": 0,
+            "coalesced": 5,
+            "lookup_hit_percent": null
+          },
+          "live_stale.api": {
+            "hit": 1,
+            "miss": 0,
+            "lookup_hit_percent": 100.0
+          }
+        },
+        "upstream_counters": {
+          "upstream.tvmaze.blocked": 103,
+          "upstream.tvmaze_image.blocked": 14
+        },
+        "physical_upstream_attempts": 0,
+        "server_cancelled_observations": {
+          "total": 177,
+          "by_route": {
+            "http.GET.new.cancelled": 1,
+            "http.POST.api.browse.cancelled": 63,
+            "http.POST.api.home.cancelled": 63,
+            "http.POST.api.title.cancelled": 36,
+            "http.GET.page.cancelled": 1,
+            "http.POST.api.taste.cancelled": 2,
+            "http.GET.api.session.cancelled": 8,
+            "http.GET.api.episode-ratings.cancelled": 1,
+            "http.GET.compare.cancelled": 1,
+            "http.GET.api.episode-matrices.cancelled": 1
+          },
+          "scope": "completed disconnect/cancellation telemetry within snapshot window; not exact number of queued jobs avoided"
+        },
+        "snapshot_boundary_lag": [
+          {
+            "pid": 3006,
+            "start_lag_s": 0.564,
+            "end_lag_s": 0.986
+          },
+          {
+            "pid": 3007,
+            "start_lag_s": 0.956,
+            "end_lag_s": 0.486
+          },
+          {
+            "pid": 3008,
+            "start_lag_s": 0.771,
+            "end_lag_s": 0.438
+          },
+          {
+            "pid": 3009,
+            "start_lag_s": 0.202,
+            "end_lag_s": 0.529
+          }
+        ],
+        "host_scope_scheduling": {
+          "sample_start": 1791005576.1580474,
+          "sample_end": 1791005671.157998,
+          "sample_span_s": 94.99995064735413,
+          "start_lag_s": 4.3697943687438965,
+          "end_lag_s": 2.8585360050201416,
+          "selection": "last 5-second sample at or before each stage wall boundary; includes startup/ramp/stop portions, not steady-state-only",
+          "scopes": {
+            "application": {
+              "cpu_max": "400000 100000",
+              "cpu_weight": "100",
+              "effective_cpuset": "0-23",
+              "host_charged_cpu_s": 59.554178,
+              "average_host_charged_cpus": 0.6268864098789788,
+              "nr_throttled_delta": 0,
+              "quota_throttled_s_delta": 0.0,
+              "cpu_pressure_percent": {
+                "some": 50.22712819833338,
+                "full": 49.899684870331335
+              },
+              "memory_event_deltas": {
+                "low": 0,
+                "high": 0,
+                "max": 0,
+                "oom": 0,
+                "oom_kill": 0,
+                "oom_group_kill": 0
+              }
+            },
+            "generator": {
+              "cpu_max": "100000 100000",
+              "cpu_weight": "100",
+              "effective_cpuset": "0-23",
+              "host_charged_cpu_s": 66.586312,
+              "average_host_charged_cpus": 0.7009089114916769,
+              "nr_throttled_delta": 57,
+              "quota_throttled_s_delta": 0.209887,
+              "cpu_pressure_percent": {
+                "some": 24.998217197138537,
+                "full": 24.998203512920895
+              },
+              "memory_event_deltas": {
+                "low": 0,
+                "high": 0,
+                "max": 14,
+                "oom": 0,
+                "oom_kill": 0,
+                "oom_group_kill": 0
+              }
+            }
+          },
+          "host_cpu_some_pressure_percent": 82.31444170984729
+        }
+      },
+      {
+        "users": 10000,
+        "peak_users": 10000,
+        "connection_model": "pooled",
+        "spawn_per_second": 500.0,
+        "nominal_run_s": 90.0,
+        "wall_start": 1791005677.0509903,
+        "wall_end": 1791005778.3894966,
+        "elapsed_runner_s": 101.33850964700014,
+        "elapsed_protocol_s": 97.36432362099913,
+        "aborted": null,
+        "generator_exit_code": 1,
+        "request_totals": {
+          "completed": 6203,
+          "failed": 886,
+          "source": "final request events"
+        },
+        "definitive_request_counts": {
+          "total": 6203,
+          "successful_2xx": 3679,
+          "failed": 886,
+          "expected_non_2xx": 1638,
+          "api_successful_2xx": 1586
+        },
+        "acceptance": {
+          "max_failure_rate": 0.01,
+          "max_api_success_p95_ms": 100.0,
+          "failure_rate": 0.142834112526197,
+          "successful_api_under_100_ms_fraction": 0.0,
+          "includes_generator_queue": true,
+          "passed": false
+        },
+        "configuration": {
+          "seed": 20261005,
+          "worker_index": 0,
+          "worker_count": 1,
+          "think_min": 3.0,
+          "think_max": 12.0,
+          "warm_probability": 0.8,
+          "auth_fraction": 0.2,
+          "max_inflight": 256,
+          "connection_model": "pooled",
+          "retry_attempts": 1,
+          "media": true,
+          "live_details": false,
+          "synthetic_identities": true
+        },
+        "statuses": {
+          "200": 3679,
+          "401_expected": 1638,
+          "502": 15,
+          "503": 112,
+          "0": 759
+        },
+        "completed_request_rate_per_s": 63.70916747848863,
+        "successful_2xx_rate_per_s": 37.78591442098334,
+        "throughput_denominator": "full protocol-observed elapsed interval including stop/grace; not steady-state offered arrival rate",
+        "successful_api_with_gate": {
+          "count": 1586,
+          "p50_ms": 706,
+          "p95_ms": 18985,
+          "p99_ms": 54704,
+          "max_ms": 85185,
+          "under_100_ms": 0,
+          "resolution_ms": 1,
+          "upper_bucket_ms": 120000
+        },
+        "successful_api_without_gate": {
+          "count": 1586,
+          "p50_ms": 700,
+          "p95_ms": 15213,
+          "p99_ms": 20003,
+          "max_ms": 21442,
+          "under_100_ms": 0,
+          "resolution_ms": 1,
+          "upper_bucket_ms": 120000
+        },
+        "endpoint_successful_user_latency": {
+          "account/session": {
+            "count": 397,
+            "p50_ms": 424,
+            "p95_ms": 2822,
+            "p99_ms": 3584,
+            "max_ms": 5389,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "detail/title": {
+            "count": 29,
+            "p50_ms": 18880,
+            "p95_ms": 21010,
+            "p99_ms": 33643,
+            "max_ms": 33643,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "search/reordered": {
+            "count": 89,
+            "p50_ms": 904,
+            "p95_ms": 52519,
+            "p99_ms": 70239,
+            "max_ms": 70239,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "compare/show-cards": {
+            "count": 231,
+            "p50_ms": 486,
+            "p95_ms": 2071,
+            "p99_ms": 2826,
+            "max_ms": 45607,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "detail/episode-ratings": {
+            "count": 26,
+            "p50_ms": 648,
+            "p95_ms": 3381,
+            "p99_ms": 3532,
+            "max_ms": 3532,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "browse/genre": {
+            "count": 40,
+            "p50_ms": 17819,
+            "p95_ms": 20084,
+            "p99_ms": 21154,
+            "max_ms": 21154,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "search/exact": {
+            "count": 91,
+            "p50_ms": 767,
+            "p95_ms": 4598,
+            "p99_ms": 61256,
+            "max_ms": 61256,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "search/punctuation": {
+            "count": 63,
+            "p50_ms": 605,
+            "p95_ms": 43521,
+            "p99_ms": 79117,
+            "max_ms": 79117,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "guest/list-show-lookup": {
+            "count": 86,
+            "p50_ms": 494,
+            "p95_ms": 2425,
+            "p99_ms": 72660,
+            "max_ms": 72660,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "compare/episode-ratings": {
+            "count": 231,
+            "p50_ms": 1049,
+            "p95_ms": 3140,
+            "p99_ms": 4576,
+            "max_ms": 6150,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "detail/backdrop": {
+            "count": 12,
+            "p50_ms": 704,
+            "p95_ms": 1764,
+            "p99_ms": 1764,
+            "max_ms": 1764,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "browse/scrolled-matrices": {
+            "count": 24,
+            "p50_ms": 983,
+            "p95_ms": 2406,
+            "p99_ms": 2689,
+            "max_ms": 2689,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "home/feed": {
+            "count": 35,
+            "p50_ms": 16541,
+            "p95_ms": 20617,
+            "p99_ms": 21442,
+            "max_ms": 21442,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "search/substring": {
+            "count": 85,
+            "p50_ms": 722,
+            "p95_ms": 23539,
+            "p99_ms": 78681,
+            "max_ms": 78681,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "popular/catalog": {
+            "count": 13,
+            "p50_ms": 17575,
+            "p95_ms": 19453,
+            "p99_ms": 19453,
+            "max_ms": 19453,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "search/typo": {
+            "count": 91,
+            "p50_ms": 2053,
+            "p95_ms": 49614,
+            "p99_ms": 85185,
+            "max_ms": 85185,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "home/scrolled-matrices": {
+            "count": 21,
+            "p50_ms": 1000,
+            "p95_ms": 4435,
+            "p99_ms": 4760,
+            "max_ms": 4760,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "account/list-save": {
+            "count": 19,
+            "p50_ms": 625,
+            "p95_ms": 3346,
+            "p99_ms": 3346,
+            "max_ms": 3346,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          },
+          "lists/taste": {
+            "count": 3,
+            "p50_ms": 20190,
+            "p95_ms": 20360,
+            "p99_ms": 20360,
+            "max_ms": 20360,
+            "under_100_ms": 0,
+            "resolution_ms": 1,
+            "upper_bucket_ms": 120000
+          }
+        },
+        "gate": {
+          "max_waiting_users": 9727,
+          "max_active_requests": 256,
+          "completed_wait_ms": {
+            "p50": 0.00537999949301593,
+            "p95": 72116.96991000007,
+            "p99": 83532.67775400035
+          },
+          "completed_wait_samples": 6431
+        },
+        "journeys": {
+          "started_scripts": 2267,
+          "script_ends": 444,
+          "unfinished_at_stop": 1823,
+          "by_type_started": {
+            "home": 289,
+            "browse": 435,
+            "popular": 177,
+            "new": 166,
+            "search": 469,
+            "detail": 291,
+            "compare": 267,
+            "lists": 137,
+            "account": 36
+          },
+          "by_type_completed": {
+            "home": 13,
+            "browse": 38,
+            "popular": 13,
+            "new": 11,
+            "search": 11,
+            "detail": 13,
+            "compare": 231,
+            "lists": 79,
+            "account": 35
+          },
+          "counts_are_successful_ui_journeys": false
+        },
+        "application_events": {
+          "account_unchanged_polls": 8,
+          "search_results": 2525,
+          "search_empty_responses": 0,
+          "matrix_ready_shows": 343,
+          "matrix_pending_shows": 69
+        },
+        "generator": {
+          "cpu_warnings": 0,
+          "peak_guest_accounted_cpu_percent": 85.9,
+          "peak_rss_mib": 302.0
+        },
+        "server_resources": {
+          "samples": 98,
+          "measured_span_s": 101.355,
+          "average_guest_accounted_cpu_percent": 227.7,
+          "peak_guest_accounted_cpu_percent": 285.48,
+          "peak_rss_sum_mib": 2837.75,
+          "peak_threads": 99,
+          "peak_fds": 416,
+          "guest_reported_steal_percent": 78.37,
+          "rss_limit": "summed process RSS can double-count shared pages",
+          "cpu_limit": "guest per-process accounting is not physical host core utilization"
+        },
+        "cache": {
+          "public_json.api": {
+            "hit": 0,
+            "miss": 462,
+            "lookup_hit_percent": 0.0
+          },
+          "recommendation_answers.api": {
+            "hit": 0,
+            "miss": 235,
+            "lookup_hit_percent": 0.0
+          },
+          "home_pages.api": {
+            "hit": 0,
+            "miss": 1,
+            "blocked": 44,
+            "lookup_hit_percent": 0.0
+          },
+          "episodes_memory.api": {
+            "hit": 25,
+            "miss": 387,
+            "lookup_hit_percent": 6.068
+          },
+          "shared_http_disk.image": {
+            "hit": 12,
+            "miss": 10,
+            "lookup_hit_percent": 54.545
+          },
+          "artwork_source_memory.image": {
+            "hit": 14,
+            "miss": 13,
+            "lookup_hit_percent": 51.852
+          },
+          "shared_http_disk.api": {
+            "hit": 0,
+            "miss": 131,
+            "stale": 2,
+            "lookup_hit_percent": 0.0
+          },
+          "live_detail_disk.api": {
+            "hit": 4,
+            "miss": 5,
+            "stale": 4,
+            "lookup_hit_percent": 44.444
+          },
+          "episodes_disk.api": {
+            "hit": 716,
+            "miss": 191,
+            "lookup_hit_percent": 78.942
+          },
+          "search_memory.api": {
+            "hit": 0,
+            "miss": 64,
+            "blocked": 3,
+            "lookup_hit_percent": 0.0
+          },
+          "live_memory.api": {
+            "hit": 0,
+            "miss": 75,
+            "lookup_hit_percent": 0.0
+          },
+          "episodes_inflight.api": {
+            "hit": 0,
+            "miss": 0,
+            "coalesced": 9,
+            "lookup_hit_percent": null
+          },
+          "episodes_full_memory.api": {
+            "hit": 402,
+            "miss": 529,
+            "lookup_hit_percent": 43.179
+          },
+          "catalogue_pool.api": {
+            "hit": 284,
+            "miss": 0,
+            "lookup_hit_percent": 100.0
+          },
+          "page_gzip.api": {
+            "hit": 2094,
+            "miss": 0,
+            "lookup_hit_percent": 100.0
+          },
+          "live_stale.api": {
+            "hit": 2,
+            "miss": 0,
+            "lookup_hit_percent": 100.0
+          }
+        },
+        "upstream_counters": {
+          "upstream.tvmaze.blocked": 132,
+          "upstream.tvmaze_image.blocked": 10
+        },
+        "physical_upstream_attempts": 0,
+        "server_cancelled_observations": {
+          "total": 907,
+          "by_route": {
+            "http.POST.api.taste.cancelled": 22,
+            "http.POST.api.browse.cancelled": 396,
+            "http.POST.api.home.cancelled": 292,
+            "http.POST.api.title.cancelled": 197
+          },
+          "scope": "completed disconnect/cancellation telemetry within snapshot window; not exact number of queued jobs avoided"
+        },
+        "snapshot_boundary_lag": [
+          {
+            "pid": 3006,
+            "start_lag_s": 0.015,
+            "end_lag_s": 0.35
+          },
+          {
+            "pid": 3007,
+            "start_lag_s": 0.515,
+            "end_lag_s": 0.411
+          },
+          {
+            "pid": 3008,
+            "start_lag_s": 0.468,
+            "end_lag_s": 0.906
+          },
+          {
+            "pid": 3009,
+            "start_lag_s": 0.559,
+            "end_lag_s": 1.387
+          }
+        ],
+        "host_scope_scheduling": {
+          "sample_start": 1791005676.157842,
+          "sample_end": 1791005776.157846,
+          "sample_span_s": 100.00000405311584,
+          "start_lag_s": 0.8931484222412109,
+          "end_lag_s": 2.2316505908966064,
+          "selection": "last 5-second sample at or before each stage wall boundary; includes startup/ramp/stop portions, not steady-state-only",
+          "scopes": {
+            "application": {
+              "cpu_max": "400000 100000",
+              "cpu_weight": "100",
+              "effective_cpuset": "0-23",
+              "host_charged_cpu_s": 87.51445,
+              "average_host_charged_cpus": 0.875144464529381,
+              "nr_throttled_delta": 0,
+              "quota_throttled_s_delta": 0.0,
+              "cpu_pressure_percent": {
+                "some": 65.691954337429,
+                "full": 64.48153538648867
+              },
+              "memory_event_deltas": {
+                "low": 0,
+                "high": 0,
+                "max": 0,
+                "oom": 0,
+                "oom_kill": 0,
+                "oom_group_kill": 0
+              }
+            },
+            "generator": {
+              "cpu_max": "100000 100000",
+              "cpu_weight": "100",
+              "effective_cpuset": "0-23",
+              "host_charged_cpu_s": 41.848231,
+              "average_host_charged_cpus": 0.4184822930384279,
+              "nr_throttled_delta": 2,
+              "quota_throttled_s_delta": 0.013522,
+              "cpu_pressure_percent": {
+                "some": 10.067736591942971,
+                "full": 10.031899593395488
+              },
+              "memory_event_deltas": {
+                "low": 0,
+                "high": 0,
+                "max": 11,
+                "oom": 0,
+                "oom_kill": 0,
+                "oom_group_kill": 0
+              }
+            }
+          },
+          "host_cpu_some_pressure_percent": 83.57126361275988
+        }
+      }
+    ],
+    "implementation_revision": "45a1b29",
+    "application_supervisor_pid": 3004,
+    "worker_pids": [
+      3006,
+      3007,
+      3008,
+      3009
+    ],
+    "cache_initial_state": "Persistent disposable databases carried forward from the prior corrected run; process caches reset by supervisor restart. Caches then carry between sequential stages."
+  },
+  "recommendation_component": {
+    "baseline_revision": "d4ca2a0bbab76cc5a9abc936caea941a092f4c87",
+    "model": "2026-09-07",
+    "catalogue_shows": 89594,
+    "conditions": {
+      "python": "3.13.2",
+      "platform": "macOS 15.5 arm64",
+      "after_numpy": "2.4.6",
+      "before_scoring": "scalar Python; NumPy not used in baseline math",
+      "foreground_only": true,
+      "discovery_filter_setup_included": true,
+      "providers": "disabled; isolated empty episode store",
+      "simultaneous_users": 1,
+      "request_profiles": "48 diverse fixed benchmark-persona workloads; 12 per operation",
+      "repeat_phase": "same 48 complete request bodies; not a new-user workload",
+      "measurement": "wall-clock perf_counter without profiler; Engine/Library initialization excluded",
+      "answer_cache_default": "1024 entries / 32 MiB / 60 seconds"
+    },
+    "summary": {
+      "cold": {
+        "home": {
+          "before": {
+            "count": 12,
+            "p50_ms": 280.88456275872886,
+            "p95_ms": 533.5575826466084,
+            "maximum_ms": 533.5575826466084
+          },
+          "after": {
+            "count": 12,
+            "p50_ms": 64.03829087503254,
+            "p95_ms": 122.34012503176928,
+            "maximum_ms": 122.34012503176928
+          },
+          "p50_speedup": 4.386197053679348
+        },
+        "browse": {
+          "before": {
+            "count": 12,
+            "p50_ms": 267.2594578471035,
+            "p95_ms": 442.9669161327183,
+            "maximum_ms": 442.9669161327183
+          },
+          "after": {
+            "count": 12,
+            "p50_ms": 47.936979215592146,
+            "p95_ms": 100.14058323577046,
+            "maximum_ms": 100.14058323577046
+          },
+          "p50_speedup": 5.5752252691002635
+        },
+        "title": {
+          "before": {
+            "count": 12,
+            "p50_ms": 224.50897912494838,
+            "p95_ms": 389.91020899266005,
+            "maximum_ms": 389.91020899266005
+          },
+          "after": {
+            "count": 12,
+            "p50_ms": 34.20375008136034,
+            "p95_ms": 87.62620808556676,
+            "maximum_ms": 87.62620808556676
+          },
+          "p50_speedup": 6.563870294658032
+        },
+        "taste": {
+          "before": {
+            "count": 12,
+            "p50_ms": 188.4052085224539,
+            "p95_ms": 313.9623333700001,
+            "maximum_ms": 313.9623333700001
+          },
+          "after": {
+            "count": 12,
+            "p50_ms": 15.977833420038223,
+            "p95_ms": 44.802125077694654,
+            "maximum_ms": 44.802125077694654
+          },
+          "p50_speedup": 11.791661833585644
+        }
+      },
+      "warm": {
+        "home": {
+          "before": {
+            "count": 12,
+            "p50_ms": 271.13631274551153,
+            "p95_ms": 422.97849990427494,
+            "maximum_ms": 422.97849990427494
+          },
+          "after": {
+            "count": 12,
+            "p50_ms": 0.5559998098760843,
+            "p95_ms": 0.6802920252084732,
+            "maximum_ms": 0.6802920252084732
+          },
+          "p50_speedup": 487.65540550443654
+        },
+        "browse": {
+          "before": {
+            "count": 12,
+            "p50_ms": 251.22491689398885,
+            "p95_ms": 385.93624997884035,
+            "maximum_ms": 385.93624997884035
+          },
+          "after": {
+            "count": 12,
+            "p50_ms": 0.28572953306138515,
+            "p95_ms": 0.2957908436655998,
+            "maximum_ms": 0.2957908436655998
+          },
+          "p50_speedup": 879.2402878424771
+        },
+        "title": {
+          "before": {
+            "count": 12,
+            "p50_ms": 227.4029585532844,
+            "p95_ms": 290.69679183885455,
+            "maximum_ms": 290.69679183885455
+          },
+          "after": {
+            "count": 12,
+            "p50_ms": 0.08818763308227062,
+            "p95_ms": 0.09420933201909065,
+            "maximum_ms": 0.09420933201909065
+          },
+          "p50_speedup": 2578.6263969817537
+        },
+        "taste": {
+          "before": {
+            "count": 12,
+            "p50_ms": 187.06295848824084,
+            "p95_ms": 223.95833302289248,
+            "maximum_ms": 223.95833302289248
+          },
+          "after": {
+            "count": 12,
+            "p50_ms": 16.60681306384504,
+            "p95_ms": 18.7436668202281,
+            "maximum_ms": 18.7436668202281
+          },
+          "p50_speedup": 11.264229793463421
+        }
+      }
+    },
+    "parity": {
+      "response_count": 96,
+      "mismatches": []
+    },
+    "limits": [
+      "Single-process local CPU timings are not 10,000-user HTTP capacity results.",
+      "Cold p50 measurements improved but cold Home maximum exceeds 100 ms.",
+      "Warm under-one-millisecond figures apply to repeated identical Home/Browse/Title bodies within cache retention. Taste is recomputed.",
+      "Cold is first request per unique context; later contexts may reuse public model component caches."
+    ]
+  },
+  "incremental_native_scoring_component": {
+    "implementation_revision": "45a1b29",
+    "baseline_revision": "cb248d4",
+    "kind": "subsequent isolated local unique-context CPU benchmark; not included in prior capacity stages",
+    "source": "ranking-mean-native-20261003/results.json",
+    "environment": {
+      "python": "3.13.2",
+      "platform": "macOS-15.5-arm64-arm-64bit-Mach-O",
+      "numpy": "2.4.6"
+    },
+    "model": "2026-09-07",
+    "catalogue_shows": 89594,
+    "conditions": {
+      "numpy_threads": 1,
+      "request_count_cold": 48,
+      "requests_per_operation": 12,
+      "providers": "disabled",
+      "background_ahead": false,
+      "initialization": "excluded",
+      "cpu_timer": "time.process_time; one process, single foreground workload",
+      "hashes_compared_per_variant": 96,
+      "comparison_reference": "Exact immediate pre-change canonical snapshot engine-before.py, explicitly loaded on the adjacent reference rerun. Original baseline recorded as current-before.json; both baseline runs and final run match all 96 hashes."
+    },
+    "changes": [
+      "Float64 native candidate gathers and per-member mean, nearest-hit and negative-penalty vectors, retaining member order and separate multiply/add.",
+      "Skip zero-weight set families while retaining their descriptive taste statistics."
+    ],
+    "cold_summary": {
+      "home": {
+        "before": {
+          "cpu_ms": {
+            "p50": 76.42499999999997,
+            "p95": 125.95900000000083,
+            "total": 922.931000000002
+          },
+          "ms": {
+            "p50": 77.39435462281108,
+            "p95": 126.0582092218101,
+            "total": 926.3653373345733
+          }
+        },
+        "final": {
+          "cpu_ms": {
+            "p50": 59.4260000000002,
+            "p95": 107.62099999999997,
+            "total": 769.8069999999992
+          },
+          "ms": {
+            "p50": 59.45710395462811,
+            "p95": 108.84429141879082,
+            "total": 772.6925411261618
+          }
+        },
+        "cold_cpu_p50_speedup": 1.2860532426883806,
+        "cold_cpu_p50_reduction_percent": 22.242721622505428
+      },
+      "browse": {
+        "before": {
+          "cpu_ms": {
+            "p50": 51.840499999999956,
+            "p95": 104.50600000000065,
+            "total": 778.6230000000023
+          },
+          "ms": {
+            "p50": 52.96762497164309,
+            "p95": 104.66241696849465,
+            "total": 782.0168337784708
+          }
+        },
+        "final": {
+          "cpu_ms": {
+            "p50": 39.91100000000003,
+            "p95": 91.74799999999993,
+            "total": 610.7400000000016
+          },
+          "ms": {
+            "p50": 40.02460394985974,
+            "p95": 91.91958326846361,
+            "total": 612.5140828080475
+          }
+        },
+        "cold_cpu_p50_speedup": 1.298902558191975,
+        "cold_cpu_p50_reduction_percent": 23.011930826284345
+      },
+      "title": {
+        "before": {
+          "cpu_ms": {
+            "p50": 34.52799999999989,
+            "p95": 86.11000000000058,
+            "total": 564.093999999999
+          },
+          "ms": {
+            "p50": 34.55756255425513,
+            "p95": 86.22208330780268,
+            "total": 565.9449179656804
+          }
+        },
+        "final": {
+          "cpu_ms": {
+            "p50": 27.10300000000032,
+            "p95": 87.7170000000005,
+            "total": 399.2420000000001
+          },
+          "ms": {
+            "p50": 27.474625036120415,
+            "p95": 87.7920831553638,
+            "total": 401.31116518750787
+          }
+        },
+        "cold_cpu_p50_speedup": 1.273954912740268,
+        "cold_cpu_p50_reduction_percent": 21.50428637627315
+      },
+      "taste": {
+        "before": {
+          "cpu_ms": {
+            "p50": 15.829000000000093,
+            "p95": 44.08299999999965,
+            "total": 218.71999999999758
+          },
+          "ms": {
+            "p50": 15.859124716371298,
+            "p95": 44.10366714000702,
+            "total": 219.40091717988253
+          }
+        },
+        "final": {
+          "cpu_ms": {
+            "p50": 16.39100000000049,
+            "p95": 45.539999999999914,
+            "total": 226.20800000000241
+          },
+          "ms": {
+            "p50": 16.440437408164144,
+            "p95": 45.57845927774906,
+            "total": 226.4675018377602
+          }
+        },
+        "cold_cpu_p50_speedup": 0.9657128912207688,
+        "cold_cpu_p50_reduction_percent": -3.5504453850552293
+      }
+    },
+    "cold_cpu_total_ms": {
+      "before": 2484.368000000001,
+      "final": 2005.9970000000033
+    },
+    "cold_cpu_total_reduction_percent": 19.255239159415893,
+    "baseline_engine_sha256": "b18e8575419af4dc597b36f69901bc4a68fad0cfa27b601666ce48134c58759d",
+    "final_engine_sha256": "643687bca19ba2321e8707e2601a2fe27dc2d6fff3d22b6cc05a10fba6567515",
+    "parity": {
+      "compared_response_hashes": 96,
+      "mismatches": [],
+      "workload_bodies_identical": true
+    },
+    "verification": {
+      "focused_tests": {
+        "count": 13,
+        "result": "pass",
+        "duration_seconds": 4.883,
+        "includes": "custom feature weights, negatives, ties, one candidate, later normalization, float32 arrays and high-precision list/double-array inputs"
+      },
+      "full_response_hashes": {
+        "compared": 96,
+        "mismatches": 0
+      },
+      "canonical_built_engine": "byte-for-byte identical",
+      "git_diff_check": "pass",
+      "standalone_app_engine": {
+        "result": "five unchanged pre-existing failures against both reference and final",
+        "failures": [
+          "closeness alone ranks as the research engine does",
+          "and scores in the same proportions",
+          "taste lifts the shows a list like this one watches over obscure ones",
+          "by closeness alone, narrowing matches re-rating the other shows as neutral",
+          "by closeness alone, one chosen show scores in proportion to its own similarity"
+        ]
+      },
+      "standalone_couchside": {
+        "result": "pass",
+        "final_general_affinity_gather_rerun": "pass",
+        "output": "couchside-assertions.txt"
+      }
+    },
+    "raw_files": {
+      "reference": "current-reference-rerun.json",
+      "final": "current-final.json",
+      "earlier_reference": "current-before.json",
+      "earlier_native_mean_only": "current-after.json"
+    },
+    "production_deployed": false,
+    "capacity_stages": "completed load-capacity-native-20261003; all stages failed experimental targets",
+    "limitations": [
+      "One process and one caller; no HTTP, gateway, provider, browser or concurrency timing.",
+      "48 distinct cold complete-response contexts, 12 per operation; invariant model caches may warm in sequence.",
+      "Warm phase supports response parity only, not the claimed cold CPU reduction.",
+      "The adjacent saved-reference replay and final run define the reported 19.2552% reduction; earlier provisional pair is historical.",
+      "Per-operation nearest-rank p95 is the maximum of only 12 samples.",
+      "Home maximum exceeds 100ms; Taste median increased, so no Taste benefit is claimed.",
+      "The separate canonical research suite reproduces five pre-existing failures against the unchanged reference and is not reported as passing."
+    ]
+  },
+  "public_data_component": {
+    "kind": "isolated-component-microbenchmark",
+    "source": "read-only copied existing episode bodies",
+    "ids": [
+      82,
+      182,
+      123,
+      2,
+      541
+    ],
+    "episodes": 423,
+    "payload_fields_equal": true,
+    "clock": "fixed to newest copied fetch timestamp plus 60 seconds; ended-show freshness used",
+    "limitations": "Same-process component timings, no HTTP/gateway/browser/load; baseline reproduces prior SQL gzip/JSON decoding, not a checkout benchmark.",
+    "five_full_record_reads_before_uncached": {
+      "count": 50,
+      "median_ms": 1.4436,
+      "p95_ms": 1.62808,
+      "max_ms": 1.66704
+    },
+    "five_full_record_reads_after_decoded_cache": {
+      "count": 50,
+      "median_ms": 0.00871,
+      "p95_ms": 0.00954,
+      "max_ms": 0.02225
+    },
+    "public_batch_prepare_with_decoded_cache": {
+      "count": 20,
+      "median_ms": 4.20358,
+      "p95_ms": 4.49154,
+      "max_ms": 4.49154
+    },
+    "public_batch_cached_representation": {
+      "count": 100,
+      "median_ms": 0.00779,
+      "p95_ms": 0.01,
+      "max_ms": 0.02546
+    },
+    "json_bytes": 198505,
+    "gzip_bytes": 50172,
+    "decoded_memory_bytes": 940723,
+    "prepared_memory_bytes": 248677
+  },
+  "account_poll_component": {
+    "baseline_commit": "c47ea98",
+    "sample_date": "2026-10-02",
+    "http": {
+      "before": {
+        "sample_count": 100,
+        "warmup_count": 10,
+        "state": {
+          "ratings": 100,
+          "saved": 100
+        },
+        "protocol": "isolated local HTTP/1.1 AccountRoutes and real AccountService/SQLite, fresh TCP per poll",
+        "unchanged_response": false,
+        "response_body_bytes": 3546,
+        "median_ms": 0.787,
+        "p95_ms": 1.032,
+        "private_cache_control": "no-store",
+        "compressed": false,
+        "etag": false
+      },
+      "after": {
+        "sample_count": 100,
+        "warmup_count": 10,
+        "state": {
+          "ratings": 100,
+          "saved": 100
+        },
+        "protocol": "isolated local HTTP/1.1 AccountRoutes and real AccountService/SQLite, fresh TCP per poll",
+        "unchanged_response": true,
+        "response_body_bytes": 153,
+        "median_ms": 0.757,
+        "p95_ms": 1.032,
+        "private_cache_control": "no-store",
+        "compressed": false,
+        "etag": false
+      },
+      "response_body_reduction_percent": 95.7
+    },
+    "client": {
+      "before": {
+        "poll_count": 100,
+        "state": {
+          "ratings": 100,
+          "saved": 100
+        },
+        "unchanged_response": false,
+        "apply_state_calls": 100,
+        "local_storage_writes": 100,
+        "elapsed_ms": 56.902,
+        "method": "Real AccountSync, identical mock authenticated responses, counted applyState callbacks and storage writes; excludes network and DOM rendering"
+      },
+      "after": {
+        "poll_count": 100,
+        "state": {
+          "ratings": 100,
+          "saved": 100
+        },
+        "unchanged_response": true,
+        "apply_state_calls": 0,
+        "local_storage_writes": 0,
+        "elapsed_ms": 0.632,
+        "method": "Real AccountSync, identical mock authenticated responses, counted applyState callbacks and storage writes; excludes network and DOM rendering"
+      }
+    },
+    "caveat": "Local controlled benchmarks. HTTP timings exclude Internet latency. Client timings exclude network and DOM rendering; callback/write counts are deterministic."
+  },
+  "browser_cohort": {
+    "scope": "Two real isolated Chromium browsers, one desktop and one mobile emulation; same show pool, seed and plans as prior live cohort. Service worker and HTTP cache enabled; no API mocking or interception. New backend normal startup/background enabled and already warm from preliminary runs; old backend no-background diagnostic mode. Timings are descriptive local observations, not a controlled provider or production capacity benchmark. The new comparison action additionally checks matrix tooltips in both modes; touch uses tap, desktop hover, after scroll settles.",
+    "conditions": {
+      "origin": "http://127.0.0.1:18130",
+      "actual_browser_processes": 2,
+      "journeys_per_browser": 1,
+      "seed": 20261002,
+      "run_id": "browser-20261002-1791001160",
+      "service_workers": "enabled",
+      "http_cache": "enabled",
+      "api_answers": "real running app",
+      "request_interception": false,
+      "worker_network_observation": "Worker targets are attached after discovery; earliest install fetches can precede attachment.",
+      "notes": "Browser cohort is actual local concurrency, not a claim of 10,000 rendered users. SW deliveries and Cache Storage hits are reported separately. No-new-request actions are observed reuse, not invented cache hits."
+    },
+    "elapsed_seconds": 32.86,
+    "functional": {
+      "actions": 40,
+      "failed_actions": 0,
+      "fatal_browser_failures": 0,
+      "javascript_errors": 0,
+      "median_action_ms": 314.79999999999995
+    },
+    "before": {
+      "network": {
+        "requests_started": 1623,
+        "requests_finished": 1615,
+        "api_calls": 176,
+        "logical_api_requests": 178,
+        "wire_bytes": 30542266,
+        "delivered_body_bytes": 44743588,
+        "http_cache_hits": 46,
+        "service_worker_deliveries": 846,
+        "service_worker_cache_storage_responses": 354,
+        "worker_network_requests": 478,
+        "direct_provider_wire_bytes": 22438604,
+        "http_errors": 6,
+        "expected_guest_session_401": 2,
+        "failed_requests": 0,
+        "cancelled_requests": 0,
+        "observed_no_new_requests": 0
+      },
+      "sw": {
+        "image_misses": 421,
+        "image_fetch_attempts": 436,
+        "image_hits": 63,
+        "shell_hits": 8,
+        "file_hits": 70
+      },
+      "api_routes": {
+        "/api/account/session": 10,
+        "/api/starters": 2,
+        "/api/home": 6,
+        "/api/trailer": 10,
+        "/api/backdrop": 23,
+        "/api/rating": 10,
+        "/api/episode-matrices": 47,
+        "/api/account/login": 2,
+        "/api/browse": 2,
+        "/api/search": 8,
+        "/api/episode-ratings": 20,
+        "/api/extra": 4,
+        "/api/title": 4,
+        "/api/icon": 6,
+        "/api/account/state": 2,
+        "/api/shows": 20
+      },
+      "http_errors": [
+        {
+          "status": 401,
+          "path": "/api/account/session",
+          "count": 2
+        },
+        {
+          "status": 404,
+          "path": "/api/backdrop",
+          "count": 4
+        }
+      ]
+    },
+    "after": {
+      "network": {
+        "requests_started": 1620,
+        "requests_finished": 1620,
+        "api_calls": 125,
+        "logical_api_requests": 127,
+        "wire_bytes": 28389451,
+        "delivered_body_bytes": 42413365,
+        "http_cache_hits": 44,
+        "service_worker_deliveries": 877,
+        "service_worker_cache_storage_responses": 369,
+        "worker_network_requests": 498,
+        "direct_provider_wire_bytes": 21616900,
+        "http_errors": 6,
+        "expected_guest_session_401": 2,
+        "failed_requests": 0,
+        "cancelled_requests": 0,
+        "observed_no_new_requests": 0
+      },
+      "sw": {
+        "image_misses": 386,
+        "image_fetch_attempts": 386,
+        "image_hits": 61,
+        "shell_hits": 8,
+        "file_hits": 74
+      },
+      "api_routes": {
+        "/api/account/session": 10,
+        "/api/starters": 2,
+        "/api/home": 6,
+        "/api/trailer": 10,
+        "/api/backdrop": 24,
+        "/api/rating": 10,
+        "/api/episode-matrices": 27,
+        "/api/account/login": 2,
+        "/api/browse": 2,
+        "/api/search": 8,
+        "/api/extra": 4,
+        "/api/title": 4,
+        "/api/icon": 6,
+        "/api/episode-ratings-batch": 4,
+        "/api/account/state": 2,
+        "/api/shows": 2,
+        "/api/show-cards": 2
+      },
+      "http_errors": [
+        {
+          "status": 401,
+          "path": "/api/account/session",
+          "count": 2
+        },
+        {
+          "status": 404,
+          "path": "/api/backdrop",
+          "count": 4
+        }
+      ]
+    },
+    "backend_interval_outbound_counters": {
+      "upstream.tvmaze.attempts": 11,
+      "upstream.tvmaze.success": 11,
+      "upstream.tvmaze.decoded_bytes": 159234,
+      "upstream.tvmaze.status.2xx": 11,
+      "upstream.tvmaze_image.attempts": 2,
+      "upstream.tvmaze_image.success": 2,
+      "upstream.tvmaze_image.decoded_bytes": 594638,
+      "upstream.tvmaze_image.status.2xx": 2,
+      "upstream.itunes.attempts": 1,
+      "upstream.kinocheck.attempts": 1,
+      "upstream.itunes.success": 1,
+      "upstream.itunes.decoded_bytes": 4761,
+      "upstream.itunes.status.2xx": 1,
+      "upstream.kinocheck.success": 1,
+      "upstream.kinocheck.decoded_bytes": 1174,
+      "upstream.kinocheck.status.2xx": 1
+    },
+    "backend_interval_caveat": "snapshot interval also includes normal background work; not purely browser-caused provider traffic",
+    "guest_functional": {
+      "actions": 20,
+      "failed_actions": 0,
+      "fatal_browser_failures": 0,
+      "javascript_errors": 0,
+      "median_action_ms": 264.75
+    },
+    "guest_merge": {
+      "device_contexts": 2,
+      "existing_destination_list_preserved": true,
+      "saved_shows_after_merge": 2
+    }
+  },
+  "vm_diagnostic": {
+    "conditions": {
+      "vm": "4 virtual CPUs, 8 GiB, Python 3.11.2, NumPy 2.4.6, Xeon guest CPU name",
+      "local": "macOS arm64, Python 3.13.2, NumPy 2.4.6",
+      "provider_requests": "disabled",
+      "episode_data": "separate empty disposable store",
+      "foreground_rows": "ahead=False; dedicated single extra process",
+      "method": "two deterministic profiles; first/warm body pairs; not a load-capacity test",
+      "profiling": "cProfile timings include profiler overhead and descheduling; use raw rows for unprofiled timing"
+    },
+    "isolated_comparison": [
+      {
+        "phase": "cold",
+        "op": "home",
+        "known_min": 85,
+        "vm_wall_ms": 670.9349709999515,
+        "vm_cpu_ms": 344.1638420000004,
+        "local_wall_ms": 67.18483287841082,
+        "local_cpu_ms": 67.16699999999953,
+        "vm_cpu_to_local_ratio": 5.124001995027362,
+        "same_answer": true
+      },
+      {
+        "phase": "cold",
+        "op": "browse",
+        "known_min": 85,
+        "vm_wall_ms": 308.7175349999143,
+        "vm_cpu_ms": 142.88021900000203,
+        "local_wall_ms": 25.466832797974348,
+        "local_cpu_ms": 25.465000000000515,
+        "vm_cpu_to_local_ratio": 5.6108470056940565,
+        "same_answer": true
+      },
+      {
+        "phase": "cold",
+        "op": "title",
+        "known_min": 85,
+        "vm_wall_ms": 140.4794889999721,
+        "vm_cpu_ms": 83.85162600000129,
+        "local_wall_ms": 17.950667068362236,
+        "local_cpu_ms": 17.94700000000038,
+        "vm_cpu_to_local_ratio": 4.672180643004375,
+        "same_answer": true
+      },
+      {
+        "phase": "cold",
+        "op": "taste",
+        "known_min": 85,
+        "vm_wall_ms": 3.95438100008505,
+        "vm_cpu_ms": 3.681342000000143,
+        "local_wall_ms": 0.924999825656414,
+        "local_cpu_ms": 0.924000000000369,
+        "vm_cpu_to_local_ratio": 3.9841363636349274,
+        "same_answer": true
+      },
+      {
+        "phase": "cold",
+        "op": "home",
+        "known_min": 0,
+        "vm_wall_ms": 2186.326926999982,
+        "vm_cpu_ms": 1024.8888869999994,
+        "local_wall_ms": 202.45633320882916,
+        "local_cpu_ms": 202.34500000000023,
+        "vm_cpu_to_local_ratio": 5.065056645827662,
+        "same_answer": true
+      },
+      {
+        "phase": "cold",
+        "op": "browse",
+        "known_min": 0,
+        "vm_wall_ms": 1409.758360000069,
+        "vm_cpu_ms": 684.0381600000001,
+        "local_wall_ms": 130.0867502577603,
+        "local_cpu_ms": 130.08199999999982,
+        "vm_cpu_to_local_ratio": 5.258515090481397,
+        "same_answer": true
+      },
+      {
+        "phase": "cold",
+        "op": "title",
+        "known_min": 0,
+        "vm_wall_ms": 1163.8453999999,
+        "vm_cpu_ms": 580.3274490000022,
+        "local_wall_ms": 116.65566684678197,
+        "local_cpu_ms": 116.62499999999997,
+        "vm_cpu_to_local_ratio": 4.976012424437319,
+        "same_answer": true
+      },
+      {
+        "phase": "cold",
+        "op": "taste",
+        "known_min": 0,
+        "vm_wall_ms": 23.67061800009651,
+        "vm_cpu_ms": 5.229627000002068,
+        "local_wall_ms": 1.077875029295683,
+        "local_cpu_ms": 1.0670000000008173,
+        "vm_cpu_to_local_ratio": 4.9012436738501055,
+        "same_answer": true
+      },
+      {
+        "phase": "warm",
+        "op": "home",
+        "known_min": 85,
+        "vm_wall_ms": 1.2161239999386453,
+        "vm_cpu_ms": 1.2209359999992841,
+        "local_wall_ms": 0.6319591775536537,
+        "local_cpu_ms": 0.6199999999996209,
+        "vm_cpu_to_local_ratio": 1.9692516129032756,
+        "same_answer": true
+      },
+      {
+        "phase": "warm",
+        "op": "browse",
+        "known_min": 85,
+        "vm_wall_ms": 0.78087199995025,
+        "vm_cpu_ms": 0.7824589999998466,
+        "local_wall_ms": 0.32737478613853455,
+        "local_cpu_ms": 0.3169999999999007,
+        "vm_cpu_to_local_ratio": 2.468324921135936,
+        "same_answer": true
+      },
+      {
+        "phase": "warm",
+        "op": "title",
+        "known_min": 85,
+        "vm_wall_ms": 0.35327399996276654,
+        "vm_cpu_ms": 0.3530090000012365,
+        "local_wall_ms": 0.09587500244379044,
+        "local_cpu_ms": 0.09600000000009601,
+        "vm_cpu_to_local_ratio": 3.677177083342536,
+        "same_answer": true
+      },
+      {
+        "phase": "warm",
+        "op": "taste",
+        "known_min": 85,
+        "vm_wall_ms": 2.8685629999927187,
+        "vm_cpu_ms": 2.8737720000009404,
+        "local_wall_ms": 0.9972089901566505,
+        "local_cpu_ms": 0.9970000000008028,
+        "vm_cpu_to_local_ratio": 2.882419257771942,
+        "same_answer": true
+      },
+      {
+        "phase": "warm",
+        "op": "home",
+        "known_min": 0,
+        "vm_wall_ms": 23.126194000042233,
+        "vm_cpu_ms": 0.0,
+        "local_wall_ms": 0.5814586766064167,
+        "local_cpu_ms": 0.5739999999994083,
+        "vm_cpu_to_local_ratio": 0.0,
+        "same_answer": true
+      },
+      {
+        "phase": "warm",
+        "op": "browse",
+        "known_min": 0,
+        "vm_wall_ms": 0.8503789999849687,
+        "vm_cpu_ms": 0.0,
+        "local_wall_ms": 0.29804185032844543,
+        "local_cpu_ms": 0.29799999999990945,
+        "vm_cpu_to_local_ratio": 0.0,
+        "same_answer": true
+      },
+      {
+        "phase": "warm",
+        "op": "title",
+        "known_min": 0,
+        "vm_wall_ms": 0.5259760000626557,
+        "vm_cpu_ms": 0.5289760000017907,
+        "local_wall_ms": 0.11037476360797882,
+        "local_cpu_ms": 0.11000000000027654,
+        "vm_cpu_to_local_ratio": 4.808872727276917,
+        "same_answer": true
+      },
+      {
+        "phase": "warm",
+        "op": "taste",
+        "known_min": 0,
+        "vm_wall_ms": 24.19617400005336,
+        "vm_cpu_ms": 24.201882999999924,
+        "local_wall_ms": 0.9289579465985298,
+        "local_cpu_ms": 0.9300000000003195,
+        "vm_cpu_to_local_ratio": 26.02353010751786,
+        "same_answer": true
+      }
+    ],
+    "same_answer_count": 16,
+    "probe": {
+      "compute_cpu_seconds": 1.000241088,
+      "compute_wall_seconds": 1.319633472,
+      "cpu_to_wall_ratio": 0.7579688673,
+      "guest_cpu_steal_percent_during_sample": 14.7347740668,
+      "guest_cpu_controller": "available but not enabled for ssh.service; no cpu.max in that hierarchy",
+      "host_limits": "not observed from guest; guest steal and CPU/wall ratios indicate descheduling but do not identify its host cause"
+    },
+    "notes": [
+      "ASGI telemetry includes upload and lane queueing, not just ranking work.",
+      "Staging native math source matches current code.",
+      "Staging library lacks only Added-sort parity correction.",
+      "Staging episode-store runs initial refresh planning synchronously; current local source already moves this off the event loop.",
+      "VM foreground requests can exceed 100ms even without HTTP queueing.",
+      "Ahead continuation consumes additional CPU and can contend for a process GIL."
+    ],
+    "validation": {
+      "recommendation_cache_tests": {
+        "count": 11,
+        "passed": true
+      },
+      "asgi_tests": {
+        "count": 13,
+        "passed": true
+      },
+      "standalone_couchside_assertions": "all passed",
+      "core_fixture_change": "explicitly reset short-lived answers when tier methods are replaced or longer-lived pages are artificially expired"
+    },
+    "implemented_improvement": "Skip speculative whole-page generation when the ASGI engine lane has queued foreground work; retain on-demand pagination and quiet-load prefetch.",
+    "loopback_http": [
+      {
+        "known_min": 85,
+        "status": 200,
+        "wall_ms": 849.9677079998946,
+        "bytes": 180184
+      },
+      {
+        "known_min": 0,
+        "status": 200,
+        "wall_ms": 2951.9709789999524,
+        "bytes": 180624
+      }
+    ],
+    "offered_work_illustration": {
+      "users": 10000,
+      "think_seconds_mean": 7.5,
+      "engine_calls_per_journey_approximate": 0.686,
+      "engine_calls_per_second_before_journey_time": 914.6666666666667,
+      "limits": "Illustrative journey mix calculation, excludes closed-loop journey service time and search-internal delays; not a measured production arrival distribution or required hardware quote."
+    },
+    "gateway_health": {
+      "timestamp": 1791002475.5513284,
+      "method": "requests.Session sequential HTTPS GET healthz from separate generator VM",
+      "status": 200,
+      "noindex": "noindex, nofollow",
+      "quiet_gateway_health_ms": [
+        538.2,
+        167.3,
+        168.2,
+        171.0,
+        167.7,
+        167.7,
+        166.8,
+        166.3,
+        167.7,
+        166.8,
+        166.9,
+        166.5
+      ],
+      "interpretation": "Observed complete quiet HTTPS health-request time, not pure network RTT. First connection includes startup; subsequent requests still exceed100ms before recommendation work."
+    },
+    "production_proxy_identity": {
+      "recorded_at": 1791002838.104129,
+      "method": "Unsigned ordinary HTTPS health requests from local desktop and separate Rig generator; compare per-test HMAC fingerprints without storing addresses",
+      "requests_per_client": 2,
+      "status": 200,
+      "distinct_client_budget_identities": 1,
+      "identities_overlap_between_clients": true,
+      "path_shape": {
+        "peer": "trusted",
+        "forwarded": [
+          "trusted"
+        ],
+        "selected": "trusted",
+        "selected_equals_peer": true
+      },
+      "interpretation": "The forwarded chain contains only the trusted edge hop. Original clients are lost at compute Caddy. Correct app extraction falls back to the immediate peer budget.",
+      "rig_proxy_modified": false,
+      "proposal_validated_with_caddy": "2.10.2",
+      "repair_status": "approved and applying; post-reload verification pending"
+    },
+    "cpu_interpretation": "VMCPU values are guest task CPU accounting. The guest task/aggregate accounting discrepancy prevents treating these as physical host core utilization or an intrinsic fivefold hardware cost."
+  },
+  "validation": {
+    "node": {
+      "reported_tap_tests": 119,
+      "passed": 119,
+      "failed": 0
+    },
+    "load_server_workload_route": {
+      "tests": 24,
+      "passed": 24,
+      "failed": 0
+    },
+    "recommendation_cache": {
+      "tests": 11,
+      "passed": 11
+    },
+    "discovery": {
+      "tests": 4,
+      "passed": 4
+    },
+    "asgi": {
+      "tests": 19,
+      "passed": 19,
+      "source": "parent final unit verification"
+    },
+    "standalone_couchside": {
+      "all_assertions_passed": true,
+      "source": "parent final full suite verification",
+      "count": "not asserted; log line count is not check count"
+    },
+    "webkit_public_cache": {
+      "tests": 1,
+      "passed": 1
+    },
+    "ios_focus_guard": "preserved; native iOS Safari keyboard/Page Zoom verification was not rerun in this capacity experiment",
+    "counting": "suite groups reported separately; no combined total asserted",
+    "client_rate_limits": {
+      "tests": 10,
+      "passed": 10,
+      "source": "parent verification"
+    },
+    "protocol": {
+      "tests": 10,
+      "passed": 10,
+      "source": "parent verification after real library retry Content-Type regression test"
+    },
+    "native_multiworker": {
+      "tests": 1,
+      "passed": 1,
+      "source": "parent final native runtime verification"
+    },
+    "native_tcp_queued_disconnect": {
+      "tests": 1,
+      "passed": 1,
+      "source": "parent final native TCP verification"
+    },
+    "telemetry": {
+      "tests": 14,
+      "passed": 14,
+      "source": "parent final verification"
+    },
+    "scope": "Prior distributed implementation cb248d4; later 45a1b29 verification is reported in incremental_native_scoring_component."
+  },
+  "production_manifest": {
+    "virtual_cpus": 1,
+    "ram_mb": 3072,
+    "sharing": "four applications in the same workspace",
+    "source": "rig.yaml workspace.resources"
+  },
+  "next_capacity_work": [
+    "Reuse immutable scoring with bounded memory and keys covering the full normalized ordered profile, effective settings, candidate pool/filter identity and model/metadata revisions; correctly partition or keep local seed, visit/day, diversity, list exclusions and other request-specific work. Distinct first-time profiles still compute.",
+    "Precompute invariant public candidate data and move measured remaining ranking hotspots into native operations while checking answer parity.",
+    "Allocate dedicated application compute and repeat distributed staging; worker count alone does not create CPU capacity.",
+    "Run longer steady-state, cold-cache, account-write/signup and provider-quota scenarios before certification."
+  ],
+  "artifacts": {
+    "root": "/Users/jonathanjames/.codex/visualizations/2026/10/02/01a0fa0c-5c28-7ad3-9ae0-6da72637c12c/ratings-design",
+    "recommendations": "recommendation-performance-20261003/results.json",
+    "public_data": "capacity-public-data-20261003.json",
+    "account_poll": "account-poll-performance.json",
+    "browser": "load-browser-capacity-20261003/browser-results.json",
+    "browser_measurement_notes": "load-browser-capacity-20261003/measurement-notes.json",
+    "guest_browser": "load-browser-capacity-guest-20261003/browser-results.json",
+    "vm_diagnostic": "capacity-gap-20261003/comparison.json",
+    "ahead_priority": "capacity-gap-20261003/ahead-priority.json",
+    "validation": "/tmp/couchside-client-validation-summary-20261003.json",
+    "gateway_health": "capacity-gap-20261003/gateway-rtt.json",
+    "proxy_identity": "capacity-gap-20261003/proxy-path.json",
+    "superseded_distributed": "load-capacity-before-disconnect-20261003",
+    "host_scheduling": "capacity-gap-20261003/host-scheduling.json",
+    "final_distributed": "load-capacity-native-20261003",
+    "incremental_native_scoring": "ranking-mean-native-20261003/results.json",
+    "prior_corrected_distributed": "load-capacity-final-20261003",
+    "current_host_scheduling": "capacity-gap-20261003/host-scheduling-vector-ranking-20261003.jsonl",
+    "native_derived_stage_summary": "load-capacity-native-20261003/derived-stage-summary.json"
+  },
+  "limits": [
+    "Component timings exclude gateway/network and high concurrency.",
+    "Matched local browser observations used normal background work and warm backend caches, whereas the earlier comparison used diagnostic no-background mode. They are descriptive, not a controlled capacity speedup.",
+    "Repeated answer-cache hits require identical complete inputs inside the bounded retention window.",
+    "Browser mobile emulation does not establish native iOS Safari focus behavior.",
+    "No physical provider storm was sent; cached stress stages do not certify cold provider capacity.",
+    "Ordinary desktop and generator requests collapsed to one budget identity because the Rigbox proxy forwarded only a trusted edge hop. Signed staged identities bypass this defect; its approved repair is being applied and needs separate post-reload identity verification.",
+    "All corrected capacity stages failed experimental targets; no production10k certification or capacity speedup against the earlier diagnostic is claimed."
+  ],
+  "earlier_distributed_diagnostic": {
+    "status": "superseded_diagnostic",
+    "source": "load-capacity-before-disconnect-20261003",
+    "limitations": [
+      "Executed before queued-disconnect cancellation fix and retry Content-Type library/harness correction.",
+      "Not the final capacity result.",
+      "Server per-process cumulative counter deltas use latest snapshots<=wall-clock boundaries; normal background work and boundary lag apply.",
+      "Resource RSS sums can double-count shared pages. CPU100percent means one logical CPU.",
+      "Successful endpoint percentiles can hide failed/timeout cold engine routes; consider outcomes and route counts."
+    ],
+    "stages": [
+      {
+        "users": 100,
+        "peak_users": 100,
+        "wall_start": 1791002826.0685294,
+        "wall_end": 1791002892.2656965,
+        "elapsed_runner_s": 66.19717062600012,
+        "elapsed_protocol_s": 62.59175854100022,
+        "requests": {
+          "completed": 808,
+          "failed": 75,
+          "source": "final request events"
+        },
+        "failure_rate": 0.09282178217821782,
+        "statuses": {
+          "200": 653,
+          "401_expected": 80,
+          "502": 43,
+          "0": 21,
+          "415": 11
+        },
+        "successful_api_with_gate": {
+          "count": 545,
+          "p50_ms": 1353,
+          "p95_ms": 16165,
+          "p99_ms": 18396,
+          "max_ms": 19612,
+          "under_100_ms": 0,
+          "resolution_ms": 1,
+          "upper_bucket_ms": 120000
+        },
+        "successful_api_without_gate": {
+          "count": 545,
+          "p50_ms": 1353,
+          "p95_ms": 16165,
+          "p99_ms": 18396,
+          "max_ms": 19612,
+          "under_100_ms": 0,
+          "resolution_ms": 1,
+          "upper_bucket_ms": 120000
+        },
+        "gate": {
+          "max_waiting_users": 0,
+          "max_active_requests": 80,
+          "completed_wait_ms": {
+            "p50": 0.009921999662765302,
+            "p95": 0.015487999917240813,
+            "p99": 0.044006000280205626
+          },
+          "completed_wait_samples": 851
+        },
+        "generator": {
+          "cpu_warnings": 0,
+          "peak_cpu_percent": 87.9,
+          "peak_rss_mib": 159.68
+        },
+        "server_resources": {
+          "samples": 63,
+          "measured_span_s": 66.243,
+          "average_cpu_percent": 193.0,
+          "peak_sample_cpu_percent": 283.98,
+          "peak_rss_sum_mib": 2522.33,
+          "peak_threads": 70,
+          "peak_fds": 230,
+          "guest_steal_percent": 74.31,
+          "guest_accounting_caveat": "CPU percentages use guest /proc/pid/stat and do not establish actual host cores consumed; see host-scheduling evidence."
+        },
+        "cache": {
+          "live_memory.api": {
+            "hit": 0,
+            "miss": 66,
+            "lookup_hit_percent": 0.0
+          },
+          "episodes_full_memory.api": {
+            "hit": 22,
+            "miss": 188,
+            "lookup_hit_percent": 10.476
+          },
+          "episodes_disk.api": {
+            "hit": 594,
+            "miss": 114,
+            "lookup_hit_percent": 83.898
+          },
+          "shared_http_disk.api": {
+            "hit": 0,
+            "miss": 66,
+            "stale": 11,
+            "lookup_hit_percent": 0.0
+          },
+          "page_gzip.api": {
+            "hit": 85,
+            "miss": 23,
+            "lookup_hit_percent": 78.704
+          },
+          "public_json.api": {
+            "hit": 1,
+            "miss": 75,
+            "lookup_hit_percent": 1.316
+          },
+          "recommendation_answers.api": {
+            "hit": 1,
+            "miss": 187,
+            "lookup_hit_percent": 0.532
+          },
+          "catalogue_pool.api": {
+            "hit": 205,
+            "miss": 8,
+            "lookup_hit_percent": 96.244
+          },
+          "episodes_memory.api": {
+            "hit": 17,
+            "miss": 521,
+            "lookup_hit_percent": 3.16
+          },
+          "artwork_source_memory.image": {
+            "hit": 13,
+            "miss": 42,
+            "lookup_hit_percent": 23.636
+          },
+          "live_detail_disk.api": {
+            "hit": 13,
+            "miss": 17,
+            "stale": 12,
+            "lookup_hit_percent": 43.333
+          },
+          "shared_http_disk.image": {
+            "hit": 12,
+            "miss": 26,
+            "lookup_hit_percent": 31.579
+          },
+          "search_memory.api": {
+            "hit": 0,
+            "miss": 13,
+            "lookup_hit_percent": 0.0
+          },
+          "home_pages.api": {
+            "hit": 0,
+            "miss": 4,
+            "blocked": 19,
+            "lookup_hit_percent": 0.0
+          },
+          "episodes_inflight.api": {
+            "hit": 0,
+            "miss": 0,
+            "coalesced": 1,
+            "lookup_hit_percent": null
+          },
+          "artwork_inflight.image": {
+            "hit": 0,
+            "miss": 0,
+            "coalesced": 1,
+            "lookup_hit_percent": null
+          },
+          "live_stale.api": {
+            "hit": 2,
+            "miss": 0,
+            "lookup_hit_percent": 100.0
+          }
+        },
+        "upstream_counters": {
+          "upstream.tvmaze.blocked": 66,
+          "upstream.tvmaze_image.blocked": 26
+        },
+        "physical_upstream_attempts": 0,
+        "snapshot_boundary_lag": [
+          {
+            "pid": 1825,
+            "start_lag_s": 0.744,
+            "end_lag_s": 0.996
+          },
+          {
+            "pid": 1826,
+            "start_lag_s": 0.196,
+            "end_lag_s": 0.622
+          },
+          {
+            "pid": 1823,
+            "start_lag_s": 0.768,
+            "end_lag_s": 0.116
+          },
+          {
+            "pid": 1824,
+            "start_lag_s": 0.324,
+            "end_lag_s": 0.728
+          }
+        ]
+      },
+      {
+        "users": 1000,
+        "peak_users": 1000,
+        "wall_start": 1791002895.2789335,
+        "wall_end": 1791002988.6569076,
+        "elapsed_runner_s": 93.37797811699966,
+        "elapsed_protocol_s": 86.9903612510002,
+        "requests": {
+          "completed": 2034,
+          "failed": 254,
+          "source": "final request events"
+        },
+        "failure_rate": 0.1248770894788594,
+        "statuses": {
+          "200": 1263,
+          "401_expected": 517,
+          "502": 11,
+          "0": 242,
+          "503": 1
+        },
+        "successful_api_with_gate": {
+          "count": 585,
+          "p50_ms": 3132,
+          "p95_ms": 28308,
+          "p99_ms": 51349,
+          "max_ms": 55955,
+          "under_100_ms": 0,
+          "resolution_ms": 1,
+          "upper_bucket_ms": 120000
+        },
+        "successful_api_without_gate": {
+          "count": 585,
+          "p50_ms": 3012,
+          "p95_ms": 14189,
+          "p99_ms": 20873,
+          "max_ms": 21830,
+          "under_100_ms": 0,
+          "resolution_ms": 1,
+          "upper_bucket_ms": 120000
+        },
+        "gate": {
+          "max_waiting_users": 740,
+          "max_active_requests": 256,
+          "completed_wait_ms": {
+            "p50": 0.005280999630485894,
+            "p95": 47800.71881399999,
+            "p99": 53228.967702000315
+          },
+          "completed_wait_samples": 2262
+        },
+        "generator": {
+          "cpu_warnings": 0,
+          "peak_cpu_percent": 97.7,
+          "peak_rss_mib": 828.67
+        },
+        "server_resources": {
+          "samples": 89,
+          "measured_span_s": 92.873,
+          "average_cpu_percent": 162.11,
+          "peak_sample_cpu_percent": 284.79,
+          "peak_rss_sum_mib": 2681.21,
+          "peak_threads": 91,
+          "peak_fds": 371,
+          "guest_steal_percent": 61.76,
+          "guest_accounting_caveat": "CPU percentages use guest /proc/pid/stat and do not establish actual host cores consumed; see host-scheduling evidence."
+        },
+        "cache": {
+          "live_memory.api": {
+            "hit": 0,
+            "miss": 73,
+            "lookup_hit_percent": 0.0
+          },
+          "episodes_full_memory.api": {
+            "hit": 54,
+            "miss": 325,
+            "lookup_hit_percent": 14.248
+          },
+          "episodes_disk.api": {
+            "hit": 397,
+            "miss": 152,
+            "lookup_hit_percent": 72.313
+          },
+          "shared_http_disk.api": {
+            "hit": 0,
+            "miss": 86,
+            "stale": 2,
+            "lookup_hit_percent": 0.0
+          },
+          "public_json.api": {
+            "hit": 0,
+            "miss": 134,
+            "lookup_hit_percent": 0.0
+          },
+          "page_gzip.api": {
+            "hit": 694,
+            "miss": 0,
+            "lookup_hit_percent": 100.0
+          },
+          "recommendation_answers.api": {
+            "hit": 0,
+            "miss": 254,
+            "lookup_hit_percent": 0.0
+          },
+          "episodes_memory.api": {
+            "hit": 13,
+            "miss": 231,
+            "lookup_hit_percent": 5.328
+          },
+          "catalogue_pool.api": {
+            "hit": 299,
+            "miss": 0,
+            "lookup_hit_percent": 100.0
+          },
+          "artwork_source_memory.image": {
+            "hit": 4,
+            "miss": 14,
+            "lookup_hit_percent": 22.222
+          },
+          "live_detail_disk.api": {
+            "hit": 6,
+            "miss": 6,
+            "stale": 2,
+            "lookup_hit_percent": 50.0
+          },
+          "shared_http_disk.image": {
+            "hit": 7,
+            "miss": 5,
+            "lookup_hit_percent": 58.333
+          },
+          "search_memory.api": {
+            "hit": 0,
+            "miss": 20,
+            "lookup_hit_percent": 0.0
+          },
+          "home_pages.api": {
+            "hit": 0,
+            "miss": 2,
+            "blocked": 39,
+            "lookup_hit_percent": 0.0
+          },
+          "episodes_inflight.api": {
+            "hit": 0,
+            "miss": 0,
+            "coalesced": 7,
+            "lookup_hit_percent": null
+          }
+        },
+        "upstream_counters": {
+          "upstream.tvmaze.blocked": 88,
+          "upstream.tvmaze_image.blocked": 5
+        },
+        "physical_upstream_attempts": 0,
+        "snapshot_boundary_lag": [
+          {
+            "pid": 1825,
+            "start_lag_s": 0.862,
+            "end_lag_s": 0.27
+          },
+          {
+            "pid": 1826,
+            "start_lag_s": 0.618,
+            "end_lag_s": 0.034
+          },
+          {
+            "pid": 1823,
+            "start_lag_s": 0.037,
+            "end_lag_s": 0.271
+          },
+          {
+            "pid": 1824,
+            "start_lag_s": 0.587,
+            "end_lag_s": 0.675
+          }
+        ]
+      },
+      {
+        "users": 10000,
+        "peak_users": 10000,
+        "wall_start": 1791002991.674968,
+        "wall_end": 1791003093.9767635,
+        "elapsed_runner_s": 102.30179895900028,
+        "elapsed_protocol_s": 98.04271512300011,
+        "requests": {
+          "completed": 9816,
+          "failed": 1697,
+          "source": "final request events"
+        },
+        "failure_rate": 0.17288101059494704,
+        "statuses": {
+          "200": 5509,
+          "401_expected": 2610,
+          "503": 1427,
+          "502": 1,
+          "0": 269
+        },
+        "successful_api_with_gate": {
+          "count": 2113,
+          "p50_ms": 1531,
+          "p95_ms": 8212,
+          "p99_ms": 57553,
+          "max_ms": 82102,
+          "under_100_ms": 0,
+          "resolution_ms": 1,
+          "upper_bucket_ms": 120000
+        },
+        "successful_api_without_gate": {
+          "count": 2113,
+          "p50_ms": 1485,
+          "p95_ms": 6391,
+          "p99_ms": 9346,
+          "max_ms": 14975,
+          "under_100_ms": 0,
+          "resolution_ms": 1,
+          "upper_bucket_ms": 120000
+        },
+        "gate": {
+          "max_waiting_users": 9703,
+          "max_active_requests": 256,
+          "completed_wait_ms": {
+            "p50": 0.005406999662227463,
+            "p95": 74028.5584190001,
+            "p99": 81495.01796200001
+          },
+          "completed_wait_samples": 9930
+        },
+        "generator": {
+          "cpu_warnings": 0,
+          "peak_cpu_percent": 81.9,
+          "peak_rss_mib": 316.91
+        },
+        "server_resources": {
+          "samples": 96,
+          "measured_span_s": 101.876,
+          "average_cpu_percent": 264.36,
+          "peak_sample_cpu_percent": 305.98,
+          "peak_rss_sum_mib": 2837.83,
+          "peak_threads": 99,
+          "peak_fds": 419,
+          "guest_steal_percent": 82.32,
+          "guest_accounting_caveat": "CPU percentages use guest /proc/pid/stat and do not establish actual host cores consumed; see host-scheduling evidence."
+        },
+        "cache": {
+          "live_memory.api": {
+            "hit": 0,
+            "miss": 52,
+            "lookup_hit_percent": 0.0
+          },
+          "episodes_full_memory.api": {
+            "hit": 1000,
+            "miss": 263,
+            "lookup_hit_percent": 79.177
+          },
+          "episodes_disk.api": {
+            "hit": 174,
+            "miss": 110,
+            "lookup_hit_percent": 61.268
+          },
+          "shared_http_disk.api": {
+            "hit": 0,
+            "miss": 136,
+            "lookup_hit_percent": 0.0
+          },
+          "page_gzip.api": {
+            "hit": 3397,
+            "miss": 1,
+            "lookup_hit_percent": 99.971
+          },
+          "public_json.api": {
+            "hit": 6,
+            "miss": 682,
+            "lookup_hit_percent": 0.872
+          },
+          "recommendation_answers.api": {
+            "hit": 0,
+            "miss": 115,
+            "lookup_hit_percent": 0.0
+          },
+          "episodes_memory.api": {
+            "hit": 0,
+            "miss": 30,
+            "lookup_hit_percent": 0.0
+          },
+          "catalogue_pool.api": {
+            "hit": 139,
+            "miss": 0,
+            "lookup_hit_percent": 100.0
+          },
+          "artwork_source_memory.image": {
+            "hit": 0,
+            "miss": 1,
+            "lookup_hit_percent": 0.0
+          },
+          "search_memory.api": {
+            "hit": 0,
+            "miss": 93,
+            "blocked": 9,
+            "lookup_hit_percent": 0.0
+          },
+          "live_detail_disk.api": {
+            "hit": 0,
+            "miss": 1,
+            "lookup_hit_percent": 0.0
+          },
+          "home_pages.api": {
+            "hit": 0,
+            "miss": 1,
+            "blocked": 23,
+            "lookup_hit_percent": 0.0
+          },
+          "episodes_inflight.api": {
+            "hit": 0,
+            "miss": 0,
+            "coalesced": 9,
+            "lookup_hit_percent": null
+          }
+        },
+        "upstream_counters": {
+          "upstream.tvmaze.blocked": 136
+        },
+        "physical_upstream_attempts": 0,
+        "snapshot_boundary_lag": [
+          {
+            "pid": 1825,
+            "start_lag_s": 0.195,
+            "end_lag_s": 0.631
+          },
+          {
+            "pid": 1826,
+            "start_lag_s": 0.957,
+            "end_lag_s": 0.146
+          },
+          {
+            "pid": 1823,
+            "start_lag_s": 1.015,
+            "end_lag_s": 0.064
+          },
+          {
+            "pid": 1824,
+            "start_lag_s": 0.585,
+            "end_lag_s": 1.15
+          }
+        ]
+      }
+    ]
+  },
+  "host_scheduling": {
+    "artifact": "capacity-gap-20261003/host-scheduling.json",
+    "samples": [
+      {
+        "timestamp": 1791003751.4764543,
+        "loadavg": "53.15 51.62 50.88 52/947 536458",
+        "host_cpu_pressure": "some avg10=84.68 avg60=84.11 avg300=83.32 total=313626370487\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+        "scopes": {
+          "application": {
+            "cpu.max": "400000 100000",
+            "cpu.weight": "100",
+            "cpu.stat": "usage_usec 1162276659\nuser_usec 1111361976\nsystem_usec 50914682\nnr_periods 36622\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0",
+            "cpu.pressure": "some avg10=67.74 avg60=57.08 avg300=41.05 total=703408723\nfull avg10=67.47 avg60=56.26 avg300=40.01 total=681966920",
+            "cpuset.cpus.effective": "0-23"
+          },
+          "generator": {
+            "cpu.max": "100000 100000",
+            "cpu.weight": "100",
+            "cpu.stat": "usage_usec 327080228\nuser_usec 297188755\nsystem_usec 29891472\nnr_periods 30257\nnr_throttled 161\nthrottled_usec 674048\nnr_bursts 0\nburst_usec 0",
+            "cpu.pressure": "some avg10=21.36 avg60=19.11 avg300=7.81 total=90494802\nfull avg10=21.34 avg60=19.03 avg300=7.76 total=89803776",
+            "cpuset.cpus.effective": "0-23"
+          }
+        }
+      },
+      {
+        "timestamp": 1791003761.477679,
+        "loadavg": "52.65 51.57 50.87 57/946 536497",
+        "host_cpu_pressure": "some avg10=84.27 avg60=84.10 avg300=83.34 total=313634839610\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+        "scopes": {
+          "application": {
+            "cpu.max": "400000 100000",
+            "cpu.weight": "100",
+            "cpu.stat": "usage_usec 1168227422\nuser_usec 1117137446\nsystem_usec 51089975\nnr_periods 36722\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0",
+            "cpu.pressure": "some avg10=48.79 avg60=54.40 avg300=41.01 total=707478849\nfull avg10=46.61 avg60=53.18 avg300=39.89 total=685672510",
+            "cpuset.cpus.effective": "0-23"
+          },
+          "generator": {
+            "cpu.max": "100000 100000",
+            "cpu.weight": "100",
+            "cpu.stat": "usage_usec 330578317\nuser_usec 300527430\nsystem_usec 30050887\nnr_periods 30357\nnr_throttled 161\nthrottled_usec 674048\nnr_bursts 0\nburst_usec 0",
+            "cpu.pressure": "some avg10=15.41 avg60=17.91 avg300=7.93 total=91978606\nfull avg10=15.41 avg60=17.84 avg300=7.88 total=91287580",
+            "cpuset.cpus.effective": "0-23"
+          }
+        }
+      },
+      {
+        "timestamp": 1791003771.4794164,
+        "loadavg": "52.78 51.63 50.90 55/947 536570",
+        "host_cpu_pressure": "some avg10=84.90 avg60=84.19 avg300=83.39 total=313643378558\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+        "scopes": {
+          "application": {
+            "cpu.max": "400000 100000",
+            "cpu.weight": "100",
+            "cpu.stat": "usage_usec 1177539664\nuser_usec 1126192004\nsystem_usec 51347660\nnr_periods 36822\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0",
+            "cpu.pressure": "some avg10=56.71 avg60=55.57 avg300=41.73 total=713839486\nfull avg10=52.16 avg60=53.52 avg300=40.42 total=691425220",
+            "cpuset.cpus.effective": "0-23"
+          },
+          "generator": {
+            "cpu.max": "100000 100000",
+            "cpu.weight": "100",
+            "cpu.stat": "usage_usec 335386329\nuser_usec 304950613\nsystem_usec 30435715\nnr_periods 30457\nnr_throttled 161\nthrottled_usec 674048\nnr_bursts 0\nburst_usec 0",
+            "cpu.pressure": "some avg10=18.87 avg60=18.58 avg300=8.42 total=93924487\nfull avg10=18.87 avg60=18.53 avg300=8.38 total=93233461",
+            "cpuset.cpus.effective": "0-23"
+          }
+        }
+      }
+    ],
+    "elapsed_s": 20.002962112426758,
+    "deltas": {
+      "application": {
+        "cpu_stat": {
+          "usage_usec": 15263005,
+          "user_usec": 14830028,
+          "system_usec": 432978,
+          "nr_periods": 200,
+          "nr_throttled": 0,
+          "throttled_usec": 0,
+          "nr_bursts": 0,
+          "burst_usec": 0
+        },
+        "charged_cpu_s": 15.263005,
+        "charged_cpu_percent_one_core": 76.30372398954813,
+        "pressure_stall_percent": {
+          "some": 52.146091870663156,
+          "full": 47.28449690020694
+        }
+      },
+      "generator": {
+        "cpu_stat": {
+          "usage_usec": 8306101,
+          "user_usec": 7761858,
+          "system_usec": 544243,
+          "nr_periods": 200,
+          "nr_throttled": 0,
+          "throttled_usec": 0,
+          "nr_bursts": 0,
+          "burst_usec": 0
+        },
+        "charged_cpu_s": 8.306101,
+        "charged_cpu_percent_one_core": 41.52435500960065,
+        "pressure_stall_percent": {
+          "some": 17.145885597960124,
+          "full": 17.145885597960124
+        }
+      }
+    },
+    "network_path": {
+      "generator_and_application": "separate microVMs on same24-online-CPU Rigbox compute host",
+      "public_https_hostname": "couchside-capacity-47f13cba.rigbox.dev",
+      "dns_from_generator": "gateway public address158.69.207.12, distinct from compute host51.255.194.99",
+      "repository_gateway_route": "deploy/Caddyfile.base wildcard forwards to compute Tailscale endpoint:8443",
+      "interpretation": "The public HTTPS test traverses a gateway; it is not loopback or directVM-IP traffic. No lower-latency route was substituted."
+    },
+    "linux_definitions": {
+      "proc_stat": "first8 columns user,nice,system,idle,iowait,irq,softirq,steal; aggregate counters in USER_HZ; steal is involuntary wait. The denominator excludes guest and guest_nice.",
+      "quota": "cpu.max MAX/PERIOD is maximum bandwidth, not a dedicated-core reservation.",
+      "psi": "some is time with at least some tasks stalled; full is time with all non-idle cgroup tasks stalled. System-level CPUfull is undefined and reported zero.",
+      "references": [
+        "https://docs.kernel.org/filesystems/proc.html#miscellaneous-kernel-statistics-in-proc-stat",
+        "https://docs.kernel.org/admin-guide/cgroup-v2.html#cpu-interface-files",
+        "https://docs.kernel.org/accounting/psi.html"
+      ]
+    },
+    "interpretation": {
+      "application_ceiling_cores": 4,
+      "application_cpu_weight": 100,
+      "dedicated_cpu_pinning": false,
+      "application_quota_throttled_periods_observed": 0,
+      "host_contention": "24 online host CPUs with load~51.8 and CPU PSI some avg10~82%; both owned VM scopes share effectiveCPU set0\u201323.",
+      "measured_corrected_interval": "Application charged15.263CPU seconds over20.003wall seconds (76.3% of oneCPU); VMscope PSI some52.1%/full47.3%. Generator charged8.306CPU seconds (41.5% of oneCPU). No quota throttle events in this window.",
+      "limits": [
+        "Only a20-second live observation, not whole-stage host utilization.",
+        "Cgroup CPU charges include VM/emulator and guest overhead, not only Couchside engine work.",
+        "Guest per-processCPU deltas disagree with aggregate guest/proc/stat running ticks; do not convert them to physicalcores used.",
+        "No infrastructure or scheduling changes made."
+      ]
+    },
+    "interval_stage_overlap_s": {
+      "100": 0,
+      "1000": 2.4027504920959473,
+      "10000": 14.560447454452515
+    },
+    "interval_note": "short observation spans tail of1000-user stage and beginning/ramp of10000-user stage, with inter-stage gap; not steady10000-user physical CPU utilization"
+  },
+  "implementation_revision": "45a1b29",
+  "provider_coalescing_scope": "Durable same-key leases cover eligible requests only; Authorization-bearing requests including TMDB bearer, force requests and zero-TTL requests bypass this new lease. The elected episode-refresh owner still performs one shared background refresh per host.",
+  "prior_corrected_capacity_stages": {
+    "status": "completed_prior_corrected_diagnostic_not_current_main_result",
     "source": "load-capacity-final-20261003",
     "before_shared_proxy_reload": true,
     "application_workers": 4,
@@ -1435,1509 +4740,181 @@
           }
         ]
       }
-    ]
-  },
-  "recommendation_component": {
-    "baseline_revision": "d4ca2a0bbab76cc5a9abc936caea941a092f4c87",
-    "model": "2026-09-07",
-    "catalogue_shows": 89594,
-    "conditions": {
-      "python": "3.13.2",
-      "platform": "macOS 15.5 arm64",
-      "after_numpy": "2.4.6",
-      "before_scoring": "scalar Python; NumPy not used in baseline math",
-      "foreground_only": true,
-      "discovery_filter_setup_included": true,
-      "providers": "disabled; isolated empty episode store",
-      "simultaneous_users": 1,
-      "request_profiles": "48 diverse fixed benchmark-persona workloads; 12 per operation",
-      "repeat_phase": "same 48 complete request bodies; not a new-user workload",
-      "measurement": "wall-clock perf_counter without profiler; Engine/Library initialization excluded",
-      "answer_cache_default": "1024 entries / 32 MiB / 60 seconds"
-    },
-    "summary": {
-      "cold": {
-        "home": {
-          "before": {
-            "count": 12,
-            "p50_ms": 280.88456275872886,
-            "p95_ms": 533.5575826466084,
-            "maximum_ms": 533.5575826466084
-          },
-          "after": {
-            "count": 12,
-            "p50_ms": 64.03829087503254,
-            "p95_ms": 122.34012503176928,
-            "maximum_ms": 122.34012503176928
-          },
-          "p50_speedup": 4.386197053679348
-        },
-        "browse": {
-          "before": {
-            "count": 12,
-            "p50_ms": 267.2594578471035,
-            "p95_ms": 442.9669161327183,
-            "maximum_ms": 442.9669161327183
-          },
-          "after": {
-            "count": 12,
-            "p50_ms": 47.936979215592146,
-            "p95_ms": 100.14058323577046,
-            "maximum_ms": 100.14058323577046
-          },
-          "p50_speedup": 5.5752252691002635
-        },
-        "title": {
-          "before": {
-            "count": 12,
-            "p50_ms": 224.50897912494838,
-            "p95_ms": 389.91020899266005,
-            "maximum_ms": 389.91020899266005
-          },
-          "after": {
-            "count": 12,
-            "p50_ms": 34.20375008136034,
-            "p95_ms": 87.62620808556676,
-            "maximum_ms": 87.62620808556676
-          },
-          "p50_speedup": 6.563870294658032
-        },
-        "taste": {
-          "before": {
-            "count": 12,
-            "p50_ms": 188.4052085224539,
-            "p95_ms": 313.9623333700001,
-            "maximum_ms": 313.9623333700001
-          },
-          "after": {
-            "count": 12,
-            "p50_ms": 15.977833420038223,
-            "p95_ms": 44.802125077694654,
-            "maximum_ms": 44.802125077694654
-          },
-          "p50_speedup": 11.791661833585644
-        }
-      },
-      "warm": {
-        "home": {
-          "before": {
-            "count": 12,
-            "p50_ms": 271.13631274551153,
-            "p95_ms": 422.97849990427494,
-            "maximum_ms": 422.97849990427494
-          },
-          "after": {
-            "count": 12,
-            "p50_ms": 0.5559998098760843,
-            "p95_ms": 0.6802920252084732,
-            "maximum_ms": 0.6802920252084732
-          },
-          "p50_speedup": 487.65540550443654
-        },
-        "browse": {
-          "before": {
-            "count": 12,
-            "p50_ms": 251.22491689398885,
-            "p95_ms": 385.93624997884035,
-            "maximum_ms": 385.93624997884035
-          },
-          "after": {
-            "count": 12,
-            "p50_ms": 0.28572953306138515,
-            "p95_ms": 0.2957908436655998,
-            "maximum_ms": 0.2957908436655998
-          },
-          "p50_speedup": 879.2402878424771
-        },
-        "title": {
-          "before": {
-            "count": 12,
-            "p50_ms": 227.4029585532844,
-            "p95_ms": 290.69679183885455,
-            "maximum_ms": 290.69679183885455
-          },
-          "after": {
-            "count": 12,
-            "p50_ms": 0.08818763308227062,
-            "p95_ms": 0.09420933201909065,
-            "maximum_ms": 0.09420933201909065
-          },
-          "p50_speedup": 2578.6263969817537
-        },
-        "taste": {
-          "before": {
-            "count": 12,
-            "p50_ms": 187.06295848824084,
-            "p95_ms": 223.95833302289248,
-            "maximum_ms": 223.95833302289248
-          },
-          "after": {
-            "count": 12,
-            "p50_ms": 16.60681306384504,
-            "p95_ms": 18.7436668202281,
-            "maximum_ms": 18.7436668202281
-          },
-          "p50_speedup": 11.264229793463421
-        }
-      }
-    },
-    "parity": {
-      "response_count": 96,
-      "mismatches": []
-    },
-    "limits": [
-      "Single-process local CPU timings are not 10,000-user HTTP capacity results.",
-      "Cold p50 measurements improved but cold Home maximum exceeds 100 ms.",
-      "Warm under-one-millisecond figures apply to repeated identical Home/Browse/Title bodies within cache retention. Taste is recomputed.",
-      "Cold is first request per unique context; later contexts may reuse public model component caches."
-    ]
-  },
-  "public_data_component": {
-    "kind": "isolated-component-microbenchmark",
-    "source": "read-only copied existing episode bodies",
-    "ids": [
-      82,
-      182,
-      123,
-      2,
-      541
     ],
-    "episodes": 423,
-    "payload_fields_equal": true,
-    "clock": "fixed to newest copied fetch timestamp plus 60 seconds; ended-show freshness used",
-    "limitations": "Same-process component timings, no HTTP/gateway/browser/load; baseline reproduces prior SQL gzip/JSON decoding, not a checkout benchmark.",
-    "five_full_record_reads_before_uncached": {
-      "count": 50,
-      "median_ms": 1.4436,
-      "p95_ms": 1.62808,
-      "max_ms": 1.66704
-    },
-    "five_full_record_reads_after_decoded_cache": {
-      "count": 50,
-      "median_ms": 0.00871,
-      "p95_ms": 0.00954,
-      "max_ms": 0.02225
-    },
-    "public_batch_prepare_with_decoded_cache": {
-      "count": 20,
-      "median_ms": 4.20358,
-      "p95_ms": 4.49154,
-      "max_ms": 4.49154
-    },
-    "public_batch_cached_representation": {
-      "count": 100,
-      "median_ms": 0.00779,
-      "p95_ms": 0.01,
-      "max_ms": 0.02546
-    },
-    "json_bytes": 198505,
-    "gzip_bytes": 50172,
-    "decoded_memory_bytes": 940723,
-    "prepared_memory_bytes": 248677
+    "implementation_revision": "cb248d4"
   },
-  "account_poll_component": {
-    "baseline_commit": "c47ea98",
-    "sample_date": "2026-10-02",
-    "http": {
-      "before": {
-        "sample_count": 100,
-        "warmup_count": 10,
-        "state": {
-          "ratings": 100,
-          "saved": 100
-        },
-        "protocol": "isolated local HTTP/1.1 AccountRoutes and real AccountService/SQLite, fresh TCP per poll",
-        "unchanged_response": false,
-        "response_body_bytes": 3546,
-        "median_ms": 0.787,
-        "p95_ms": 1.032,
-        "private_cache_control": "no-store",
-        "compressed": false,
-        "etag": false
-      },
-      "after": {
-        "sample_count": 100,
-        "warmup_count": 10,
-        "state": {
-          "ratings": 100,
-          "saved": 100
-        },
-        "protocol": "isolated local HTTP/1.1 AccountRoutes and real AccountService/SQLite, fresh TCP per poll",
-        "unchanged_response": true,
-        "response_body_bytes": 153,
-        "median_ms": 0.757,
-        "p95_ms": 1.032,
-        "private_cache_control": "no-store",
-        "compressed": false,
-        "etag": false
-      },
-      "response_body_reduction_percent": 95.7
-    },
-    "client": {
-      "before": {
-        "poll_count": 100,
-        "state": {
-          "ratings": 100,
-          "saved": 100
-        },
-        "unchanged_response": false,
-        "apply_state_calls": 100,
-        "local_storage_writes": 100,
-        "elapsed_ms": 56.902,
-        "method": "Real AccountSync, identical mock authenticated responses, counted applyState callbacks and storage writes; excludes network and DOM rendering"
-      },
-      "after": {
-        "poll_count": 100,
-        "state": {
-          "ratings": 100,
-          "saved": 100
-        },
-        "unchanged_response": true,
-        "apply_state_calls": 0,
-        "local_storage_writes": 0,
-        "elapsed_ms": 0.632,
-        "method": "Real AccountSync, identical mock authenticated responses, counted applyState callbacks and storage writes; excludes network and DOM rendering"
-      }
-    },
-    "caveat": "Local controlled benchmarks. HTTP timings exclude Internet latency. Client timings exclude network and DOM rendering; callback/write counts are deterministic."
-  },
-  "browser_cohort": {
-    "scope": "Two real isolated Chromium browsers, one desktop and one mobile emulation; same show pool, seed and plans as prior live cohort. Service worker and HTTP cache enabled; no API mocking or interception. New backend normal startup/background enabled and already warm from preliminary runs; old backend no-background diagnostic mode. Timings are descriptive local observations, not a controlled provider or production capacity benchmark. The new comparison action additionally checks matrix tooltips in both modes; touch uses tap, desktop hover, after scroll settles.",
-    "conditions": {
-      "origin": "http://127.0.0.1:18130",
-      "actual_browser_processes": 2,
-      "journeys_per_browser": 1,
-      "seed": 20261002,
-      "run_id": "browser-20261002-1791001160",
-      "service_workers": "enabled",
-      "http_cache": "enabled",
-      "api_answers": "real running app",
-      "request_interception": false,
-      "worker_network_observation": "Worker targets are attached after discovery; earliest install fetches can precede attachment.",
-      "notes": "Browser cohort is actual local concurrency, not a claim of 10,000 rendered users. SW deliveries and Cache Storage hits are reported separately. No-new-request actions are observed reuse, not invented cache hits."
-    },
-    "elapsed_seconds": 32.86,
-    "functional": {
-      "actions": 40,
-      "failed_actions": 0,
-      "fatal_browser_failures": 0,
-      "javascript_errors": 0,
-      "median_action_ms": 314.79999999999995
-    },
-    "before": {
-      "network": {
-        "requests_started": 1623,
-        "requests_finished": 1615,
-        "api_calls": 176,
-        "logical_api_requests": 178,
-        "wire_bytes": 30542266,
-        "delivered_body_bytes": 44743588,
-        "http_cache_hits": 46,
-        "service_worker_deliveries": 846,
-        "service_worker_cache_storage_responses": 354,
-        "worker_network_requests": 478,
-        "direct_provider_wire_bytes": 22438604,
-        "http_errors": 6,
-        "expected_guest_session_401": 2,
-        "failed_requests": 0,
-        "cancelled_requests": 0,
-        "observed_no_new_requests": 0
-      },
-      "sw": {
-        "image_misses": 421,
-        "image_fetch_attempts": 436,
-        "image_hits": 63,
-        "shell_hits": 8,
-        "file_hits": 70
-      },
-      "api_routes": {
-        "/api/account/session": 10,
-        "/api/starters": 2,
-        "/api/home": 6,
-        "/api/trailer": 10,
-        "/api/backdrop": 23,
-        "/api/rating": 10,
-        "/api/episode-matrices": 47,
-        "/api/account/login": 2,
-        "/api/browse": 2,
-        "/api/search": 8,
-        "/api/episode-ratings": 20,
-        "/api/extra": 4,
-        "/api/title": 4,
-        "/api/icon": 6,
-        "/api/account/state": 2,
-        "/api/shows": 20
-      },
-      "http_errors": [
-        {
-          "status": 401,
-          "path": "/api/account/session",
-          "count": 2
-        },
-        {
-          "status": 404,
-          "path": "/api/backdrop",
-          "count": 4
-        }
-      ]
-    },
-    "after": {
-      "network": {
-        "requests_started": 1620,
-        "requests_finished": 1620,
-        "api_calls": 125,
-        "logical_api_requests": 127,
-        "wire_bytes": 28389451,
-        "delivered_body_bytes": 42413365,
-        "http_cache_hits": 44,
-        "service_worker_deliveries": 877,
-        "service_worker_cache_storage_responses": 369,
-        "worker_network_requests": 498,
-        "direct_provider_wire_bytes": 21616900,
-        "http_errors": 6,
-        "expected_guest_session_401": 2,
-        "failed_requests": 0,
-        "cancelled_requests": 0,
-        "observed_no_new_requests": 0
-      },
-      "sw": {
-        "image_misses": 386,
-        "image_fetch_attempts": 386,
-        "image_hits": 61,
-        "shell_hits": 8,
-        "file_hits": 74
-      },
-      "api_routes": {
-        "/api/account/session": 10,
-        "/api/starters": 2,
-        "/api/home": 6,
-        "/api/trailer": 10,
-        "/api/backdrop": 24,
-        "/api/rating": 10,
-        "/api/episode-matrices": 27,
-        "/api/account/login": 2,
-        "/api/browse": 2,
-        "/api/search": 8,
-        "/api/extra": 4,
-        "/api/title": 4,
-        "/api/icon": 6,
-        "/api/episode-ratings-batch": 4,
-        "/api/account/state": 2,
-        "/api/shows": 2,
-        "/api/show-cards": 2
-      },
-      "http_errors": [
-        {
-          "status": 401,
-          "path": "/api/account/session",
-          "count": 2
-        },
-        {
-          "status": 404,
-          "path": "/api/backdrop",
-          "count": 4
-        }
-      ]
-    },
-    "backend_interval_outbound_counters": {
-      "upstream.tvmaze.attempts": 11,
-      "upstream.tvmaze.success": 11,
-      "upstream.tvmaze.decoded_bytes": 159234,
-      "upstream.tvmaze.status.2xx": 11,
-      "upstream.tvmaze_image.attempts": 2,
-      "upstream.tvmaze_image.success": 2,
-      "upstream.tvmaze_image.decoded_bytes": 594638,
-      "upstream.tvmaze_image.status.2xx": 2,
-      "upstream.itunes.attempts": 1,
-      "upstream.kinocheck.attempts": 1,
-      "upstream.itunes.success": 1,
-      "upstream.itunes.decoded_bytes": 4761,
-      "upstream.itunes.status.2xx": 1,
-      "upstream.kinocheck.success": 1,
-      "upstream.kinocheck.decoded_bytes": 1174,
-      "upstream.kinocheck.status.2xx": 1
-    },
-    "backend_interval_caveat": "snapshot interval also includes normal background work; not purely browser-caused provider traffic",
-    "guest_functional": {
-      "actions": 20,
-      "failed_actions": 0,
-      "fatal_browser_failures": 0,
-      "javascript_errors": 0,
-      "median_action_ms": 264.75
-    },
-    "guest_merge": {
-      "device_contexts": 2,
-      "existing_destination_list_preserved": true,
-      "saved_shows_after_merge": 2
-    }
-  },
-  "vm_diagnostic": {
-    "conditions": {
-      "vm": "4 virtual CPUs, 8 GiB, Python 3.11.2, NumPy 2.4.6, Xeon guest CPU name",
-      "local": "macOS arm64, Python 3.13.2, NumPy 2.4.6",
-      "provider_requests": "disabled",
-      "episode_data": "separate empty disposable store",
-      "foreground_rows": "ahead=False; dedicated single extra process",
-      "method": "two deterministic profiles; first/warm body pairs; not a load-capacity test",
-      "profiling": "cProfile timings include profiler overhead and descheduling; use raw rows for unprofiled timing"
-    },
-    "isolated_comparison": [
-      {
-        "phase": "cold",
-        "op": "home",
-        "known_min": 85,
-        "vm_wall_ms": 670.9349709999515,
-        "vm_cpu_ms": 344.1638420000004,
-        "local_wall_ms": 67.18483287841082,
-        "local_cpu_ms": 67.16699999999953,
-        "vm_cpu_to_local_ratio": 5.124001995027362,
-        "same_answer": true
-      },
-      {
-        "phase": "cold",
-        "op": "browse",
-        "known_min": 85,
-        "vm_wall_ms": 308.7175349999143,
-        "vm_cpu_ms": 142.88021900000203,
-        "local_wall_ms": 25.466832797974348,
-        "local_cpu_ms": 25.465000000000515,
-        "vm_cpu_to_local_ratio": 5.6108470056940565,
-        "same_answer": true
-      },
-      {
-        "phase": "cold",
-        "op": "title",
-        "known_min": 85,
-        "vm_wall_ms": 140.4794889999721,
-        "vm_cpu_ms": 83.85162600000129,
-        "local_wall_ms": 17.950667068362236,
-        "local_cpu_ms": 17.94700000000038,
-        "vm_cpu_to_local_ratio": 4.672180643004375,
-        "same_answer": true
-      },
-      {
-        "phase": "cold",
-        "op": "taste",
-        "known_min": 85,
-        "vm_wall_ms": 3.95438100008505,
-        "vm_cpu_ms": 3.681342000000143,
-        "local_wall_ms": 0.924999825656414,
-        "local_cpu_ms": 0.924000000000369,
-        "vm_cpu_to_local_ratio": 3.9841363636349274,
-        "same_answer": true
-      },
-      {
-        "phase": "cold",
-        "op": "home",
-        "known_min": 0,
-        "vm_wall_ms": 2186.326926999982,
-        "vm_cpu_ms": 1024.8888869999994,
-        "local_wall_ms": 202.45633320882916,
-        "local_cpu_ms": 202.34500000000023,
-        "vm_cpu_to_local_ratio": 5.065056645827662,
-        "same_answer": true
-      },
-      {
-        "phase": "cold",
-        "op": "browse",
-        "known_min": 0,
-        "vm_wall_ms": 1409.758360000069,
-        "vm_cpu_ms": 684.0381600000001,
-        "local_wall_ms": 130.0867502577603,
-        "local_cpu_ms": 130.08199999999982,
-        "vm_cpu_to_local_ratio": 5.258515090481397,
-        "same_answer": true
-      },
-      {
-        "phase": "cold",
-        "op": "title",
-        "known_min": 0,
-        "vm_wall_ms": 1163.8453999999,
-        "vm_cpu_ms": 580.3274490000022,
-        "local_wall_ms": 116.65566684678197,
-        "local_cpu_ms": 116.62499999999997,
-        "vm_cpu_to_local_ratio": 4.976012424437319,
-        "same_answer": true
-      },
-      {
-        "phase": "cold",
-        "op": "taste",
-        "known_min": 0,
-        "vm_wall_ms": 23.67061800009651,
-        "vm_cpu_ms": 5.229627000002068,
-        "local_wall_ms": 1.077875029295683,
-        "local_cpu_ms": 1.0670000000008173,
-        "vm_cpu_to_local_ratio": 4.9012436738501055,
-        "same_answer": true
-      },
-      {
-        "phase": "warm",
-        "op": "home",
-        "known_min": 85,
-        "vm_wall_ms": 1.2161239999386453,
-        "vm_cpu_ms": 1.2209359999992841,
-        "local_wall_ms": 0.6319591775536537,
-        "local_cpu_ms": 0.6199999999996209,
-        "vm_cpu_to_local_ratio": 1.9692516129032756,
-        "same_answer": true
-      },
-      {
-        "phase": "warm",
-        "op": "browse",
-        "known_min": 85,
-        "vm_wall_ms": 0.78087199995025,
-        "vm_cpu_ms": 0.7824589999998466,
-        "local_wall_ms": 0.32737478613853455,
-        "local_cpu_ms": 0.3169999999999007,
-        "vm_cpu_to_local_ratio": 2.468324921135936,
-        "same_answer": true
-      },
-      {
-        "phase": "warm",
-        "op": "title",
-        "known_min": 85,
-        "vm_wall_ms": 0.35327399996276654,
-        "vm_cpu_ms": 0.3530090000012365,
-        "local_wall_ms": 0.09587500244379044,
-        "local_cpu_ms": 0.09600000000009601,
-        "vm_cpu_to_local_ratio": 3.677177083342536,
-        "same_answer": true
-      },
-      {
-        "phase": "warm",
-        "op": "taste",
-        "known_min": 85,
-        "vm_wall_ms": 2.8685629999927187,
-        "vm_cpu_ms": 2.8737720000009404,
-        "local_wall_ms": 0.9972089901566505,
-        "local_cpu_ms": 0.9970000000008028,
-        "vm_cpu_to_local_ratio": 2.882419257771942,
-        "same_answer": true
-      },
-      {
-        "phase": "warm",
-        "op": "home",
-        "known_min": 0,
-        "vm_wall_ms": 23.126194000042233,
-        "vm_cpu_ms": 0.0,
-        "local_wall_ms": 0.5814586766064167,
-        "local_cpu_ms": 0.5739999999994083,
-        "vm_cpu_to_local_ratio": 0.0,
-        "same_answer": true
-      },
-      {
-        "phase": "warm",
-        "op": "browse",
-        "known_min": 0,
-        "vm_wall_ms": 0.8503789999849687,
-        "vm_cpu_ms": 0.0,
-        "local_wall_ms": 0.29804185032844543,
-        "local_cpu_ms": 0.29799999999990945,
-        "vm_cpu_to_local_ratio": 0.0,
-        "same_answer": true
-      },
-      {
-        "phase": "warm",
-        "op": "title",
-        "known_min": 0,
-        "vm_wall_ms": 0.5259760000626557,
-        "vm_cpu_ms": 0.5289760000017907,
-        "local_wall_ms": 0.11037476360797882,
-        "local_cpu_ms": 0.11000000000027654,
-        "vm_cpu_to_local_ratio": 4.808872727276917,
-        "same_answer": true
-      },
-      {
-        "phase": "warm",
-        "op": "taste",
-        "known_min": 0,
-        "vm_wall_ms": 24.19617400005336,
-        "vm_cpu_ms": 24.201882999999924,
-        "local_wall_ms": 0.9289579465985298,
-        "local_cpu_ms": 0.9300000000003195,
-        "vm_cpu_to_local_ratio": 26.02353010751786,
-        "same_answer": true
-      }
-    ],
-    "same_answer_count": 16,
-    "probe": {
-      "compute_cpu_seconds": 1.000241088,
-      "compute_wall_seconds": 1.319633472,
-      "cpu_to_wall_ratio": 0.7579688673,
-      "guest_cpu_steal_percent_during_sample": 14.7347740668,
-      "guest_cpu_controller": "available but not enabled for ssh.service; no cpu.max in that hierarchy",
-      "host_limits": "not observed from guest; guest steal and CPU/wall ratios indicate descheduling but do not identify its host cause"
-    },
-    "notes": [
-      "ASGI telemetry includes upload and lane queueing, not just ranking work.",
-      "Staging native math source matches current code.",
-      "Staging library lacks only Added-sort parity correction.",
-      "Staging episode-store runs initial refresh planning synchronously; current local source already moves this off the event loop.",
-      "VM foreground requests can exceed 100ms even without HTTP queueing.",
-      "Ahead continuation consumes additional CPU and can contend for a process GIL."
-    ],
-    "validation": {
-      "recommendation_cache_tests": {
-        "count": 11,
-        "passed": true
-      },
-      "asgi_tests": {
-        "count": 13,
-        "passed": true
-      },
-      "standalone_couchside_assertions": "all passed",
-      "core_fixture_change": "explicitly reset short-lived answers when tier methods are replaced or longer-lived pages are artificially expired"
-    },
-    "implemented_improvement": "Skip speculative whole-page generation when the ASGI engine lane has queued foreground work; retain on-demand pagination and quiet-load prefetch.",
-    "loopback_http": [
-      {
-        "known_min": 85,
-        "status": 200,
-        "wall_ms": 849.9677079998946,
-        "bytes": 180184
-      },
-      {
-        "known_min": 0,
-        "status": 200,
-        "wall_ms": 2951.9709789999524,
-        "bytes": 180624
-      }
-    ],
-    "offered_work_illustration": {
-      "users": 10000,
-      "think_seconds_mean": 7.5,
-      "engine_calls_per_journey_approximate": 0.686,
-      "engine_calls_per_second_before_journey_time": 914.6666666666667,
-      "limits": "Illustrative journey mix calculation, excludes closed-loop journey service time and search-internal delays; not a measured production arrival distribution or required hardware quote."
-    },
-    "gateway_health": {
-      "timestamp": 1791002475.5513284,
-      "method": "requests.Session sequential HTTPS GET healthz from separate generator VM",
-      "status": 200,
-      "noindex": "noindex, nofollow",
-      "quiet_gateway_health_ms": [
-        538.2,
-        167.3,
-        168.2,
-        171.0,
-        167.7,
-        167.7,
-        166.8,
-        166.3,
-        167.7,
-        166.8,
-        166.9,
-        166.5
-      ],
-      "interpretation": "Observed complete quiet HTTPS health-request time, not pure network RTT. First connection includes startup; subsequent requests still exceed100ms before recommendation work."
-    },
-    "production_proxy_identity": {
-      "recorded_at": 1791002838.104129,
-      "method": "Unsigned ordinary HTTPS health requests from local desktop and separate Rig generator; compare per-test HMAC fingerprints without storing addresses",
-      "requests_per_client": 2,
-      "status": 200,
-      "distinct_client_budget_identities": 1,
-      "identities_overlap_between_clients": true,
-      "path_shape": {
-        "peer": "trusted",
-        "forwarded": [
-          "trusted"
-        ],
-        "selected": "trusted",
-        "selected_equals_peer": true
-      },
-      "interpretation": "The forwarded chain contains only the trusted edge hop. Original clients are lost at compute Caddy. Correct app extraction falls back to the immediate peer budget.",
-      "rig_proxy_modified": false,
-      "proposal_validated_with_caddy": "2.10.2",
-      "repair_status": "approved and applying; post-reload verification pending"
-    },
-    "cpu_interpretation": "VMCPU values are guest task CPU accounting. The guest task/aggregate accounting discrepancy prevents treating these as physical host core utilization or an intrinsic fivefold hardware cost."
-  },
-  "validation": {
-    "node": {
-      "reported_tap_tests": 119,
-      "passed": 119,
-      "failed": 0
-    },
-    "load_server_workload_route": {
-      "tests": 24,
-      "passed": 24,
-      "failed": 0
-    },
-    "recommendation_cache": {
-      "tests": 11,
-      "passed": 11
-    },
-    "discovery": {
-      "tests": 4,
-      "passed": 4
-    },
-    "asgi": {
-      "tests": 19,
-      "passed": 19,
-      "source": "parent final unit verification"
-    },
-    "standalone_couchside": {
-      "all_assertions_passed": true,
-      "source": "parent final full suite verification",
-      "count": "not asserted; log line count is not check count"
-    },
-    "webkit_public_cache": {
-      "tests": 1,
-      "passed": 1
-    },
-    "ios_focus_guard": "preserved; native iOS Safari keyboard/Page Zoom verification was not rerun in this capacity experiment",
-    "counting": "suite groups reported separately; no combined total asserted",
-    "client_rate_limits": {
-      "tests": 10,
-      "passed": 10,
-      "source": "parent verification"
-    },
-    "protocol": {
-      "tests": 10,
-      "passed": 10,
-      "source": "parent verification after real library retry Content-Type regression test"
-    },
-    "native_multiworker": {
-      "tests": 1,
-      "passed": 1,
-      "source": "parent final native runtime verification"
-    },
-    "native_tcp_queued_disconnect": {
-      "tests": 1,
-      "passed": 1,
-      "source": "parent final native TCP verification"
-    },
-    "telemetry": {
-      "tests": 14,
-      "passed": 14,
-      "source": "parent final verification"
-    }
-  },
-  "production_manifest": {
-    "virtual_cpus": 1,
-    "ram_mb": 3072,
-    "sharing": "four applications in the same workspace",
-    "source": "rig.yaml workspace.resources"
-  },
-  "next_capacity_work": [
-    "Reuse immutable profile computations across Home, Browse and Title with complete personalization/model/settings keys and bounded memory.",
-    "Precompute invariant public candidate data and move measured remaining ranking hotspots into native operations while checking answer parity.",
-    "Allocate dedicated application compute and repeat distributed staging; worker count alone does not create CPU capacity.",
-    "Run longer steady-state, cold-cache, account-write/signup and provider-quota scenarios before certification."
-  ],
-  "artifacts": {
-    "root": "/Users/jonathanjames/.codex/visualizations/2026/10/02/01a0fa0c-5c28-7ad3-9ae0-6da72637c12c/ratings-design",
-    "recommendations": "recommendation-performance-20261003/results.json",
-    "public_data": "capacity-public-data-20261003.json",
-    "account_poll": "account-poll-performance.json",
-    "browser": "load-browser-capacity-20261003/browser-results.json",
-    "browser_measurement_notes": "load-browser-capacity-20261003/measurement-notes.json",
-    "guest_browser": "load-browser-capacity-guest-20261003/browser-results.json",
-    "vm_diagnostic": "capacity-gap-20261003/comparison.json",
-    "ahead_priority": "capacity-gap-20261003/ahead-priority.json",
-    "validation": "/tmp/couchside-client-validation-summary-20261003.json",
-    "gateway_health": "capacity-gap-20261003/gateway-rtt.json",
-    "proxy_identity": "capacity-gap-20261003/proxy-path.json",
-    "superseded_distributed": "load-capacity-before-disconnect-20261003",
-    "host_scheduling": "capacity-gap-20261003/host-scheduling.json",
-    "final_distributed": "load-capacity-final-20261003"
-  },
-  "limits": [
-    "Component timings exclude gateway/network and high concurrency.",
-    "Matched local browser observations used normal background work and warm backend caches, whereas the earlier comparison used diagnostic no-background mode. They are descriptive, not a controlled capacity speedup.",
-    "Repeated answer-cache hits require identical complete inputs inside the bounded retention window.",
-    "Browser mobile emulation does not establish native iOS Safari focus behavior.",
-    "No physical provider storm was sent; cached stress stages do not certify cold provider capacity.",
-    "Ordinary desktop and generator requests collapsed to one budget identity because the Rigbox proxy forwarded only a trusted edge hop. Signed staged identities bypass this defect; its approved repair is being applied and needs separate post-reload identity verification.",
-    "All corrected capacity stages failed experimental targets; no production10k certification or capacity speedup against the earlier diagnostic is claimed."
-  ],
-  "earlier_distributed_diagnostic": {
-    "status": "superseded_diagnostic",
-    "source": "load-capacity-before-disconnect-20261003",
-    "limitations": [
-      "Executed before queued-disconnect cancellation fix and retry Content-Type library/harness correction.",
-      "Not the final capacity result.",
-      "Server per-process cumulative counter deltas use latest snapshots<=wall-clock boundaries; normal background work and boundary lag apply.",
-      "Resource RSS sums can double-count shared pages. CPU100percent means one logical CPU.",
-      "Successful endpoint percentiles can hide failed/timeout cold engine routes; consider outcomes and route counts."
-    ],
+  "implementation_revision_scope": "Current native distributed run and final incremental benchmark; older component/browser/diagnostic evidence retains its own stated source and conditions.",
+  "current_host_scope_scheduling": {
+    "source": "capacity-gap-20261003/host-scheduling-vector-ranking-20261003.jsonl",
+    "samples": 61,
+    "interval_s": 5,
+    "duration_s": 300,
+    "clock": "host timestamp Unix seconds; cumulative cgroup CPU/PSI microseconds",
+    "selection": "last sample at or before each stage wall boundary; 0.125\u20134.370s start lag and 1.358\u20132.859s end lag; includes ramp and stop portions",
     "stages": [
       {
         "users": 100,
-        "peak_users": 100,
-        "wall_start": 1791002826.0685294,
-        "wall_end": 1791002892.2656965,
-        "elapsed_runner_s": 66.19717062600012,
-        "elapsed_protocol_s": 62.59175854100022,
-        "requests": {
-          "completed": 808,
-          "failed": 75,
-          "source": "final request events"
-        },
-        "failure_rate": 0.09282178217821782,
-        "statuses": {
-          "200": 653,
-          "401_expected": 80,
-          "502": 43,
-          "0": 21,
-          "415": 11
-        },
-        "successful_api_with_gate": {
-          "count": 545,
-          "p50_ms": 1353,
-          "p95_ms": 16165,
-          "p99_ms": 18396,
-          "max_ms": 19612,
-          "under_100_ms": 0,
-          "resolution_ms": 1,
-          "upper_bucket_ms": 120000
-        },
-        "successful_api_without_gate": {
-          "count": 545,
-          "p50_ms": 1353,
-          "p95_ms": 16165,
-          "p99_ms": 18396,
-          "max_ms": 19612,
-          "under_100_ms": 0,
-          "resolution_ms": 1,
-          "upper_bucket_ms": 120000
-        },
-        "gate": {
-          "max_waiting_users": 0,
-          "max_active_requests": 80,
-          "completed_wait_ms": {
-            "p50": 0.009921999662765302,
-            "p95": 0.015487999917240813,
-            "p99": 0.044006000280205626
+        "sample_start": 1791005511.1576753,
+        "sample_end": 1791005576.1580474,
+        "sample_span_s": 65.00037217140198,
+        "start_lag_s": 0.12546610832214355,
+        "end_lag_s": 1.3579139709472656,
+        "selection": "last 5-second sample at or before each stage wall boundary; includes startup/ramp/stop portions, not steady-state-only",
+        "scopes": {
+          "application": {
+            "cpu_max": "400000 100000",
+            "cpu_weight": "100",
+            "effective_cpuset": "0-23",
+            "host_charged_cpu_s": 53.909958,
+            "average_host_charged_cpus": 0.8293792204426579,
+            "nr_throttled_delta": 0,
+            "quota_throttled_s_delta": 0.0,
+            "cpu_pressure_percent": {
+              "some": 62.047249350588,
+              "full": 61.56517211082435
+            },
+            "memory_event_deltas": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0
+            }
           },
-          "completed_wait_samples": 851
-        },
-        "generator": {
-          "cpu_warnings": 0,
-          "peak_cpu_percent": 87.9,
-          "peak_rss_mib": 159.68
-        },
-        "server_resources": {
-          "samples": 63,
-          "measured_span_s": 66.243,
-          "average_cpu_percent": 193.0,
-          "peak_sample_cpu_percent": 283.98,
-          "peak_rss_sum_mib": 2522.33,
-          "peak_threads": 70,
-          "peak_fds": 230,
-          "guest_steal_percent": 74.31,
-          "guest_accounting_caveat": "CPU percentages use guest /proc/pid/stat and do not establish actual host cores consumed; see host-scheduling evidence."
-        },
-        "cache": {
-          "live_memory.api": {
-            "hit": 0,
-            "miss": 66,
-            "lookup_hit_percent": 0.0
-          },
-          "episodes_full_memory.api": {
-            "hit": 22,
-            "miss": 188,
-            "lookup_hit_percent": 10.476
-          },
-          "episodes_disk.api": {
-            "hit": 594,
-            "miss": 114,
-            "lookup_hit_percent": 83.898
-          },
-          "shared_http_disk.api": {
-            "hit": 0,
-            "miss": 66,
-            "stale": 11,
-            "lookup_hit_percent": 0.0
-          },
-          "page_gzip.api": {
-            "hit": 85,
-            "miss": 23,
-            "lookup_hit_percent": 78.704
-          },
-          "public_json.api": {
-            "hit": 1,
-            "miss": 75,
-            "lookup_hit_percent": 1.316
-          },
-          "recommendation_answers.api": {
-            "hit": 1,
-            "miss": 187,
-            "lookup_hit_percent": 0.532
-          },
-          "catalogue_pool.api": {
-            "hit": 205,
-            "miss": 8,
-            "lookup_hit_percent": 96.244
-          },
-          "episodes_memory.api": {
-            "hit": 17,
-            "miss": 521,
-            "lookup_hit_percent": 3.16
-          },
-          "artwork_source_memory.image": {
-            "hit": 13,
-            "miss": 42,
-            "lookup_hit_percent": 23.636
-          },
-          "live_detail_disk.api": {
-            "hit": 13,
-            "miss": 17,
-            "stale": 12,
-            "lookup_hit_percent": 43.333
-          },
-          "shared_http_disk.image": {
-            "hit": 12,
-            "miss": 26,
-            "lookup_hit_percent": 31.579
-          },
-          "search_memory.api": {
-            "hit": 0,
-            "miss": 13,
-            "lookup_hit_percent": 0.0
-          },
-          "home_pages.api": {
-            "hit": 0,
-            "miss": 4,
-            "blocked": 19,
-            "lookup_hit_percent": 0.0
-          },
-          "episodes_inflight.api": {
-            "hit": 0,
-            "miss": 0,
-            "coalesced": 1,
-            "lookup_hit_percent": null
-          },
-          "artwork_inflight.image": {
-            "hit": 0,
-            "miss": 0,
-            "coalesced": 1,
-            "lookup_hit_percent": null
-          },
-          "live_stale.api": {
-            "hit": 2,
-            "miss": 0,
-            "lookup_hit_percent": 100.0
+          "generator": {
+            "cpu_max": "100000 100000",
+            "cpu_weight": "100",
+            "effective_cpuset": "0-23",
+            "host_charged_cpu_s": 15.439114,
+            "average_host_charged_cpus": 0.23752347077779812,
+            "nr_throttled_delta": 5,
+            "quota_throttled_s_delta": 0.015856,
+            "cpu_pressure_percent": {
+              "some": 7.206983350260039,
+              "full": 7.067868762174981
+            },
+            "memory_event_deltas": {
+              "low": 0,
+              "high": 0,
+              "max": 4,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0
+            }
           }
         },
-        "upstream_counters": {
-          "upstream.tvmaze.blocked": 66,
-          "upstream.tvmaze_image.blocked": 26
-        },
-        "physical_upstream_attempts": 0,
-        "snapshot_boundary_lag": [
-          {
-            "pid": 1825,
-            "start_lag_s": 0.744,
-            "end_lag_s": 0.996
-          },
-          {
-            "pid": 1826,
-            "start_lag_s": 0.196,
-            "end_lag_s": 0.622
-          },
-          {
-            "pid": 1823,
-            "start_lag_s": 0.768,
-            "end_lag_s": 0.116
-          },
-          {
-            "pid": 1824,
-            "start_lag_s": 0.324,
-            "end_lag_s": 0.728
-          }
-        ]
+        "host_cpu_some_pressure_percent": 84.06731711613429
       },
       {
         "users": 1000,
-        "peak_users": 1000,
-        "wall_start": 1791002895.2789335,
-        "wall_end": 1791002988.6569076,
-        "elapsed_runner_s": 93.37797811699966,
-        "elapsed_protocol_s": 86.9903612510002,
-        "requests": {
-          "completed": 2034,
-          "failed": 254,
-          "source": "final request events"
-        },
-        "failure_rate": 0.1248770894788594,
-        "statuses": {
-          "200": 1263,
-          "401_expected": 517,
-          "502": 11,
-          "0": 242,
-          "503": 1
-        },
-        "successful_api_with_gate": {
-          "count": 585,
-          "p50_ms": 3132,
-          "p95_ms": 28308,
-          "p99_ms": 51349,
-          "max_ms": 55955,
-          "under_100_ms": 0,
-          "resolution_ms": 1,
-          "upper_bucket_ms": 120000
-        },
-        "successful_api_without_gate": {
-          "count": 585,
-          "p50_ms": 3012,
-          "p95_ms": 14189,
-          "p99_ms": 20873,
-          "max_ms": 21830,
-          "under_100_ms": 0,
-          "resolution_ms": 1,
-          "upper_bucket_ms": 120000
-        },
-        "gate": {
-          "max_waiting_users": 740,
-          "max_active_requests": 256,
-          "completed_wait_ms": {
-            "p50": 0.005280999630485894,
-            "p95": 47800.71881399999,
-            "p99": 53228.967702000315
+        "sample_start": 1791005576.1580474,
+        "sample_end": 1791005671.157998,
+        "sample_span_s": 94.99995064735413,
+        "start_lag_s": 4.3697943687438965,
+        "end_lag_s": 2.8585360050201416,
+        "selection": "last 5-second sample at or before each stage wall boundary; includes startup/ramp/stop portions, not steady-state-only",
+        "scopes": {
+          "application": {
+            "cpu_max": "400000 100000",
+            "cpu_weight": "100",
+            "effective_cpuset": "0-23",
+            "host_charged_cpu_s": 59.554178,
+            "average_host_charged_cpus": 0.6268864098789788,
+            "nr_throttled_delta": 0,
+            "quota_throttled_s_delta": 0.0,
+            "cpu_pressure_percent": {
+              "some": 50.22712819833338,
+              "full": 49.899684870331335
+            },
+            "memory_event_deltas": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0
+            }
           },
-          "completed_wait_samples": 2262
-        },
-        "generator": {
-          "cpu_warnings": 0,
-          "peak_cpu_percent": 97.7,
-          "peak_rss_mib": 828.67
-        },
-        "server_resources": {
-          "samples": 89,
-          "measured_span_s": 92.873,
-          "average_cpu_percent": 162.11,
-          "peak_sample_cpu_percent": 284.79,
-          "peak_rss_sum_mib": 2681.21,
-          "peak_threads": 91,
-          "peak_fds": 371,
-          "guest_steal_percent": 61.76,
-          "guest_accounting_caveat": "CPU percentages use guest /proc/pid/stat and do not establish actual host cores consumed; see host-scheduling evidence."
-        },
-        "cache": {
-          "live_memory.api": {
-            "hit": 0,
-            "miss": 73,
-            "lookup_hit_percent": 0.0
-          },
-          "episodes_full_memory.api": {
-            "hit": 54,
-            "miss": 325,
-            "lookup_hit_percent": 14.248
-          },
-          "episodes_disk.api": {
-            "hit": 397,
-            "miss": 152,
-            "lookup_hit_percent": 72.313
-          },
-          "shared_http_disk.api": {
-            "hit": 0,
-            "miss": 86,
-            "stale": 2,
-            "lookup_hit_percent": 0.0
-          },
-          "public_json.api": {
-            "hit": 0,
-            "miss": 134,
-            "lookup_hit_percent": 0.0
-          },
-          "page_gzip.api": {
-            "hit": 694,
-            "miss": 0,
-            "lookup_hit_percent": 100.0
-          },
-          "recommendation_answers.api": {
-            "hit": 0,
-            "miss": 254,
-            "lookup_hit_percent": 0.0
-          },
-          "episodes_memory.api": {
-            "hit": 13,
-            "miss": 231,
-            "lookup_hit_percent": 5.328
-          },
-          "catalogue_pool.api": {
-            "hit": 299,
-            "miss": 0,
-            "lookup_hit_percent": 100.0
-          },
-          "artwork_source_memory.image": {
-            "hit": 4,
-            "miss": 14,
-            "lookup_hit_percent": 22.222
-          },
-          "live_detail_disk.api": {
-            "hit": 6,
-            "miss": 6,
-            "stale": 2,
-            "lookup_hit_percent": 50.0
-          },
-          "shared_http_disk.image": {
-            "hit": 7,
-            "miss": 5,
-            "lookup_hit_percent": 58.333
-          },
-          "search_memory.api": {
-            "hit": 0,
-            "miss": 20,
-            "lookup_hit_percent": 0.0
-          },
-          "home_pages.api": {
-            "hit": 0,
-            "miss": 2,
-            "blocked": 39,
-            "lookup_hit_percent": 0.0
-          },
-          "episodes_inflight.api": {
-            "hit": 0,
-            "miss": 0,
-            "coalesced": 7,
-            "lookup_hit_percent": null
+          "generator": {
+            "cpu_max": "100000 100000",
+            "cpu_weight": "100",
+            "effective_cpuset": "0-23",
+            "host_charged_cpu_s": 66.586312,
+            "average_host_charged_cpus": 0.7009089114916769,
+            "nr_throttled_delta": 57,
+            "quota_throttled_s_delta": 0.209887,
+            "cpu_pressure_percent": {
+              "some": 24.998217197138537,
+              "full": 24.998203512920895
+            },
+            "memory_event_deltas": {
+              "low": 0,
+              "high": 0,
+              "max": 14,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0
+            }
           }
         },
-        "upstream_counters": {
-          "upstream.tvmaze.blocked": 88,
-          "upstream.tvmaze_image.blocked": 5
-        },
-        "physical_upstream_attempts": 0,
-        "snapshot_boundary_lag": [
-          {
-            "pid": 1825,
-            "start_lag_s": 0.862,
-            "end_lag_s": 0.27
-          },
-          {
-            "pid": 1826,
-            "start_lag_s": 0.618,
-            "end_lag_s": 0.034
-          },
-          {
-            "pid": 1823,
-            "start_lag_s": 0.037,
-            "end_lag_s": 0.271
-          },
-          {
-            "pid": 1824,
-            "start_lag_s": 0.587,
-            "end_lag_s": 0.675
-          }
-        ]
+        "host_cpu_some_pressure_percent": 82.31444170984729
       },
       {
         "users": 10000,
-        "peak_users": 10000,
-        "wall_start": 1791002991.674968,
-        "wall_end": 1791003093.9767635,
-        "elapsed_runner_s": 102.30179895900028,
-        "elapsed_protocol_s": 98.04271512300011,
-        "requests": {
-          "completed": 9816,
-          "failed": 1697,
-          "source": "final request events"
-        },
-        "failure_rate": 0.17288101059494704,
-        "statuses": {
-          "200": 5509,
-          "401_expected": 2610,
-          "503": 1427,
-          "502": 1,
-          "0": 269
-        },
-        "successful_api_with_gate": {
-          "count": 2113,
-          "p50_ms": 1531,
-          "p95_ms": 8212,
-          "p99_ms": 57553,
-          "max_ms": 82102,
-          "under_100_ms": 0,
-          "resolution_ms": 1,
-          "upper_bucket_ms": 120000
-        },
-        "successful_api_without_gate": {
-          "count": 2113,
-          "p50_ms": 1485,
-          "p95_ms": 6391,
-          "p99_ms": 9346,
-          "max_ms": 14975,
-          "under_100_ms": 0,
-          "resolution_ms": 1,
-          "upper_bucket_ms": 120000
-        },
-        "gate": {
-          "max_waiting_users": 9703,
-          "max_active_requests": 256,
-          "completed_wait_ms": {
-            "p50": 0.005406999662227463,
-            "p95": 74028.5584190001,
-            "p99": 81495.01796200001
-          },
-          "completed_wait_samples": 9930
-        },
-        "generator": {
-          "cpu_warnings": 0,
-          "peak_cpu_percent": 81.9,
-          "peak_rss_mib": 316.91
-        },
-        "server_resources": {
-          "samples": 96,
-          "measured_span_s": 101.876,
-          "average_cpu_percent": 264.36,
-          "peak_sample_cpu_percent": 305.98,
-          "peak_rss_sum_mib": 2837.83,
-          "peak_threads": 99,
-          "peak_fds": 419,
-          "guest_steal_percent": 82.32,
-          "guest_accounting_caveat": "CPU percentages use guest /proc/pid/stat and do not establish actual host cores consumed; see host-scheduling evidence."
-        },
-        "cache": {
-          "live_memory.api": {
-            "hit": 0,
-            "miss": 52,
-            "lookup_hit_percent": 0.0
-          },
-          "episodes_full_memory.api": {
-            "hit": 1000,
-            "miss": 263,
-            "lookup_hit_percent": 79.177
-          },
-          "episodes_disk.api": {
-            "hit": 174,
-            "miss": 110,
-            "lookup_hit_percent": 61.268
-          },
-          "shared_http_disk.api": {
-            "hit": 0,
-            "miss": 136,
-            "lookup_hit_percent": 0.0
-          },
-          "page_gzip.api": {
-            "hit": 3397,
-            "miss": 1,
-            "lookup_hit_percent": 99.971
-          },
-          "public_json.api": {
-            "hit": 6,
-            "miss": 682,
-            "lookup_hit_percent": 0.872
-          },
-          "recommendation_answers.api": {
-            "hit": 0,
-            "miss": 115,
-            "lookup_hit_percent": 0.0
-          },
-          "episodes_memory.api": {
-            "hit": 0,
-            "miss": 30,
-            "lookup_hit_percent": 0.0
-          },
-          "catalogue_pool.api": {
-            "hit": 139,
-            "miss": 0,
-            "lookup_hit_percent": 100.0
-          },
-          "artwork_source_memory.image": {
-            "hit": 0,
-            "miss": 1,
-            "lookup_hit_percent": 0.0
-          },
-          "search_memory.api": {
-            "hit": 0,
-            "miss": 93,
-            "blocked": 9,
-            "lookup_hit_percent": 0.0
-          },
-          "live_detail_disk.api": {
-            "hit": 0,
-            "miss": 1,
-            "lookup_hit_percent": 0.0
-          },
-          "home_pages.api": {
-            "hit": 0,
-            "miss": 1,
-            "blocked": 23,
-            "lookup_hit_percent": 0.0
-          },
-          "episodes_inflight.api": {
-            "hit": 0,
-            "miss": 0,
-            "coalesced": 9,
-            "lookup_hit_percent": null
-          }
-        },
-        "upstream_counters": {
-          "upstream.tvmaze.blocked": 136
-        },
-        "physical_upstream_attempts": 0,
-        "snapshot_boundary_lag": [
-          {
-            "pid": 1825,
-            "start_lag_s": 0.195,
-            "end_lag_s": 0.631
-          },
-          {
-            "pid": 1826,
-            "start_lag_s": 0.957,
-            "end_lag_s": 0.146
-          },
-          {
-            "pid": 1823,
-            "start_lag_s": 1.015,
-            "end_lag_s": 0.064
-          },
-          {
-            "pid": 1824,
-            "start_lag_s": 0.585,
-            "end_lag_s": 1.15
-          }
-        ]
-      }
-    ]
-  },
-  "host_scheduling": {
-    "artifact": "capacity-gap-20261003/host-scheduling.json",
-    "samples": [
-      {
-        "timestamp": 1791003751.4764543,
-        "loadavg": "53.15 51.62 50.88 52/947 536458",
-        "host_cpu_pressure": "some avg10=84.68 avg60=84.11 avg300=83.32 total=313626370487\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+        "sample_start": 1791005676.157842,
+        "sample_end": 1791005776.157846,
+        "sample_span_s": 100.00000405311584,
+        "start_lag_s": 0.8931484222412109,
+        "end_lag_s": 2.2316505908966064,
+        "selection": "last 5-second sample at or before each stage wall boundary; includes startup/ramp/stop portions, not steady-state-only",
         "scopes": {
           "application": {
-            "cpu.max": "400000 100000",
-            "cpu.weight": "100",
-            "cpu.stat": "usage_usec 1162276659\nuser_usec 1111361976\nsystem_usec 50914682\nnr_periods 36622\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0",
-            "cpu.pressure": "some avg10=67.74 avg60=57.08 avg300=41.05 total=703408723\nfull avg10=67.47 avg60=56.26 avg300=40.01 total=681966920",
-            "cpuset.cpus.effective": "0-23"
+            "cpu_max": "400000 100000",
+            "cpu_weight": "100",
+            "effective_cpuset": "0-23",
+            "host_charged_cpu_s": 87.51445,
+            "average_host_charged_cpus": 0.875144464529381,
+            "nr_throttled_delta": 0,
+            "quota_throttled_s_delta": 0.0,
+            "cpu_pressure_percent": {
+              "some": 65.691954337429,
+              "full": 64.48153538648867
+            },
+            "memory_event_deltas": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0
+            }
           },
           "generator": {
-            "cpu.max": "100000 100000",
-            "cpu.weight": "100",
-            "cpu.stat": "usage_usec 327080228\nuser_usec 297188755\nsystem_usec 29891472\nnr_periods 30257\nnr_throttled 161\nthrottled_usec 674048\nnr_bursts 0\nburst_usec 0",
-            "cpu.pressure": "some avg10=21.36 avg60=19.11 avg300=7.81 total=90494802\nfull avg10=21.34 avg60=19.03 avg300=7.76 total=89803776",
-            "cpuset.cpus.effective": "0-23"
+            "cpu_max": "100000 100000",
+            "cpu_weight": "100",
+            "effective_cpuset": "0-23",
+            "host_charged_cpu_s": 41.848231,
+            "average_host_charged_cpus": 0.4184822930384279,
+            "nr_throttled_delta": 2,
+            "quota_throttled_s_delta": 0.013522,
+            "cpu_pressure_percent": {
+              "some": 10.067736591942971,
+              "full": 10.031899593395488
+            },
+            "memory_event_deltas": {
+              "low": 0,
+              "high": 0,
+              "max": 11,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0
+            }
           }
-        }
-      },
-      {
-        "timestamp": 1791003761.477679,
-        "loadavg": "52.65 51.57 50.87 57/946 536497",
-        "host_cpu_pressure": "some avg10=84.27 avg60=84.10 avg300=83.34 total=313634839610\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
-        "scopes": {
-          "application": {
-            "cpu.max": "400000 100000",
-            "cpu.weight": "100",
-            "cpu.stat": "usage_usec 1168227422\nuser_usec 1117137446\nsystem_usec 51089975\nnr_periods 36722\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0",
-            "cpu.pressure": "some avg10=48.79 avg60=54.40 avg300=41.01 total=707478849\nfull avg10=46.61 avg60=53.18 avg300=39.89 total=685672510",
-            "cpuset.cpus.effective": "0-23"
-          },
-          "generator": {
-            "cpu.max": "100000 100000",
-            "cpu.weight": "100",
-            "cpu.stat": "usage_usec 330578317\nuser_usec 300527430\nsystem_usec 30050887\nnr_periods 30357\nnr_throttled 161\nthrottled_usec 674048\nnr_bursts 0\nburst_usec 0",
-            "cpu.pressure": "some avg10=15.41 avg60=17.91 avg300=7.93 total=91978606\nfull avg10=15.41 avg60=17.84 avg300=7.88 total=91287580",
-            "cpuset.cpus.effective": "0-23"
-          }
-        }
-      },
-      {
-        "timestamp": 1791003771.4794164,
-        "loadavg": "52.78 51.63 50.90 55/947 536570",
-        "host_cpu_pressure": "some avg10=84.90 avg60=84.19 avg300=83.39 total=313643378558\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
-        "scopes": {
-          "application": {
-            "cpu.max": "400000 100000",
-            "cpu.weight": "100",
-            "cpu.stat": "usage_usec 1177539664\nuser_usec 1126192004\nsystem_usec 51347660\nnr_periods 36822\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0",
-            "cpu.pressure": "some avg10=56.71 avg60=55.57 avg300=41.73 total=713839486\nfull avg10=52.16 avg60=53.52 avg300=40.42 total=691425220",
-            "cpuset.cpus.effective": "0-23"
-          },
-          "generator": {
-            "cpu.max": "100000 100000",
-            "cpu.weight": "100",
-            "cpu.stat": "usage_usec 335386329\nuser_usec 304950613\nsystem_usec 30435715\nnr_periods 30457\nnr_throttled 161\nthrottled_usec 674048\nnr_bursts 0\nburst_usec 0",
-            "cpu.pressure": "some avg10=18.87 avg60=18.58 avg300=8.42 total=93924487\nfull avg10=18.87 avg60=18.53 avg300=8.38 total=93233461",
-            "cpuset.cpus.effective": "0-23"
-          }
-        }
+        },
+        "host_cpu_some_pressure_percent": 83.57126361275988
       }
     ],
-    "elapsed_s": 20.002962112426758,
-    "deltas": {
-      "application": {
-        "cpu_stat": {
-          "usage_usec": 15263005,
-          "user_usec": 14830028,
-          "system_usec": 432978,
-          "nr_periods": 200,
-          "nr_throttled": 0,
-          "throttled_usec": 0,
-          "nr_bursts": 0,
-          "burst_usec": 0
-        },
-        "charged_cpu_s": 15.263005,
-        "charged_cpu_percent_one_core": 76.30372398954813,
-        "pressure_stall_percent": {
-          "some": 52.146091870663156,
-          "full": 47.28449690020694
-        }
-      },
-      "generator": {
-        "cpu_stat": {
-          "usage_usec": 8306101,
-          "user_usec": 7761858,
-          "system_usec": 544243,
-          "nr_periods": 200,
-          "nr_throttled": 0,
-          "throttled_usec": 0,
-          "nr_bursts": 0,
-          "burst_usec": 0
-        },
-        "charged_cpu_s": 8.306101,
-        "charged_cpu_percent_one_core": 41.52435500960065,
-        "pressure_stall_percent": {
-          "some": 17.145885597960124,
-          "full": 17.145885597960124
-        }
-      }
-    },
-    "network_path": {
-      "generator_and_application": "separate microVMs on same24-online-CPU Rigbox compute host",
-      "public_https_hostname": "couchside-capacity-47f13cba.rigbox.dev",
-      "dns_from_generator": "gateway public address158.69.207.12, distinct from compute host51.255.194.99",
-      "repository_gateway_route": "deploy/Caddyfile.base wildcard forwards to compute Tailscale endpoint:8443",
-      "interpretation": "The public HTTPS test traverses a gateway; it is not loopback or directVM-IP traffic. No lower-latency route was substituted."
-    },
-    "linux_definitions": {
-      "proc_stat": "first8 columns user,nice,system,idle,iowait,irq,softirq,steal; aggregate counters in USER_HZ; steal is involuntary wait. The denominator excludes guest and guest_nice.",
-      "quota": "cpu.max MAX/PERIOD is maximum bandwidth, not a dedicated-core reservation.",
-      "psi": "some is time with at least some tasks stalled; full is time with all non-idle cgroup tasks stalled. System-level CPUfull is undefined and reported zero.",
-      "references": [
-        "https://docs.kernel.org/filesystems/proc.html#miscellaneous-kernel-statistics-in-proc-stat",
-        "https://docs.kernel.org/admin-guide/cgroup-v2.html#cpu-interface-files",
-        "https://docs.kernel.org/accounting/psi.html"
-      ]
-    },
-    "interpretation": {
-      "application_ceiling_cores": 4,
-      "application_cpu_weight": 100,
-      "dedicated_cpu_pinning": false,
-      "application_quota_throttled_periods_observed": 0,
-      "host_contention": "24 online host CPUs with load~51.8 and CPU PSI some avg10~82%; both owned VM scopes share effectiveCPU set0\u201323.",
-      "measured_corrected_interval": "Application charged15.263CPU seconds over20.003wall seconds (76.3% of oneCPU); VMscope PSI some52.1%/full47.3%. Generator charged8.306CPU seconds (41.5% of oneCPU). No quota throttle events in this window.",
-      "limits": [
-        "Only a20-second live observation, not whole-stage host utilization.",
-        "Cgroup CPU charges include VM/emulator and guest overhead, not only Couchside engine work.",
-        "Guest per-processCPU deltas disagree with aggregate guest/proc/stat running ticks; do not convert them to physicalcores used.",
-        "No infrastructure or scheduling changes made."
-      ]
-    },
-    "interval_stage_overlap_s": {
-      "100": 0,
-      "1000": 2.4027504920959473,
-      "10000": 14.560447454452515
-    },
-    "interval_note": "short observation spans tail of1000-user stage and beginning/ramp of10000-user stage, with inter-stage gap; not steady10000-user physical CPU utilization"
-  },
-  "implementation_revision": "cb248d4",
-  "provider_coalescing_scope": "Durable same-key leases cover eligible requests only; Authorization-bearing requests including TMDB bearer, force requests and zero-TTL requests bypass this new lease. The elected episode-refresh owner still performs one shared background refresh per host."
+    "interpretation": "Actual host CPU charged to whole Firecracker VM scope includes VM/emulator overhead. Shared CPU ceilings do not reserve cores; CPU pressure and memory-limit events on generator constrain interpretation. No application quota throttle or OOM observed."
+  }
 }
