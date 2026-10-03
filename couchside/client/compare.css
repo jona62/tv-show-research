@@ -116,30 +116,18 @@
 .comparison-overlay .ratings-chart-wrap{overflow:hidden;touch-action:pan-y;cursor:grab;user-select:none;-webkit-user-select:none}
 .comparison-overlay .ratings-timeline *{pointer-events:none}
 .is-panning .ratings-chart-wrap{cursor:grabbing}
-/* Floating controls sit inside the last plot, clear of the fixed rating axis. */
-.comparison-zoom-controls{position:absolute;bottom:var(--comparison-zoom-bottom,30px);left:auto;right:8px;z-index:3;width:max-content;max-width:calc(100% - 62px);padding:4px;border:1px solid #414141;border-radius:6px;background:#202020ed;opacity:.65;transition:opacity .15s ease}
+/* Reset floats inside the last plot; zoom and pan use the chart directly. */
+.comparison-zoom-controls{position:absolute;bottom:var(--comparison-zoom-bottom,30px);right:8px;z-index:3;width:max-content;opacity:.65;transition:opacity .15s ease}
 .comparison-zoom-controls:hover,.comparison-zoom-controls:focus-within{opacity:1}
-.comparison-zoom-actions{display:flex;align-items:center;gap:4px}
-.comparison-zoom-controls .comparison-zoom-picker{position:static;z-index:auto}
-.comparison-zoom-controls .ratings-view-button{height:34px;min-height:34px;min-width:54px;gap:3px;padding:5px 6px;background:#242424;border:1px solid #4d4d4d;border-radius:4px;font:inherit;font-size:12px;font-weight:600;color:var(--ink)}
-.comparison-zoom-controls .zoom-mode-label{white-space:nowrap}
-.comparison-zoom-controls .ratings-view-button>.ratings-icon:last-child{flex:none;width:10px;height:10px;margin:0}
-.comparison-zoom-controls .round.small{display:grid;place-items:center;width:34px;height:34px;min-width:34px;padding:0;border:1px solid #4d4d4d;border-radius:50%;background:#242424;color:var(--ink-2);font-size:20px;font-weight:400;line-height:1}
+.comparison-zoom-controls .round.small{display:grid;place-items:center;width:34px;height:34px;min-width:34px;padding:0;border:1px solid #4d4d4d;border-radius:50%;background:#242424;color:var(--ink-2);line-height:1}
 .comparison-zoom-controls .comparison-zoom-reset .ratings-icon{width:16px;height:16px}
-.comparison-zoom-controls button:hover,.comparison-zoom-controls button[aria-expanded=true]{border-color:#888;background:#2c2c2c;color:var(--ink)}
+.comparison-zoom-controls button:hover{border-color:#888;background:#2c2c2c;color:var(--ink)}
 .comparison-zoom-controls button:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
-.comparison-zoom-controls button:disabled{opacity:.35;cursor:default}
-.comparison-zoom-controls .ratings-view-options{top:auto;bottom:calc(100% + 6px);left:auto;right:0;z-index:4;width:180px;max-width:calc(100vw - 32px);padding:5px;border:1px solid #414141;border-radius:6px;background:#202020;box-shadow:0 -12px 32px #0008}
-.comparison-zoom-controls .ratings-view-options button{min-height:38px;gap:10px;padding:8px 10px;font:inherit;font-size:12px;text-align:left}
-.comparison-zoom-controls .ratings-view-options button>.ratings-icon{flex:none;width:14px;height:14px}
 .comparison-zoom-range{position:absolute;width:1px;height:1px;margin:0;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .comparison-overlay .comparison-zoom-hint{margin:8px 0 18px;font-size:11px}
 @media(any-pointer:coarse),(max-width:600px){
   .comparison-zoom-controls{opacity:1}
-  .comparison-zoom-actions{gap:3px}
-  .comparison-zoom-controls .ratings-view-button{height:44px;min-height:44px;min-width:50px;padding-inline:3px}
   .comparison-zoom-controls .round.small{width:44px;height:44px;min-width:44px}
-  .comparison-zoom-controls .ratings-view-options button{min-height:44px;font-size:12px}
   .comparison-overlay-frame{padding-top:12px}
   .comparison-overlay .comparison-overlay-label{top:12px;right:0}
   .comparison-overlay .ratings-chart-label-trend{top:312px;right:0}

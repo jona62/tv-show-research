@@ -241,7 +241,6 @@ export function mountCompare(host, { search = '', replaceURL = () => {}, openSho
     if (!content.contains(active)) return null;
     return active.dataset.compareSeason ? `[data-compare-season="${active.dataset.compareSeason}"]`
       : active.closest('.compare-picker') ? `[data-compare-picker="${active.closest('.compare-picker').dataset.picker}"]`
-        : active.closest('.comparison-zoom-picker') ? '[data-zoom-menu]'
         : active.dataset.zoomAction ? `[data-zoom-action="${active.dataset.zoomAction}"]`
         : active.dataset.episode && active.dataset.showId ? `.ratings-point-hit[data-show-id="${active.dataset.showId}"][data-episode="${active.dataset.episode}"]`
           : active.classList.contains('ratings-chart-wrap') ? '.ratings-chart-wrap'
