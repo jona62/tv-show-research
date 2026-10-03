@@ -7,6 +7,7 @@ import { mergeTransferredList } from './list-transfer.js';
 import { apiFetch } from './network.js';
 import { mountAccounts } from './accounts.js';
 import { startAppUpdates } from './app-updates.js';
+import { backdropURL, createBackdropPrefetcher, bindBackdropIntent } from './show-artwork.js';
 import {filtersFor,filterKey,selectShows,setFilters} from './filter-state.js';
 import {filterBar} from './filters.js';
 import { cachedRatings, ratings, seasons as ratingSeasons } from './ratings.js';
@@ -34,6 +35,7 @@ import { KEY, DEFAULTS, REACH, VERSION, MAX_RATED, fresh, tidy, stored, FRESH_KE
   newVisit, keepVisit, tasteOf, homeBody, packed, PAGE_KEY, take, sanitize } from './start.js';
 
 startAppUpdates();
+const prefetchBackdrop = createBackdropPrefetcher();
 const boot = JSON.parse(document.getElementById('boot').textContent);
 const $ = id => document.getElementById(id);
 const RATES = [
@@ -1013,8 +1015,7 @@ function featuredSlide(s, i, n, fits) {
     if (!asked || backdropAsked || !wideScreen.matches) return;
     backdropAsked = true;
     if (urgent) backdrop.fetchPriority = 'high';
-    if (s.tmdb?.backdrop) backdrop.src = s.tmdb.backdrop;
-    else details(s.id).then(d => { if (d?.backdrop) backdrop.src = d.backdrop; });
+    backdrop.src = backdropURL(s.id);
   };
   // Blurred this much the small poster looks the same as the full picture, and it is there
   // in a moment, often held already as the poster's preview.
@@ -1975,9 +1976,13 @@ function cardEl(c, { rank = 0, soon = false, note = '', row = '', ahead = false,
   const quick = el('div', '', 'quick');
   const full = { ...c, ...(known.get(c.id) || {}) };
   quick.append(listButton(full, 'tiny'), ...(newer(c.id) ? [] : rateButtons(full, [.7, 1], 'tiny')));
-  const open = button('round tiny push', '', () => openTitle(c.id, { row }), 'more');
-  open.setAttribute('aria-label', `More about ${c.name}`);
-  quick.append(open);
+  const compare = button('round tiny push', '', () => {
+    try { go(comparisonURL(c.id, location.search)); }
+    catch (error) { toast(error.message || 'This show could not be added. Try again.'); }
+  }, 'compare');
+  compare.setAttribute('aria-label', `Add ${c.name} to compare`);
+  compare.title = 'Add to compare';
+  quick.append(compare);
   const words = el('div', '', 'card-words');
   words.setAttribute('aria-hidden', 'true');
   words.append(el('span', c.name, 'card-name'));
@@ -1985,7 +1990,7 @@ function cardEl(c, { rank = 0, soon = false, note = '', row = '', ahead = false,
   if (c.year) words.append(el('span', String(c.year)));
   if (c.genres?.length) words.append(el('span', c.genres.slice(0, 2).join(', '), 'card-genres'));
   meta.append(quick, words);
-  for (const b of quick.querySelectorAll('button')) b.tabIndex = -1;
+  for (const b of quick.querySelectorAll('button')) if (b !== compare) b.tabIndex = -1;
   card.append(meta);
   if (soon && c.premiered) card.append(el('span', `Premieres ${premiere(c.premiered)}`, 'soon-date'));
   enhanceShowCard(card, { ...full, similar: c.similar, why: c.why }, related);
@@ -2001,6 +2006,7 @@ const PRESS_REST = 60;      // ms a finger stays put on a poster before its titl
 const PRESS_SLOP = 6;       // px it may wander meanwhile
 let pressing = null;
 function pressed(id) {
+  prefetchBackdrop(id);
   titleOf(id).catch(() => {});
   ratings(id).catch(() => {});
   // A show newer than the catalogue has its live details with its title (showTitle).
@@ -2027,6 +2033,7 @@ for (const type of ['pointerup', 'pointercancel']) {
     pressing = null;
   }, { passive: true });
 }
+bindBackdropIntent(document, prefetchBackdrop);
 
 // A long press on a poster, on a touch screen, lifts it into a peek (gestures.js) with the
 // quick buttons the hover shows: more info, My List, I like this and Love this. More info
@@ -2305,11 +2312,11 @@ function showTitle(id, play = false, place = null) {
   });
 }
 
-// TMDB's backdrop when it has one, else TVmaze's, chosen once the title has loaded so
-// one never replaces the other on screen.
+// Public artwork is independent of this viewer's recommendations. It starts
+// immediately and shares the exact image address a focused poster warmed.
 function paintBackdrop() {
-  if (!T || (!T.data && !T.error)) return;
-  const src = T.data?.tmdb?.backdrop || T.live?.backdrop;
+  if (!T) return;
+  const src = backdropURL(T.id);
   if (src && T.backdrop.getAttribute('src') !== src) T.backdrop.src = src;
 }
 
@@ -2322,6 +2329,7 @@ function buildTitle(c) {
   if (art) hero.append(picture(c.poster || art, 't-blur'));
   const backdrop = picture(null, 't-backdrop', () => hero.classList.add('has-backdrop'));
   backdrop.loading = 'lazy';
+  backdrop.src = backdropURL(c.id);
   // The page's largest picture on a phone, asked for ahead of the rest.
   const poster = artEl(c, art, 'first');
   poster.classList.add('t-poster');

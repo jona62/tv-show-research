@@ -23,8 +23,13 @@ const IMAGES = 'couchside-images';
 const PAGES = ['/', '/index.html', '/new', '/list', '/search', '/browse', '/welcome', '/compare'];
 const IMAGE_HOSTS = ['static.tvmaze.com', 'image.tmdb.org', 'i.ytimg.com'];
 const MOST_SMALL = 1000, MOST_LARGE = 40;
+const BACKDROP_TTL = 86400_000;
+const CACHED_AT = 'X-Couchside-Cached-At';
+const backdrop = url => new URL(url).pathname === '/api/backdrop';
+const bitmap = response => ['image/jpeg', 'image/png', 'image/webp'].includes(
+  (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase());
 // Full-size art and backdrops run to a few hundred KB each; posters, stills and logos to tens.
-const large = url => /\/original_untouched\/|\/t\/p\/(w1280|original)\//.test(url);
+const large = url => backdrop(url) || /\/original_untouched\/|\/t\/p\/(w1280|original)\//.test(url);
 
 self.addEventListener('install', event => event.waitUntil(keepBuild()));
 
@@ -71,6 +76,7 @@ self.addEventListener('fetch', event => {
   if (url.origin === self.location.origin) {
     if (request.mode === 'navigate') event.respondWith(PAGES.includes(url.pathname) ? page(event) : online(request));
     else if (FILES[url.pathname]) event.respondWith(file(request, url.pathname));
+    else if (request.destination === 'image' && url.pathname === '/api/backdrop') event.respondWith(image(event, url.href));
   } else if (request.destination === 'image' && IMAGE_HOSTS.includes(url.hostname)) {
     event.respondWith(image(event, url.href));
   }
@@ -106,45 +112,67 @@ const used = new Map();
 const arriving = new Map();
 const imageQueue = [];
 let imageActive = 0;
-function imageTurn(send) {
-  return new Promise((resolve,reject)=>{imageQueue.push({send,resolve,reject});drainImages();});
+function imageTurn(send, priority = false) {
+  return new Promise((resolve,reject)=>{imageQueue.push({send,resolve,reject,priority});drainImages();});
 }
 function drainImages() {
   while(imageActive<6&&imageQueue.length){
-    const job=imageQueue.shift();imageActive++;
+    // A title's background should not wait behind a long row of queued posters.
+    // Transfers already running keep their place; both kinds share the same cap.
+    const priority = imageQueue.findIndex(job => job.priority);
+    const job=imageQueue.splice(priority < 0 ? 0 : priority, 1)[0];imageActive++;
     Promise.resolve().then(job.send).then(job.resolve,job.reject).finally(()=>{imageActive--;drainImages();});
   }
 }
 
 async function image(event, url) {
   used.set(url, Date.now());
-  let cache;
+  let cache, stale = null;
   try {
     cache = await caches.open(IMAGES);
     const hit = await cache.match(url, { ignoreVary: true });
-    if (hit) return hit;
+    if (hit && !backdrop(url)) return hit;
+    if (hit?.status === 200 && bitmap(hit)) {
+      // The route names a show, whose artwork can change with the catalogue. The
+      // timestamp belongs to this stored copy and survives worker upgrades/reloads.
+      const at = Number(hit.headers.get(CACHED_AT)), age = Date.now() - at;
+      if (at > 0 && age >= 0 && age < BACKDROP_TTL) return hit;
+      stale = hit;
+    }
   } catch {
     // Storage pressure must not prevent an available image from loading.
     cache = null;
   }
   if(!arriving.has(url)) {
-    const pending=imageTurn(()=>fetchImage(event,url,cache)).finally(()=>arriving.delete(url));
+    const pending=imageTurn(()=>fetchImage(event,url,cache,stale),backdrop(url)).finally(()=>arriving.delete(url));
     arriving.set(url,pending);
   }
   return (await arriving.get(url)).clone();
 }
 
-async function fetchImage(event,url,cache) {
+async function fetchImage(event,url,cache,stale) {
   const { request } = event;
+  const ownBackdrop = backdrop(url);
   let response;
   try {
-    response = await fetch(request.mode === 'cors' ? request
+    response = await fetch(ownBackdrop || request.mode === 'cors' ? request
       : new Request(url, { mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer' }));
   } catch {
+    if (ownBackdrop && stale) return stale;
+    if (ownBackdrop) return Response.error();
     // A host that refuses CORS, or no connection: the page's own request, and nothing kept.
     return fetch(request);
   }
-  if (cache && response.status === 200) event.waitUntil(cache.put(url, response.clone()).then(trimSoon).catch(()=>{}));
+  if (ownBackdrop && stale && (response.status >= 500 || response.status === 408 || response.status === 429)) return stale;
+  if (cache && response.status === 200 && (!ownBackdrop || bitmap(response))) {
+    let kept = response.clone();
+    if (ownBackdrop) {
+      const headers = new Headers(response.headers);
+      headers.set(CACHED_AT, String(Date.now()));
+      kept = new Response(kept.body, { status: response.status, statusText: response.statusText, headers });
+    }
+    event.waitUntil(cache.put(url, kept).then(trimSoon).catch(()=>{}));
+  }
   return response;
 }
 

@@ -15,16 +15,21 @@
 // CORS so every copy is readable (Chrome counts an opaque one as about 7 MB of quota),
 // and the least recently used go once there are more than 1,000 small images or 40
 // large ones, about 30 MB in all. One long scroll down the home page shows 350 posters.
-const VERSION = 'dfa129a223b7';
-const FILES = {"/assets/styles/style.css": "4275de4669d0197b", "/assets/scripts/main.js": "6f4900a6d4bd369e", "/assets/scripts/format.js": "9c2dfc9440b436fa", "/assets/scripts/gestures.js": "c2173468ef22c30e", "/assets/scripts/start.js": "dd8f0fc9dfb5b7ce", "/assets/scripts/ratings.js": "2a0509d86dd759f5", "/assets/scripts/episode-ratings.js": "c4e6d874df401c35", "/assets/scripts/episode-timeline.js": "803e207689055be8", "/assets/scripts/show-cards.js": "1e100102e3a68bf6", "/assets/scripts/title-sections.js": "c735de07fc7f1d99", "/assets/scripts/filter-state.js": "2a62eef7fd5aeeda", "/assets/scripts/filters.js": "d657b07fba74e1f3", "/assets/scripts/network.js": "4038b4a1107593ef", "/assets/scripts/accounts.js": "5eadc4519564f154", "/assets/scripts/account-state.js": "b5fa40b4d244907c", "/assets/scripts/taste.js": "94c80891be4e9edb", "/assets/scripts/list-transfer.js": "bf96d9f9d5d965e6", "/assets/scripts/compare.js": "1a777fa3674de7cf", "/assets/scripts/comparison-timeline.js": "0c0eea8d96bab16d", "/assets/scripts/compare-timeline-interactions.js": "7e9cdad202dea29d", "/assets/scripts/comparison-timeline-export.js": "ddd7ba5ccff0f9cb", "/assets/scripts/poster-colours.js": "0a5c074f14836db9", "/assets/scripts/compare-posters.js": "2f489d7d10b368a3", "/assets/scripts/compare-viewport.js": "40a2db0add024520", "/assets/scripts/rating-views.js": "2168d19db732fbe1", "/assets/scripts/rating-snapshots.js": "4129061c66f81f6d", "/assets/scripts/snapshot-images.js": "58ed772a708f7e6c", "/assets/scripts/app-updates.js": "6fd21e40c7dc0bdb", "/assets/scripts/transfer.js": "2bfd019beccdb78d", "/assets/scripts/qr.js": "d7f92f94bb8911ea", "/assets/scripts/fresh.js": "afcc972f76479400", "/assets/scripts/starters.js": "d559e3a61414a450", "/assets/scripts/touch-forms.js": "b396a8dd24140a5f", "/pages/offline.html": "6da65ec2eea6b666", "/assets/icons/favicon.svg": "8a7c0610bab9b7fc", "/assets/icons/icon-192.png": "72daa1f7f1066393", "/assets/images/tmdb.svg": "8e7b30f73a402069"};
+const VERSION = '0a618c7ebfa8';
+const FILES = {"/assets/styles/style.css": "4275de4669d0197b", "/assets/scripts/main.js": "96a6e675e1b9f419", "/assets/scripts/format.js": "9c2dfc9440b436fa", "/assets/scripts/gestures.js": "c2173468ef22c30e", "/assets/scripts/start.js": "dd8f0fc9dfb5b7ce", "/assets/scripts/ratings.js": "2a0509d86dd759f5", "/assets/scripts/episode-ratings.js": "c4e6d874df401c35", "/assets/scripts/episode-timeline.js": "803e207689055be8", "/assets/scripts/show-cards.js": "1e100102e3a68bf6", "/assets/scripts/title-sections.js": "c735de07fc7f1d99", "/assets/scripts/filter-state.js": "2a62eef7fd5aeeda", "/assets/scripts/filters.js": "d657b07fba74e1f3", "/assets/scripts/network.js": "4038b4a1107593ef", "/assets/scripts/accounts.js": "5eadc4519564f154", "/assets/scripts/account-state.js": "b5fa40b4d244907c", "/assets/scripts/taste.js": "94c80891be4e9edb", "/assets/scripts/list-transfer.js": "bf96d9f9d5d965e6", "/assets/scripts/compare.js": "1a777fa3674de7cf", "/assets/scripts/comparison-timeline.js": "0c0eea8d96bab16d", "/assets/scripts/compare-timeline-interactions.js": "7e9cdad202dea29d", "/assets/scripts/comparison-timeline-export.js": "ddd7ba5ccff0f9cb", "/assets/scripts/poster-colours.js": "0a5c074f14836db9", "/assets/scripts/compare-posters.js": "2f489d7d10b368a3", "/assets/scripts/compare-viewport.js": "40a2db0add024520", "/assets/scripts/rating-views.js": "2168d19db732fbe1", "/assets/scripts/rating-snapshots.js": "4129061c66f81f6d", "/assets/scripts/snapshot-images.js": "58ed772a708f7e6c", "/assets/scripts/app-updates.js": "6fd21e40c7dc0bdb", "/assets/scripts/show-artwork.js": "fe019ec7b2af4628", "/assets/scripts/transfer.js": "2bfd019beccdb78d", "/assets/scripts/qr.js": "d7f92f94bb8911ea", "/assets/scripts/fresh.js": "afcc972f76479400", "/assets/scripts/starters.js": "d559e3a61414a450", "/assets/scripts/touch-forms.js": "b396a8dd24140a5f", "/pages/offline.html": "6da65ec2eea6b666", "/assets/icons/favicon.svg": "8a7c0610bab9b7fc", "/assets/icons/icon-192.png": "72daa1f7f1066393", "/assets/images/tmdb.svg": "8e7b30f73a402069"};
 const SHELL = `couchside-${VERSION}`;
 const IMAGES = 'couchside-images';
 // The app's own pages (PAGES in server.py): each is the one page, which routes itself.
 const PAGES = ['/', '/index.html', '/new', '/list', '/search', '/browse', '/welcome', '/compare'];
 const IMAGE_HOSTS = ['static.tvmaze.com', 'image.tmdb.org', 'i.ytimg.com'];
 const MOST_SMALL = 1000, MOST_LARGE = 40;
+const BACKDROP_TTL = 86400_000;
+const CACHED_AT = 'X-Couchside-Cached-At';
+const backdrop = url => new URL(url).pathname === '/api/backdrop';
+const bitmap = response => ['image/jpeg', 'image/png', 'image/webp'].includes(
+  (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase());
 // Full-size art and backdrops run to a few hundred KB each; posters, stills and logos to tens.
-const large = url => /\/original_untouched\/|\/t\/p\/(w1280|original)\//.test(url);
+const large = url => backdrop(url) || /\/original_untouched\/|\/t\/p\/(w1280|original)\//.test(url);
 
 self.addEventListener('install', event => event.waitUntil(keepBuild()));
 
@@ -71,6 +76,7 @@ self.addEventListener('fetch', event => {
   if (url.origin === self.location.origin) {
     if (request.mode === 'navigate') event.respondWith(PAGES.includes(url.pathname) ? page(event) : online(request));
     else if (FILES[url.pathname]) event.respondWith(file(request, url.pathname));
+    else if (request.destination === 'image' && url.pathname === '/api/backdrop') event.respondWith(image(event, url.href));
   } else if (request.destination === 'image' && IMAGE_HOSTS.includes(url.hostname)) {
     event.respondWith(image(event, url.href));
   }
@@ -106,45 +112,67 @@ const used = new Map();
 const arriving = new Map();
 const imageQueue = [];
 let imageActive = 0;
-function imageTurn(send) {
-  return new Promise((resolve,reject)=>{imageQueue.push({send,resolve,reject});drainImages();});
+function imageTurn(send, priority = false) {
+  return new Promise((resolve,reject)=>{imageQueue.push({send,resolve,reject,priority});drainImages();});
 }
 function drainImages() {
   while(imageActive<6&&imageQueue.length){
-    const job=imageQueue.shift();imageActive++;
+    // A title's background should not wait behind a long row of queued posters.
+    // Transfers already running keep their place; both kinds share the same cap.
+    const priority = imageQueue.findIndex(job => job.priority);
+    const job=imageQueue.splice(priority < 0 ? 0 : priority, 1)[0];imageActive++;
     Promise.resolve().then(job.send).then(job.resolve,job.reject).finally(()=>{imageActive--;drainImages();});
   }
 }
 
 async function image(event, url) {
   used.set(url, Date.now());
-  let cache;
+  let cache, stale = null;
   try {
     cache = await caches.open(IMAGES);
     const hit = await cache.match(url, { ignoreVary: true });
-    if (hit) return hit;
+    if (hit && !backdrop(url)) return hit;
+    if (hit?.status === 200 && bitmap(hit)) {
+      // The route names a show, whose artwork can change with the catalogue. The
+      // timestamp belongs to this stored copy and survives worker upgrades/reloads.
+      const at = Number(hit.headers.get(CACHED_AT)), age = Date.now() - at;
+      if (at > 0 && age >= 0 && age < BACKDROP_TTL) return hit;
+      stale = hit;
+    }
   } catch {
     // Storage pressure must not prevent an available image from loading.
     cache = null;
   }
   if(!arriving.has(url)) {
-    const pending=imageTurn(()=>fetchImage(event,url,cache)).finally(()=>arriving.delete(url));
+    const pending=imageTurn(()=>fetchImage(event,url,cache,stale),backdrop(url)).finally(()=>arriving.delete(url));
     arriving.set(url,pending);
   }
   return (await arriving.get(url)).clone();
 }
 
-async function fetchImage(event,url,cache) {
+async function fetchImage(event,url,cache,stale) {
   const { request } = event;
+  const ownBackdrop = backdrop(url);
   let response;
   try {
-    response = await fetch(request.mode === 'cors' ? request
+    response = await fetch(ownBackdrop || request.mode === 'cors' ? request
       : new Request(url, { mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer' }));
   } catch {
+    if (ownBackdrop && stale) return stale;
+    if (ownBackdrop) return Response.error();
     // A host that refuses CORS, or no connection: the page's own request, and nothing kept.
     return fetch(request);
   }
-  if (cache && response.status === 200) event.waitUntil(cache.put(url, response.clone()).then(trimSoon).catch(()=>{}));
+  if (ownBackdrop && stale && (response.status >= 500 || response.status === 408 || response.status === 429)) return stale;
+  if (cache && response.status === 200 && (!ownBackdrop || bitmap(response))) {
+    let kept = response.clone();
+    if (ownBackdrop) {
+      const headers = new Headers(response.headers);
+      headers.set(CACHED_AT, String(Date.now()));
+      kept = new Response(kept.body, { status: response.status, statusText: response.statusText, headers });
+    }
+    event.waitUntil(cache.put(url, kept).then(trimSoon).catch(()=>{}));
+  }
   return response;
 }
 

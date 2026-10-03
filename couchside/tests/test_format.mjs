@@ -461,8 +461,9 @@ const { readFileSync } = await import('node:fs');
 const { createHash } = await import('node:crypto');
 const SITE = 'https://couch.test';
 const hash16 = text => createHash('sha256').update(text).digest('hex').slice(0, 16);
-function stubWorker({ files, network, build = 'b1', mostSmall = 1000, imageCacheFailure = null }) {
-  const on = {}, stores = new Map(), fetched = [], caching = [];
+function stubWorker({ files, network, build = 'b1', mostSmall = 1000, mostLarge = 40,
+  imageCacheFailure = null, stored = new Map(), now = null }) {
+  const on = {}, stores = stored, fetched = [], caching = [];
   let tick = 0, skipped = false;
   const key = r => new URL(typeof r === 'string' ? r : r.url, SITE).href;
   const store = name => stores.get(name) || stores.set(name, new Map()).get(name);
@@ -498,9 +499,10 @@ function stubWorker({ files, network, build = 'b1', mostSmall = 1000, imageCache
   const self = { addEventListener: (type, fn) => { on[type] = fn; }, location: new URL(SITE), skipWaiting: () => { skipped = true; },
     clients: { claim: async () => {} } };
   const source = readFileSync(new URL('../client/sw.js', import.meta.url), 'utf8').replace('__BUILD__', build)
-    .replace('__FILES__', JSON.stringify(files)).replace('MOST_SMALL = 1000', `MOST_SMALL = ${mostSmall}`);
+    .replace('__FILES__', JSON.stringify(files)).replace('MOST_SMALL = 1000', `MOST_SMALL = ${mostSmall}`)
+    .replace('MOST_LARGE = 40', `MOST_LARGE = ${mostLarge}`);
   new Function('self', 'caches', 'fetch', 'crypto', 'Request', 'Response', 'Date', 'setTimeout', source)(
-    self, caches, fetch, globalThis.crypto, Request, Response, { now: () => ++tick }, done => Promise.resolve().then(done));
+    self, caches, fetch, globalThis.crypto, Request, Response, { now: now || (() => ++tick) }, done => Promise.resolve().then(done));
   const waiting = [];
   const extendable = extra => ({ ...extra, waitUntil: p => waiting.push(p) });
   const settle = async () => { while (waiting.length) await waiting.shift().catch(() => {}); };
@@ -621,6 +623,97 @@ check('taking over clears older builds, and keeps its own, the images and what i
   same([...sw.stores.keys()].sort(), ['couchside-b1', 'couchside-images', 'elsewhere']));
 sw.message('take-over');
 check('the page that found a new build lets it take over', sw.skipped());
+
+// Show backdrops share the retained image store, but expire because a catalogue can
+// replace a show's art. They must never turn API errors into cached image responses.
+const backdropURL = n => `${SITE}/api/backdrop?id=${n}`;
+const bitmapAnswer = body => new Response(body, { headers: { 'Content-Type': 'image/jpeg',
+  'Cache-Control': 'public, max-age=86400', ETag: `"${body}"` } });
+let artworkNow = 1000, artworkBody = 'backdrop one', artworkStatus = 200, artworkOffline = false;
+const artworkNetwork = async () => {
+  if (artworkOffline) throw TypeError('offline');
+  return artworkStatus === 200 ? bitmapAnswer(artworkBody)
+    : new Response('No backdrop', { status: artworkStatus, headers: { 'Content-Type': 'application/json' } });
+};
+let artworkWorker = stubWorker({ files, now: () => artworkNow, network: artworkNetwork });
+got = await artworkWorker.ask(backdropURL(82), img);
+check('same-origin backdrop images are kept as bitmaps with a local freshness stamp',
+  (await got.text()) === artworkBody && artworkWorker.fetched.length === 1
+  && artworkWorker.stores.get('couchside-images').get(backdropURL(82)).headers.get('X-Couchside-Cached-At') === '1000');
+check('the backdrop endpoint stays outside the image cache when requested as API data',
+  await artworkWorker.ask(backdropURL(82), { mode: 'cors' }) === undefined && artworkWorker.fetched.length === 1);
+const artworkStores = artworkWorker.stores;
+artworkWorker = stubWorker({ files, build: 'b2', stored: artworkStores, now: () => artworkNow, network: artworkNetwork });
+artworkStores.set('couchside-b1', new Map()).set('couchside-b2', new Map());
+await artworkWorker.activate();
+check('backdrops survive worker upgrades and come from the retained copy after reload',
+  (await (await artworkWorker.ask(backdropURL(82), img)).text()) === artworkBody
+  && !artworkWorker.fetched.length && !artworkStores.has('couchside-b1'));
+artworkNow += 86400_000; artworkBody = 'backdrop two';
+check('a day-old backdrop is fetched again and replaced with the new artwork',
+  (await (await artworkWorker.ask(backdropURL(82), img)).text()) === artworkBody
+  && artworkWorker.fetched.length === 1
+  && artworkStores.get('couchside-images').get(backdropURL(82)).headers.get('X-Couchside-Cached-At') === String(artworkNow));
+const lastArtworkStamp = String(artworkNow);
+artworkNow += 86400_000; artworkOffline = true;
+check('expired backdrop artwork remains usable offline without becoming fresh',
+  (await (await artworkWorker.ask(backdropURL(82), img)).text()) === artworkBody
+  && artworkStores.get('couchside-images').get(backdropURL(82)).headers.get('X-Couchside-Cached-At') === lastArtworkStamp);
+artworkOffline = false; artworkStatus = 503;
+check('a temporary backdrop outage serves the retained image without caching the error',
+  (await (await artworkWorker.ask(backdropURL(82), img)).text()) === artworkBody
+  && artworkStores.get('couchside-images').get(backdropURL(82)).headers.get('X-Couchside-Cached-At') === lastArtworkStamp);
+artworkStatus = 404;
+check('a missing backdrop is returned as missing instead of replacing it with stale artwork',
+  (await artworkWorker.ask(backdropURL(82), img)).status === 404);
+for (const status of [404, 503]) {
+  const noBackdrop = stubWorker({ files, network: async () => new Response('none', { status }) });
+  await noBackdrop.ask(backdropURL(1), img); await noBackdrop.ask(backdropURL(1), img);
+  check(`a backdrop ${status} is never stored as an image and can recover on the next request`,
+    noBackdrop.fetched.length === 2 && !noBackdrop.stores.get('couchside-images').size);
+}
+const wrongBackdrop = stubWorker({ files, network: async () => new Response('<html>Proxy error</html>',
+  { headers: { 'Content-Type': 'text/html' } }) });
+await wrongBackdrop.ask(backdropURL(1), img);
+check('even a successful HTML error page is never stored as backdrop artwork',
+  !wrongBackdrop.stores.get('couchside-images').size);
+const boundedBackdrops = stubWorker({ files, mostSmall: 3, mostLarge: 2, network: async url =>
+  url.includes('/api/backdrop') ? bitmapAnswer(url) : new Response(url) });
+for (const n of [1, 2, 3]) await boundedBackdrops.ask(poster(n), img);
+for (const n of [1, 2, 3]) await boundedBackdrops.ask(backdropURL(n), img);
+check('backdrop eviction uses the large-image allowance without evicting small posters',
+  same([...boundedBackdrops.stores.get('couchside-images').keys()].sort(),
+    [poster(1), poster(2), poster(3), backdropURL(2), backdropURL(3)].sort()));
+const sharingBackdrops = stubWorker({ files, network: async () => {
+  await new Promise(done => setTimeout(done, 5)); return bitmapAnswer('shared backdrop');
+} });
+const sharedBackdrops = await Promise.all([sharingBackdrops.ask(backdropURL(1), img), sharingBackdrops.ask(backdropURL(1), img)]);
+check('prefetched and visible requests for the same backdrop share one transfer',
+  sharingBackdrops.fetched.length === 1 && await sharedBackdrops[0].text() === await sharedBackdrops[1].text());
+const priorityStarted = [], priorityReleases = [];
+const priorityImages = stubWorker({ files, network: async url => {
+  priorityStarted.push(url);
+  if (priorityStarted.length <= 6) await new Promise(done => priorityReleases.push(done));
+  return bitmapAnswer(url);
+} });
+const firstPosters = Array.from({ length: 6 }, (_, n) => priorityImages.ask(poster(n), img));
+await new Promise(done => setTimeout(done, 0));
+const nextPosters = [priorityImages.ask(poster(6), img), priorityImages.ask(poster(7), img)];
+const priorityBackdrop = priorityImages.ask(backdropURL(82), img);
+await new Promise(done => setTimeout(done, 0));
+check('queued backdrop priority does not interrupt or exceed six active transfers',
+  priorityStarted.length === 6 && same(priorityStarted, Array.from({ length: 6 }, (_, n) => poster(n))));
+priorityReleases.shift()();
+await new Promise(done => setTimeout(done, 0));
+check('a backdrop takes the first free image slot ahead of waiting poster rows',
+  priorityStarted[6] === backdropURL(82));
+for (const release of priorityReleases) release();
+await Promise.all([...firstPosters, ...nextPosters, priorityBackdrop]);
+for (const failure of ['open', 'match', 'put']) {
+  const noBackdropCache = stubWorker({ files, imageCacheFailure: failure, network: async () => bitmapAnswer('available backdrop') });
+  check(`backdrop artwork still loads when cache ${failure} fails`,
+    (await (await noBackdropCache.ask(backdropURL(1), img)).text()) === 'available backdrop');
+}
 
 // start.js reads the list and memory as a page starts and asks for the home page at once,
 // handing the answer to the first to ask for the very same page. Each import of it below is

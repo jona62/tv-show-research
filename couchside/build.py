@@ -44,7 +44,7 @@ OWN = ('style.css', 'main.js', 'format.js', 'gestures.js', 'start.js', 'ratings.
        'episode-ratings.js', 'episode-timeline.js', 'show-cards.js', 'title-sections.js', 'filter-state.js', 'filters.js', 'network.js',
        'accounts.js', 'account-state.js', 'taste.js', 'list-transfer.js', 'compare.js',
        'comparison-timeline.js', 'compare-timeline-interactions.js', 'comparison-timeline-export.js', 'poster-colours.js', 'compare-posters.js', 'compare-viewport.js',
-       'rating-views.js', 'rating-snapshots.js', 'snapshot-images.js', 'app-updates.js')
+       'rating-views.js', 'rating-snapshots.js', 'snapshot-images.js', 'app-updates.js', 'show-artwork.js')
 SHARED = ('transfer.js', 'qr.js', 'fresh.js', 'starters.js')
 CLASSIC = (TOUCH_FORMS_SCRIPT,)
 # Shared packages are copied into backend/ so this app deploys by itself.

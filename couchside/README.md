@@ -40,8 +40,8 @@ rebuilt every night. Nothing plays. It is for finding your next show.
   and episode axes. The round **Save image** action saves the complete selected
   view with its full poster and Couchside header, preserving every episode in
   labeled PNG parts inside one ZIP when the view is large.
-- **Compare shows** opens from **Add to compare** beside a title's Share and
-  TVmaze actions. Search for multiple shows and reorder them. The season scope menu
+- **Compare shows** opens from a poster card's compare icon or **Add to compare**
+  beside a title's Share and TVmaze actions. Search for multiple shows and reorder them. The season scope menu
   selects All seasons or Single season, beside the view menu for Episode matrix and
   Timeline. Inverted and Show averages stay beside those menus on one mobile row;
   Timeline arrangement and Episode points share the next row, using the same menu
@@ -77,7 +77,9 @@ rebuilt every night. Nothing plays. It is for finding your next show.
   opens its own title page. TVmaze, IMDb and Wikipedia are small links at the foot.
 - **Posters** wear *Top 10* and *New* badges. On a mouse, hovering one lifts it
   and shows its match with quick buttons for My List, *I like this*, *Love this*
-  and more info. On a touch screen, a long press lifts it into a larger preview
+  and Add to compare. Keyboard focus reveals the same comparison action.
+  Focusing a poster or pausing over it prepares its background image before opening
+  the title. On a touch screen, a long press lifts it into a larger preview
   with just *More info* and My List, and a tap still opens it.
   Episode matrix cards are the default. Customization offers Standard or Episode
   ratings cards, saved on this device; an existing choice is kept.
@@ -959,7 +961,13 @@ recovery rounds; returning online also retries them. Title sections recover in p
 so their scroll position is kept. Manual retry remains available after the bounded
 automatic attempts. Poster and thumbnail downloads share an image queue of six,
 deduplicate simultaneous reads, and use the existing bounded browser image cache
-across deploys. Images are not copied into the server's public-response cache.
+across deploys. Show backgrounds use the same `/api/backdrop?id=` address when
+prefetched and displayed. The browser keeps up to 40 large images and refreshes
+these backgrounds after a day. A separate, shared 128 MiB artwork cache keeps
+validated raster images for seven days, with saved images available during temporary
+provider outages. It lives beside `OUTBOUND_CACHE` as `artwork.sqlite3`, or at
+`ARTWORK_CACHE` when configured. Other posters and stills continue using the image
+providers and the browser cache.
 
 ## Check it
 

@@ -32,6 +32,7 @@ from . import tmdb
 from .request_limits import Requests
 from .accounts import AccountService
 from .account_http import AccountRoutes
+from .backdrops import Backdrops, image_kind
 
 HERE = Path(__file__).resolve().parents[1]
 PUBLIC = HERE / 'public'
@@ -41,6 +42,8 @@ BODY_TIMEOUT = 10
 # A title page asks for details, trailers and a rating at once while the hero behind it
 # asks for its own, so this holds a dozen; each source still keeps its own rate limit.
 LIVE_SLOTS = threading.BoundedSemaphore(12)
+# Image reads leave the live-details slots available to title pages.
+ARTWORK_SLOTS = threading.BoundedSemaphore(8)
 REQUESTS = Requests()
 _accounts = None
 _accounts_lock = threading.Lock()
@@ -288,6 +291,14 @@ gc.freeze()
 def newer(show_id):
     """Whether show_id may be a show TVmaze added since the catalogue was built (NEWEST)."""
     return type(show_id) is int and NEWEST < show_id <= NEWEST + NEWER_REACH
+
+
+def backdrop_source(show_id):
+    """Prefer the model's TMDB artwork, otherwise use the shared TVmaze details."""
+    return (TMDB.get(show_id) or {}).get('backdrop') or LIVE.show(show_id).get('backdrop')
+
+
+BACKDROPS = Backdrops(backdrop_source)
 
 
 def details(found):
@@ -597,13 +608,16 @@ class Handler(SimpleHTTPRequestHandler):
         parts = urlsplit(self.path)
         if parts.path in PAGES:
             self.send_page(parse_qs(parts.query), head=True)
+        elif parts.path == '/api/backdrop':
+            if self.admitted():
+                self.backdrop(parse_qs(parts.query), head=True)
         else:
             super().do_HEAD()
 
-    def send_json(self, value, status=200, validate=False, retry_after=None):
+    def send_json(self, value, status=200, validate=False, retry_after=None, head=False):
         body = json.dumps(value, ensure_ascii=False, separators=(',', ':'), allow_nan=False).encode()
         extra = (('Retry-After', str(retry_after or 2)),) if status in (429, 503) else ()
-        self.send_body(body, 'application/json; charset=utf-8', status, validate, extra=extra)
+        self.send_body(body, 'application/json; charset=utf-8', status, validate, head=head, extra=extra)
 
     def admitted(self):
         wait = REQUESTS.take(self.client_address[0], self.headers.get('X-Forwarded-For', ''))
@@ -612,7 +626,7 @@ class Handler(SimpleHTTPRequestHandler):
         # A rejected POST body is left unread, so this connection must not be reused.
         self.close_connection = True
         self.send_body(json.dumps({'error': 'Requests are catching up. We will retry shortly.'}).encode(),
-                       'application/json; charset=utf-8', 429,
+                       'application/json; charset=utf-8', 429, head=self.command == 'HEAD',
                        extra=(('Retry-After', str(wait)), ('Connection', 'close')))
         return False
 
@@ -644,6 +658,9 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if path in LIVE_ROUTES:
             self.live(path, query)
+            return
+        if path == '/api/backdrop':
+            self.backdrop(query)
             return
         if path == '/api/episode-matrices':
             try:
@@ -737,6 +754,34 @@ class Handler(SimpleHTTPRequestHandler):
             pass
         finally:
             LIVE_SLOTS.release()
+
+    def backdrop(self, query, head=False):
+        """One public show image, warmed by card intent and reused by its title page."""
+        try:
+            show_id = number(query, 'id', 'the show')
+            if show_id not in ENGINE.by_id and not newer(show_id):
+                raise ValueError('That show is not in this catalog.')
+        except ValueError as exc:
+            self.send_json({'error': str(exc)}, 400, head=head)
+            return
+        if not ARTWORK_SLOTS.acquire(blocking=False):
+            self.send_json({'error': 'Background images are loading. Try again in a moment.'}, 503, head=head)
+            return
+        try:
+            found = BACKDROPS.get(show_id)
+            if found is None:
+                self.cache_control = 'public, max-age=300'
+                self.send_body(b'{"error":"This show has no background image."}',
+                               'application/json; charset=utf-8', 404, head=head)
+                return
+            self.cache_control = 'public, max-age=86400'
+            self.send_body(found.body, image_kind(found.body), validate=True, head=head)
+        except LiveError as exc:
+            self.send_json({'error': str(exc)}, exc.status, retry_after=exc.retry_after, head=head)
+        except (BrokenPipeError, ConnectionResetError, TimeoutError):
+            pass
+        finally:
+            ARTWORK_SLOTS.release()
 
     def icon(self, host):
         if not LIVE_SLOTS.acquire(blocking=False):
