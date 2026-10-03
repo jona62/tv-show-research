@@ -11,6 +11,34 @@ uses Couchside’s existing generated app, navigation, typography, title sheet,
 episode sheet and settings menu. The preview adapter serves additions without
 editing the shipped app bundle.
 
+## Watch-list card designs
+
+The [card comparison](http://localhost:8766/list?card-design=compare) keeps
+Couchside's existing page and compares three narrower cards:
+
+- [Right panel](http://localhost:8766/list?card-design=panel) places the complete
+  episode rating matrix beside the poster and progress.
+- [Backdrop](http://localhost:8766/list?card-design=backdrop) fades a larger
+  matrix into the right side of the card.
+- [Taller card](http://localhost:8766/list?card-design=tall) uses a narrower
+  portrait layout with the complete matrix below the title.
+
+All variants use the existing public rating data, matrix renderer and rating
+palette. Viewing progress is labelled sample data. The top-right X removes a
+show from the sample list with Undo, retaining its sample progress. Progress
+buttons and the editor also operate only on sample state in session storage;
+they never write the account tracking API. Keyboard focus is restored after
+edits, removal and Undo. Reset examples returns the original sample history.
+The ordinary local list links to this comparison through Explore card designs.
+
+Screenshots: [comparison](watch-card-designs-compare.png),
+[overview](watch-card-designs-overview.png), [right panel](watch-card-designs-panel.png),
+[backdrop](watch-card-designs-backdrop.png), [taller](watch-card-designs-tall.png),
+and [phone](watch-card-designs-mobile.png). Browser checks cover real matrix
+loading, sample edits, X/Undo, focus recovery, no tracking writes, and no page
+overflow at 1440, 1024, 768, 393 and 320 CSS pixels. The shared Safari font-floor
+guard is unchanged; this design adds buttons and links, with no new text fields.
+
 ## Watch tracking
 
 The existing preview at [My List](http://localhost:8766/list),

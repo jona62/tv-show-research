@@ -26,7 +26,7 @@ server.LIBRARY.card = preview_card
 
 RATINGS = Live(calls=12, size=1000)
 FIXTURES = {s['id']: s for s in json.loads((HERE / 'data.js').read_text().removeprefix('window.SHOWS = ').rstrip().removesuffix(';'))}
-server.PAGE = server.PAGE.replace('</head>', '<link rel="stylesheet" href="/ratings-mock.css"></head>')
+server.PAGE = server.PAGE.replace('</head>', '<link rel="stylesheet" href="/ratings-mock.css"><link rel="stylesheet" href="/watch-card-designs.css"></head>')
 
 
 def tracking_preview():
@@ -75,6 +75,7 @@ class Preview(server.Handler):
                   '/ratings-core.js': 'ratings-core.js', '/ratings-home.js': 'ratings-home.js',
                   '/title-sections.js': 'title-sections.js',
                   '/watch-tracking.js': 'watch-tracking.js', '/watch-tracking.css': 'watch-tracking.css',
+                  '/watch-card-designs.js': 'watch-card-designs.js', '/watch-card-designs.css': 'watch-card-designs.css',
                   '/ratings-data.js': 'data.js'}
         if path in assets:
             self.send_body((HERE / assets[path]).read_bytes(), 'text/css' if path.endswith('.css') else 'text/javascript')
@@ -92,6 +93,7 @@ class Preview(server.Handler):
   body: JSON.stringify({ state }),
 }).catch(() => {});
 ''' + account_mount, 1)
+                source += "\nconst { mountCardDesigns } = await import('/watch-card-designs.js');\nmountCardDesigns();\n"
                 self.send_body(source.encode(), 'text/javascript')
                 return
             if "from './episode-ratings.js" in source:
