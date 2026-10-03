@@ -166,7 +166,8 @@ def graph(start, needs):
 def main():
     pipeline = HERE.parent / 'pipeline'
     for folder in (APP, HERE):
-        shutil.copyfile(pipeline / 'backend/http_client.py', folder / 'backend/http_client.py')
+        for name in ('http_client.py', 'telemetry.py'):
+            shutil.copyfile(pipeline / 'backend' / name, folder / 'backend' / name)
     shutil.copyfile(pipeline / 'requirements-runtime.txt', APP / 'requirements-runtime.txt')
     # The nightly warmer uses the exact same episode codec and durable store as the app.
     for name in ('live.py', 'episode_store.py'):

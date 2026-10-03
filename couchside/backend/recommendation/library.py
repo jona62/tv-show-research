@@ -41,6 +41,7 @@ from .engine import CO_POWER, CO_TIE, CO_WEIGHT, DEFAULT_SETTINGS, FORMAT_GROUPS
 from .fresh import dither, pick_one, spread, shuffle_rows, ROW_EPSILON, ROW_KEY
 from .starters import Starters
 from .taste import COUNTRIES, decade as decade_of
+from .. import telemetry
 
 IMAGE = 'https://static.tvmaze.com/uploads/images/{size}/{bucket}/{image}.jpg'
 ROW = 20            # cards in a row
@@ -2837,6 +2838,7 @@ class Library:
         rating a quarter of rated shows reach. The same for everyone with those settings."""
         key = tuple(sorted((k, v) for k, v in settings.items() if k in (
             'language', 'type', 'status', 'year_min', 'runtime_min', 'rating_min', 'known_min')))
+        telemetry.cache('catalogue_pool', 'hit' if key in self._pools else 'miss')
         if key not in self._pools:
             e = self.e
             kind = settings['type']
@@ -3092,7 +3094,9 @@ class Library:
             if found is None and kept.ready.wait(KEPT_WAIT):
                 found = kept.answers(shown, count)
             if found is not None:
+                telemetry.cache('home_pages', 'hit')
                 return found
+        telemetry.cache('home_pages', 'miss')
         with self.kept_lock:
             kept = self.put(ask)
         try:

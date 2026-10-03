@@ -27,6 +27,7 @@ import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from .http_client import client, retry_after
+from . import telemetry
 
 API = 'https://api.tvmaze.com'
 KINOCHECK = 'https://api.kinocheck.com'
@@ -344,12 +345,15 @@ class Live:
             held = self.cache.get(path)
             if held and held[0] > self.clock():
                 self.cache.move_to_end(path)
+                telemetry.cache('live_memory', 'hit')
                 return held[1]
+            telemetry.cache('live_memory', 'miss')
             pending = self.inflight.get(path)
             owner = pending is None
             if owner:
                 pending = self.inflight[path] = Future()
         if not owner:
+            telemetry.cache('live_inflight', 'coalesced')
             try:
                 return pending.result(timeout=8)
             except TimeoutError:
@@ -388,9 +392,12 @@ class Live:
                 if saved:
                     at, value = saved
                     held = (now + ttl - (self.store.clock() - at), value)
+                    telemetry.cache('live_detail_disk', 'hit' if held[0] > now else 'stale')
                     self.cache[path] = held
                     while len(self.cache) > self.size:
                         self.cache.popitem(last=False)
+                else:
+                    telemetry.cache('live_detail_disk', 'miss')
             if held and held[0] > now:
                 self.cache.move_to_end(path)
                 return held[1]
@@ -398,6 +405,7 @@ class Live:
                 self.sent.popleft()
             if now < self.pause or len(self.sent) >= self.calls:
                 if held:
+                    telemetry.cache('live_stale', 'hit')
                     return held[1]
                 remaining = max(self.pause - now, self.period - (now - self.sent[0]) if self.sent else 0)
                 raise LiveError('That service is busy. Details will be back in a moment.', 503, max(1, math.ceil(remaining)))
@@ -420,6 +428,7 @@ class Live:
                 with self.lock:
                     self.pause = self.clock() + (60 if exc.code == 403 else retry_after(exc.headers.get('Retry-After')))
             if held:
+                telemetry.cache('live_stale', 'hit')
                 return held[1]
             if exc.code == 404:
                 raise LiveError('TVmaze has no details for this show.', 404) from None
@@ -429,6 +438,7 @@ class Live:
             raise LiveError('That service could not be reached.') from None
         except (URLError, TimeoutError, OSError, ValueError, KeyError, TypeError):
             if held:
+                telemetry.cache('live_stale', 'hit')
                 return held[1]
             raise LiveError('That service could not be reached.') from None
         with self.lock:
@@ -495,7 +505,9 @@ class Icons:
         with self.lock:
             if host in self.cache:
                 self.cache.move_to_end(host)
+                telemetry.cache('icons_memory', 'hit', 'image')
                 return self.cache[host]
+            telemetry.cache('icons_memory', 'miss', 'image')
         try:
             value = self.fetch(host)
         except (HTTPError, URLError, TimeoutError, OSError, ValueError):

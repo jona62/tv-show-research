@@ -520,6 +520,12 @@ function stubWorker({ files, network, build = 'b1', mostSmall = 1000, mostLarge 
     install: async () => { const e = extendable(); on.install(e); try { await Promise.all(waiting.splice(0)); return true; } catch { return false; } },
     activate: async () => { on.activate(extendable()); await settle(); },
     message: data => on.message({ data }),
+    metrics: (data = {}, source = SITE) => {
+      let result;
+      on.message({ data: { type: 'load-test-metrics', ...data }, source: { url: source },
+        ports: [{ postMessage: value => { result = value; } }] });
+      return result;
+    },
     ask: async (path, { mode = 'no-cors', destination = '' } = {}) => {
       let answer;
       on.fetch(extendable({ request: { method: 'GET', url: new URL(path, SITE).href, mode, destination }, respondWith: p => { answer = p; } }));
@@ -539,6 +545,21 @@ const siteOf = (pages, { down = false } = {}) => async url => {
   return new Response(hit.body ?? hit, { status: 200, headers: hit.headers ?? {} });
 };
 const page = (body, build = 'b1', etag = '"p1"') => ({ body, headers: { 'X-Build': build, ETag: etag } });
+const metricWorker = stubWorker({ files, network: siteOf({ ...shellFiles, '/': page('the page'),
+  'https://static.tvmaze.com/uploads/images/medium_portrait/0/1.jpg': 'poster' }) });
+await metricWorker.install();
+check('worker cache measurement is disabled unless a same-origin page opts in', !metricWorker.metrics().enabled
+  && metricWorker.metrics({ enabled: true }, 'https://another.test/') === undefined
+  && !metricWorker.metrics().enabled);
+metricWorker.metrics({ enabled: true });
+await metricWorker.ask('/', { mode: 'navigate' });
+await metricWorker.ask('/assets/scripts/main.js', { mode: 'cors' });
+await metricWorker.ask('https://static.tvmaze.com/uploads/images/medium_portrait/0/1.jpg', { destination: 'image' });
+await metricWorker.ask('https://static.tvmaze.com/uploads/images/medium_portrait/0/1.jpg', { destination: 'image' });
+check('worker metrics distinguish actual cache hits from worker-delivered network responses',
+  same(metricWorker.metrics().counts, { shell_hits: 1, file_hits: 1, image_misses: 1, image_fetch_attempts: 1, image_hits: 1 }));
+check('worker metrics contain no URL or profile data and can be disabled',
+  !JSON.stringify(metricWorker.metrics()).includes('tvmaze') && !metricWorker.metrics({ enabled: false }).enabled);
 let net = siteOf({ ...shellFiles, '/': page('the page') });
 let sw = stubWorker({ files, network: url => net(url) });
 check('the service worker keeps the page and every file of its build, checked first', await sw.install()

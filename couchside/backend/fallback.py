@@ -22,6 +22,7 @@ from collections import OrderedDict, deque
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from .http_client import client, retry_after
+from . import telemetry
 import json
 import re
 import threading
@@ -81,10 +82,13 @@ class Remote:
             held = self.cache.get(key)
             if held and held[0] > now:
                 self.cache.move_to_end(key)
+                telemetry.cache('search_memory', 'hit')
                 return held[1]
+            telemetry.cache('search_memory', 'miss')
             while self.sent and now - self.sent[0] > self.period:
                 self.sent.popleft()
             if now < self.pause or len(self.sent) >= self.calls:
+                telemetry.cache('search_memory', 'stale' if held else 'blocked')
                 return held[1] if held else None
             self.sent.append(now)
         try:

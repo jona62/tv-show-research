@@ -25,6 +25,9 @@ const IMAGE_HOSTS = ['static.tvmaze.com', 'image.tmdb.org', 'i.ytimg.com'];
 const MOST_SMALL = 1000, MOST_LARGE = 40;
 const BACKDROP_TTL = 86400_000;
 const CACHED_AT = 'X-Couchside-Cached-At';
+// Load tests opt in through their own page. Counts contain no URLs or user data.
+let testCounts = null;
+const count = name => { if (testCounts) testCounts[name] = (testCounts[name] || 0) + 1; };
 const backdrop = url => new URL(url).pathname === '/api/backdrop';
 const bitmap = response => ['image/jpeg', 'image/png', 'image/webp'].includes(
   (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase());
@@ -67,6 +70,13 @@ self.addEventListener('activate', event => {
 // main.js asks once its page has loaded everything it needs from the build before.
 self.addEventListener('message', event => {
   if (event.data === 'take-over') self.skipWaiting();
+  if (event.data?.type !== 'load-test-metrics' || !event.ports?.[0]) return;
+  try {
+    if (new URL(event.source?.url).origin !== self.location.origin) return;
+  } catch { return; }
+  if (event.data.enabled === true) testCounts ??= {};
+  if (event.data.enabled === false) testCounts = null;
+  event.ports[0].postMessage({ enabled: testCounts !== null, build: VERSION, counts: { ...testCounts } });
 });
 
 self.addEventListener('fetch', event => {
@@ -85,7 +95,8 @@ self.addEventListener('fetch', event => {
 async function page(event) {
   const cache = await caches.open(SHELL);
   const kept = await cache.match('/');
-  if (!kept) return online(event.request);
+  if (!kept) { count('shell_misses'); return online(event.request); }
+  count('shell_hits');
   event.waitUntil(renew(cache, kept));
   return kept;
 }
@@ -103,7 +114,9 @@ async function renew(cache, kept) {
 const online = request => fetch(request).catch(() => caches.match('/pages/offline.html').then(hit => hit || Response.error()));
 
 async function file(request, path) {
-  return (await caches.match(path, { cacheName: SHELL })) || fetch(request);
+  const hit = await caches.match(path, { cacheName: SHELL });
+  count(hit ? 'file_hits' : 'file_misses');
+  return hit || fetch(request);
 }
 
 // When each image was last shown while this worker has been running; those it has not
@@ -131,22 +144,24 @@ async function image(event, url) {
   try {
     cache = await caches.open(IMAGES);
     const hit = await cache.match(url, { ignoreVary: true });
-    if (hit && !backdrop(url)) return hit;
+    if (hit && !backdrop(url)) { count('image_hits'); return hit; }
     if (hit?.status === 200 && bitmap(hit)) {
       // The route names a show, whose artwork can change with the catalogue. The
       // timestamp belongs to this stored copy and survives worker upgrades/reloads.
       const at = Number(hit.headers.get(CACHED_AT)), age = Date.now() - at;
-      if (at > 0 && age >= 0 && age < BACKDROP_TTL) return hit;
+      if (at > 0 && age >= 0 && age < BACKDROP_TTL) { count('image_hits'); return hit; }
+      count('image_stale');
       stale = hit;
     }
   } catch {
     // Storage pressure must not prevent an available image from loading.
     cache = null;
   }
+  count('image_misses');
   if(!arriving.has(url)) {
     const pending=imageTurn(()=>fetchImage(event,url,cache,stale),backdrop(url)).finally(()=>arriving.delete(url));
     arriving.set(url,pending);
-  }
+  } else count('image_coalesced');
   return (await arriving.get(url)).clone();
 }
 
@@ -155,15 +170,20 @@ async function fetchImage(event,url,cache,stale) {
   const ownBackdrop = backdrop(url);
   let response;
   try {
+    count('image_fetch_attempts');
     response = await fetch(ownBackdrop || request.mode === 'cors' ? request
       : new Request(url, { mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer' }));
   } catch {
-    if (ownBackdrop && stale) return stale;
+    count('image_fetch_errors');
+    if (ownBackdrop && stale) { count('image_stale_served'); return stale; }
     if (ownBackdrop) return Response.error();
     // A host that refuses CORS, or no connection: the page's own request, and nothing kept.
+    count('image_fetch_attempts');
     return fetch(request);
   }
-  if (ownBackdrop && stale && (response.status >= 500 || response.status === 408 || response.status === 429)) return stale;
+  if (ownBackdrop && stale && (response.status >= 500 || response.status === 408 || response.status === 429)) {
+    count('image_stale_served'); return stale;
+  }
   if (cache && response.status === 200 && (!ownBackdrop || bitmap(response))) {
     let kept = response.clone();
     if (ownBackdrop) {

@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from .http_client import client, retry_after
+from . import telemetry
 import gzip
 import json
 import math
@@ -124,21 +125,28 @@ class Store:
                 held = self.memory[show_id]
                 if self.clock() - held[0] <= MAX_AGE:
                     self.memory.move_to_end(show_id)
+                    telemetry.cache('episodes_memory', 'hit')
                     return held
                 self.memory.pop(show_id)
+            if compact:
+                telemetry.cache('episodes_memory', 'miss')
             column = 'matrix' if compact else 'data'
             row = self.db.execute(f'SELECT fetched, {column} FROM episodes WHERE id=?', (show_id,)).fetchone()
             if not row:
+                telemetry.cache('episodes_disk', 'miss')
                 return None
             if self.clock() - row[0] > MAX_AGE:
+                telemetry.cache('episodes_disk', 'expired')
                 self.db.execute('DELETE FROM episodes WHERE id=?', (show_id,))
                 self.db.commit()
                 return None
             try:
                 if row[1] is None:
+                    telemetry.cache('episodes_disk', 'miss')
                     return None
                 value = json.loads(gzip.decompress(row[1]))
             except (OSError, ValueError, EOFError):
+                telemetry.cache('episodes_disk', 'corrupt')
                 self.db.execute('DELETE FROM episodes WHERE id=?', (show_id,))
                 self.db.commit()
                 return None
@@ -146,6 +154,7 @@ class Store:
                 self.memory[show_id] = (row[0], value)
                 while len(self.memory) > 512:
                     self.memory.popitem(last=False)
+            telemetry.cache('episodes_disk', 'hit')
             return row[0], value
 
     def put(self, show_id, value, fetched_at=None):
@@ -324,6 +333,7 @@ class Episodes:
                 event = self.active[show_id] = threading.Event()
                 self.pending.pop(show_id, None)
         if not own:
+            telemetry.cache('episodes_inflight', 'coalesced')
             event.wait(8)
             held = self.store.get(show_id)
             if held:

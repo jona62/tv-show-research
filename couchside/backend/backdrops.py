@@ -11,6 +11,7 @@ import time
 
 from .http_client import Client, State, state_path
 from .live import LiveError
+from . import telemetry
 
 DAY = 86400
 MAX_IMAGE = 5 * 1024 * 1024
@@ -93,6 +94,7 @@ class Backdrops:
             if owner:
                 pending = self.inflight[key] = Future()
         if not owner:
+            telemetry.cache('artwork_inflight', 'coalesced', 'image')
             try:
                 return pending.result(timeout=16)
             except TimeoutError:
@@ -113,12 +115,15 @@ class Backdrops:
             held = self.sources.get(show_id)
             if held and held[0] > self.clock():
                 self.sources.move_to_end(show_id)
+                telemetry.cache('artwork_source_memory', 'hit' if held[1] else 'negative', 'image')
                 return held[1]
+            telemetry.cache('artwork_source_memory', 'miss', 'image')
             pending = self.resolving.get(show_id)
             owner = pending is None
             if owner:
                 pending = self.resolving[show_id] = Future()
         if not owner:
+            telemetry.cache('artwork_source_inflight', 'coalesced', 'image')
             try:
                 return pending.result(timeout=16)
             except TimeoutError:

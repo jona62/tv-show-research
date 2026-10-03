@@ -34,6 +34,7 @@ from .accounts import AccountService
 from .account_http import AccountRoutes
 from .backdrops import Backdrops, image_kind, backdrop_width
 from .seo import SEO, bootstrap as seo_bootstrap
+from . import telemetry
 
 HERE = Path(__file__).resolve().parents[1]
 PUBLIC = HERE / 'public'
@@ -192,7 +193,9 @@ class Built:
         stamp = (stat.st_mtime_ns, stat.st_size)
         kept = self.files.get(path)
         if kept and kept[0] == stamp:
+            telemetry.cache('static_memory', 'hit')
             return kept[1]
+        telemetry.cache('static_memory', 'miss')
         body = Path(path).read_bytes()
         digest = hashlib.sha256(body).hexdigest()
         found = (body, packed(body, FILE_LEVEL) if worth_packing(kind, body) else None, f'"{digest[:20]}"', digest[:16])
@@ -210,6 +213,7 @@ class Pages:
 
     def get(self, tag, body):
         found = self.kept.get(tag)
+        telemetry.cache('page_gzip', 'hit' if found is not None else 'miss')
         if found is None:
             if len(self.kept) >= self.most:
                 self.kept.clear()
@@ -478,6 +482,40 @@ class Handler(SimpleHTTPRequestHandler):
     extensions_map = {**SimpleHTTPRequestHandler.extensions_map, '.webmanifest': 'application/manifest+json',
                       '.ico': 'image/x-icon', '.js': 'text/javascript', '.svg': 'image/svg+xml',
                       '.txt': 'text/plain; charset=utf-8', '.html': 'text/html; charset=utf-8'}
+
+    def handle_one_request(self):
+        if not telemetry.enabled():
+            return super().handle_one_request()
+        started = time.monotonic()
+        self._metrics_status, self._metrics_bytes = None, 0
+        self._metrics_started = None
+        try:
+            return super().handle_one_request()
+        finally:
+            if self._metrics_status is not None:
+                telemetry.record_request(getattr(self, 'command', ''), getattr(self, 'path', ''), self._metrics_status,
+                                         (time.monotonic() - (self._metrics_started or started)) * 1000,
+                                         bytes=self._metrics_bytes,
+                                         cache='not_modified' if self._metrics_status == 304 else None)
+
+    def parse_request(self):
+        parsed = super().parse_request()
+        if parsed and telemetry.enabled():
+            # Keep-alive idle time is outside the request's processing duration.
+            self._metrics_started = time.monotonic()
+        return parsed
+
+    def send_response(self, code, message=None):
+        self._metrics_status = code
+        super().send_response(code, message)
+
+    def send_header(self, keyword, value):
+        if keyword.lower() == 'content-length' and getattr(self, 'command', None) != 'HEAD':
+            try:
+                self._metrics_bytes = max(0, int(value))
+            except (ValueError, TypeError):
+                pass
+        super().send_header(keyword, value)
 
     def end_headers(self):
         self.send_header('X-Content-Type-Options', 'nosniff')
@@ -922,6 +960,7 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 if __name__ == '__main__':
+    telemetry.configure_from_env()
     follow.start(os.environ.get('MODEL_DIR') or SOURCE, MODEL)
     # What searching by meaning reads is built behind the first requests, not before them.
     threading.Thread(target=RELATED.warm, daemon=True).start()

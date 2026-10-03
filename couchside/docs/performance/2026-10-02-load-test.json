@@ -1,0 +1,340 @@
+{
+  "date": "2026-10-02",
+  "source_base_commit": "92c2bd0",
+  "scope": "Short local foreground-backend experiments using copied warm caches, plus a separate real-browser cohort.",
+  "conditions": {
+    "libraries": {
+      "locust": "2.46.6",
+      "playwright": "1.62.0",
+      "psutil": "7.2.2"
+    },
+    "seed": 20261002,
+    "host_logical_cpus": 11,
+    "host_memory_bytes": 19327352832,
+    "rigbox_shared_vcpus": 1,
+    "rigbox_shared_ram_mb": 3072,
+    "think_seconds": [
+      3,
+      12
+    ],
+    "authenticated_fraction": 0.2,
+    "max_wire_requests_per_worker": 64,
+    "media_enabled": true,
+    "stress_provider_calls_blocked": true,
+    "background_refresh_workers": false
+  },
+  "stages": [
+    {
+      "virtual_users": 100,
+      "connection_model": "persistent",
+      "nominal_run_seconds": 35.0,
+      "spawn_per_second": 25.0,
+      "recorded_generator_seconds": 37.84450287511572,
+      "completed_requests": 1289,
+      "failed_requests": 306,
+      "failure_fraction": 0.2373933281613654,
+      "statuses": {
+        "200": 907,
+        "401_expected": 76,
+        "502": 38,
+        "503": 33,
+        "429": 235
+      },
+      "api_success_latency": {
+        "count": 794,
+        "p50_ms": 24,
+        "p95_ms": 394,
+        "p99_ms": 1859,
+        "resolution_ms": 1,
+        "upper_bucket_ms": 120000
+      },
+      "gate_wait_ms_last_20000_completed": {
+        "p50": 0.004667323082685471,
+        "p95": 0.011333264410495758,
+        "p99": 0.026582740247249603
+      },
+      "peak_active_wire_requests": 16,
+      "peak_waiting_users": 0,
+      "started_journeys": 364,
+      "script_end_journeys": 363,
+      "generator_cpu_warnings": 0,
+      "resources_peak": {
+        "server": {
+          "rss_bytes": 473694208,
+          "cpu_percent": 100.0,
+          "threads": 95,
+          "fds": 107
+        },
+        "generator": {
+          "rss_bytes": 73170944,
+          "cpu_percent": 26.3,
+          "threads": 3,
+          "fds": 102
+        }
+      },
+      "cache_lookups": {
+        "Episode matrix memory": {
+          "hits": 734,
+          "misses": 78,
+          "hit_fraction": 0.9039408866995073
+        },
+        "Episode disk": {
+          "hits": 158,
+          "misses": 53,
+          "hit_fraction": 0.7488151658767772
+        },
+        "Durable image bytes": {
+          "hits": 19,
+          "misses": 18,
+          "hit_fraction": 0.5135135135135135
+        },
+        "Artwork source memory": {
+          "hits": 23,
+          "misses": 37,
+          "hit_fraction": 0.38333333333333336
+        },
+        "Compressed page": {
+          "hits": 113,
+          "misses": 0,
+          "hit_fraction": 1.0
+        }
+      },
+      "upstream_counters": {
+        "upstream.tvmaze.blocked": 37,
+        "upstream.tvmaze_image.blocked": 18
+      },
+      "acceptance_passed": false
+    },
+    {
+      "virtual_users": 1000,
+      "connection_model": "persistent",
+      "nominal_run_seconds": 35.0,
+      "spawn_per_second": 100.0,
+      "recorded_generator_seconds": 37.92379479203373,
+      "completed_requests": 9222,
+      "failed_requests": 7268,
+      "failure_fraction": 0.7881153762741271,
+      "statuses": {
+        "200": 1769,
+        "401_expected": 185,
+        "502": 27,
+        "503": 50,
+        "429": 7058,
+        "0": 132,
+        "415": 1
+      },
+      "api_success_latency": {
+        "count": 740,
+        "p50_ms": 173,
+        "p95_ms": 1360,
+        "p99_ms": 2812,
+        "resolution_ms": 1,
+        "upper_bucket_ms": 120000
+      },
+      "gate_wait_ms_last_20000_completed": {
+        "p50": 0.004875008016824722,
+        "p95": 2123.905416112393,
+        "p99": 3518.112124875188
+      },
+      "peak_active_wire_requests": 64,
+      "peak_waiting_users": 621,
+      "started_journeys": 1996,
+      "script_end_journeys": 1526,
+      "generator_cpu_warnings": 0,
+      "resources_peak": {
+        "server": {
+          "rss_bytes": 522305536,
+          "cpu_percent": 104.0,
+          "threads": 121,
+          "fds": 133
+        },
+        "generator": {
+          "rss_bytes": 190726144,
+          "cpu_percent": 29.9,
+          "threads": 11,
+          "fds": 177
+        }
+      },
+      "cache_lookups": {
+        "Episode matrix memory": {
+          "hits": 486,
+          "misses": 111,
+          "hit_fraction": 0.8140703517587939
+        },
+        "Episode disk": {
+          "hits": 132,
+          "misses": 85,
+          "hit_fraction": 0.6082949308755761
+        },
+        "Durable image bytes": {
+          "hits": 19,
+          "misses": 13,
+          "hit_fraction": 0.59375
+        },
+        "Artwork source memory": {
+          "hits": 30,
+          "misses": 16,
+          "hit_fraction": 0.6521739130434783
+        },
+        "Compressed page": {
+          "hits": 1029,
+          "misses": 0,
+          "hit_fraction": 1.0
+        }
+      },
+      "upstream_counters": {
+        "upstream.tvmaze.blocked": 28,
+        "upstream.tvmaze_image.blocked": 13
+      },
+      "acceptance_passed": false
+    },
+    {
+      "virtual_users": 10000,
+      "connection_model": "pooled",
+      "nominal_run_seconds": 45.0,
+      "spawn_per_second": 1000.0,
+      "recorded_generator_seconds": 49.226872875355184,
+      "completed_requests": 48889,
+      "failed_requests": 37510,
+      "failure_fraction": 0.7672482562539631,
+      "statuses": {
+        "200": 10985,
+        "401_expected": 394,
+        "503": 103,
+        "502": 12,
+        "429": 37136,
+        "0": 258,
+        "415": 1
+      },
+      "api_success_latency": {
+        "count": 768,
+        "p50_ms": 167,
+        "p95_ms": 1105,
+        "p99_ms": 2240,
+        "resolution_ms": 1,
+        "upper_bucket_ms": 120000
+      },
+      "gate_wait_ms_last_20000_completed": {
+        "p50": 8814.099083654583,
+        "p95": 11437.495541758835,
+        "p99": 11583.64229183644
+      },
+      "peak_active_wire_requests": 64,
+      "peak_waiting_users": 9643,
+      "started_journeys": 12124,
+      "script_end_journeys": 3317,
+      "generator_cpu_warnings": 0,
+      "resources_peak": {
+        "server": {
+          "rss_bytes": 529465344,
+          "cpu_percent": 104.4,
+          "threads": 37,
+          "fds": 72
+        },
+        "generator": {
+          "rss_bytes": 545980416,
+          "cpu_percent": 92.6,
+          "threads": 11,
+          "fds": 73
+        }
+      },
+      "cache_lookups": {
+        "Episode matrix memory": {
+          "hits": 363,
+          "misses": 73,
+          "hit_fraction": 0.8325688073394495
+        },
+        "Episode disk": {
+          "hits": 75,
+          "misses": 55,
+          "hit_fraction": 0.5769230769230769
+        },
+        "Durable image bytes": {
+          "hits": 4,
+          "misses": 11,
+          "hit_fraction": 0.26666666666666666
+        },
+        "Artwork source memory": {
+          "hits": 14,
+          "misses": 2,
+          "hit_fraction": 0.875
+        },
+        "Compressed page": {
+          "hits": 10217,
+          "misses": 0,
+          "hit_fraction": 1.0
+        }
+      },
+      "upstream_counters": {
+        "upstream.tvmaze.blocked": 14,
+        "upstream.tvmaze_image.blocked": 11
+      },
+      "acceptance_passed": false
+    }
+  ],
+  "browser_cohort": {
+    "actual_chromium_processes": 2,
+    "elapsed_seconds": 38.27,
+    "totals": {
+      "actions": 40,
+      "failed_actions": 0,
+      "fatal_browser_failures": 0,
+      "javascript_errors": 0,
+      "median_action_ms": 514.6
+    },
+    "observed_network": {
+      "requests_started": 1623,
+      "requests_finished": 1615,
+      "api_calls": 176,
+      "wire_bytes": 30542266,
+      "http_cache_hits": 46,
+      "direct_provider_wire_bytes": 22438604,
+      "http_errors": 6,
+      "expected_guest_session_401": 2,
+      "failed_requests": 0
+    },
+    "service_worker_instrumented_counts": {
+      "image_misses": 421,
+      "image_fetch_attempts": 436,
+      "image_hits": 63,
+      "shell_hits": 8,
+      "file_hits": 70
+    },
+    "server_upstream_counters": {
+      "upstream.tvmaze.attempts": 17,
+      "upstream.tvmaze.success": 17,
+      "upstream.tvmaze.decoded_bytes": 255507,
+      "upstream.tvmaze.status.2xx": 17,
+      "upstream.tvmaze_image.attempts": 10,
+      "upstream.tvmaze_image.success": 10,
+      "upstream.tvmaze_image.decoded_bytes": 2242640,
+      "upstream.tvmaze_image.status.2xx": 10,
+      "upstream.kinocheck.attempts": 1,
+      "upstream.icons.attempts": 1,
+      "upstream.icons.success": 1,
+      "upstream.icons.decoded_bytes": 15086,
+      "upstream.icons.status.2xx": 1,
+      "upstream.kinocheck.success": 1,
+      "upstream.kinocheck.decoded_bytes": 194,
+      "upstream.kinocheck.status.2xx": 1
+    },
+    "guest_smoke_totals": {
+      "actions": 20,
+      "failed_actions": 0,
+      "fatal_browser_failures": 0,
+      "javascript_errors": 0,
+      "median_action_ms": 332.0
+    },
+    "guest_destination_list_preserved": true
+  },
+  "limitations": [
+    "10,000 virtual sessions used pooled transport, not 10,000 physical browser or gateway connections.",
+    "Per-layer cache ratios apply to admitted lookups, not all users.",
+    "Provider-blocked misses are degraded lab results, not real provider failures.",
+    "Cancelled queued work is outside the completed-request denominator.",
+    "Script-end counts include journeys with failed requests.",
+    "Browser instrumentation can miss early worker installation traffic; eight requests were still in flight at cohort close.",
+    "Two HTTP 415 responses have an unresolved cause and are retained as failures.",
+    "Localhost resources and missing background jobs prevent production capacity certification."
+  ]
+}

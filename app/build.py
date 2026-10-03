@@ -24,7 +24,8 @@ BUDGET = 512_000
 
 def main():
     pipeline = HERE.parent / 'pipeline'
-    shutil.copyfile(pipeline / 'backend' / 'http_client.py', HERE / 'backend' / 'http_client.py')
+    for name in ('http_client.py', 'telemetry.py'):
+        shutil.copyfile(pipeline / 'backend' / name, HERE / 'backend' / name)
     shutil.copyfile(pipeline / 'requirements-runtime.txt', HERE / 'requirements-runtime.txt')
     if not (MODEL / 'catalog.json.gz').exists():
         sys.exit(f'No model files in {MODEL}. Build the research model first, or set MODEL_DIR.')

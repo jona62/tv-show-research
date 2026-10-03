@@ -1,0 +1,4 @@
+# Separate from the application runtime: gevent monkey-patching belongs to load generation.
+locust==2.46.6
+playwright==1.62.0
+psutil==7.2.2

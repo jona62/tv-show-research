@@ -21,6 +21,7 @@ import time
 import urllib3
 from urllib3.exceptions import HTTPError as TransportError, MaxRetryError, SSLError
 from urllib3.util import Retry, Timeout
+from . import telemetry
 
 DAY = 86400
 AGENT = 'Couchside/1.0 (+https://github.com/jona62/tv-show-research)'
@@ -150,20 +151,30 @@ class Client:
         retry = self.retries.new(total=attempts - 1)
         host = urlsplit(url).hostname or ''
         origin, redirects = urlsplit(url), 0
+        # Dedicated local load-test processes may use saved public answers but
+        # must never turn a cache miss into a storm against a third-party API.
+        if os.environ.get('COUCHSIDE_LOAD_TEST_NO_OUTBOUND') == '1':
+            telemetry.upstream_result(host, 'blocked')
+            raise URLError('Outbound requests are disabled for this load test')
         while True:
             self._admit(host, deadline)
             remaining = deadline - self.clock()
             if remaining <= 0:
                 raise URLError('Request deadline exceeded')
-            response = None
+            response, attempted, status, size = None, False, None, 0
+            started, outcome = 0, 'error'
             try:
                 if on_attempt:
                     on_attempt()
+                started = self.clock() if telemetry.enabled() else 0
+                telemetry.upstream_attempt(host)
+                attempted = True
                 response = self.pool.request('GET', url, headers={'User-Agent': AGENT, **headers},
                     timeout=Timeout(total=remaining, connect=min(2, remaining), read=min(timeout, remaining)),
                     pool_timeout=min(2, remaining), retries=False, redirect=False, preload_content=False)
                 # Bound the decoded body too; urllib3 handles compressed responses.
-                chunks, size = [], 0
+                status = response.status
+                chunks = []
                 while True:
                     if self.clock() >= deadline:
                         raise URLError('Request deadline exceeded')
@@ -174,7 +185,7 @@ class Client:
                     if size > max_bytes:
                         raise ValueError('Upstream answer exceeds the size limit')
                 body = b''.join(chunks)
-                status = response.status
+                outcome = 'success' if 200 <= status < 400 else 'http_error'
                 saved_headers = {'Content-Type': response.headers.get('Content-Type', '')}
                 if status == 200:
                     return Response(body, saved_headers)
@@ -196,13 +207,17 @@ class Client:
                 except MaxRetryError:
                     raise HTTPError('', status, 'Upstream retries exhausted', dict(response.headers), io.BytesIO(body)) from None
             except SSLError:
+                outcome = 'transport_error'
                 raise URLError('Upstream TLS verification failed') from None
             except TransportError as error:
+                outcome = 'transport_error'
                 try:
                     retry = retry.increment('GET', url, error=error)
                 except (MaxRetryError, TransportError):
                     raise URLError('Upstream connection unavailable') from None
             finally:
+                if attempted and telemetry.enabled():
+                    telemetry.upstream_result(host, outcome, (self.clock() - started) * 1000, size, status)
                 if response is not None:
                     # Close truncated/unread streams before releasing their pool slot.
                     if not response.isclosed():
@@ -224,15 +239,21 @@ class Client:
         if urlsplit(url).scheme not in ('https', 'http'):
             raise ValueError('An HTTP URL is required')
         key = cache_key(url)
+        host = urlsplit(url).hostname or ''
+        kind = 'image' if host in {'static.tvmaze.com', 'image.tmdb.org', 'icons.duckduckgo.com'} else 'api'
         held = self.state.get(key, ttl) if ttl and not force else None
         if held:
+            telemetry.cache('shared_http_disk', 'hit', kind)
             return held
+        if ttl and not force:
+            telemetry.cache('shared_http_disk', 'miss', kind)
         with self.lock:
             pending = self.inflight.get(key)
             owner = pending is None
             if owner:
                 pending = self.inflight[key] = Future()
         if not owner:
+            telemetry.cache('shared_http_inflight', 'coalesced', kind)
             try:
                 return pending.result(timeout=budget)
             except TimeoutError:
@@ -247,6 +268,7 @@ class Client:
                 held = self.state.get(key, stale) if stale and (not isinstance(error, HTTPError) or error.code in RETRY.status_forcelist) else None
                 if held is None:
                     raise
+                telemetry.cache('shared_http_disk', 'stale', kind)
                 value = Response(held.body, held.headers, held.status, stale=True)
             else:
                 if ttl:
