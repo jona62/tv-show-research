@@ -17,15 +17,18 @@ const account = id => ({ user: { id, email: `${id}@example.com` }, csrf: `csrf-$
 const envelope = (id, allowed = true, enabled = true) => ({ user_id: id,
   experimental_allowed: allowed, features: { watch_tracking: enabled } });
 const none = () => ({ user: null, csrf: null });
-function setup({ storage = memory(), request = async () => envelope('alice'), context = account('alice'), timeout } = {}) {
+function setup({ storage = memory(), request = async () => envelope('alice'), context = account('alice'),
+  timeout, hostname = 'couchside.example' } = {}) {
   let current = context;
   const win = new EventTarget();
+  win.location = { hostname };
   const flags = createFeatureFlags({ getAccount: () => current, request, storage, win, timeout });
   return { flags, storage, win, set: value => { current = value; } };
 }
 const off = flags => {
   assert.equal(flags.get().experimentalAllowed, false);
   assert.equal(flags.get().experimentalEnabled, false);
+  assert.equal(flags.get().localDevelopment, false);
   assert.equal(flags.get().features.watch_tracking, false);
 };
 const settle = () => new Promise(resolve => setImmediate(resolve));
@@ -169,6 +172,114 @@ for (const result of [null, {}, envelope('bob'), envelope(null), envelope('alice
   nextSession.flags.destroy();
 }
 
+// A verified local server opts the authenticated owner in automatically. It
+// ignores an existing opt-out and other tabs without changing device choices.
+for (const hostname of ['localhost', '127.0.0.1', '::1', '[::1]']) {
+  const storage = memory();
+  storage.setItem(experimentalKey('alice'), '0');
+  storage.setItem(experimentalKey('bob'), '1');
+  const device = setup({ storage, hostname,
+    request: async () => ({ ...envelope('alice'), local_development: true }) });
+  await device.flags.accountChanged();
+  assert.equal(device.flags.get().localDevelopment, true, hostname);
+  assert.equal(device.flags.get().features.watch_tracking, true, hostname);
+  assert.equal(device.flags.setExperimental(false), false);
+  device.win.dispatchEvent(Object.assign(new Event('storage'), { key: experimentalKey('alice') }));
+  assert.equal(device.flags.get().experimentalEnabled, true);
+  assert.equal(device.flags.setExperimental(true), true);
+  assert.equal(storage.getItem(experimentalKey('alice')), '0');
+  assert.equal(storage.getItem(experimentalKey('bob')), '1');
+  device.set(none());
+  await device.flags.accountChanged();
+  off(device.flags);
+  device.flags.destroy();
+}
+
+// Local hostname alone and a forged local marker on a public/lookalike hostname
+// do not bypass ordinary device opt-in. Only the exact boolean marker qualifies.
+for (const [hostname, marker] of [
+  ['localhost', undefined], ['localhost', false], ['localhost', 'true'], ['localhost', 1],
+  ['couchside.example', true], ['localhost.example', true], ['localhost.', true],
+  ['127.0.0.1.example', true], ['::ffff:127.0.0.1', true],
+]) {
+  const device = setup({ hostname,
+    request: async () => ({ ...envelope('alice'), local_development: marker }) });
+  await device.flags.accountChanged();
+  assert.equal(device.flags.get().localDevelopment, false, `${hostname}: ${marker}`);
+  assert.equal(device.flags.get().features.watch_tracking, false);
+  assert.equal(device.flags.setExperimental(true), true);
+  assert.equal(device.flags.get().features.watch_tracking, true);
+  assert.equal(device.flags.setExperimental(false), true);
+  assert.equal(device.flags.get().features.watch_tracking, false);
+  device.flags.destroy();
+}
+
+// Local mode still requires a real current session and matching, well-formed
+// server eligibility. Server feature availability remains authoritative.
+for (const result of [envelope('bob'), envelope('alice', false, false), envelope('alice', false, true),
+  { ...envelope('alice'), features: { watch_tracking: 'true' } }]) {
+  const device = setup({ hostname: 'localhost',
+    request: async () => ({ ...result, local_development: true }) });
+  await device.flags.accountChanged();
+  off(device.flags);
+  device.flags.destroy();
+}
+{
+  let calls = 0;
+  const pending = deferred();
+  const device = setup({ hostname: 'localhost', context: none(), request: () => {
+    calls++; return pending.promise;
+  } });
+  await device.flags.accountChanged();
+  device.set({ user: account('alice').user, csrf: null });
+  await device.flags.accountChanged();
+  assert.equal(calls, 0);
+  device.set(account('alice'));
+  const checking = device.flags.accountChanged();
+  await settle();
+  device.set({ ...account('alice'), csrf: 'replacement-session' });
+  off(device.flags);
+  pending.resolve({ ...envelope('alice'), local_development: true });
+  await checking;
+  off(device.flags);
+  device.flags.destroy();
+}
+{
+  const device = setup({ hostname: 'localhost',
+    request: async () => ({ ...envelope('alice', true, false), local_development: true }) });
+  await device.flags.accountChanged();
+  assert.equal(device.flags.get().localDevelopment, true);
+  assert.equal(device.flags.get().experimentalEnabled, true);
+  assert.equal(device.flags.get().features.watch_tracking, false);
+  device.flags.destroy();
+}
+
+// Removing the local marker or losing eligibility closes the override. The
+// previous device opt-out remains in force if that session becomes ordinary.
+{
+  const storage = memory();
+  storage.setItem(experimentalKey('alice'), '0');
+  let reply = { ...envelope('alice'), local_development: true };
+  const device = setup({ storage, hostname: 'localhost', request: async () => {
+    if (reply instanceof Error) throw reply;
+    return reply;
+  } });
+  await device.flags.accountChanged();
+  assert.equal(device.flags.get().features.watch_tracking, true);
+  reply = envelope('alice');
+  await device.flags.refresh();
+  assert.equal(device.flags.get().localDevelopment, false);
+  assert.equal(device.flags.get().experimentalEnabled, false);
+  reply = { ...envelope('alice'), local_development: true };
+  await device.flags.refresh();
+  assert.equal(device.flags.get().features.watch_tracking, true);
+  reply = new Error('Local server unavailable');
+  await device.flags.refresh();
+  off(device.flags);
+  assert.equal(storage.getItem(experimentalKey('alice')), '0');
+  device.flags.destroy();
+}
+
 // Timed-out and destroyed requests cannot revive eligibility even if an
 // injected request ignores its abort signal and resolves afterward.
 for (const destroy of [false, true]) {
@@ -209,18 +320,23 @@ class Node {
   async fire(kind) { return this.listeners.get(kind)?.({ currentTarget: this }); }
 }
 
+const deviceNote = 'This choice is saved on this device for your account. Your viewing progress syncs across devices.';
+
 // The rendered toggle starts hidden, exposes only verified eligibility, follows
 // opt-out/signout immediately, and detaches its observer when unmounted.
 {
   const device = setup();
-  const input = new Node('input'), host = new Node('section');
-  host.querySelector = () => input;
+  const input = new Node('input'), host = new Node('section'), note = new Node('p');
+  note.textContent = deviceNote;
+  host.querySelector = selector => selector === '[data-experimental-toggle]' ? input : note;
   const unmount = mountExperimentalMode(device.flags, host);
   assert.equal(host.hidden, true);
   assert.equal(input.disabled, true);
+  assert.equal(note.textContent, deviceNote);
   await device.flags.accountChanged();
   assert.equal(host.hidden, false);
   assert.equal(input.checked, false);
+  assert.equal(note.textContent, deviceNote);
   input.checked = true;
   await input.fire('change');
   assert.equal(device.flags.get().features.watch_tracking, true);
@@ -297,4 +413,40 @@ class Node {
   }
 }
 
-console.log('Experimental eligibility, session isolation, race rejection, device opt-in and account-transition revocation passed.');
+// The local-mode toggle reflects automatic enablement and cannot opt out even
+// if a change event is dispatched; signout hides and clears it immediately.
+{
+  let local = true;
+  const device = setup({ hostname: 'localhost',
+    request: async () => ({ ...envelope('alice'), local_development: local }) });
+  const input = new Node('input'), host = new Node('section'), note = new Node('p');
+  note.textContent = deviceNote;
+  host.querySelector = selector => selector === '[data-experimental-toggle]' ? input : note;
+  const unmount = mountExperimentalMode(device.flags, host);
+  await device.flags.accountChanged();
+  assert.equal(host.hidden, false);
+  assert.equal(input.checked, true);
+  assert.equal(input.disabled, true);
+  assert.equal(note.textContent, 'All experimental features are enabled on localhost.');
+  input.checked = false;
+  await input.fire('change');
+  assert.equal(input.checked, true);
+  assert.equal(device.flags.get().features.watch_tracking, true);
+  local = false;
+  await device.flags.refresh();
+  assert.equal(input.disabled, false);
+  assert.equal(note.textContent, deviceNote);
+  local = true;
+  await device.flags.refresh();
+  assert.equal(note.textContent, 'All experimental features are enabled on localhost.');
+  device.set(none());
+  await device.flags.accountChanged();
+  assert.equal(host.hidden, true);
+  assert.equal(input.checked, false);
+  assert.equal(input.disabled, true);
+  assert.equal(note.textContent, deviceNote);
+  unmount();
+  device.flags.destroy();
+}
+
+console.log('Experimental eligibility, session isolation, race rejection, device opt-in, verified localhost override and account-transition revocation passed.');

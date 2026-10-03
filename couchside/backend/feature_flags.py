@@ -25,7 +25,10 @@ def unique_object(pairs):
 class FeatureFlags:
     """Read once at process startup. Config changes require a server restart."""
 
-    def __init__(self, path=None):
+    def __init__(self, path=None, *, local_development=False):
+        # This is a trusted server-startup option, never a request/header value.
+        # AccountRoutes permits non-HTTPS accounts only for loopback host + peer.
+        self.local_development = local_development is True
         self.enabled, self.user_ids, self.emails, self.features = False, frozenset(), frozenset(), {}
         selected = Path(path if path is not None else os.environ.get('COUCHSIDE_FEATURE_FLAGS') or CONFIG)
         try:
@@ -55,19 +58,28 @@ class FeatureFlags:
 
     def eligible(self, user):
         """The caller supplies only identity obtained from a validated session."""
-        if not self.enabled or not isinstance(user, dict):
+        if not isinstance(user, dict):
             return False
         account_id, email = user.get('id'), user.get('email')
         if not isinstance(account_id, str) or not ACCOUNT_ID.fullmatch(account_id):
             return False
+        if self.local_development:
+            return True
+        if not self.enabled:
+            return False
         return account_id in self.user_ids or isinstance(email, str) and email.casefold() in self.emails
 
     def enabled_for(self, user, feature='watch_tracking'):
-        return self.eligible(user) and self.features.get(feature) is True
+        if feature not in FEATURES:
+            return False
+        return self.eligible(user) and (self.local_development or self.features.get(feature) is True)
 
     def envelope(self, user=None):
         account_id = user.get('id') if isinstance(user, dict) else None
         if not isinstance(account_id, str) or not ACCOUNT_ID.fullmatch(account_id):
             account_id = None
-        return {'user_id': account_id, 'experimental_allowed': self.eligible(user),
-                'features': {feature: self.enabled_for(user, feature) for feature in FEATURES}}
+        value = {'user_id': account_id, 'experimental_allowed': self.eligible(user),
+                 'features': {feature: self.enabled_for(user, feature) for feature in FEATURES}}
+        if self.local_development:
+            value['local_development'] = True
+        return value

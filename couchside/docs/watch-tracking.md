@@ -31,7 +31,7 @@ configuration denies every experimental feature. `enabled: false` disables
 Experimental eligibility globally; `features.watch_tracking: false` disables
 tracking. Neither the allowlist nor this file is served to the browser.
 
-An eligible signed-in account can switch Experimental mode in Customization.
+In production, an eligible signed-in account can switch Experimental mode in Customization.
 The browser's mode switch controls the experimental interface, defaults off, and
 does not grant backend access. Turning it off restores the ordinary interface
 and preserves the account's viewing history. The backend independently checks
@@ -51,6 +51,28 @@ user ID or email to impersonate an eligible account.
 Guests receive a null user ID and denied flags. An expired or revoked session
 also receives that guest envelope. The feature response describes eligibility,
 not the browser's current Experimental mode selection.
+
+Local development enables every registered feature for a valid authenticated
+account, regardless of the production JSON. The server selects this override
+only when `ACCOUNT_HTTPS_ONLY` is not `1`; in that mode the account HTTP boundary
+requires both the request Host and actual peer to be loopback. Its feature
+envelope additionally contains `local_development: true`. HTTPS production mode
+keeps the static allowlist and omits that marker, including for requests claiming
+localhost through Host or forwarded headers. Local tracking still requires a
+real session, normal account ID, exact origin, and CSRF token; the override grants
+no signed-out identity and changes no account ownership.
+On exact loopback browser hostnames, that verified server marker automatically
+enables Experimental mode and locks its checkbox on. Stored device opt-outs are
+preserved for production rather than overwritten by local development.
+
+The existing design preview at `localhost:8766` separately bootstraps a persistent
+local development account when no valid ordinary session exists. This is a
+preview-only same-origin POST handled by `designs/episode-ratings/serve.py`, not a
+production account route. It preserves an existing signed-in account; otherwise
+it creates or reuses the preview account and merges local guest preferences using
+the existing account merge/removal rules. Tracking then uses that real local
+account ID and the same durable tracking API. The production server has no
+automatic sign-in or development-account bootstrap.
 
 ## Read contracts
 

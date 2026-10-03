@@ -3,7 +3,9 @@
 export const experimentalKey = id => `couchside-experimental-v1:${id}`;
 
 const closed = userId => Object.freeze({ userId, experimentalAllowed: false,
-  experimentalEnabled: false, features: Object.freeze({ watch_tracking: false }) });
+  experimentalEnabled: false, localDevelopment: false, features: Object.freeze({ watch_tracking: false }) });
+
+const localHostnames = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 
 function authenticated(getAccount) {
   const context = getAccount();
@@ -23,7 +25,7 @@ export function createFeatureFlags({ getAccount, request = featureRequest, stora
   win = globalThis.window, timeout = 12000 } = {}) {
   try { storage = storage === undefined ? globalThis.localStorage : storage; } catch { storage = null; }
   let owner = null, csrf = null, generation = 0, flight = null, abort = null, stopped = false;
-  let snapshot = closed(null), allowed = false, available = false, enabled = false;
+  let snapshot = closed(null), allowed = false, available = false, enabled = false, localDevelopment = false;
   const listeners = new Set();
   const current = () => {
     const account = authenticated(getAccount);
@@ -35,7 +37,8 @@ export function createFeatureFlags({ getAccount, request = featureRequest, stora
   };
   function publish() {
     snapshot = allowed ? Object.freeze({ userId: owner, experimentalAllowed: true,
-      experimentalEnabled: enabled, features: Object.freeze({ watch_tracking: enabled && available }) })
+      experimentalEnabled: enabled, localDevelopment,
+      features: Object.freeze({ watch_tracking: enabled && available }) })
       : closed(owner);
     for (const listener of listeners) listener(get());
   }
@@ -44,7 +47,7 @@ export function createFeatureFlags({ getAccount, request = featureRequest, stora
     abort?.abort();
     abort = null; flight = null;
     owner = account?.id || null; csrf = account?.csrf || null;
-    allowed = false; available = false; enabled = false;
+    allowed = false; available = false; enabled = false; localDevelopment = false;
     publish();
   }
   function refresh() {
@@ -54,7 +57,7 @@ export function createFeatureFlags({ getAccount, request = featureRequest, stora
     if (!account) return Promise.resolve(get());
     if (flight) return flight;
     // A failed refresh closes the feature even if a previous check allowed it.
-    allowed = false; available = false; enabled = false;
+    allowed = false; available = false; enabled = false; localDevelopment = false;
     publish();
     const version = ++generation, id = owner, token = csrf;
     const controller = new AbortController();
@@ -67,7 +70,8 @@ export function createFeatureFlags({ getAccount, request = featureRequest, stora
         || !data.experimental_allowed && data.features.watch_tracking) return;
       allowed = data.experimental_allowed;
       available = data.features.watch_tracking;
-      enabled = allowed && preference();
+      localDevelopment = allowed && data.local_development === true && localHostnames.has(win?.location?.hostname);
+      enabled = allowed && (localDevelopment || preference());
     }).catch(() => {
       // Network, session, parsing and abort errors all leave eligibility closed.
     }).finally(() => {
@@ -84,13 +88,14 @@ export function createFeatureFlags({ getAccount, request = featureRequest, stora
   }
   function setExperimental(value) {
     if (!current() || !allowed || typeof value !== 'boolean') return false;
+    if (localDevelopment) return value === true;
     enabled = value;
     try { storage?.setItem(experimentalKey(owner), value ? '1' : '0'); } catch { /* The session can still opt in. */ }
     publish();
     return true;
   }
   function storageChanged(event) {
-    if (!current() || !allowed || event.key !== experimentalKey(owner)) return;
+    if (!current() || !allowed || localDevelopment || event.key !== experimentalKey(owner)) return;
     enabled = preference();
     publish();
   }
@@ -110,10 +115,14 @@ export function createFeatureFlags({ getAccount, request = featureRequest, stora
 export function mountExperimentalMode(flags, host) {
   if (!host) return () => {};
   const input = host.querySelector('[data-experimental-toggle]');
+  const note = host.querySelector('#experimental-mode-note');
+  const deviceNote = note?.textContent;
   const render = state => {
     host.hidden = !state.experimentalAllowed;
-    input.disabled = !state.experimentalAllowed;
+    input.disabled = !state.experimentalAllowed || state.localDevelopment;
     input.checked = state.experimentalEnabled;
+    if (note) note.textContent = state.localDevelopment
+      ? 'All experimental features are enabled on localhost.' : deviceNote;
   };
   const change = () => { flags.setExperimental(input.checked); render(flags.get()); };
   const unsubscribe = flags.subscribe(render);

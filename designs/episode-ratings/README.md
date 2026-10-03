@@ -16,9 +16,13 @@ editing the shipped app bundle.
 The existing preview at [My List](http://localhost:8766/list),
 [show progress](http://localhost:8766/list?show=618&rating-view=list&rating-season=3),
 and [Home](http://localhost:8766/) now uses the real account-backed feature.
-Sign in with an eligible account, open Customization, and enable Experimental
-mode. It defaults off, and guests and unlisted accounts retain the ordinary UI.
-The static backend JSON allowlist contains only `jonathanjamesm66@gmail.com`.
+Localhost enables all registered features automatically. The preview preserves
+a valid signed-in session, or uses a persistent local development account and
+merges existing device preferences when signed out. Viewing progress saves to
+the local account database and survives reloads. Experimental mode stays on
+locally; Customization explains this behavior.
+In production, Experimental mode defaults off and the static backend JSON
+allowlist contains only `jonathanjamesm66@gmail.com`.
 Current UI screenshots: [account progress](real-tracking-desktop.png) and
 [Customization](real-tracking-customization.png), captured with an isolated test account.
 

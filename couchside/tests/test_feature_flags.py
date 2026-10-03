@@ -87,6 +87,32 @@ class FeatureConfigTests(unittest.TestCase):
         self.assertEqual(value['emails'], [EMAIL])
         self.assertEqual(value['user_ids'], [])
 
+    def test_explicit_local_development_enables_known_flags_for_valid_account_ids(self):
+        self.path.write_text(json.dumps(config(enabled=False, emails=[], features={'watch_tracking': False})))
+        policy = FeatureFlags(self.path, local_development=True)
+        user = {'id': 'ordinary-user-id', 'email': 'unlisted@gmail.com'}
+        self.assertEqual(policy.envelope(user), {
+            'user_id': user['id'], 'experimental_allowed': True,
+            'features': {'watch_tracking': True}, 'local_development': True})
+        self.assertFalse(policy.enabled_for(user, 'invented_feature'))
+        for invalid in (None, {}, {'email': EMAIL}, {'id': ''}, {'id': 'not a normal ID'}):
+            with self.subTest(invalid=invalid):
+                self.assertFalse(policy.eligible(invalid))
+                self.assertFalse(policy.envelope(invalid)['features']['watch_tracking'])
+        with self.assertLogs(level='WARNING'):
+            missing = FeatureFlags(self.path.with_name('missing.json'), local_development=True)
+        self.assertTrue(missing.enabled_for(user), 'local flags do not depend on the production JSON')
+
+    def test_environment_and_nonboolean_values_cannot_enable_local_override(self):
+        self.path.write_text(json.dumps(config(enabled=False)))
+        user = {'id': 'ordinary-user-id', 'email': 'unlisted@gmail.com'}
+        with patch.dict('os.environ', {'ACCOUNT_HTTPS_ONLY': '0', 'COUCHSIDE_LOCAL_DEVELOPMENT': '1'}):
+            self.assertFalse(FeatureFlags(self.path).enabled_for(user))
+        for value in (1, 'true', None):
+            policy = FeatureFlags(self.path, local_development=value)
+            self.assertNotIn('local_development', policy.envelope(user))
+            self.assertFalse(policy.enabled_for(user))
+
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -239,6 +265,57 @@ class FeatureHttpTests(unittest.TestCase):
     def flags_disabled(self):
         self.policy_path.write_text(json.dumps(config(enabled=False)))
         return FeatureFlags(self.policy_path)
+
+    def test_local_development_still_requires_session_and_csrf_for_tracking(self):
+        from backend.tracking import TrackingService
+        self.policy_path.write_text(json.dumps(config(enabled=False, emails=[], features={'watch_tracking': False})))
+        self.http.routes.features = FeatureFlags(self.policy_path, local_development=True)
+        catalogue = {'id': 169, 'revision': 'local-catalogue', 'expiresAt': self.service.clock() + 600,
+                     'ended': False, 'episodes': [{'id': 12192, 'season': 1, 'number': 1, 'airdate': '2008-01-20'}]}
+        service = TrackingService(self.service, lambda show_id: catalogue,
+            authorize=lambda connection, row: self.http.routes.features.enabled_for(dict(row)))
+        self.http.routes.tracking = lambda: service
+        guest = self.call()[2]
+        self.assertEqual(guest, {**DENIED, 'local_development': True})
+        actual = self.call(token=self.other_token)[2]
+        self.assertEqual(actual['user_id'], self.other['user']['id'])
+        self.assertTrue(actual['features']['watch_tracking'])
+        self.assertTrue(actual['local_development'])
+        self.assertEqual(self.call('/api/tracking')[0], 401)
+        body = {'operation_id': 'local-intent-0001', 'base_revision': 0, 'show_id': 169,
+                'action': 'intent', 'intent': 'watching'}
+        self.assertEqual(self.call('/api/tracking', token=self.other_token, body=body)[0], 403)
+        status, _, result = self.call('/api/tracking', token=self.other_token,
+                                     headers={'X-CSRF-Token': self.other['csrf']}, body=body)
+        self.assertEqual(status, 200)
+        self.assertEqual(result['user_id'], self.other['user']['id'])
+        self.assertEqual(self.call('/api/tracking', token=self.token)[2]['tracking'], [])
+
+    def test_local_override_is_inaccessible_from_nonloopback_host_or_peer(self):
+        self.http.routes.features = FeatureFlags(self.policy_path, local_development=True)
+        status, _, value = self.call(token=self.other_token, headers={'Host': 'public.example'})
+        self.assertEqual(status, 503)
+        self.assertNotIn('features', value)
+        original = Handler.do_GET
+
+        def remote_peer(handler):
+            handler.client_address = ('198.51.100.1', handler.client_address[1])
+            original(handler)
+
+        with patch.object(Handler, 'do_GET', remote_peer):
+            status, _, value = self.call(token=self.other_token, headers={'Host': 'localhost'})
+        self.assertEqual(status, 503)
+        self.assertNotIn('features', value)
+
+    def test_production_https_localhost_header_never_enables_unlisted_account(self):
+        self.http.routes.https_only = True
+        status, _, value = self.call(headers={
+            'Host': 'localhost', 'Cookie': '__Host-couchside-session=' + self.other_token,
+            'X-Local-Development': '1', 'X-Forwarded-Host': 'localhost',
+            'X-Forwarded-For': '127.0.0.1', 'X-User-Email': EMAIL})
+        self.assertEqual(status, 200)
+        self.assertEqual(value, {**DENIED, 'user_id': self.other['user']['id']})
+        self.assertNotIn('local_development', value)
 
 
 if __name__ == '__main__':

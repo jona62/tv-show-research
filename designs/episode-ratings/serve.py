@@ -11,6 +11,7 @@ APP = HERE.parents[1] / 'couchside'
 sys.path.insert(0, str(APP))
 from backend import server
 from backend.live import Live, LiveError, picture, plain, score, whole
+from local_account import PATH as LOCAL_ACCOUNT_PATH, bootstrap as bootstrap_local_account
 
 # Include the existing catalogue description wherever the preview uses a show card.
 # This avoids a separate title request for each hover.
@@ -45,6 +46,12 @@ def episodes(raw):
 
 
 class Preview(server.Handler):
+    def do_POST(self):
+        if urlsplit(self.path).path == LOCAL_ACCOUNT_PATH:
+            bootstrap_local_account(self, server.ACCOUNT_ROUTES)
+            return
+        super().do_POST()
+
     def do_GET(self):
         parts = urlsplit(self.path)
         path = parts.path
@@ -76,6 +83,15 @@ class Preview(server.Handler):
             source = (APP / 'public/assets/scripts/main.js').read_text()
             if "from './watch-tracking.js" in source:
                 source = source.replace('startAppUpdates();', '/* Local preview: no service worker. */', 1)
+                account_mount = 'accounts = mountAccounts('
+                assert account_mount in source, 'Account mount point changed; update the preview adapter.'
+                source = source.replace(account_mount, '''await fetch('/api/account/local-development', {
+  method: 'POST', credentials: 'same-origin', cache: 'no-store',
+  signal: AbortSignal.timeout(12000),
+  headers: { 'Content-Type': 'application/json', 'X-Account-Request': '1' },
+  body: JSON.stringify({ state }),
+}).catch(() => {});
+''' + account_mount, 1)
                 self.send_body(source.encode(), 'text/javascript')
                 return
             if "from './episode-ratings.js" in source:
