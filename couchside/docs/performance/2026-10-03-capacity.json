@@ -5327,7 +5327,7 @@
     ],
     "implementation_revision": "cb248d4"
   },
-  "implementation_revision_scope": "Current 2584f7c public-cache source and completed post-stop warmed API diagnostic; older component, browser and stage evidence retains its own source and conditions. No production Couchside app deployment.",
+  "implementation_revision_scope": "Latest full capacity diagnostic and public-cache implementation used 2584f7c; later retained mask-grouping source is recorded separately and has not had a full capacity rerun. Older component, browser and stage evidence retains its own source and conditions. No production Couchside app deployment.",
   "current_host_scope_scheduling": {
     "status": "completed_read_only_scope_measurement",
     "source": "load-capacity-post-stop-20261003/host/api-diagnostic-warm.jsonl",
@@ -11383,5 +11383,227 @@
     "existing_rig_compute_host_reused_and_inspected": true,
     "another_quiet_existing_host_identified": false,
     "result": "The reused shared Rig compute host remained saturated after the three user workspace stops. No quiet alternative existing host has been identified."
+  },
+  "retained_mask_grouping_component": {
+    "baseline_source_commit": "67a99631a0391a45b15a700300afc5383081433a",
+    "baseline_source_sha256": {
+      "engine.py": "643687bca19ba2321e8707e2601a2fe27dc2d6fff3d22b6cc05a10fba6567515",
+      "library.py": "38be96626193daa6256b86338381f2c34058ca29e14b6e750a12f6d69ef74fa3",
+      "discovery.py": "93dd0b214b43bfe7f5d38b46ba7c165e719e1eb81b60d0f0cc590c2db01b0722",
+      "taste.py": "b9cbd847f309a4626a995f20436fccab20f326c743717f5b9d95c73bcd843a50",
+      "response_cache.py": "6422281d4a8c176d8f220f3323966d179105b717f7996dee2279c9b9a7459ce8"
+    },
+    "retained_source_sha256": {
+      "engine.py": "56b5432ef5b71a2d7fda8654804c28151ea25fb32d78974d3874bbe5089266dd",
+      "library.py": "38be96626193daa6256b86338381f2c34058ca29e14b6e750a12f6d69ef74fa3",
+      "discovery.py": "93dd0b214b43bfe7f5d38b46ba7c165e719e1eb81b60d0f0cc590c2db01b0722",
+      "taste.py": "b9cbd847f309a4626a995f20436fccab20f326c743717f5b9d95c73bcd843a50",
+      "response_cache.py": "6422281d4a8c176d8f220f3323966d179105b717f7996dee2279c9b9a7459ce8"
+    },
+    "canonical_built_engine_equal": true,
+    "pair_order": [
+      "baseline/retained",
+      "retained/baseline",
+      "baseline/retained"
+    ],
+    "pairs": [
+      {
+        "pair": 0,
+        "complete_hashes_equal": 144,
+        "before_cpu_ms": 8212.761999999999,
+        "after_cpu_ms": 7170.250000000001,
+        "cpu_reduction_percent": 12.69380508043455,
+        "before_engine_startup_cpu_ms": 2932.349,
+        "after_engine_startup_cpu_ms": 2869.852
+      },
+      {
+        "pair": 1,
+        "complete_hashes_equal": 144,
+        "before_cpu_ms": 7793.136999999986,
+        "after_cpu_ms": 7374.16100000001,
+        "cpu_reduction_percent": 5.376217561682505,
+        "before_engine_startup_cpu_ms": 2753.1789999999996,
+        "after_engine_startup_cpu_ms": 2677.896
+      },
+      {
+        "pair": 2,
+        "complete_hashes_equal": 144,
+        "before_cpu_ms": 7802.120000000006,
+        "after_cpu_ms": 7400.851000000006,
+        "cpu_reduction_percent": 5.143076497157184,
+        "before_engine_startup_cpu_ms": 2881.363,
+        "after_engine_startup_cpu_ms": 2885.154
+      }
+    ],
+    "groups": {
+      "home-known0": {
+        "samples_per_variant": 72,
+        "before_cpu_median_ms": 154.78300000000013,
+        "after_cpu_median_ms": 142.06200000000013,
+        "median_cpu_reduction_percent": 8.218602818138942,
+        "before_cpu_max_ms": 253.1440000000007,
+        "after_cpu_max_ms": 308.7850000000003
+      },
+      "home-known85": {
+        "samples_per_variant": 72,
+        "before_cpu_median_ms": 35.38999999999959,
+        "after_cpu_median_ms": 34.21099999999999,
+        "median_cpu_reduction_percent": 3.3314495620220708,
+        "before_cpu_max_ms": 62.17999999999968,
+        "after_cpu_max_ms": 75.91100000000051
+      },
+      "browse-known0": {
+        "samples_per_variant": 72,
+        "before_cpu_median_ms": 111.85799999999979,
+        "after_cpu_median_ms": 96.6585000000002,
+        "median_cpu_reduction_percent": 13.588210052029915,
+        "before_cpu_max_ms": 189.30399999999992,
+        "after_cpu_max_ms": 166.40000000000032
+      },
+      "browse-known85": {
+        "samples_per_variant": 72,
+        "before_cpu_median_ms": 15.388499999999805,
+        "after_cpu_median_ms": 13.962500000000322,
+        "median_cpu_reduction_percent": 9.266660168304263,
+        "before_cpu_max_ms": 34.09300000000037,
+        "after_cpu_max_ms": 31.69700000000031
+      },
+      "title-known0": {
+        "samples_per_variant": 72,
+        "before_cpu_median_ms": 53.446999999999804,
+        "after_cpu_median_ms": 49.05500000000096,
+        "median_cpu_reduction_percent": 8.217486481933244,
+        "before_cpu_max_ms": 100.73000000000043,
+        "after_cpu_max_ms": 82.04800000000034
+      },
+      "title-known85": {
+        "samples_per_variant": 72,
+        "before_cpu_median_ms": 9.580500000000214,
+        "after_cpu_median_ms": 8.932499999999788,
+        "median_cpu_reduction_percent": 6.7637388445322415,
+        "before_cpu_max_ms": 18.42699999999997,
+        "after_cpu_max_ms": 16.60200000000067
+      }
+    },
+    "actual_startup_set_index_memory": {
+      "code_array_bytes": 716752,
+      "combination_tuple_bytes": 40304,
+      "array_header_bytes": 224,
+      "dict_and_entry_bytes": 576,
+      "codes_read_only": true,
+      "families": {
+        "genre": {
+          "unique_known_masks": 1333,
+          "code_bytes": 358376
+        },
+        "subgenre": {
+          "unique_known_masks": 3693,
+          "code_bytes": 358376
+        }
+      },
+      "additional_owned_bytes": 757856,
+      "accounting_note": "Code arrays own new buffers; tuple/reference/container/header bytes are counted separately. Mask integers are existing catalogue objects referenced by tuples, so are not counted again. Startup construction temporaries and process RSS are excluded."
+    },
+    "parity": {
+      "complete_hashes_equal": 432,
+      "distinct_contexts": 48,
+      "complete_answer_cache_hits": 0,
+      "complete_answer_cache_misses_per_variant": 432
+    },
+    "environment": {
+      "python": "3.13.2",
+      "platform": "macOS-15.5-arm64-arm-64bit-Mach-O",
+      "numpy": "2.4.6",
+      "native_thread_limit": 1
+    },
+    "model": "2026-09-07",
+    "method": "8 synthetic benchmark personas x known_min 0/85 x Home/Browse/Title. Complete answers are forced cold each sequence; public model/view caches may warm. Includes Discovery.view and response-cache insertion. Providers physically blocked; background/ahead work off. Initialization, HTTP, browser and hash computation excluded from timing.",
+    "notes": [
+      "Final retained source uses model mask+known identity keys and read-only codes. Unindexed/custom families and subsets under64 retain the scalar gather loop.",
+      "This verifies the retained source; it is separate from earlier artifact-only prototype and Title-only evidence.",
+      "Three fresh-process pairs each replay three complete-answer-cold sequences. Public model/view caches can warm during the sequence.",
+      "Initialization, HTTP, browser, providers and speculative background work are excluded from request CPU timings. Startup CPU is recorded separately and is not included in savings.",
+      "No production latency/capacity claim; eight synthetic personas and48 distinct contexts. Full hashes are compared; request bodies are not included in the output."
+    ],
+    "retained_source_commit": "a599ca0",
+    "validation": {
+      "focused_recommendation_tests": 17,
+      "standalone_couchside_assertions": "passed",
+      "canonical_generated_engine_equal": true,
+      "production_deployed": false,
+      "full_capacity_rerun": false
+    },
+    "evidence_directory": "/Users/jonathanjames/.codex/visualizations/2026/10/02/01a0fa0c-5c28-7ad3-9ae0-6da72637c12c/ratings-design/recommendation-profile-next-20261003"
+  },
+  "subsequent_host_availability": {
+    "sample_started_unix_s": 1791011403.4107327,
+    "sample_ended_unix_s": 1791011413.4119282,
+    "elapsed_s": 10.001195430755615,
+    "online_cpus": 24,
+    "running_tick_fraction": 0.9998749374687343,
+    "cpu_some_pressure_percent": 86.94636616397987,
+    "load_end": [
+      48.07275390625,
+      48.1767578125,
+      49.06591796875
+    ],
+    "method": "Read-only whole-host 10-second delta after owned test workspace cleanup; not application-stage utilization."
+  },
+  "multiworker_harness_validation": {
+    "scope": "Local generator orchestration and event accounting only; disposable synthetic loopback fixture, no application capacity proof.",
+    "harness_gateway_tests": 47,
+    "separate_workload_tests": 9,
+    "smoke_verification": {
+      "scope": "Harness integration only: disposable synthetic loopback HTTP fixture, providers and account fixtures absent.",
+      "metrics_complete": true,
+      "errors": [],
+      "passed": true,
+      "worker_caps": [
+        3,
+        2
+      ],
+      "peak_users": 6,
+      "master_final_users": 0,
+      "completed_events": 156,
+      "failed_events": 0,
+      "expected_guest_401_events": 6,
+      "observed_owned_generator_pids": [
+        13418,
+        13419,
+        13420
+      ],
+      "remaining_generator_pids": [],
+      "generator_cpu_warnings": 0,
+      "fixture_closed": true,
+      "localhost_18091_used": false,
+      "external_traffic": false,
+      "actual_databases_used": false
+    },
+    "evidence_directory": "/Users/jonathanjames/.codex/visualizations/2026/10/02/01a0fa0c-5c28-7ad3-9ae0-6da72637c12c/ratings-design/load-local-workers-smoke-_v9b4ej6",
+    "measurement_limits": [
+      "Master actual user reports are asynchronous.",
+      "Summed worker peak active/waiting counts are upper bounds, not synchronized simultaneous peaks.",
+      "Merged histograms have integer-ms resolution and clamp at120s.",
+      "Single-worker completed gate wait quantiles retain the legacy bounded-ring sample."
+    ],
+    "authenticated_fixture_acceptance": "Missing requested authenticated fixtures make acceptance incomplete; guest substitutions cannot certify the requested mix.",
+    "harness_source_commit": "c5b9564",
+    "final_source_reaggregation": {
+      "final_source_harness_commit": "c5b9564",
+      "reaggregated_metrics_complete": true,
+      "completed": 156,
+      "missing_auth_fixtures": 0,
+      "final_master_users": 0,
+      "harness_gateway_tests": 47,
+      "workload_tests": 9,
+      "source_sha256": {
+        "run.py": "8cdc634529a5ba8516232277ba3f81dad0083d95ecd64ac0ad6b263a61c9cceb",
+        "protocol_metrics.py": "e72e4524194a6ea8ed01c724942ea3415501da04c4ab4cab536a56efc4ad9978",
+        "locustfile.py": "5537fb23ba1b0678e3246ce9d71af22952b47b39dafa4a8f6ba54db0f67ad746",
+        "workload.py": "8e027013432d2743d01bb5ffb093e8acca0b7a3f56df8298da472dbeea97318c",
+        "README.md": "fb713bc8bef370b93a775f141639a6872ef1417af2392fa3a674448289623ed9",
+        "test_runner.py": "f74290b522f96a28b5483a96b7cbe5ca1da7a9ed3c4c78ee047bacb126b07c2c"
+      }
+    }
   }
 }
