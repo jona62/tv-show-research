@@ -899,6 +899,9 @@ class Ranking:
         m = len(candidates)
         if not self.groups or not m:
             return scores
+        if np is not None:
+            hits, penalty = self._hits_vector(candidates)
+            return self._scores_vector(candidates, scores, hits, penalty)
         gather = itemgetter(*candidates) if m > 1 else (lambda values: (values[candidates[0]],))
         closest, aff = self.settings['closest'], self.affinities
         hits = []
@@ -917,8 +920,6 @@ class Ranking:
             share = self.settings['dislike'] / len(self.negatives)
             for p in self.negatives:
                 penalty = [a + share * x for a, x in zip(penalty, gather(aff[p['id']]))]
-        if np is not None:
-            return self._scores_vector(candidates, scores, hits, penalty)
         raw = []
         single = len(self.groups) == 1
         for n, i in enumerate(candidates):
@@ -941,11 +942,37 @@ class Ranking:
                 scores[i] = value / self.best[k] * self.share[k]
         return scores
 
+    def _hits_vector(self, candidates):
+        index = np.asarray(candidates, dtype=np.intp)
+        gather = lambda show_id: np.asarray(self.affinities[show_id])[index].astype(np.float64)
+        closest, hits = self.settings['closest'], []
+        for group in self.groups:
+            norm = sum(p['weight'] for p in group)
+            top = max(p['weight'] for p in group)
+            mean, near = np.zeros(len(index), dtype=np.float64), np.zeros(len(index), dtype=np.float64)
+            for p in group:
+                values = gather(p['id'])
+                share, scale = p['weight'] / norm, p['weight'] / top
+                # Match Python's double-precision multiply then add, in member
+                # order. No float32 intermediate or reordered group reduction.
+                mean += share * values
+                scaled = scale * values
+                near = np.where(near > scaled, near, scaled)
+            hits.append((1 - closest) * mean + closest * near)
+        penalty = np.zeros(len(index), dtype=np.float64)
+        if self.negatives:
+            share = self.settings['dislike'] / len(self.negatives)
+            for p in self.negatives:
+                penalty += share * gather(p['id'])
+        return hits, penalty
+
     def _factors_vector(self, taste, indices):
         fit = np.zeros(len(indices), dtype=np.float64)
         for column, contributions in taste.tables:
             fit += np.asarray(contributions)[self.e.numpy_columns[id(column)][indices]]
         for _family, masks, known, delta, offset, weight, limit, cache in taste.sets:
+            if weight == 0:
+                continue
             values = []
             for i in indices:
                 if not known[i]:

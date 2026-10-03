@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import TestCase, main
 from unittest.mock import patch
+from array import array
 import json
 import os
 import sys
@@ -188,6 +189,63 @@ class VectorParityTests(TestCase):
         with patch.object(ranking, 'np', None):
             scalar = score()
         self.assertEqual(native, scalar)
+
+    def test_custom_group_weights_and_negative_penalties_preserve_later_normalization(self):
+        engine = self.engine
+        positives = [{'id': 82, 'weight': 1}, {'id': 169, 'weight': .35},
+                     {'id': 396, 'weight': .7}, {'id': 2, 'weight': .35}]
+        negatives = [{'id': 123, 'weight': -1}, {'id': 541, 'weight': -1}]
+        candidates = [i for i, show in enumerate(engine.shows)
+                      if engine.popularity[i] >= 70 and show['id'] not in {p['id'] for p in positives + negatives}]
+        for changes in ({'closest': 0, 'dislike': 0},
+                        {'text': 70, 'themes': 10, 'genres': 20, 'facets': 0, 'closest': .73, 'dislike': .9}):
+            settings = {**ranking.DEFAULT_SETTINGS, **changes}
+            def score():
+                result = engine.ranking(positives, negatives, ranking.Closeness(engine, settings), settings)
+                first = result.score(candidates)
+                best = list(result.best)
+                later = result.score([engine.by_id[p['id']] for p in positives + negatives])
+                self.assertEqual(result.best, best, 'Later candidates must retain the initial group scale.')
+                return first.tobytes(), later.tobytes(), result.group, result.share, best
+            native = score()
+            with patch.object(ranking, 'np', None):
+                scalar = score()
+            self.assertEqual(native[:4], scalar[:4])
+            for first, second in zip(native[4], scalar[4]):
+                self.assertAlmostEqual(first, second, places=13)
+
+    def test_tied_groups_zero_hits_and_one_candidate_keep_first_group_and_scale(self):
+        affinities = {1: array('f', [.5, .5, .2, 0, 0, .9, .25]),
+                      2: array('f', [.5, .5, .2, 0, 0, .8, .25]),
+                      3: array('f', [.5, .75, .2, 0, 0, .95, .75]),
+                      4: array('f', [0, 1, 1, 0, 0, 0, 1])}
+        def run(candidates, links):
+            result = ranking.Ranking.__new__(ranking.Ranking)
+            result.e, result.affinities = SimpleNamespace(n=7), links
+            result.settings = {**ranking.DEFAULT_SETTINGS, 'dislike': .35}
+            result.groups = [[{'id': 1, 'weight': .7}, {'id': 2, 'weight': .7}], [{'id': 3, 'weight': .35}]]
+            result.tastes = [SimpleNamespace(factor=lambda index: 1.), SimpleNamespace(factor=lambda index: 1.)]
+            result.negatives = [{'id': 4, 'weight': -1}]
+            result.share, result.best, result.group = [.8, .2], None, {}
+            result._factors_vector = lambda taste, indices: ranking.np.ones(len(indices), dtype=ranking.np.float64)
+            initial = result.score(candidates)
+            best = list(result.best)
+            later = result.score([5, 6])
+            self.assertEqual(result.best, best)
+            return initial.tobytes(), later.tobytes(), result.group, best, result.share
+        precise = {key: list(values) for key, values in affinities.items()}
+        precise[3][0] = .50000001  # A double-precision affinity must not become a false tie.
+        for links in (affinities, precise, {key: array('d', values) for key, values in precise.items()}):
+            for candidates in ([0], [0, 1, 2, 3, 4], [4, 3, 2, 1, 0]):
+                native = run(candidates, links)
+                with patch.object(ranking, 'np', None):
+                    scalar = run(candidates, links)
+                self.assertEqual(native, scalar)
+                self.assertEqual(native[2][0], 0 if links is affinities else 1)
+                if len(candidates) > 1:
+                    scores = array('f')
+                    scores.frombytes(native[0])
+                    self.assertEqual(list(scores[2:5]), [0, 0, 0])
 
 
 if __name__ == '__main__':
