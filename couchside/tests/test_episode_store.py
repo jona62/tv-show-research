@@ -26,6 +26,80 @@ EPISODES = [
 ]
 
 
+class CommitWithOtherWriter:
+    """Use real SQLite commits, then interleave another connection before returning."""
+
+    def __init__(self, connection, after_commit):
+        self.connection, self.after_commit, self.calls = connection, after_commit, 0
+
+    def __getattr__(self, name):
+        return getattr(self.connection, name)
+
+    def commit(self):
+        self.connection.commit()
+        self.calls += 1
+        if self.calls == 1:
+            self.after_commit()
+
+
+class ContentRevisionRaceTests(TestCase):
+    def setUp(self):
+        self.folder = TemporaryDirectory()
+        self.addCleanup(self.folder.cleanup)
+        self.now = 1000
+        self.path = Path(self.folder.name) / 'ratings.sqlite3'
+        self.store = Store(self.path, clock=lambda: self.now)
+        self.writer = Store(self.path, clock=lambda: self.now)
+        self.addCleanup(self.store.close)
+        self.addCleanup(self.writer.close)
+
+    @staticmethod
+    def value(show_id, rating=8.1):
+        episodes = [{**EPISODES[0], 'id': show_id * 10, 'rating': rating}]
+        return {'id': show_id, 'tvmaze': episodes, 'episodes': merge(episodes, {}),
+                'tmdb': {}, 'tmdb_at': 0}
+
+    def assert_foreign_update_remains_visible(self, operation):
+        for show_id in (1, 2, 3):
+            self.store.put(show_id, self.value(show_id))
+        if operation == 'expiry':
+            self.writer.db.execute('UPDATE episodes SET fetched=? WHERE id=2',
+                                   (self.now - MAX_AGE - 1,))
+            self.writer.db.commit()
+        elif operation == 'corruption':
+            self.writer.db.execute('UPDATE episodes SET data=?, matrix=? WHERE id=2',
+                                   (b'broken gzip', b'broken gzip'))
+            self.writer.db.commit()
+        original = self.store.get(1)[1]
+        compact = self.store.get(1, compact=True)[1]
+        unrelated = self.store.get(3)[1]
+        connection = CommitWithOtherWriter(self.store.db,
+                                          lambda: self.writer.put(1, self.value(1, 9.4)))
+        with patch.object(self.store, 'db', connection):
+            if operation == 'put':
+                self.store.put(2, self.value(2, 8.8))
+            else:
+                self.assertIsNone(self.store.get(2))
+        self.assertEqual(connection.calls, 1, 'The other connection commits in the exact post-commit gap.')
+        fresh = self.store.get(1)[1]
+        fresh_compact = self.store.get(1, compact=True)[1]
+        self.assertEqual(fresh['episodes'][0]['rating'], 9.4)
+        self.assertEqual(fresh_compact['episodes'][0]['rating'], 9.4)
+        self.assertIsNot(fresh, original)
+        self.assertIsNot(fresh_compact, compact)
+        self.assertIs(self.store.get(3)[1], unrelated, 'Only the changed show must lose its decoded record.')
+        self.assertEqual(self.store.current_revision(), self.writer.current_revision())
+
+    def test_foreign_commit_after_local_put_does_not_skip_decoded_invalidation(self):
+        self.assert_foreign_update_remains_visible('put')
+
+    def test_foreign_commit_after_local_expiry_does_not_skip_decoded_invalidation(self):
+        self.assert_foreign_update_remains_visible('expiry')
+
+    def test_foreign_commit_after_corrupt_deletion_does_not_skip_decoded_invalidation(self):
+        self.assert_foreign_update_remains_visible('corruption')
+
+
 class LiveDetailsTests(TestCase):
     def setUp(self):
         self.folder = TemporaryDirectory()

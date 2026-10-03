@@ -380,8 +380,9 @@ class Store:
                         continue
                     telemetry.cache('episodes_disk', 'corrupt')
                     self.db.execute('DELETE FROM episodes WHERE id=?', (show_id,))
+                    revision = self._content_version()
                     self.db.commit()
-                    self.content_revision = self._content_version()
+                    self.content_revision = revision
                     self._drop_decoded((show_id, True))
                     self._drop_decoded((show_id, False))
                 return None
@@ -407,8 +408,9 @@ class Store:
         if self.clock() - row[0] > MAX_AGE:
             telemetry.cache('episodes_disk', 'expired')
             self.db.execute('DELETE FROM episodes WHERE id=?', (show_id,))
+            revision = self._content_version()
             self.db.commit()
-            self.content_revision = self._content_version()
+            self.content_revision = revision
             self._drop_decoded((show_id, True))
             self._drop_decoded((show_id, False))
             return None
@@ -424,6 +426,9 @@ class Store:
             try:
                 self._check_changes()
                 value = self._put(show_id, value, fetched_at, now)
+                # Capture while this transaction still excludes other writers.
+                # Reading after commit could skip a foreign record's revision.
+                revision = self._content_version()
                 self.db.commit()
             except BaseException:
                 self.db.rollback()
@@ -437,7 +442,7 @@ class Store:
             for key in list(self.memory):
                 if key[0] not in remaining:
                     self._drop_decoded(key)
-            self.content_revision = self._content_version()
+            self.content_revision = revision
             return value
 
     def _put(self, show_id, value, fetched_at, now):
