@@ -1,6 +1,6 @@
 import { nearestRatingPoint } from './episode-timeline.js';
 import { band, esc, html, ratingSource, score } from './ratings.js';
-import { episodeCode } from './rating-views.js';
+import { episodeCode, seasonName } from './rating-views.js';
 
 const plain = value => new DOMParser().parseFromString(value || '', 'text/html').body.textContent || '';
 
@@ -20,7 +20,11 @@ function tooltip(host) {
   const hide = () => {
     clearTimeout(hideTimer); active?.removeAttribute('aria-describedby'); active = null; tip.hidden = true;
   };
-  const leave = () => { clearTimeout(hideTimer); hideTimer = setTimeout(hide, 150); };
+  const leave = () => {
+    clearTimeout(hideTimer);
+    if (active && active === document.activeElement) return;
+    hideTimer = setTimeout(hide, 150);
+  };
   const position = () => {
     if (!active?.isConnected) { hide(); return; }
     tip.style.maxHeight = '';
@@ -41,29 +45,71 @@ function tooltip(host) {
   };
   const show = (target, episode, showName) => {
     hide(); active = target;
-    const rating = band(episode.rating), summary = plain(episode.summary).trim();
-    html(tip, `${episode.image ? `<img src="${esc(episode.image)}" alt="" loading="lazy">` : ''}<div class="ratings-tooltip-body"><span class="ratings-tooltip-code">${esc(showName)} · ${episodeCode(episode)}</span><b>${esc(episode.name || 'Episode')}</b><div class="ratings-tooltip-score"><strong style="background:${rating.colour};color:${rating.text}">${score(episode.rating)}</strong><span>${rating.name}<small>out of 10 on ${esc(ratingSource(episode))}${episode.rating_votes ? ' · ' + Number(episode.rating_votes).toLocaleString() + ' votes' : ''}</small></span></div><p class="ratings-tooltip-summary">${esc(summary || 'No episode description available.')}</p></div>`);
+    const rating = band(episode.rating), summary = plain(episode.summary).trim(), isEpisode = Boolean(episode.number);
+    const details = isEpisode ? summary || 'No episode description available.'
+      : episode.count != null ? `${episode.ratedCount} rated of ${episode.count} episodes` : '';
+    html(tip, `${isEpisode && episode.image ? `<img src="${esc(episode.image)}" alt="" loading="lazy">` : ''}<div class="ratings-tooltip-body"><span class="ratings-tooltip-code">${esc(showName)} · ${isEpisode ? episodeCode(episode) : seasonName(episode.season)}</span><b>${esc(episode.name || (isEpisode ? 'Episode' : 'Season average'))}</b><div class="ratings-tooltip-score"><strong style="background:${rating.colour};color:${rating.text}">${score(episode.rating)}</strong><span>${rating.name}<small>${episode.rating == null ? 'Awaiting audience ratings' : `out of 10 on ${esc(ratingSource(episode))}${episode.rating_votes ? ' · ' + Number(episode.rating_votes).toLocaleString() + ' votes' : ''}`}</small></span></div>${details ? `<p class="ratings-tooltip-summary">${esc(details)}</p>` : ''}</div>`);
     tip.hidden = false; target.setAttribute('aria-describedby', tip.id); position();
   };
   const scrolled = event => {
     if (tip.contains(event.target)) return;
-    const viewport = active?.closest('.ratings-chart-wrap'), point = active?.getBoundingClientRect(), bounds = viewport?.getBoundingClientRect();
-    if (active === document.activeElement && point && (!bounds || point.right > bounds.left && point.left < bounds.right)) position();
+    const viewport = active?.closest('.ratings-chart-wrap,.ratings-grid-scroll'), point = active?.getBoundingClientRect(), bounds = viewport?.getBoundingClientRect();
+    if (active === document.activeElement && point && point.bottom > 0 && point.top < window.innerHeight
+        && (!bounds || point.right > bounds.left && point.left < bounds.right && point.bottom > bounds.top && point.top < bounds.bottom)) position();
     else hide();
   };
   const escape = event => { if (event.key === 'Escape' && active) { event.preventDefault(); event.stopPropagation(); hide(); } };
+  const outside = event => { if (active && !tip.contains(event.target) && !active.contains(event.target)) hide(); };
   tip.onpointerenter = () => clearTimeout(hideTimer); tip.onpointerleave = leave;
   host.addEventListener('keydown', escape); host.addEventListener('scroll', scrolled, true); window.addEventListener('resize', position);
+  window.addEventListener('scroll', scrolled, { passive: true }); document.addEventListener('pointerdown', outside);
   return { show, hide, leave, dispose() {
     hide(); tip.remove(); host.removeEventListener('keydown', escape); host.removeEventListener('scroll', scrolled, true); window.removeEventListener('resize', position);
+    window.removeEventListener('scroll', scrolled); document.removeEventListener('pointerdown', outside);
   } };
 }
 
 function revealPoint(target) {
-  const viewport = target.closest('.ratings-chart-wrap'); if (!viewport) return;
+  const viewport = target.closest('.ratings-chart-wrap,.ratings-grid-scroll'); if (!viewport) return;
   const point = target.getBoundingClientRect(), bounds = viewport.getBoundingClientRect();
   if (point.left < bounds.left) viewport.scrollLeft -= bounds.left - point.left + 8;
   else if (point.right > bounds.right) viewport.scrollLeft += point.right - bounds.right + 8;
+}
+
+export function bindComparisonMatrix(node, matrix, model, tipHost) {
+  const targets = [...(node?.querySelectorAll('.rating-cell[data-cell]') || [])];
+  if (!targets.length) return () => {};
+  const tip = tooltip(tipHost), titles = new Map();
+  const seasons = [...new Set(model.shows.flatMap(show => show.episodes.map(episode => episode.season)))].sort((a, b) => a - b);
+  for (const target of targets) {
+    const [row, column] = target.dataset.cell.split(':').map(Number), cell = matrix.rows[row]?.cells[column];
+    const show = model.shows[model.inverted ? column : row];
+    if (!cell || !show) continue;
+    const season = cell.episode?.season ?? seasons[model.inverted ? row : column];
+    let sample = cell.episode;
+    if (!sample) {
+      const episodes = show.episodes.filter(episode => episode.season === season);
+      sample = { season, name: 'Season average', rating: cell.rating, count: cell.count, ratedCount: cell.ratedCount,
+        rating_source: [...new Set(episodes.filter(episode => episode.rating != null).map(ratingSource).filter(Boolean))].join(' / ') };
+    }
+    target.dataset.showId = show.id; target.dataset.season = season;
+    titles.set(target, target.getAttribute('title')); target.removeAttribute('title');
+    const showDetails = () => tip.show(target, sample, show.name);
+    target.onpointerenter = event => { if (event.pointerType !== 'touch') showDetails(); }; target.onpointerleave = tip.leave;
+    target.onfocus = () => { revealPoint(target); showDetails(); }; target.onblur = tip.hide;
+    target.onclick = event => { event.stopPropagation(); target.focus({ preventScroll: true }); showDetails(); };
+    target.onkeydown = event => {
+      if (['Enter', ' '].includes(event.key)) { event.preventDefault(); event.stopPropagation(); showDetails(); }
+    };
+  }
+  return () => {
+    tip.dispose();
+    for (const [target, title] of titles) {
+      target.onpointerenter = target.onpointerleave = target.onfocus = target.onblur = target.onclick = target.onkeydown = null;
+      target.removeAttribute('data-show-id'); target.removeAttribute('data-season');
+      if (title != null) target.setAttribute('title', title);
+    }
+  };
 }
 
 export function bindComparisonTimeline(node, model, tipHost) {
