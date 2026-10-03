@@ -7,6 +7,7 @@ import time
 
 import gevent
 from gevent.lock import BoundedSemaphore
+from workload import PUBLIC_CACHE_LIMITS
 
 
 class ProtocolMetrics:
@@ -19,6 +20,7 @@ class ProtocolMetrics:
         self.gate_wait = deque(maxlen=20000)
         self.statuses, self.journeys, self.users, self.cache_headers = (Counter() for _ in range(4))
         self.application = Counter()
+        self.simulated_public_cache = Counter()
         self.latencies = {name: Counter() for name in ('successful', 'api_successful', 'api_user_successful', 'failed', 'expected_non_2xx')}
         self.endpoints = {}
         self.journey_latencies = {}
@@ -75,6 +77,9 @@ class ProtocolMetrics:
         histogram = self.journey_latencies.setdefault(name, Counter())
         histogram[min(120000, max(0, round(elapsed_ms)))] += 1
 
+    def record_public_cache(self, kind, outcome, count=1):
+        self.simulated_public_cache[f'{kind}.{outcome}'] += count
+
     @staticmethod
     def latency_summary(histogram):
         count = sum(histogram.values())
@@ -116,6 +121,10 @@ class ProtocolMetrics:
                 'gate_blocked_requests': self.gate_blocked, 'gate_wait_sample_size': len(waits),
                 'gate_wait_ms': {'p50': percentile(.5), 'p95': percentile(.95), 'p99': percentile(.99)},
                 'explicit_server_cache_headers': dict(self.cache_headers),
+                'simulated_public_cache': {'enabled': self.config.simulate_public_cache,
+                                           'counters': dict(self.simulated_public_cache),
+                                           'limits_per_user': PUBLIC_CACHE_LIMITS,
+                                           'retains_response_bodies': False},
                 'generator_cpu_warnings': self.generator_cpu_warnings,
                 'shared_pool_closed': self.pool_closed,
                 'browser_cache_hits': None, 'samples': self.samples,
@@ -132,7 +141,11 @@ class ProtocolMetrics:
                                 'Random choices repeat for the same seed, worker layout and user ordinal; '
                                 'concurrent timing, calendar date and provider cache state do not.',
                                 'warm_probability controls repeated show/query choices; it is not a measured '
-                                'cache-hit rate. Cache-hit measurements require actual instrumentation.']}
+                                'cache-hit rate. Cache-hit measurements require actual instrumentation.',
+                                'simulated_public_cache is an opt-in metadata model of comparison public-data '
+                                'eligibility, not measured browser/IndexedDB/service-worker hits. Avoided '
+                                'requests never enter HTTP latency, RPS or success counts. It does not model '
+                                'browser pending-record polling, persistent storage or personal/private caching.']}
 
     def capture(self, environment):
         runner = environment.runner

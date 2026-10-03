@@ -1,13 +1,16 @@
 """Deterministic traffic choices; browser-only actions belong to the browser cohort."""
 from copy import deepcopy
+from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import date
 from fractions import Fraction
 import hashlib
 import ipaddress
 import json
+import math
 from pathlib import Path
 import random
+import time
 from urllib.parse import urlencode, urlsplit
 
 
@@ -49,6 +52,7 @@ class Configuration:
     media: bool = False
     live_details: bool = False
     synthetic_identities: bool = False
+    simulate_public_cache: bool = False
     accounts_path: str = ''
     metrics_directory: str = ''
     gateway_key_path: str = ''
@@ -105,6 +109,193 @@ def shown_rows(rows):
     # Library.GLANCE is six cards per row, matching the real browser pagination body.
     return [{'key': row['key'], 'ids': [show['id'] for show in row.get('items', [])[:6]],
              'tier': row.get('tier', 0)} for row in rows]
+
+
+PUBLIC_CACHE_LIMITS = {'max_bytes': 20 * 1024 * 1024, 'max_records': 600, 'ttl_seconds': 300}
+CARD_FIELDS = ('id', 'name', 'year', 'poster', 'art', 'genres', 'runtime', 'type',
+               'summary', 'badge', 'rank', 'status', 'language')
+RATINGS_FIELDS = ('id', 'sources', 'refreshing', 'dataVersion', 'revision', 'fetchedAt', 'expiresAt')
+EPISODE_FIELDS = ('id', 'season', 'number', 'name', 'rating', 'rating_source', 'rating_votes',
+                  'image', 'summary', 'airdate', 'airtime', 'runtime', 'url')
+
+
+def finite_number(value):
+    try:
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+    except OverflowError:
+        return False
+
+
+def positive_integer(value):
+    return finite_number(value) and value > 0 and int(value) == value
+
+
+def valid_public_id(value):
+    return positive_integer(value) and value <= 2147483647
+
+
+def sorted_public_ids(values):
+    """The browser batches missing public records by numeric ID, not display order."""
+    return sorted({int(value) for value in values if valid_public_id(value)})
+
+
+def public_fields(value, names):
+    """Mirror public-data.js' scalar allowlist without retaining raw records."""
+    result = {}
+    for key in names:
+        if key not in value:
+            continue
+        item = value[key]
+        if item is None or isinstance(item, (str, bool, int, float)):
+            result[key] = None if isinstance(item, float) and not math.isfinite(item) else item
+        elif key == 'genres' and isinstance(item, list) and all(isinstance(part, str) for part in item):
+            result[key] = item
+    return result
+
+
+def json_units(value):
+    # JSON.stringify counts UTF-16 code units; Python len counts Unicode scalars.
+    encoded = json.dumps(value, ensure_ascii=False, separators=(',', ':'), allow_nan=False)
+    return len(encoded.encode('utf-16-le', errors='surrogatepass')) // 2
+
+
+@dataclass(frozen=True, slots=True)
+class PublicCacheEntry:
+    at: float
+    expires: float
+    bytes: int
+    version: str
+    fetched_at: float | None
+
+
+class SimulatedPublicCache:
+    """Per-user public-cache eligibility, with metadata only and no fake HTTP events.
+
+    Incoming card/episode records are validated using the browser's allowlist.
+    Byte estimates describe the browser entry budget, not this Python map's RSS.
+    No show, episode list, account state or personalized answer is retained.
+    """
+    def __init__(self, *, now=time.time, record=None, max_bytes=PUBLIC_CACHE_LIMITS['max_bytes'],
+                 max_records=PUBLIC_CACHE_LIMITS['max_records'], ttl=PUBLIC_CACHE_LIMITS['ttl_seconds']):
+        self.now, self.record = now, record
+        self.max_bytes, self.max_records, self.ttl = max_bytes, max_records, ttl
+        self.entries, self.used_bytes = OrderedDict(), 0
+
+    def emit(self, kind, outcome, count=1):
+        if self.record and count:
+            self.record(kind, outcome, count)
+
+    def remove(self, key, outcome):
+        held = self.entries.pop(key)
+        self.used_bytes -= held.bytes
+        self.emit(key[0], outcome)
+
+    def missing(self, kind, values):
+        if kind not in ('card', 'ratings'):
+            raise ValueError('Only public cards and complete ratings can be simulated.')
+        now, missing = self.now(), []
+        for sid in sorted_public_ids(values):
+            key = kind, sid
+            held = self.entries.get(key)
+            if held and (held.at > now + 5 or now - held.at >= self.ttl or held.expires <= now):
+                self.remove(key, 'expired')
+                held = None
+            if held:
+                self.entries.move_to_end(key)
+                self.emit(kind, 'hit')
+            else:
+                self.emit(kind, 'miss')
+                missing.append(sid)
+        return missing
+
+    def entry(self, kind, value, version, now):
+        try:
+            return self._entry(kind, value, version, now)
+        except (ValueError, TypeError, OverflowError):
+            return None
+
+    def _entry(self, kind, value, version, now):
+        if not isinstance(value, dict) or not valid_public_id(value.get('id')) or value.get('refreshing') is True:
+            return None
+        if kind == 'card':
+            if not isinstance(value.get('name'), str):
+                return None
+            clean = public_fields(value, CARD_FIELDS)
+            units = json_units(clean)
+        else:
+            episodes = value.get('episodes')
+            if not isinstance(episodes, list) or len(episodes) > 50000:
+                return None
+            # Size one episode at a time: do not copy or retain the complete array.
+            units = 0
+            for episode in episodes:
+                if not isinstance(episode, dict) or not valid_public_id(episode.get('id')) \
+                        or not positive_integer(episode.get('season')) or not positive_integer(episode.get('number')):
+                    return None
+                rating = episode.get('rating')
+                if rating is not None and not (finite_number(rating) and 0 <= rating <= 10):
+                    return None
+                units += json_units(public_fields(episode, EPISODE_FIELDS))
+            clean = public_fields(value, RATINGS_FIELDS)
+            # Replace the closing brace with the episodes property and closing array.
+            units += json_units(clean) - 1 + len(',"episodes":[]}') + max(0, len(episodes) - 1)
+        source_expiry = clean.get('expiresAt')
+        expires = min(now + self.ttl, source_expiry if finite_number(source_expiry) else math.inf)
+        if expires <= now:
+            return None
+        fetched_at = clean.get('fetchedAt')
+        envelope = {'key': f'{kind}:{int(value["id"])}', 'schema': 1, 'at': now * 1000,
+                    'expires': expires * 1000, 'version': version, 'value': None}
+        size = (json_units(envelope) - len('null') + units) * 2
+        if size > self.max_bytes:
+            return None
+        return PublicCacheEntry(now, expires, size, version,
+                                fetched_at if finite_number(fetched_at) else None)
+
+    def put_batch(self, kind, requested, body):
+        """Only a successful, valid batch can supply eligible record metadata."""
+        if kind not in ('card', 'ratings'):
+            raise ValueError('Only public cards and complete ratings can be simulated.')
+        if not isinstance(body, dict) or not isinstance(body.get('shows'), list):
+            self.emit(kind, 'invalid_batch' if body is not None else 'failed_batch')
+            return
+        version = body.get('catalogueVersion') or body.get('dataVersion') or ''
+        if not isinstance(version, str) or len(version) > 256:
+            self.emit(kind, 'invalid_batch')
+            return
+        if version:
+            for key, held in list(self.entries.items()):
+                if held.version != version:
+                    self.remove(key, 'version_invalidated')
+        requested = set(sorted_public_ids(requested))
+        pending = set(sorted_public_ids(body.get('pending', []))) if isinstance(body.get('pending'), list) else set()
+        unavailable = set(sorted_public_ids(body.get('missing', []))) if isinstance(body.get('missing'), list) else set()
+        self.emit(kind, 'pending', len(requested & pending))
+        self.emit(kind, 'missing_response', len(requested & unavailable))
+        now, seen = self.now(), set()
+        for value in body['shows']:
+            sid = value.get('id') if isinstance(value, dict) else None
+            if not valid_public_id(sid) or sid not in requested or sid in pending or sid in unavailable:
+                self.emit(kind, 'invalid_record')
+                continue
+            seen.add(sid)
+            entry = self.entry(kind, value, version, now)
+            if entry is None:
+                self.emit(kind, 'invalid_record')
+                continue
+            key, held = (kind, int(sid)), self.entries.get((kind, int(sid)))
+            if held and entry.fetched_at is not None and held.fetched_at is not None and held.fetched_at > entry.fetched_at:
+                self.emit(kind, 'older_record')
+                continue
+            if held:
+                self.used_bytes -= held.bytes
+            self.entries[key] = entry
+            self.entries.move_to_end(key)
+            self.used_bytes += entry.bytes
+            self.emit(kind, 'stored')
+        self.emit(kind, 'missing_response', len(requested - seen - pending - unavailable))
+        while self.entries and (self.used_bytes > self.max_bytes or len(self.entries) > self.max_records):
+            self.remove(next(iter(self.entries)), 'evicted')
 
 
 class Persona:

@@ -160,6 +160,73 @@ class PublicAPITests(TestCase):
         self.assertEqual(two['episodes'][0]['rating'], 9.3)
         self.assertEqual(two['episodes'][0]['rating_source'], 'TMDB')
 
+    def test_other_worker_recency_live_details_and_unrelated_ratings_preserve_cached_records(self):
+        self.save(1)
+        self.save(2)
+        self.now += 3601
+        writer = Store(Path(self.folder.name) / 'episodes.sqlite3', clock=self.clock)
+        self.addCleanup(writer.close)
+        with patch.object(self.api, 'episodes', wraps=self.api.episodes) as build:
+            first = self.request()
+            card = self.request(CARDS)
+            decoded = self.store.get(1)[1]
+            writer.touch(2)
+            writer.put_live('/shows/2', {'name': 'A live title'})
+            self.assertIs(self.store.get(1)[1], decoded)
+            self.assertIs(self.request().body, first.body)
+            self.assertIs(self.request(CARDS).body, card.body)
+            changed = {'id': 2, 'tvmaze': EPISODES, 'episodes': merge(EPISODES, {'1:1': {'rating': 9.3, 'votes': 30}}),
+                       'tmdb': {'1:1': {'rating': 9.3, 'votes': 30}}, 'tmdb_at': self.now}
+            writer.put(2, changed)
+            self.assertIs(self.store.get(1)[1], decoded)
+            self.assertIs(self.request().body, first.body)
+            self.assertIs(self.request(CARDS).body, card.body)
+            self.assertEqual(build.call_count, 1)
+            changed['id'] = 1
+            writer.put(1, changed)
+            self.assertNotEqual(self.request().etag, first.etag)
+            self.assertEqual(build.call_count, 2)
+            self.assertEqual(json.loads(self.request().body)['shows'][0]['episodes'][0]['rating'], 9.3)
+
+    def test_direct_writer_deletion_and_reinsertion_cannot_revive_a_prepared_version(self):
+        self.save()
+        first = self.request()
+        original_revision = self.store.record_revisions((1,))[0]
+        writer = Store(Path(self.folder.name) / 'episodes.sqlite3', clock=self.clock)
+        self.addCleanup(writer.close)
+        writer.db.execute('DELETE FROM episodes WHERE id=1')
+        writer.db.commit()
+        pending = json.loads(self.request().body)
+        self.assertEqual(pending['pending'], [1])
+        self.assertEqual(pending['shows'], [])
+        value = {'id': 1, 'tvmaze': EPISODES, 'episodes': merge(EPISODES, {}), 'tmdb': {}, 'tmdb_at': self.now}
+        data = gzip.compress(json.dumps(value).encode())
+        writer.db.execute('INSERT INTO episodes VALUES (?, ?, ?, ?, ?)', (1, self.now, self.now, data, data))
+        writer.db.commit()
+        self.assertGreater(self.store.record_revisions((1,))[0], original_revision)
+        restored = json.loads(self.request().body)
+        self.assertEqual(restored['shows'][0]['episodes'], json.loads(first.body)['shows'][0]['episodes'])
+        self.assertEqual(restored['pending'], [])
+        self.assertNotEqual(restored['shows'][0]['revision'], json.loads(first.body)['shows'][0]['revision'])
+        value['episodes'][0]['name'] = 'An updated episode'
+        writer.db.execute('UPDATE episodes SET data=?, matrix=? WHERE id=1',
+                          (gzip.compress(json.dumps(value).encode()), gzip.compress(json.dumps(value).encode())))
+        writer.db.commit()
+        self.assertEqual(json.loads(self.request().body)['shows'][0]['episodes'][0]['name'], 'An updated episode')
+        writer.db.execute('UPDATE episodes SET id=2 WHERE id=1')
+        writer.db.commit()
+        self.assertIsNone(self.store.get(1))
+        self.assertEqual(self.store.get(2)[1]['episodes'][0]['name'], 'An updated episode')
+
+    def test_cards_cache_does_not_cross_summary_freshness_deadline(self):
+        self.save()
+        self.now += 180 * DAY - 10
+        self.assertEqual(self.request(CARDS).max_age, 10)
+        self.now += 8
+        self.assertEqual(self.request(CARDS).max_age, 2)
+        self.now += 3
+        self.assertEqual(self.request(CARDS).max_age, 300)
+
     def test_model_identity_and_cache_ttl_invalidate_cards(self):
         first = self.request(CARDS)
         self.api.catalogue_version = 'model-two'

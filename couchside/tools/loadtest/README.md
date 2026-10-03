@@ -46,6 +46,33 @@ Run backend stages (find the isolated server's PID with `lsof`):
   --synthetic-identities --media
 ```
 
+The default is an API diagnostic: every comparison requests its full set of
+public cards and ratings. IDs are sorted and deduplicated in both modes, matching
+the browser's public-data batch reader; the comparison link keeps display order.
+Use `--simulate-public-cache` for a separate run that models the browser skipping
+public records already available to that virtual user. For direct Locust runs,
+use `--workload-simulate-public-cache`.
+
+The opt-in model stores only metadata for validated, completed public comparison
+cards and full ratings. Each user has a 600-record, 20 MiB estimated browser-entry
+budget and a five-minute lifetime, shortened by source expiry for ratings. A
+new catalogue version invalidates older entries. Pending, refreshing, malformed,
+failed and expired records remain misses. Partial reuse requests only numerically
+sorted missing IDs. The generator does not retain full show or episode payloads
+between requests, does not simulate browser pending-record polling or persistent
+IndexedDB storage, and always sends personalized recommendation and private
+account/list requests. `warm_probability` changes repeated show/query choices;
+it never creates a simulated hit.
+
+Results name these counters `simulated_public_cache`, separately from real browser
+cache measurements. Hits count reusable records, and `request_avoided` counts a
+whole public batch skipped because every requested record was reusable. Skipped
+batches do not count as successful HTTP requests, zero-latency samples or RPS.
+Compare runs only with their mode and cache/startup conditions stated; do not
+attribute a difference between API diagnostics and this browser-like model to a
+controlled application speedup. The real-browser cohort remains the evidence for
+actual browser cache behavior.
+
 Stage syntax is `users:spawn-per-second:duration-seconds:connection-model`.
 The default stages are 100 and 1,000 persistent users followed by 10,000 pooled
 users. Persistent mode gives each user its own normal keep-alive connection.

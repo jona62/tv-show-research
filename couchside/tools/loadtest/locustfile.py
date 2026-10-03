@@ -19,7 +19,8 @@ from locust.runners import MasterRunner, WorkerRunner
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from protocol_metrics import ProtocolMetrics
-from workload import Configuration, GENRES, Persona, account_assignment, accounts_from, shown_rows
+from workload import (Configuration, GENRES, Persona, SimulatedPublicCache,
+                      account_assignment, accounts_from, shown_rows, sorted_public_ids)
 
 
 RUNTIME = None
@@ -45,6 +46,8 @@ def add_options(parser):
     parser.add_argument('--workload-media', action='store_true', env_var='COUCHSIDE_LOAD_MEDIA')
     parser.add_argument('--workload-live-details', action='store_true', env_var='COUCHSIDE_LOAD_LIVE_DETAILS')
     parser.add_argument('--workload-synthetic-identities', action='store_true', env_var='COUCHSIDE_LOAD_PROXY')
+    parser.add_argument('--workload-simulate-public-cache', action='store_true',
+                        env_var='COUCHSIDE_LOAD_SIMULATE_PUBLIC_CACHE')
 
 
 def configuration(environment):
@@ -137,6 +140,7 @@ class CouchsideUser(FastHttpUser):
         ordinal = next(USER_NUMBERS)
         index = ordinal * config.worker_count + config.worker_index
         self.persona = Persona(config, index)
+        self.public_cache = SimulatedPublicCache(record=RUNTIME.record_public_cache) if config.simulate_public_cache else None
         self.headers = {'Accept': 'application/json', 'User-Agent': 'Couchside isolated load test'}
         if config.synthetic_identities:
             self.headers['X-Couchside-Load-Identity'] = f'protocol:{config.worker_index}:{ordinal}'
@@ -269,9 +273,26 @@ class CouchsideUser(FastHttpUser):
         # A copied link followed in another browser requires a document read; SPA changes do not.
         if self.persona.random.random() < .15:
             self.request('GET', route, 'compare/copied-link', json_response=False)
-        query = urlencode({'ids': ','.join(map(str, ids))})
-        self.request('GET', '/api/show-cards?' + query, 'compare/show-cards')
-        self.request('GET', '/api/episode-ratings-batch?' + query, 'compare/episode-ratings')
+        self.public_batch('card', ids, '/api/show-cards', 'compare/show-cards')
+        self.public_batch('ratings', ids, '/api/episode-ratings-batch', 'compare/episode-ratings')
+
+    def public_batch(self, kind, ids, path, name):
+        # Only these public readers use the simulation. Personal recommendations
+        # and private/list/account APIs always execute their real HTTP requests.
+        requested = sorted_public_ids(ids)
+        if not requested:
+            return
+        missing = self.public_cache.missing(kind, requested) if self.public_cache else requested
+        if not missing:
+            if self.public_cache:
+                RUNTIME.record_public_cache(kind, 'request_avoided')
+            return
+        query = urlencode({'ids': ','.join(map(str, missing))})
+        if self.public_cache:
+            RUNTIME.record_public_cache(kind, 'network_batches')
+        body = self.request('GET', path + '?' + query, name)
+        if self.public_cache:
+            self.public_cache.put_batch(kind, missing, body)
 
     def lists(self):
         sid = self.persona.edit_list()

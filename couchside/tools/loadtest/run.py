@@ -66,10 +66,7 @@ def stage_plan(raw):
     return plan
 
 
-def run_stage(args, stage, number, server):
-    directory = args.output_dir / f"stage-{number}-{stage['target_users']}-{stage['connection_model']}"
-    directory.mkdir(parents=True, exist_ok=True)
-    before = latest_metrics(args.server_metrics)
+def locust_command(args, stage, number, directory):
     command = [args.locust_python, '-m', 'locust', '-f', str(HERE / 'locustfile.py'),
                '--host', args.origin, '--headless', '--users', str(stage['target_users']),
                '--spawn-rate', str(stage['spawn_per_second']), '--run-time', f"{math.ceil(stage['run_seconds'])}s",
@@ -84,8 +81,19 @@ def run_stage(args, stage, number, server):
         command.extend(('--workload-gateway-key-path', str(args.gateway_key_path)))
     if args.media:
         command.append('--workload-media')
+    if args.simulate_public_cache:
+        command.append('--workload-simulate-public-cache')
+    return command
+
+
+def run_stage(args, stage, number, server):
+    directory = args.output_dir / f"stage-{number}-{stage['target_users']}-{stage['connection_model']}"
+    directory.mkdir(parents=True, exist_ok=True)
+    before = latest_metrics(args.server_metrics)
+    command = locust_command(args, stage, number, directory)
     env = {**os.environ, 'COUCHSIDE_LOAD_ISOLATED': '1' if args.synthetic_identities else '0',
-           'COUCHSIDE_LOAD_PROXY': '1' if args.synthetic_identities else '0'}
+           'COUCHSIDE_LOAD_PROXY': '1' if args.synthetic_identities else '0',
+           'COUCHSIDE_LOAD_SIMULATE_PUBLIC_CACHE': '1' if args.simulate_public_cache else '0'}
     samples, aborted = [], None
     with (directory / 'generator.log').open('w') as log:
         generator = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, env=env, start_new_session=True)
@@ -157,7 +165,9 @@ def run_stage(args, stage, number, server):
               'server_counters': server_delta(before, after),
               'notes': ['Server counters are per-layer lookups, not one combined cache-hit ratio.',
                         'Server HTTP bytes are declared response body bytes; browser and generator bytes are measured separately.',
-                        'Virtual users include idle and queued sessions. A pooled run does not test 10,000 physical browser connections.']}
+                        'Virtual users include idle and queued sessions. A pooled run does not test 10,000 physical browser connections.',
+                        'Public cache simulation is explicitly labeled in protocol.configuration and '
+                        'protocol.simulated_public_cache; it does not synthesize completed HTTP events.']}
     (directory / 'stage-results.json').write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps({key: result[key] for key in ('target_users', 'actual_peak_users', 'connection_model', 'aborted', 'exit_code')}), flush=True)
     return result
@@ -183,6 +193,8 @@ def main():
     parser.add_argument('--gateway-key-path', type=Path)
     parser.add_argument('--allow-remote', action='store_true')
     parser.add_argument('--media', action='store_true')
+    parser.add_argument('--simulate-public-cache', action='store_true',
+                        help='Simulate per-user public comparison cache eligibility with metadata only; not browser cache measurements.')
     parser.add_argument('--max-failure-rate', type=float, default=.01)
     parser.add_argument('--max-api-p95-ms', type=float, default=100)
     args = parser.parse_args()
@@ -202,6 +214,7 @@ def main():
     metadata = {'schema': 1, 'origin': args.origin, 'seed': args.seed,
                 'host_cpu_count': psutil.cpu_count(), 'host_memory_bytes': psutil.virtual_memory().total,
                 'local_test': local, 'max_wire_requests_per_worker': args.max_inflight,
+                'simulate_public_cache': args.simulate_public_cache,
                 'production_manifest': {'shared_vcpus': 1, 'shared_ram_mb': 3072},
                 'outbound_mode': 'Read the isolated-server startup record; blocked attempts are distinct from real requests.',
                 'stages': []}

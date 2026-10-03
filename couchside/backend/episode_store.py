@@ -86,7 +86,7 @@ class Store:
         self.lock = threading.Lock()
         # Both full and compact records are decoded once. Consumers treat them as
         # immutable; updates enter through put, which invalidates both variants.
-        self.memory, self.decoding = OrderedDict(), {}
+        self.memory, self.decoding, self.memory_revisions = OrderedDict(), {}, {}
         self.memory_bytes, self.memory_most, self.decoded_bytes = memory_bytes, memory_most, 0
         self.content_revision = 0
         self.db.execute('PRAGMA journal_mode=WAL')
@@ -105,9 +105,11 @@ class Store:
                              'PRIMARY KEY (id, source))')
         self.demands.execute('CREATE INDEX IF NOT EXISTS demands_order ON demands(source, urgent DESC, requested)')
         self.demands.commit()
-        self.data_version = self.db.execute('PRAGMA data_version').fetchone()[0]
         self.db.execute('CREATE TABLE IF NOT EXISTS summaries (id INTEGER PRIMARY KEY, data TEXT)')
         self.db.execute('CREATE TABLE IF NOT EXISTS live_details (path TEXT PRIMARY KEY, fetched REAL, data BLOB)')
+        self._initialize_content_revisions()
+        self.content_revision = self._content_version()
+        self.data_version = self.db.execute('PRAGMA data_version').fetchone()[0]
         self.summaries = {}
         for show_id, data in self.db.execute('SELECT id, data FROM summaries'):
             try:
@@ -124,6 +126,57 @@ class Store:
                 if held:
                     self.summarize(show_id, held[1], at=held[0])
         self.db.commit()
+
+    def _initialize_content_revisions(self):
+        """Observe episode writes from every worker, including older readers.
+
+        Recency and live-detail writes share this WAL but do not change episodes.
+        SQLite triggers keep the revision valid even for direct/legacy writers.
+        Deleted rows remove their revision, so this index stays bounded with data.
+        """
+        self.db.executescript('''
+            BEGIN IMMEDIATE;
+            CREATE TABLE IF NOT EXISTS episode_cache_generation
+                (singleton INTEGER PRIMARY KEY CHECK(singleton=1), generation INTEGER NOT NULL);
+            INSERT OR IGNORE INTO episode_cache_generation VALUES (1, 1);
+            CREATE TABLE IF NOT EXISTS episode_cache_revisions
+                (id INTEGER PRIMARY KEY, generation INTEGER NOT NULL);
+            INSERT OR IGNORE INTO episode_cache_revisions
+                SELECT id, (SELECT generation FROM episode_cache_generation WHERE singleton=1) FROM episodes;
+            CREATE TRIGGER IF NOT EXISTS episode_cache_insert AFTER INSERT ON episodes BEGIN
+                UPDATE episode_cache_generation SET generation=generation+1 WHERE singleton=1;
+                INSERT OR REPLACE INTO episode_cache_revisions
+                    VALUES (NEW.id, (SELECT generation FROM episode_cache_generation WHERE singleton=1));
+            END;
+            CREATE TRIGGER IF NOT EXISTS episode_cache_update AFTER UPDATE OF id, fetched, data, matrix ON episodes
+                WHEN NEW.id IS NOT OLD.id OR NEW.fetched IS NOT OLD.fetched OR NEW.data IS NOT OLD.data OR NEW.matrix IS NOT OLD.matrix BEGIN
+                UPDATE episode_cache_generation SET generation=generation+1 WHERE singleton=1;
+                DELETE FROM episode_cache_revisions WHERE id=OLD.id;
+                INSERT OR REPLACE INTO episode_cache_revisions
+                    VALUES (NEW.id, (SELECT generation FROM episode_cache_generation WHERE singleton=1));
+            END;
+            CREATE TRIGGER IF NOT EXISTS episode_cache_delete AFTER DELETE ON episodes BEGIN
+                UPDATE episode_cache_generation SET generation=generation+1 WHERE singleton=1;
+                DELETE FROM episode_cache_revisions WHERE id=OLD.id;
+            END;
+            COMMIT;
+        ''')
+
+    def _content_version(self):
+        return self.db.execute('SELECT generation FROM episode_cache_generation WHERE singleton=1').fetchone()[0]
+
+    def _record_versions(self, ids):
+        if not ids:
+            return ()
+        placeholders = ','.join('?' for _ in ids)
+        found = dict(self.db.execute(f'SELECT id, generation FROM episode_cache_revisions WHERE id IN ({placeholders})', ids))
+        return tuple(found.get(show_id, 0) for show_id in ids)
+
+    def record_revisions(self, ids):
+        """Ordered content identities for just the public records being requested."""
+        with self.lock:
+            self._check_changes()
+            return self._record_versions(ids)
 
     def demand(self, show_id, source, urgent=False):
         """Coalesce bounded refresh requests across all spawned HTTP workers."""
@@ -177,13 +230,18 @@ class Store:
         self._close_demands()
 
     def _check_changes(self):
-        """Invalidate decoded records when another process updates this WAL database."""
+        """Refresh only changed episodes when another process commits to this WAL."""
         current = self.db.execute('PRAGMA data_version').fetchone()[0]
         if current != self.data_version:
             self.data_version = current
-            self.memory.clear()
-            self.decoded_bytes = 0
-            self.content_revision += 1
+            revision = self._content_version()
+            if revision != self.content_revision:
+                ids = tuple(dict.fromkeys(key[0] for key in self.memory))
+                versions = dict(zip(ids, self._record_versions(ids)))
+                for key in list(self.memory):
+                    if versions[key[0]] != self.memory_revisions[key]:
+                        self._drop_decoded(key)
+                self.content_revision = revision
             self._reload_summaries()
 
     def _reload_summaries(self):
@@ -218,14 +276,16 @@ class Store:
 
     def _drop_decoded(self, key):
         held = self.memory.pop(key, None)
+        self.memory_revisions.pop(key, None)
         if held:
             self.decoded_bytes -= held[3]
 
-    def _remember(self, key, record, size):
+    def _remember(self, key, record, size, revision):
         if size > self.memory_bytes or self.memory_most <= 0:
             return
         self._drop_decoded(key)
         self.memory[key] = (*record, size)
+        self.memory_revisions[key] = revision
         self.decoded_bytes += size
         while self.memory and (self.decoded_bytes > self.memory_bytes or len(self.memory) > self.memory_most):
             self._drop_decoded(next(iter(self.memory)))
@@ -307,21 +367,21 @@ class Store:
         while True:
             with self.lock:
                 self._check_changes()
-                revision = self.content_revision
                 row = self._read_row(show_id, compact)
             if row is None:
                 return None
+            revision = row[2]
             try:
                 value = json.loads(gzip.decompress(row[1]))
             except (OSError, ValueError, EOFError, TypeError):
                 with self.lock:
                     self._check_changes()
-                    if revision != self.content_revision:
+                    if revision != self._record_versions((show_id,))[0]:
                         continue
                     telemetry.cache('episodes_disk', 'corrupt')
                     self.db.execute('DELETE FROM episodes WHERE id=?', (show_id,))
                     self.db.commit()
-                    self.content_revision += 1
+                    self.content_revision = self._content_version()
                     self._drop_decoded((show_id, True))
                     self._drop_decoded((show_id, False))
                 return None
@@ -330,16 +390,17 @@ class Store:
             size = decoded_size(record)
             with self.lock:
                 self._check_changes()
-                if revision != self.content_revision:
+                if revision != self._record_versions((show_id,))[0]:
                     continue
-                self._remember(key, record, size)
+                self._remember(key, record, size, revision)
             telemetry.cache('episodes_disk', 'hit')
             return record
 
     def _read_row(self, show_id, compact):
         """Read or expire one compressed record while holding the database lock."""
         column = 'matrix' if compact else 'data'
-        row = self.db.execute(f'SELECT fetched, {column} FROM episodes WHERE id=?', (show_id,)).fetchone()
+        row = self.db.execute(f'SELECT e.fetched, e.{column}, r.generation FROM episodes e '
+                              'JOIN episode_cache_revisions r ON r.id=e.id WHERE e.id=?', (show_id,)).fetchone()
         if not row or row[1] is None:
             telemetry.cache('episodes_disk', 'miss')
             return None
@@ -347,7 +408,7 @@ class Store:
             telemetry.cache('episodes_disk', 'expired')
             self.db.execute('DELETE FROM episodes WHERE id=?', (show_id,))
             self.db.commit()
-            self.content_revision += 1
+            self.content_revision = self._content_version()
             self._drop_decoded((show_id, True))
             self._drop_decoded((show_id, False))
             return None
@@ -376,7 +437,7 @@ class Store:
             for key in list(self.memory):
                 if key[0] not in remaining:
                     self._drop_decoded(key)
-            self.content_revision += 1
+            self.content_revision = self._content_version()
             return value
 
     def _put(self, show_id, value, fetched_at, now):
@@ -412,8 +473,12 @@ class Store:
 
     def touch(self, show_id):
         with self.lock:
+            now = self.clock()
+            row = self.db.execute('SELECT touched FROM episodes WHERE id=?', (show_id,)).fetchone()
+            if row is None or row[0] >= now - 3600:
+                return
             self.db.execute('UPDATE episodes SET touched=? WHERE id=? AND touched<?',
-                            (self.clock(), show_id, self.clock() - 3600))
+                            (now, show_id, now - 3600))
             self.db.commit()
 
     def recent(self, most=200):

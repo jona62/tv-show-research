@@ -5,6 +5,7 @@ import math
 import re
 
 from .public_data import CacheBusy, PreparedCache, prepare
+from .episode_store import MAX_AGE as SUMMARY_MAX_AGE
 
 CARDS = '/api/show-cards'
 RATINGS = '/api/episode-ratings-batch'
@@ -57,7 +58,8 @@ class PublicAPI:
         known = (lambda show_id: show_id in self.library.e.by_id or show_id in extra_ids) if path == CARDS else self.known
         missing = tuple(show_id for show_id in ids if not known(show_id))
         available = tuple(show_id for show_id in ids if show_id not in missing)
-        revision = self.ratings.store.current_revision()
+        revision = (self.ratings.store.sync_metadata() if path == CARDS
+                    else self.ratings.store.record_revisions(ids))
         extra_version = hashlib.sha256(json.dumps(extra, sort_keys=True, separators=(',', ':')).encode()).hexdigest()[:24] if extra else ''
         key = (path, self.catalogue_version, revision, ids, extra_version)
         try:
@@ -69,8 +71,13 @@ class PublicAPI:
         cards = {show['id']: show for show in (*self.library.cards(ids), *extra)}
         shows = [cards[show_id] for show_id in ids if show_id in cards]
         # No profile, saved list, match score or cookie enters this method.
+        now = self.ratings.clock()
+        deadlines = [row['at'] + SUMMARY_MAX_AGE - now for show_id in ids
+                     if (row := self.ratings.store.summaries.get(show_id))
+                     and row['at'] + SUMMARY_MAX_AGE > now]
+        ttl = min([MAX_AGE, *(math.floor(seconds) for seconds in deadlines)])
         return prepare({'shows': shows, 'catalogueVersion': self.catalogue_version, 'missing': list(missing)},
-                       MAX_AGE if not missing else 0)
+                       ttl if not missing else 0)
 
     def episodes(self, ids, missing=()):
         result = self.ratings.batch(ids)
