@@ -161,6 +161,23 @@ class ComparisonZoom(unittest.TestCase):
             return candidates.sort((a,b)=>a.distance-b.distance)[0];
         }''')
 
+    def pinch_point(self, page):
+        self.central_point(page)
+        return page.locator('.comparison-overlay-series[data-show-id="42184"][data-plot="raw"] .ratings-point').evaluate_all('''points=>{
+            const svg=document.querySelector('.ratings-timeline'),r=svg.getBoundingClientRect();
+            const centre=new DOMPoint(+svg.getAttribute('width')/2,140).matrixTransform(svg.getScreenCTM());
+            return points.map(point=>{const p=point.getBoundingClientRect();return {
+                id:+point.parentElement.dataset.episode,x:p.x+p.width/2,y:p.y+p.height/2,
+                distance:Math.hypot(p.x+p.width/2-centre.x,p.y+p.height/2-centre.y)};
+            }).filter(point=>point.x>r.left+70&&point.x<r.right-70).sort((a,b)=>a.distance-b.distance)[0];
+        }''')
+
+    @staticmethod
+    def touch_pair(point, dx, dy, shift=(0, 0), reverse=False):
+        pair = [{'id': 1, 'x': point['x'] - dx / 2 + shift[0], 'y': point['y'] - dy / 2 + shift[1]},
+                {'id': 2, 'x': point['x'] + dx / 2 + shift[0], 'y': point['y'] + dy / 2 + shift[1]}]
+        return pair[::-1] if reverse else pair
+
     def wheel(self, page, x, y, delta_y=-160, delta_x=0, modifier=None):
         before = self.domain(page)
         page.mouse.move(x, y)
@@ -182,7 +199,7 @@ class ComparisonZoom(unittest.TestCase):
     def synthetic_touch(page, kind, points, target='.ratings-timeline'):
         return page.evaluate('''args=>{
             const target=document.querySelector(args.target);
-            const touches=args.points.map((point,index)=>({identifier:index+1,target:point.target?document.querySelector(point.target):target,
+            const touches=args.points.map((point,index)=>({identifier:point.id??index+1,target:point.target?document.querySelector(point.target):target,
                 clientX:point.x,clientY:point.y,pageX:point.x+scrollX,pageY:point.y+scrollY,
                 screenX:point.x,screenY:point.y}));
             // Safari's Touch constructor is exposed but cannot be called. This
@@ -387,11 +404,9 @@ class ComparisonZoom(unittest.TestCase):
                 page.locator('[data-zoom-action="reset"]').click()
                 point = self.central_point(page)
                 if transport == 'touch':
-                    self.assertTrue(self.synthetic_touch(page, 'touchstart', [
-                        {'x': point['x'] - 30, 'y': point['y']}, {'x': point['x'] + 30, 'y': point['y']}]))
+                    self.assertTrue(self.synthetic_touch(page, 'touchstart', self.touch_pair(point, 60, 60)))
                     self.assertFalse(self.synthetic_gesture(page, 'gesturestart', 1, point))
-                    self.assertTrue(self.synthetic_touch(page, 'touchmove', [
-                        {'x': point['x'] - 60, 'y': point['y']}, {'x': point['x'] + 60, 'y': point['y']}]))
+                    self.assertTrue(self.synthetic_touch(page, 'touchmove', self.touch_pair(point, 120, 120)))
                     self.settle(page)
                     touch_domain = self.domain(page)
                     self.assertFalse(self.synthetic_gesture(page, 'gesturechange', 2, point))
@@ -407,6 +422,113 @@ class ComparisonZoom(unittest.TestCase):
                 self.assertGreater(zoomed['zoomX'], baseline['zoomX'])
                 self.assertLess(zoomed['high'] - zoomed['low'], baseline['high'] - baseline['low'])
                 self.assert_bounded_domain(zoomed, 200)
+        self.assertFalse(errors, errors)
+
+    def test_directional_pinch_has_independent_scales_anchor_and_midpoint_translation(self):
+        page, errors = self.open_fixture(390, 85)
+        self.remember_posters(page)
+        original = self.capture_snapshot(page)
+        baseline = self.domain(page)
+        cases = (
+            ('horizontal', (80, 0), (160, 0), (0, 0), 2, 1),
+            ('vertical', (0, 60), (0, 120), (0, 0), 1, 2),
+            ('diagonal', (80, 60), (160, 90), (0, 0), 2, 1.5),
+            ('translated-diagonal', (80, 60), (160, 90), (18, 9), 2, 1.5),
+        )
+        for name, start, end, shift, factor_x, factor_y in cases:
+            with self.subTest(direction=name):
+                page.locator('[data-zoom-action="reset"]').click()
+                point = self.pinch_point(page)
+                self.assertTrue(self.synthetic_touch(page, 'touchstart', self.touch_pair(point, *start)))
+                self.assertTrue(self.synthetic_touch(page, 'touchmove', self.touch_pair(point, *end, shift=shift)))
+                self.synthetic_touch(page, 'touchend', [])
+                self.settle(page)
+                domain = self.domain(page)
+                self.assertAlmostEqual(domain['zoomX'], baseline['zoomX'] * factor_x)
+                self.assertAlmostEqual(domain['high'] - domain['low'], (baseline['high'] - baseline['low']) / factor_y)
+                after = self.point_center(page, point['id'])
+                self.assertAlmostEqual(after['x'], point['x'] + shift[0], delta=1)
+                self.assertAlmostEqual(after['y'], point['y'] + shift[1], delta=1)
+                self.assert_bounded_domain(domain, 200)
+                self.assert_posters_retained(page)
+                self.assertEqual(self.capture_snapshot(page), original, 'Directional exploration cannot change frozen export data')
+        self.assertFalse(errors, errors)
+
+    def test_near_flat_pinch_ignores_jitter_and_activates_the_other_axis_without_a_jump(self):
+        page, errors = self.open_fixture(390, 85)
+        baseline = self.domain(page)
+        for flat_axis in ('y', 'x'):
+            with self.subTest(flat_axis=flat_axis):
+                page.locator('[data-zoom-action="reset"]').click()
+                point = self.pinch_point(page)
+                start, jitter, activate, spread = ((80, 2), (82, 4), (80, 26), (80, 52)) if flat_axis == 'y' else (
+                    (2, 80), (4, 82), (26, 80), (52, 80))
+                self.synthetic_touch(page, 'touchstart', self.touch_pair(point, *start))
+                for separation in (jitter, activate):
+                    self.assertTrue(self.synthetic_touch(page, 'touchmove', self.touch_pair(point, *separation)))
+                    self.settle(page)
+                    self.assert_same_domain(self.domain(page), baseline, 'Small separation noise and initial axis activation stay neutral')
+                self.synthetic_touch(page, 'touchmove', self.touch_pair(point, *spread))
+                self.synthetic_touch(page, 'touchend', [])
+                self.settle(page)
+                domain = self.domain(page)
+                if flat_axis == 'y':
+                    self.assertAlmostEqual(domain['zoomX'], baseline['zoomX'])
+                    self.assertAlmostEqual(domain['high'] - domain['low'], (baseline['high'] - baseline['low']) / 2)
+                else:
+                    self.assertAlmostEqual(domain['zoomX'], baseline['zoomX'] * 2)
+                    self.assertAlmostEqual(domain['low'], baseline['low'])
+                    self.assertAlmostEqual(domain['high'], baseline['high'])
+                self.assert_bounded_domain(domain, 200)
+        self.assertFalse(errors, errors)
+
+    def test_pinch_ratios_remain_start_based_when_touch_order_reverses_or_spread_collapses(self):
+        page, errors = self.open_fixture(390, 85)
+        baseline = self.domain(page)
+        point = self.pinch_point(page)
+        self.synthetic_touch(page, 'touchstart', self.touch_pair(point, 80, 60))
+        self.synthetic_touch(page, 'touchmove', self.touch_pair(point, 120, 90))
+        self.settle(page)
+        first = self.domain(page)
+        self.assertAlmostEqual(first['zoomX'], 1.5)
+        self.synthetic_touch(page, 'touchmove', self.touch_pair(point, 160, 90, reverse=True))
+        self.settle(page)
+        second = self.domain(page)
+        self.assertAlmostEqual(second['zoomX'], 2, msg='Successive moves use the initial span rather than multiplying current zoom')
+        self.assertAlmostEqual(second['high'] - second['low'], (baseline['high'] - baseline['low']) / 1.5)
+        self.synthetic_touch(page, 'touchmove', self.touch_pair(point, 160, 90))
+        self.settle(page)
+        self.assert_same_domain(self.domain(page), second, 'TouchList ordering alone cannot change the view')
+        self.synthetic_touch(page, 'touchmove', self.touch_pair(point, 80, 60, reverse=True))
+        self.settle(page)
+        self.assert_same_domain(self.domain(page), baseline)
+        for separation in ((10000, 9000), (0, 0)):
+            self.synthetic_touch(page, 'touchmove', self.touch_pair(point, *separation))
+            self.settle(page)
+            self.assert_bounded_domain(self.domain(page), 200)
+        self.synthetic_touch(page, 'touchend', [])
+        self.assertFalse(errors, errors)
+
+    def test_replacing_a_pinch_finger_abandons_that_gesture_until_a_new_touchstart(self):
+        page, errors = self.open_fixture(390, 85)
+        baseline = self.domain(page)
+        point = self.pinch_point(page)
+        start = self.touch_pair(point, 80, 60)
+        self.synthetic_touch(page, 'touchstart', start)
+        replacement = self.touch_pair(point, 160, 120)
+        replacement[1]['id'] = 3
+        self.assertFalse(self.synthetic_touch(page, 'touchmove', replacement))
+        self.assertFalse(self.synthetic_touch(page, 'touchmove', self.touch_pair(point, 160, 120)))
+        self.settle(page)
+        self.assert_same_domain(self.domain(page), baseline)
+        self.assertFalse(self.synthetic_gesture(page, 'gesturestart', 1, point))
+        self.synthetic_touch(page, 'touchend', [])
+        self.assertTrue(self.synthetic_touch(page, 'touchstart', start))
+        self.assertTrue(self.synthetic_touch(page, 'touchmove', self.touch_pair(point, 160, 120)))
+        self.synthetic_touch(page, 'touchend', [])
+        self.settle(page)
+        self.assertGreater(self.domain(page)['zoomX'], baseline['zoomX'])
+        self.assertLess(self.domain(page)['high'] - self.domain(page)['low'], baseline['high'] - baseline['low'])
         self.assertFalse(errors, errors)
 
     def test_shift_wheel_bounds_clipped_targets_and_point_tooltip_use_the_visible_data(self):
@@ -557,7 +679,8 @@ class ComparisonZoom(unittest.TestCase):
         self.settle(page)
         pinched = self.domain(page)
         self.assertGreater(pinched['zoomX'], before['zoomX'])
-        self.assertLess(pinched['high'] - pinched['low'], before['high'] - before['low'])
+        self.assertAlmostEqual(pinched['low'], before['low'], delta=.000000001)
+        self.assertAlmostEqual(pinched['high'], before['high'], delta=.000000001)
         self.assert_bounded_domain(pinched, 200)
         self.assertFalse(page.locator('#compare-ratings-hover').is_visible())
         self.assertFalse(self.synthetic_touch(page, 'touchstart', fingers, target='.compare-header'))

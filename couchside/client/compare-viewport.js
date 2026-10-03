@@ -30,6 +30,21 @@ function zoomed(value, source, factor, axis, anchor) {
   return bounded(next, source);
 }
 
+function pinchRatios(start, current, baselines) {
+  const ratios = {};
+  for (const axis of ['x', 'y']) {
+    const initialDistance = Math.abs(start[1][axis] - start[0][axis]);
+    const distance = Math.abs(current[1][axis] - current[0][axis]);
+    if (!(axis in baselines)) baselines[axis] = initialDistance >= 24 ? initialDistance : null;
+    if (baselines[axis] == null) {
+      // A nearly flat pair needs a meaningful spread before this axis can zoom.
+      if (distance >= 24) baselines[axis] = distance;
+      ratios[axis] = 1;
+    } else ratios[axis] = Math.abs(distance - baselines[axis]) <= 2 ? 1 : clamp(distance / baselines[axis], .05, 20);
+  }
+  return ratios;
+}
+
 // State and event targets live outside the SVG that is reprojected on each frame.
 export function createComparisonViewport({ changed = () => {} } = {}) {
   let view = initial(), source, plan, scope, board, controller, frame, drag, touch, gesture;
@@ -105,16 +120,15 @@ export function createComparisonViewport({ changed = () => {} } = {}) {
     if (board.hasPointerCapture?.(event.pointerId)) board.releasePointerCapture(event.pointerId);
     drag = null; board.classList.remove('is-panning');
   }
-  const touches = event => [...event.touches].slice(0, 2).map(item => ({ x: item.clientX, y: item.clientY }));
+  const touches = event => [...event.touches].slice(0, 2).map(item => ({ id: item.identifier, x: item.clientX, y: item.clientY }));
   const midpoint = points => ({ x: (points[0].x + points[1].x) / 2, y: (points[0].y + points[1].y) / 2 });
-  const distance = points => Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
   function touchStart(event) {
     if (!inChart(event.target) || !plan?.live) return;
     foreignTouch = event.touches.length > 2 || [...event.touches].some(item => !board.contains(item.target) || !inChart(item.target));
     if (foreignTouch) { touch = gesture = null; return; }
     const points = touches(event), middle = points.length === 2 ? midpoint(points) : points[0];
     const anchor = location(middle.x, middle.y);
-    touch = { points, middle, anchor, before: bounded(view, source), spacing: plan.spacing, moved: false };
+    touch = { points, middle, anchor, before: bounded(view, source), spacing: plan.spacing, pinch: {}, moved: false };
     if (points.length === 2 && event.cancelable) { event.preventDefault(); hideTip(); suppressClick = performance.now() + 400; }
   }
   function touchMove(event) {
@@ -123,10 +137,14 @@ export function createComparisonViewport({ changed = () => {} } = {}) {
     foreignTouch = event.touches.length > 2 || [...event.touches].some(item => !board.contains(item.target) || !inChart(item.target));
     if (foreignTouch) { touch = gesture = null; return; }
     const points = touches(event);
+    if (points.length !== touch.points.length || points.some(point => !touch.points.some(start => start.id === point.id))) {
+      touch = gesture = null; return;
+    }
     if (points.length === 2 && touch.points.length === 2) {
       if (event.cancelable) event.preventDefault(); event.stopPropagation();
-      const middle = midpoint(points), ratio = distance(points) / Math.max(24, distance(touch.points));
-      const next = zoomed(touch.before, source, clamp(ratio, .05, 20), 'both', touch.anchor);
+      const middle = midpoint(points), ratios = pinchRatios(touch.points, points, touch.pinch);
+      const episodes = zoomed(touch.before, source, ratios.x, 'episodes', touch.anchor);
+      const next = zoomed(episodes, source, ratios.y, 'ratings', touch.anchor);
       const spacing = (plan.width - 64) / next.span;
       next.startIndex -= (middle.x - touch.middle.x) / spacing;
       const shift = (middle.y - touch.middle.y) / touch.anchor.rowHeight * (next.high - next.low);

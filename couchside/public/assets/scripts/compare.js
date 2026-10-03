@@ -5,7 +5,7 @@ import { comparisonOverlayHTML, comparisonOverlayPlan, comparisonShowColour } fr
 import { bindComparisonTimeline } from './compare-timeline-interactions.js?v=1df7ff031af8a1c4';
 import { comparisonPosterColours, loadPosterColour, validPosterColour } from './poster-colours.js?v=0a5c074f14836db9';
 import { createComparisonPosters } from './compare-posters.js?v=2f489d7d10b368a3';
-import { createComparisonViewport } from './compare-viewport.js?v=56d25d33685e5b07';
+import { createComparisonViewport } from './compare-viewport.js?v=40a2db0add024520';
 
 const STORAGE_KEY = 'couchside.comparison-v1', MAX_SHOWS = 40;
 const validId = id => Number.isInteger(id) && id > 0 && id <= 2147483647;
