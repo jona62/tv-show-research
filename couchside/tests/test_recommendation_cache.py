@@ -16,6 +16,72 @@ sys.path.insert(0, str(ROOT / 'couchside'))
 from backend.recommendation.response_cache import Answers, response
 from backend.recommendation import engine as ranking
 from backend.recommendation.library import Taste, Library
+from backend.recommendation.taste import Taste as LearnedTaste
+
+
+class SetColumnTests(TestCase):
+    def fixture(self):
+        # Empty-but-known data has an offset; unknown rows must contribute zero.
+        masks = ([0, 0, 5, 5, 1 << 120, (1 << 120) | 1, 0, 3] * 16)
+        known = bytes([0, 1, 1, 0, 1, 1, 1, 1] * 16)
+        categories = array('I', (i % 3 for i in range(len(masks))))
+        attributes = SimpleNamespace(masks={'genre': masks}, known={'genre': known})
+        engine = SimpleNamespace(attributes=attributes,
+                                 numpy_columns={id(categories): ranking.np.asarray(categories)},
+                                 numpy_quality=ranking.np.zeros(len(masks)))
+        engine.numpy_sets = ranking.Engine._set_columns(engine)
+        delta = {0: .1234567890123456, 1: -.85, 2: .35, 120: -.275}
+        taste = SimpleNamespace(tables=[(categories, [0., .13, -.07])],
+                                sets=[('genre', masks, known, delta, .21, .5, 1.5, {})])
+        result = ranking.Ranking.__new__(ranking.Ranking)
+        result.e = engine
+        return result, taste
+
+    def assert_scalar_fit(self, result, taste, indices):
+        expected_taste = SimpleNamespace(tables=taste.tables,
+                                        sets=[(*entry[:-1], {}) for entry in taste.sets])
+        fit = ranking.np.asarray([LearnedTaste.score(expected_taste, i) for i in indices])
+        expected = ranking.np.exp(ranking.STRENGTH * fit + ranking.QUALITY * result.e.numpy_quality[indices])
+        actual = result._factors_vector(taste, indices)
+        self.assertEqual(actual.tobytes(), expected.tobytes())
+
+    def test_duplicate_high_bit_masks_unknown_and_known_empty_rows_match_scalar(self):
+        result, taste = self.fixture()
+        indices = ranking.np.asarray(list(reversed(range(128))) + [1, 1, 2, 4])
+        self.assert_scalar_fit(result, taste, indices)
+        self.assertNotEqual(result._factors_vector(taste, ranking.np.asarray([0]))[0],
+                            result._factors_vector(taste, ranking.np.asarray([1]))[0])
+        self.assertEqual(set(taste.sets[0][-1]), {0, 3, 5, 1 << 120, (1 << 120) | 1})
+
+    def test_later_small_large_and_empty_subsets_keep_request_local_contributions(self):
+        result, taste = self.fixture()
+        for subset in ([2, 4], list(range(128)), [1], [], list(range(0, 128, 2))):
+            self.assert_scalar_fit(result, taste, ranking.np.asarray(subset, dtype=ranking.np.intp))
+        other = SimpleNamespace(tables=taste.tables,
+                                sets=[(*taste.sets[0][:4], -.3, .8, .4, {})])
+        self.assert_scalar_fit(result, other, ranking.np.arange(128))
+        self.assertIsNot(other.sets[0][-1], taste.sets[0][-1])
+
+    def test_custom_known_flags_and_unindexed_families_use_scalar_semantics(self):
+        result, taste = self.fixture()
+        family, masks, _known, delta, offset, weight, limit, _cache = taste.sets[0]
+        known = bytes([1] * 128)
+        taste.sets = [(family, masks, known, delta, offset, weight, limit, {})]
+        self.assert_scalar_fit(result, taste, ranking.np.arange(128))
+        taste.sets.append(('theme', list(reversed(masks)), known, delta, -.3, .4, .8, {}))
+        self.assert_scalar_fit(result, taste, ranking.np.arange(128))
+
+    def test_public_codes_are_read_only_and_store_no_personal_contributions(self):
+        result, taste = self.fixture()
+        masks, known = taste.sets[0][1:3]
+        combinations, codes = result.e.numpy_sets[id(masks), id(known)]
+        self.assertIsNone(combinations[0])
+        self.assertNotEqual(codes[0], codes[1])
+        before = codes.tobytes(), combinations
+        with self.assertRaises(ValueError):
+            codes[0] = 100
+        self.assert_scalar_fit(result, taste, ranking.np.arange(128))
+        self.assertEqual((codes.tobytes(), combinations), before)
 
 
 class AnswerTests(TestCase):

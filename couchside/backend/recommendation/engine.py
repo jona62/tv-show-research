@@ -233,8 +233,31 @@ class Engine:
             self.numpy_columns = {id(column): np.asarray(column) for column in self.attributes.values.values()}
             self.numpy_quality = np.asarray([clamp((s['rating'] - 7.2) / 1.2, 1.5) if s['rating'] else 0.
                                              for s in self.shows])
+            self.numpy_sets = self._set_columns()
         self.quick_picks = [self.card(self.by_id[i]) for i in QUICK_PICKS if i in self.by_id]
         self.titles = Titles(self.shows, self.popularity, model / 'search.json.gz')
+
+    def _set_columns(self):
+        """Public mask combinations, with unknown data distinct from a known empty set."""
+        columns = {}
+        for family in ('genre', 'subgenre'):
+            if family not in self.attributes.masks:
+                continue
+            masks, known = self.attributes.masks[family], self.attributes.known[family]
+            combinations, by_mask = [None], {}
+            codes = np.zeros(len(masks), dtype=np.int32)
+            for i, mask in enumerate(masks):
+                if not known[i]:
+                    continue
+                code = by_mask.get(mask)
+                if code is None:
+                    code = len(combinations)
+                    by_mask[mask] = code
+                    combinations.append(mask)
+                codes[i] = code
+            codes.flags.writeable = False
+            columns[id(masks), id(known)] = tuple(combinations), codes
+        return columns
 
     # ---------------------------------------------------------------- shapes
 
@@ -972,6 +995,23 @@ class Ranking:
             fit += np.asarray(contributions)[self.e.numpy_columns[id(column)][indices]]
         for _family, masks, known, delta, offset, weight, limit, cache in taste.sets:
             if weight == 0:
+                continue
+            column = getattr(self.e, 'numpy_sets', {}).get((id(masks), id(known)))
+            if column is not None and len(indices) >= 64:
+                combinations, all_codes = column
+                codes = all_codes[indices]
+                contributions = np.zeros(len(combinations), dtype=np.float64)
+                for code in np.unique(codes):
+                    if code == 0:
+                        continue
+                    mask = combinations[code]
+                    hit = cache.get(mask)
+                    if hit is None:
+                        hit = cache[mask] = weight * clamp(offset + sum(delta[bit] for bit in taste_bits(mask)), limit)
+                    contributions[code] = hit
+                # Only public combination identities are shared. Contributions
+                # remain request-local and retain the scalar bit/addition order.
+                fit += contributions[codes]
                 continue
             values = []
             for i in indices:
