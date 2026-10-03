@@ -1,6 +1,6 @@
 {
   "date": "2026-10-03",
-  "status": "capacity_measured_not_ready_proxy_verification_pending",
+  "status": "capacity_measured_not_ready",
   "goal": {
     "concurrent_users": 10000,
     "meaning": "active randomized user journeys, not 10000 total requests",
@@ -2513,9 +2513,10 @@
         "selected_equals_peer": true
       },
       "interpretation": "The forwarded chain contains only the trusted edge hop. Original clients are lost at compute Caddy. Correct app extraction falls back to the immediate peer budget.",
-      "rig_proxy_modified": false,
+      "rig_proxy_modified": true,
       "proposal_validated_with_caddy": "2.10.2",
-      "repair_status": "approved and applying; post-reload verification pending"
+      "repair_status": "approved fix live; four unsigned staged-client probes passed; complete production deployment pipeline and live verification passed",
+      "observation_scope": "Historical pre-reload identity-collapse diagnosis; later verification is recorded separately in proxy_repair."
     },
     "cpu_interpretation": "VMCPU values are guest task CPU accounting. The guest task/aggregate accounting discrepancy prevents treating these as physical host core utilization or an intrinsic fivefold hardware cost."
   },
@@ -2612,7 +2613,9 @@
     "incremental_native_scoring": "ranking-mean-native-20261003/results.json",
     "prior_corrected_distributed": "load-capacity-final-20261003",
     "current_host_scheduling": "capacity-gap-20261003/host-scheduling-vector-ranking-20261003.jsonl",
-    "native_derived_stage_summary": "load-capacity-native-20261003/derived-stage-summary.json"
+    "native_derived_stage_summary": "load-capacity-native-20261003/derived-stage-summary.json",
+    "proxy_deployment": "capacity-gap-20261003/caddy-proxy-deployment-20261003.json",
+    "proxy_identity_after_fix": "capacity-gap-20261003/proxy-path-after-fix.json"
   },
   "limits": [
     "Component timings exclude gateway/network and high concurrency.",
@@ -2620,7 +2623,7 @@
     "Repeated answer-cache hits require identical complete inputs inside the bounded retention window.",
     "Browser mobile emulation does not establish native iOS Safari focus behavior.",
     "No physical provider storm was sent; cached stress stages do not certify cold provider capacity.",
-    "Ordinary desktop and generator requests collapsed to one budget identity because the Rigbox proxy forwarded only a trusted edge hop. Signed staged identities bypass this defect; its approved repair is being applied and needs separate post-reload identity verification.",
+    "Signed capacity stages occurred before the shared-proxy reload. Four ordinary unsigned post-reload probes from two independent origins verified distinct real client selection and forged-header resistance in the staged app; this does not rerun capacity or certify distinct NAT clients.",
     "All corrected capacity stages failed experimental targets; no production10k certification or capacity speedup against the earlier diagnostic is claimed."
   ],
   "earlier_distributed_diagnostic": {
@@ -4916,5 +4919,142 @@
       }
     ],
     "interpretation": "Actual host CPU charged to whole Firecracker VM scope includes VM/emulator overhead. Shared CPU ceilings do not reserve cores; CPU pressure and memory-limit events on generator constrain interpretation. No application quota throttle or OOM observed."
+  },
+  "proxy_repair": {
+    "status": "live_fix_verified_deployment_complete",
+    "user_approved": true,
+    "pull_request": "https://github.com/jona62/rig-mvp/pull/504",
+    "merge_commit": "e7279621c07fe45eaa66f01e2ba59a819b987fdf",
+    "premerge_ci": {
+      "id": 37099645122,
+      "conclusion": "success"
+    },
+    "deployment_run_at_inspection": {
+      "id": 37100742170,
+      "conclusion": "success",
+      "computeCaddyCompletedAt": "2026-10-03T06:07:25Z",
+      "gatewayCaddyCompletedAt": "2026-10-03T06:07:54Z",
+      "status": "completed",
+      "headSha": "e7279621c07fe45eaa66f01e2ba59a819b987fdf",
+      "url": "https://github.com/jona62/rig-mvp/actions/runs/37100742170",
+      "live_verification": "passed",
+      "verification_source": "root independently verified gh run status/conclusion/headSha; deployment artifact finalized by infrastructure owner"
+    },
+    "installed_caddyfile_matches_source": true,
+    "caddyfile_sha256": "4dfd130decd2ed100904a4ebc06a22bc7af017f5a21f7a4ac5864f74cdf7200b",
+    "application_ingress": "exact gateway address trust, strict forwarding, only X-Forwarded-For; 15 dynamic routes present after reload",
+    "compute_services": {
+      "rigVmManager": "active",
+      "caddyApps": "active",
+      "rigVmWatcher": "active"
+    },
+    "gateway_services": {
+      "rigApiGateway": "active",
+      "rigAuthService": "active",
+      "caddyBase": "active"
+    },
+    "public_health": {
+      "api": "rig control plane is running",
+      "frontendHttpStatus": 200,
+      "couchsideHttpStatus": 200
+    },
+    "unsigned_client_proof": {
+      "verified_at_utc": "2026-10-03T06:10:49.064693+00:00",
+      "target": "Disposable staging application with the new client-address selection code",
+      "unsigned_probes": 4,
+      "synthetic_identity_headers": false,
+      "distinct_real_client_identities": true,
+      "forged_forwarded_header_preserves_real_identity": {
+        "desktop": true,
+        "generator": true
+      },
+      "original_client_retained": true,
+      "classified_paths": {
+        "desktop": [
+          {
+            "peer": "trusted",
+            "forwarded": [
+              "public",
+              "trusted"
+            ],
+            "selected": "public",
+            "selected_equals_peer": false
+          },
+          {
+            "peer": "trusted",
+            "forwarded": [
+              "public",
+              "trusted"
+            ],
+            "selected": "public",
+            "selected_equals_peer": false
+          }
+        ],
+        "generator": [
+          {
+            "peer": "trusted",
+            "forwarded": [
+              "public",
+              "trusted"
+            ],
+            "selected": "public",
+            "selected_equals_peer": false
+          },
+          {
+            "peer": "trusted",
+            "forwarded": [
+              "public",
+              "trusted"
+            ],
+            "selected": "public",
+            "selected_equals_peer": false
+          }
+        ]
+      },
+      "privacy": "Raw client addresses, fingerprints, credentials and signing keys are excluded.",
+      "scope": "Two independently originating clients; this is not proof that clients behind one NAT have distinct network addresses.",
+      "passed": true
+    },
+    "proof_scope": "Disposable staging app with new client-address selection code; live shared-proxy forwarding is verified independently after all signed capacity stages. Does not rerun capacity or establish distinct addresses for clients behind one NAT.",
+    "production_couchside_performance_source_deployed": false,
+    "artifacts": {
+      "deployment": "capacity-gap-20261003/caddy-proxy-deployment-20261003.json",
+      "unsigned_proof": "capacity-gap-20261003/proxy-path-after-fix.json"
+    },
+    "route_verification_scope": "Pre-reload snapshot recorded route count only; full historical route-ID set equality is not asserted."
+  },
+  "staging_cleanup": {
+    "source": "Owning root task confirmed successful commands and independently checked final state using read-only Rig workspace/app listings.",
+    "private_app_share": {
+      "command": "rig app share --app ar-65p4le9j --private",
+      "succeeded": true
+    },
+    "stopped_test_workspaces": [
+      {
+        "workspace": "ws-47f13cba",
+        "command": "rig workspace stop --workspace ws-47f13cba",
+        "succeeded": true
+      },
+      {
+        "workspace": "ws-w2ldtoz9",
+        "command": "rig workspace stop --workspace ws-w2ldtoz9",
+        "succeeded": true
+      }
+    ],
+    "recoverable_fixtures_and_artifacts_preserved": true,
+    "production_workspace": "ws-jlvf21do",
+    "production_couchside_app_source_resources_changed": false,
+    "shared_proxy_repair": "separately user-approved deployment",
+    "post_action_read_only_verification": {
+      "observed_at_utc": "2026-10-03T06:12:11Z",
+      "workspace_listing": {
+        "ws-47f13cba": "stopped",
+        "ws-w2ldtoz9": "stopped",
+        "ws-jlvf21do": "running"
+      },
+      "staging_app_listing": {
+        "ar-65p4le9j": "private"
+      }
+    }
   }
 }
