@@ -7,7 +7,7 @@ import { mergeTransferredList } from './list-transfer.js?v=bf96d9f9d5d965e6';
 import { apiFetch } from './network.js?v=4038b4a1107593ef';
 import { mountAccounts } from './accounts.js?v=f68e1951bdf329a9';
 import { createFeatureFlags, mountExperimentalMode } from './features.js?v=f67cf12dc64da47a';
-import { mountWatchTracking, mountTrackingTitle, mountEpisodeProgress, renderTrackingList } from './watch-tracking.js?v=e82d5b183ce1a83b';
+import { mountWatchTracking, mountTrackingTitle, mountEpisodeProgress, renderTrackingList } from './watch-tracking.js?v=9060dec17879de91';
 import { startAppUpdates } from './app-updates.js?v=6fd21e40c7dc0bdb';
 import { updateMetadata } from './metadata.js?v=61237fd7da1aa410';
 import { backdropURL, displayPoster, createBackdropPrefetcher, bindBackdropIntent } from './show-artwork.js?v=919c7a8ac41304f6';
@@ -2151,14 +2151,6 @@ function toggleList(c) {
   settleHome(c.id);
 }
 
-function removeSavedButton(c) {
-  const remove = button('list-remove', 'Remove from My List', () => {
-    if (inList(c.id)) toggleList({ ...c, ...info(c.id) });
-  }, 'close');
-  remove.setAttribute('aria-label', `Remove ${c.name} from My List`);
-  return remove;
-}
-
 function rateButtons(c, weights = RATES.map(r => r.weight), size = '') {
   return RATES.filter(r => weights.includes(r.weight)).map(r => {
     const b = button(`round ${r.icon}${size ? ` ${size}` : ''}`, '', () => rate({ ...c, ...info(c.id) }, r.weight), r.icon);
@@ -4031,7 +4023,6 @@ function fill(grid, items, options = () => ({})) {
     const li = el('li');
     const o = options(c);
     li.append(cardEl(c, o));
-    if (o.removeSaved) li.append(removeSavedButton(c));
     if (o.titled) {
       li.append(showCaption(c, o.also));
       return li;
@@ -4062,7 +4053,7 @@ function renderList() {
   $('list-note').textContent = saved.length
     ? `${saved.length} show${saved.length === 1 ? '' : 's'} saved for later.`
     : state.saved.length?'No saved shows match these filters.':'Nothing saved yet. Tap My List on any show and it waits here.';
-  fill($('list-grid'), saved, () => ({ removeSaved: true }));
+  fill($('list-grid'), saved);
 
   const filters = $('rated-filter');
   filters.replaceChildren(...Object.entries(GROUPS).map(([key, [label, test]]) => {
@@ -4967,7 +4958,6 @@ featureFlags = createFeatureFlags({ getAccount: () => accounts.context() });
 mountExperimentalMode(featureFlags, $('experimental-customization'));
 watchTracking = mountWatchTracking({ features: featureFlags, getAccount: () => accounts.context(),
   getSaved: () => state.saved, getShow: id => ({ ...info(id), ...(known.get(id) || {}) }),
-  removeSaved: show => { if (inList(show.id)) toggleList(show); },
   selectLibrary: shows => selectShows(shows, 'list', listQuery),
   onRefresh: () => { if (view === 'list') renderList(); },
   onExpired: () => { void featureFlags.refresh(); void accounts.refresh(); } });

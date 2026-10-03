@@ -92,8 +92,8 @@ rebuilt every night. Nothing plays. It is for finding your next show.
 - **New & Popular** has the Top 10, new shows this year ranked for you, and
   premieres coming soon with their dates.
 - **My List** holds what you saved, and every show you rated, filterable by
-  rating. Saved cards have a visible Remove from My List action on desktop and
-  touch screens, without opening show details. Removing a bookmark keeps ratings
+  rating. Saved cards use the same My List toggle to add or remove a show,
+  without opening show details. Removing a bookmark keeps ratings
   and any viewing progress. You may rate up to 3,000 shows; past 60 the ratings show 60 at a time,
   newest first, with *Show more* and a box that finds any of them by name.
 - **Search** finds a show however it is typed: with typos, odd spacing or

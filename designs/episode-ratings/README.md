@@ -24,8 +24,8 @@ Current UI screenshots: [account progress](real-tracking-desktop.png) and
 
 Viewing history saves independently of taste ratings and My List bookmarks.
 Removing a bookmark keeps progress; disabling Experimental mode preserves all
-viewing history. Both ordinary saved cards and experimental tracking cards offer
-Remove from My List directly, without opening show details. My List combines saved and tracked shows, with Want to watch,
+viewing history. Saved poster cards keep the existing My List add/remove toggle.
+My List combines saved and tracked shows, with Want to watch,
 Watching, Caught up, Finished, Paused and Dropped filters. Show details offer
 individual episode marks, exact progress editing, unknown Finished, removal,
 and Undo. Home adds Continue watching. The [implemented API and data model](../../couchside/docs/watch-tracking.md)

@@ -50,8 +50,8 @@ const position = s => {
   return e ? `Watched through ${code(e)}` : `${count(s)} episodes watched`;
 };
 
-export function mountWatchTracking({ features, getAccount, getSaved, getShow, removeSaved, selectLibrary = values => values, onRefresh = () => {}, onExpired = () => {} }) {
-  hooks = { getSaved, getShow, removeSaved, selectLibrary, onExpired };
+export function mountWatchTracking({ features, getAccount, getSaved, getShow, selectLibrary = values => values, onRefresh = () => {}, onExpired = () => {} }) {
+  hooks = { getSaved, getShow, selectLibrary, onExpired };
   store = createTrackingState({ getAccount, changed: rebuild, denied: onExpired });
   const unsubscribe = features.subscribe(flags => {
     const id = flags.features?.watch_tracking ? flags.userId : '';
@@ -174,13 +174,9 @@ function trackingCard(s, compact = false) {
   if (s.intent === 'paused' || s.intent === 'dropped') buttons.append(action('Continue tracking', () => change(s, 'intent', { intent: 'watching' }, 'Moved to Watching.')));
   const editor = action('Edit progress', () => edit(s), 'tracking-text-button'); editor.dataset.trackingEdit = '';
   buttons.append(editor);
-  if (s.saved && !compact) {
-    const remove = action('Remove from My List', () => hooks.removeSaved(s), 'tracking-text-button');
-    remove.dataset.trackingRemove = ''; remove.setAttribute('aria-label', `Remove ${s.name} from My List`); buttons.append(remove);
-  }
   body.append(buttons); card.append(posterLink, body);
-  for (const b of card.querySelectorAll('button')) b.disabled = !b.hasAttribute('data-tracking-remove') &&
-    (store.get().busy || !store.get().loaded || b.hasAttribute('data-tracking-edit') && !s.catalogue);
+  for (const b of card.querySelectorAll('button')) b.disabled =
+    store.get().busy || !store.get().loaded || b.hasAttribute('data-tracking-edit') && !s.catalogue;
   if (!s.catalogue) {
     card.dataset.trackingCard = s.id;
     if (visibleCards) visibleCards.observe(card); else void hydrateEpisodes(s);
