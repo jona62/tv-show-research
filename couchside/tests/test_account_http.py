@@ -168,6 +168,29 @@ class AccountHttpTests(unittest.TestCase):
             self.assertEqual(self.call('session', headers={**known, 'X-Account-Revision': revision})[0], 400)
         self.assertEqual(self.call('session', headers={**known, 'X-Account-Owner': '\u00ff'})[0], 400)
 
+    def test_conditional_sessions_remain_private_and_legacy_clients_get_full_state(self):
+        cookie, account = self.signup()
+        known = {'Cookie': cookie, 'X-Account-Owner': account['user']['id'], 'X-Account-Revision': '0',
+                 'X-Account-Conditional': '1', 'Accept-Encoding': 'gzip'}
+        status, headers, body = self.call('session', headers=known)
+        self.assertEqual(status, 200)
+        self.assertEqual(body, {key: account[key] for key in ('user', 'csrf', 'revision')} | {'unchanged': True})
+        self.assertEqual(headers['Cache-Control'], 'no-store')
+        self.assertNotIn('ETag', headers)
+        self.assertNotIn('Content-Encoding', headers)
+        legacy = {key: value for key, value in known.items() if key != 'X-Account-Conditional'}
+        self.assertEqual(self.call('session', headers=legacy)[2], account)
+        self.assertEqual(self.call('session', headers={**known, 'X-Account-Owner': 'other-account'})[2], account)
+        self.assertEqual(self.call('session', headers={**known, 'X-Account-Conditional': '0'})[0], 400)
+        self.assertEqual(self.call('session', headers={**known, 'Cookie': ''})[0], 401)
+        empty = {**STATE, 'saved': []}
+        status, _, saved = self.call('state', {'state': empty, 'revision': 0, 'sync_version': 2},
+                                    {'Cookie': cookie, 'X-CSRF-Token': account['csrf']})
+        self.assertEqual(status, 200)
+        changed = self.call('session', headers=known)[2]
+        self.assertEqual((changed['state'], changed['revision'], changed['removals']),
+                         (saved['state'], saved['revision'], saved['removals']))
+
     def test_old_clients_cannot_overwrite_ratings_or_restore_account_removals(self):
         cookie, account = self.signup()
         empty = {**STATE, 'saved': []}

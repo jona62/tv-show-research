@@ -343,6 +343,26 @@ class AccountTests(TestCase):
         for owner in (42, '', 'é', '\ud800', 'x' * 129):
             self.error(400, lambda: self.service.session(token, owner=owner))
 
+    def test_conditional_poll_requires_the_known_owner_revision_and_a_live_session(self):
+        token, response = self.signup()
+        owner = response['user']['id']
+        with patch.object(self.service, '_removals', side_effect=AssertionError('unchanged removal query')):
+            unchanged = self.service.session(token, 0, owner, conditional=True)
+        self.assertEqual(unchanged, {key: response[key] for key in ('user', 'csrf', 'revision')} | {'unchanged': True})
+        self.assertEqual(self.service.session(token, 0, owner), response, 'cached older clients still receive full state')
+        for since, known_owner in ((1, owner), (0, 'another-account'), (0, None)):
+            self.assertEqual(self.service.session(token, since, known_owner, conditional=True), response)
+        saved = self.service.save(token, response['csrf'], {**STATE, 'saved': []}, 0)
+        changed = self.service.session(token, 0, owner, conditional=True)
+        self.assertEqual((changed['state'], changed['revision'], changed['removals']),
+                         (saved['state'], saved['revision'], saved['removals']))
+        self.assertNotIn('unchanged', changed)
+        self.service.logout(token, response['csrf'])
+        self.error(401, lambda: self.service.session(token, 1, owner, conditional=True))
+        token, current = self.service.login('person@gmail.com', PASSWORD)
+        self.now += SESSION_SECONDS
+        self.error(401, lambda: self.service.session(token, current['revision'], owner, conditional=True))
+
     def test_session_state_and_removals_share_one_read_snapshot(self):
         token, response = self.signup()
         read, changed = threading.Event(), threading.Event()

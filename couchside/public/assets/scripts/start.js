@@ -9,7 +9,7 @@ import { apiFetch } from './network.js?v=4038b4a1107593ef';
 // added anywhere else would have main.js ask again.
 import { LIMITS, packList } from './transfer.js?v=2bfd019beccdb78d';
 import { freshStore, today, prune, beginVisit, freshness } from './fresh.js?v=afcc972f76479400';
-import { pageKey, ongoing, resumable } from './format.js?v=9c2dfc9440b436fa';
+import { pageKey, ongoing, resumable, parseRoute, needsHomeFeed } from './format.js?v=7ac003cc28be3a47';
 import {filtersFor,filterKey,wantsMatrices} from './filter-state.js?v=2a62eef7fd5aeeda';
 
 /* ------------------------------------------------------------- the list */
@@ -147,9 +147,14 @@ function keptPage(state, visit) {
   } catch { return false; }
 }
 
-// The home page asked for as the page starts, unless the page kept for this visit stands in.
+// Start recommendations early only when the opening route will use them.
 let early = null;
-if (globalThis.document && !keptPage(stored, opened.visit)) {
+const initialRoute = parseRoute(globalThis.location?.pathname || '/', globalThis.location?.search || '');
+const initialFeed = needsHomeFeed(initialRoute, {
+  onboarded: stored.onboarded || stored.profile.length > 0,
+  independentNew: !!(filterKey('home') || filterKey('new')),
+});
+if (globalThis.document && initialFeed && !keptPage(stored, opened.visit)) {
   early = opened.ask.then(ask => {
     const text = packed(homeBody(stored, ask));
     return { text, answer: apiFetch('/api/home', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: text, priority: 'high' }) };

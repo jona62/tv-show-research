@@ -41,9 +41,8 @@ def source_document(count=200, deferred_colours=False):
         "import {mountCompare} from '/client/compare.js';\n"
         "      import {comparisonOverlayPlan} from '/client/comparison-timeline.js';").replace(
         '&mode=single&compare-view=timeline', '&mode=all&compare-view=timeline').replace(
-        "replaceURL:url=>history.replaceState({},'',url),",
-        "saveSnapshot:async model=>window.captureSnapshot(model),\n"
-        "        replaceURL:url=>history.replaceState({},'',url),") + '<div style="height:1000px" aria-hidden="true"></div>'
+        "saveSnapshot:async model=>{window.snapshotModel=model;},",
+        "saveSnapshot:async model=>window.captureSnapshot(model),") + '<div style="height:1000px" aria-hidden="true"></div>'
 
 
 class ComparisonZoom(unittest.TestCase):

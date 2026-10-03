@@ -1,7 +1,22 @@
-// The same address warms and displays a show's background. The server chooses
-// TMDB or TVmaze; the browser and service worker keep its readable image bytes.
-export function backdropURL(id) {
-  return Number.isInteger(id) && id > 0 && id <= 999999999 ? `/api/backdrop?id=${id}` : '';
+// Small cards use the provider's matching display image; snapshots keep show.art.
+// Restrict rewriting to genuine raster provider paths, leaving other hosts alone.
+export function displayPoster(source) {
+  if (typeof source !== 'string' || !source) return '';
+  const match = source.match(/^https:\/\/static\.tvmaze\.com\/uploads\/images\/(?:original_untouched|original|o)\/(\d{1,9}\/\d{1,12}\.(?:jpg|jpeg|png|webp))$/);
+  return match ? `https://static.tvmaze.com/uploads/images/medium_portrait/${match[1]}` : source;
+}
+
+export function comparisonPosterSources(show) {
+  const artwork = displayPoster(show.art);
+  return [...new Set([artwork && artwork !== show.art ? artwork : show.poster, show.poster, show.art].filter(Boolean))];
+}
+
+// Intent and the title page choose the same bounded provider width. On wider or
+// denser screens retain w1280; a small 1x viewport can request TMDB's lighter w780.
+export function backdropURL(id, { width = globalThis.innerWidth, scale = globalThis.devicePixelRatio || 1 } = {}) {
+  if (!Number.isInteger(id) || id <= 0 || id > 999999999) return '';
+  const size = Number.isFinite(width) ? (width * scale <= 780 ? 780 : 1280) : null;
+  return `/api/backdrop?id=${id}${size ? `&w=${size}` : ''}`;
 }
 
 export function createBackdropPrefetcher({ makeImage = () => new Image(), now = Date.now,
@@ -11,17 +26,17 @@ export function createBackdropPrefetcher({ makeImage = () => new Image(), now = 
   const DAY = 86400000, RETRY = 30000;
   function drain() {
     while (active.size < 2 && waiting.length) {
-      const id = waiting.shift(), img = makeImage();
-      active.add(id);
+      const url = waiting.shift(), img = makeImage();
+      active.add(url);
       let finished = false, timer;
       const done = loaded => {
         if (finished) return;
         finished = true;
         cancel(timer);
         img.onload = img.onerror = null;
-        active.delete(id);
-        kept.delete(id);
-        kept.set(id, now() + (loaded ? DAY : RETRY));
+        active.delete(url);
+        kept.delete(url);
+        kept.set(url, now() + (loaded ? DAY : RETRY));
         while (kept.size > 40) kept.delete(kept.keys().next().value);
         drain();
       };
@@ -34,17 +49,17 @@ export function createBackdropPrefetcher({ makeImage = () => new Image(), now = 
       img.crossOrigin = 'anonymous';
       img.referrerPolicy = 'no-referrer';
       img.fetchPriority = 'low';
-      img.src = backdropURL(id);
+      img.src = url;
     }
   }
   return id => {
-    const net = connection();
-    if (!backdropURL(id) || !online() || net?.saveData || ['slow-2g', '2g'].includes(net?.effectiveType)) return;
-    if (active.has(id) || kept.get(id) > now()) return;
-    const queued = waiting.indexOf(id);
+    const net = connection(), url = backdropURL(id);
+    if (!url || !online() || net?.saveData || ['slow-2g', '2g'].includes(net?.effectiveType)) return;
+    if (active.has(url) || kept.get(url) > now()) return;
+    const queued = waiting.indexOf(url);
     if (queued >= 0) waiting.splice(queued, 1);
     // Only the latest few intentional hovers wait; sweeping over a row is cheap.
-    waiting.push(id);
+    waiting.push(url);
     if (waiting.length > 4) waiting.shift();
     drain();
   };

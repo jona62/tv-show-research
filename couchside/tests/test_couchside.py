@@ -1815,7 +1815,8 @@ check('trailers play only in the no-cookie player', "frame-src https://www.youtu
 check('no referrer goes to the image server', headers.get('Referrer-Policy') == 'no-referrer')
 for path in ('/new', '/list', '/search', '/browse', '/welcome', '/compare'):
     status, _headers, body = fetch(path)
-    check(f'{path} is the page too', status == 200 and body == page_root)
+    check(f'{path} is the app with its own metadata', status == 200 and b'id="boot"' in body
+          and f'href="{server.PUBLIC_SEO.site}{path}"'.encode() in body)
 status, headers, body = fetch('/nope')
 check('an unknown path is a 404 with the app\'s own page', status == 404 and b'Lost your way?' in body
       and headers.get('Content-Type', '').startswith('text/html'))
@@ -1838,22 +1839,22 @@ touch_guard = (ROOT / 'tools/touch-forms.css').read_bytes()
 touch_styles = fetch('/assets/styles/style.css')[2]
 check('touch controls share the priority guard, including editable descendants and dialogs',
       touch_guard in touch_styles and touch_styles.startswith(b'@layer touch-forms;\n'))
-check('the home preview uses the share image at this address',
-      f'content="{base}/assets/images/og.jpg"'.encode() in page_root and b'content="summary_large_image"' in page_root)
+check('the home preview uses the configured public share image',
+      f'content="{server.PUBLIC_SEO.site}/assets/images/og.jpg"'.encode() in page_root and b'content="summary_large_image"' in page_root)
 status, _headers, titled = fetch('/?show=169')
 art = lib.poster(engine.by_id[169], 'original_untouched')
 check('a shared title previews itself', status == 200 and b'content="Breaking Bad (2008) on Couchside"' in titled
       and f'content="{art}"'.encode() in titled and b'<title>Breaking Bad \xc2\xb7 Couchside</title>' in titled
-      and f'content="{base}/?show=169"'.encode() in titled)
+      and f'content="{server.PUBLIC_SEO.site}/?show=169"'.encode() in titled)
 tricky = next(i for i, show in enumerate(engine.shows) if '&' in show['name'] and '"' not in show['name'] and show['recommendable'])
 tricky_id, tricky_name = engine.shows[tricky]['id'], engine.shows[tricky]['name']
 body = fetch(f'/?show={tricky_id}')[2].decode()
 check('titles are escaped in previews', f'content="{tricky_name.replace("&", "&amp;")}' in body and f'content="{tricky_name} (' not in body)
 check('an unknown title previews the app', b'content="Couchside"' in fetch('/?show=999999999')[2])
-check('https is kept behind a proxy', f'content="https://127.0.0.1:{httpd.server_address[1]}/assets/images/og.jpg"'.encode()
-      in fetch('/', headers={'X-Forwarded-Proto': 'https'})[2])
-check('a public host is https even when the proxy says http', b'content="https://couchside.example/assets/images/og.jpg"'
-      in fetch('/', headers={'Host': 'couchside.example', 'X-Forwarded-Proto': 'http'})[2])
+check('forwarded headers do not alter the configured public metadata',
+      fetch('/', headers={'X-Forwarded-Proto': 'https'})[2] == page_root)
+check('a different Host cannot poison public metadata',
+      fetch('/', headers={'Host': 'couchside.example', 'X-Forwarded-Proto': 'http'})[2] == page_root)
 body = fetch('/', headers={'Host': 'evil.example"><script>x</script>'})[2]
 check('a hostile Host header is not echoed', b'<script>x' not in body and b'evil.example' not in body)
 status, headers, body = fetch('/manifest.webmanifest')

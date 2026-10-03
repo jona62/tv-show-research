@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { AccountSync, AccountRequestError, accountRequest, toWire, sameState, mergeStates,
   GUEST_KEY, ACTIVE_KEY, accountKey } from '../client/account-state.js';
+import { watchAccount } from '../client/accounts.js';
 
 const fresh = () => ({ version: 3, profile: [], saved: [], settings: { known_min: 85 }, onboarded: false });
 const sanitize = raw => ({ ...fresh(), ...raw,
@@ -25,11 +26,13 @@ const memory = () => {
 };
 function setup(request, storage = memory(), initial = fresh()) {
   let current = initial;
+  let paints = 0;
   const statuses = [];
   const sync = new AccountSync({ getState: () => current, applyState: async (next, context) => {
-    if (context.current()) current = next;
+    if (context.current()) { current = next; paints++; }
   }, fresh, sanitize, request, storage, onStatus: value => statuses.push(value), delay: 600000 });
-  return { sync, storage, statuses, get: () => current, change(next) { current = next; sync.changed(); } };
+  return { sync, storage, statuses, get: () => current, paints: () => paints,
+    change(next) { current = next; sync.changed(); } };
 }
 
 // Independent edits survive; removals and acknowledged account ratings win conflicts.
@@ -308,6 +311,120 @@ function setup(request, storage = memory(), initial = fresh()) {
     }));
   } }), /took too long/);
   assert.equal(attempts, 1);
+
+  await accountRequest('session', undefined, { owner: 'alice', revision: 7, fetcher: async (_url, options) => {
+    assert.deepEqual(options.headers, { 'X-Account-Owner': 'alice', 'X-Account-Revision': '7', 'X-Account-Conditional': '1' });
+    return { ok: true, json: async () => ({ user: user('alice'), csrf: 'token', revision: 7, unchanged: true }) };
+  } });
+}
+
+// Unchanged polls preserve local metadata, unsent additions, deletions, and
+// removal history without repainting the list or rewriting its stored copy.
+{
+  const storage = memory(), base = state([[1, .7]], [1]), local = state([[1, -1], [2, 1]], [2]);
+  const deleted = { profile: [], saved: [{ id: 1, writer: 'other-tab', sequence: 1, revision: 7 }] };
+  const removals = { profile: [{ id: 10, revision: 6 }], saved: [] };
+  storage.setItem(ACTIVE_KEY, JSON.stringify(user('alice')));
+  storage.setItem(accountKey('alice'), JSON.stringify({ user: user('alice'), base: toWire(base), local,
+    revision: 7, pending: true, deleted, removals }));
+  let saved;
+  const device = setup(async (path, body, options) => {
+    if (path === 'session') {
+      assert.deepEqual(options, { owner: 'alice', revision: 7 });
+      return { user: user('alice'), csrf: 'new-token', revision: 7, unchanged: true };
+    }
+    assert.equal(path, 'state');
+    assert.equal(options.csrf, 'new-token');
+    saved = body;
+    return { state: body.state, revision: 8, removals: { profile: [], saved: [{ id: 1, revision: 8 }] } };
+  }, storage);
+  const cached = storage.getItem(accountKey('alice'));
+  await device.sync.ready();
+  await device.sync.refresh();
+  assert.equal(device.paints(), 1, 'only initial cached-state restoration paints');
+  assert.equal(storage.getItem(accountKey('alice')), cached);
+  assert.deepEqual(device.get(), local);
+  assert.deepEqual(device.sync.deleted, deleted);
+  assert.deepEqual(device.sync.removals, removals);
+  assert.equal(device.sync.pending, true);
+  await device.sync.flush();
+  assert.deepEqual(saved.removed, { profile: [], saved: [1] });
+  assert.deepEqual(saved.state.saved, [{ id: 2 }]);
+  assert.equal(saved.revision, 7);
+  assert.equal(device.sync.pending, false);
+  device.sync.destroy();
+}
+
+// A missing owner or newer revision requires complete state. An old response
+// cannot roll back an acknowledged revision received from another tab.
+{
+  const device = setup(async () => session('alice', state([[1, .7]], [1]), 4));
+  await device.sync.ready();
+  const unchanged = { user: user('alice'), csrf: 'new', revision: 4, unchanged: true };
+  await assert.rejects(device.sync.acceptSession({ ...unchanged, user: user('bob') }), /incomplete session/);
+  await assert.rejects(device.sync.acceptSession({ ...unchanged, revision: 5 }), /incomplete session/);
+  await device.sync.acceptSession({ ...unchanged, revision: 3 });
+  assert.equal(device.sync.revision, 4);
+  assert.equal(device.sync.csrf, 'new');
+  assert.equal(device.paints(), 1);
+  await device.sync.acceptSession(session('alice', state([[1, .7], [2, 1]], [2]), 5));
+  assert.deepEqual(device.get().saved.map(item => item.id), [2]);
+  assert.equal(device.sync.revision, 5);
+  device.sync.destroy();
+}
+
+// Poll only active signed-in devices; coalesce foreground events, stop timers
+// while hidden, and back off after failures without changing local-save timing.
+{
+  const doc = new EventTarget(), win = new EventTarget(), timers = new Map();
+  doc.visibilityState = 'visible';
+  let now = 0, id = 0, calls = 0, readyCalls = 0;
+  const sync = { user: user('alice'), connected: true, status: 'saved',
+    ready: async () => { readyCalls++; }, refresh: async () => { calls++; } };
+  const settle = () => new Promise(resolve => setImmediate(resolve));
+  const stop = watchAccount(sync, { doc, win, clock: () => now,
+    setTimer(callback, delay) { timers.set(++id, { callback, at: now + delay }); return id; },
+    clearTimer(key) { timers.delete(key); } });
+  const advance = async delay => {
+    now += delay;
+    for (const [key, timer] of [...timers]) if (timer.at <= now) {
+      timers.delete(key); timer.callback();
+    }
+    await settle();
+  };
+  await settle();
+  assert.equal(readyCalls, 1);
+  win.dispatchEvent(new Event('focus'));
+  await settle();
+  assert.equal(calls, 0, 'startup and immediate focus share the initial check');
+  await advance(60000);
+  assert.equal(calls, 1);
+  doc.visibilityState = 'hidden'; doc.dispatchEvent(new Event('visibilitychange'));
+  assert.equal(timers.size, 0);
+  await advance(180000);
+  win.dispatchEvent(new Event('focus')); await settle();
+  assert.equal(calls, 1);
+  doc.visibilityState = 'visible'; doc.dispatchEvent(new Event('visibilitychange'));
+  await settle();
+  win.dispatchEvent(new Event('focus')); await settle();
+  assert.equal(calls, 2, 'visibility followed by focus is one foreground check');
+  sync.user = null; sync.status = 'guest';
+  await advance(60000);
+  assert.equal(calls, 2, 'known guests do not poll an account every minute');
+  sync.user = user('alice'); sync.status = 'offline'; sync.connected = false;
+  await advance(60000);
+  assert.equal(calls, 3);
+  assert.equal([...timers.values()][0].at - now, 120000);
+  await advance(60000);
+  assert.equal(calls, 3, 'offline polling backs off');
+  sync.status = 'saved'; sync.connected = true;
+  win.dispatchEvent(new Event('online')); await settle();
+  assert.equal(calls, 4, 'reconnection checks immediately');
+  assert.equal([...timers.values()][0].at - now, 60000);
+  stop();
+  assert.equal(timers.size, 0);
+  win.dispatchEvent(new Event('focus')); await settle();
+  assert.equal(calls, 4);
 }
 
 console.log('Account isolation, guest restoration, deletion-aware merges, ordered saves, bounded conflicts, expiration recovery and request security passed.');

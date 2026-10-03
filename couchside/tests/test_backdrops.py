@@ -16,7 +16,7 @@ import io
 import os
 import threading
 
-from backend.backdrops import Backdrops, cache_path, image_kind
+from backend.backdrops import Backdrops, backdrop_width, cache_path, image_kind
 from backend.http_client import Client, State, cache_key
 from backend.live import Live, LiveError
 
@@ -96,6 +96,57 @@ class BackdropTests(TestCase):
         self.assertEqual(resolve.call_count, 1)
         self.assertEqual(pool.calls, [URL])
         self.assertFalse(service.inflight)
+
+    def test_display_variants_cache_each_size_and_preserve_the_original(self):
+        small = b'\xff\xd8\xffsmall picture'
+        reader, pool = self.reader((200, {'Content-Type': 'image/jpeg'}, small), OK)
+        resolve = Mock(return_value=URL)
+        service = Backdrops(resolve, reader, self.clock)
+        self.assertEqual(service.get(169, width=780).body, small)
+        self.assertEqual(service.get(169, width=780).body, small)
+        self.assertEqual(service.get(169, width=1280).body, JPEG)
+        self.assertEqual(service.get(169).body, JPEG)
+        self.assertEqual(resolve.call_count, 1)
+        self.assertEqual(pool.calls, [URL.replace('/w1280/', '/w780/'), URL])
+        # Provider raster sources that have no display variant retain their quality.
+        reader, pool = self.reader(OK)
+        service = Backdrops(lambda show_id: TVMAZE, reader, self.clock)
+        service.get(169, width=780)
+        self.assertEqual(pool.calls, [TVMAZE])
+
+    def test_different_widths_coalesce_the_show_metadata_lookup(self):
+        entered, release = threading.Event(), threading.Event()
+        def resolve(show_id):
+            entered.set()
+            self.assertTrue(release.wait(2))
+            return URL
+        resolve = Mock(side_effect=resolve)
+        reader, pool = self.reader(OK, OK)
+        service = Backdrops(resolve, reader, self.clock)
+        with ThreadPoolExecutor(max_workers=2) as workers:
+            values = [workers.submit(service.get, 169, width) for width in (780, 1280)]
+            self.assertTrue(entered.wait(1))
+            release.set()
+            self.assertTrue(all(value.result(2).body == JPEG for value in values))
+        self.assertEqual(resolve.call_count, 1)
+        self.assertEqual(set(pool.calls), {URL.replace('/w1280/', '/w780/'), URL})
+        self.assertFalse(service.inflight)
+        self.assertFalse(service.resolving)
+
+    def test_supported_widths_are_strict_and_missing_variant_falls_back(self):
+        self.assertIsNone(backdrop_width({}))
+        self.assertEqual(backdrop_width({'w': ['780']}), 780)
+        self.assertEqual(backdrop_width({'w': ['1280']}), 1280)
+        for values in (['original'], ['781'], ['0780'], ['780', '1280'], [''], []):
+            with self.subTest(values=values), self.assertRaises(ValueError):
+                backdrop_width({'w': values})
+        reader, pool = self.reader((404, {}, b'gone'), OK)
+        service = Backdrops(lambda show_id: URL, reader, self.clock)
+        self.assertEqual(service.get(169, width=780).body, JPEG)
+        self.assertEqual(service.get(169, width=780).body, JPEG)
+        self.assertEqual(pool.calls, [URL.replace('/w1280/', '/w780/'), URL])
+        with self.assertRaises(ValueError):
+            service.get(169, width=9999)
 
     def test_missing_art_and_provider_404_have_short_negative_cache(self):
         reader, pool = self.reader((404, {}, b'gone'), OK)
@@ -256,7 +307,8 @@ class BackdropHttpTests(TestCase):
         self.assertEqual(self.pool.calls, [URL])
 
     def test_invalid_ids_and_missing_images_do_not_call_providers(self):
-        for query in ('', '?id=no', '?id=0', '?id=999999999', '?url=' + URL):
+        for query in ('', '?id=no', '?id=0', '?id=999999999', '?url=' + URL,
+                      '?id=169&w=original', '?id=169&w=9999', '?id=169&w=780&w=1280'):
             status, headers, body = self.call('/api/backdrop' + query)
             self.assertEqual(status, 400)
             self.assertEqual(headers['Cache-Control'], 'no-store')
@@ -269,6 +321,15 @@ class BackdropHttpTests(TestCase):
             self.assertEqual(headers['Cache-Control'], 'public, max-age=300')
             if method == 'HEAD':
                 self.assertEqual(body, b'')
+        self.assertEqual(self.resolve.call_count, 1)
+
+    def test_http_display_variant_uses_bounded_provider_size_and_normal_browser_cache(self):
+        status, headers, body = self.call('/api/backdrop?id=169&w=780')
+        self.assertEqual((status, body), (200, JPEG))
+        self.assertEqual(headers['Cache-Control'], 'public, max-age=86400')
+        status, _, body = self.call('/api/backdrop?id=169&w=780', headers={'If-None-Match': headers['ETag']})
+        self.assertEqual((status, body), (304, b''))
+        self.assertEqual(self.pool.calls, [URL.replace('/w1280/', '/w780/')])
         self.assertEqual(self.resolve.call_count, 1)
 
     def test_temporary_failures_and_slot_limits_are_not_browser_cached(self):

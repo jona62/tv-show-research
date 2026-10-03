@@ -9,6 +9,11 @@ customization.append(preferences);
 const pending=[];let running=false,pumpTimer;
 const tilesFor=id=>document.querySelectorAll(`.ratings-card-matrix[data-show="${id}"]`);
 const drawn=new WeakMap();
+const nearTile=node=>{
+  if(!node.isConnected||!node.getClientRects().length||node.closest('[inert]'))return false;
+  const r=node.getBoundingClientRect();
+  return r.top<innerHeight+600&&r.bottom>-600&&r.left<innerWidth+220&&r.right>-220;
+};
 function paintMatrix(tile,s){
   const signature=s.sources+'|'+s.episodes.map(e=>[e.season,e.number,e.name,e.rating,e.rating_source,e.rating_votes].join('/')).join('|');
   if(drawn.get(tile)===signature)return;
@@ -19,14 +24,14 @@ function paintMatrix(tile,s){
   html(tile,`${compactMatrix(s)}<span class="ratings-mini-caption">${s.episodes.length?`${s.episodes.length} episodes${source?' · '+esc(source):''}`:'No episodes yet'}</span>`);
 }
 function pump(){
-  if(!matrix||running||!pending.length)return;
+  if(!matrix||document.hidden||running||!pending.length)return;
   const batch=[],ids=new Set();
   while(pending.length&&ids.size<24){
     const foreground=pending.findIndex(node=>{const r=node.getBoundingClientRect();return node.closest('dialog[open]')||(r.top<innerHeight&&r.bottom>0&&r.left<innerWidth&&r.right>0);});
     const [node]=pending.splice(foreground<0?0:foreground,1);
     if(!node.isConnected)continue;
     if(node.dataset.matrixState==='error')continue;
-    if(!node.getClientRects().length){delete node.dataset.matrixAsked;visible.observe(node);continue;}
+    if(!nearTile(node)){delete node.dataset.matrixAsked;visible.observe(node);continue;}
     if(node.dataset.matrixState!=='ready')node.dataset.matrixState='loading';
     const id=Number(node.dataset.show);
     const cached=freshMatrix(id);
@@ -40,12 +45,15 @@ function pump(){
     const waiting=new Set([...body.pending,...body.shows.filter(s=>s.refreshing).map(s=>s.id)]);
     const retry=batch.filter(node=>{
       if(!waiting.has(Number(node.dataset.show))||!node.isConnected)return false;
+      if(!nearTile(node)){delete node.dataset.matrixAsked;visible.observe(node);return false;}
       node.dataset.matrixRetries=String(Number(node.dataset.matrixRetries||0)+1);
-      if(Number(node.dataset.matrixRetries)<=240)return true;
+      if(document.hidden||Date.now()-Number(node.dataset.matrixStarted)<120000)return true;
       if(node.dataset.matrixState!=='ready'){node.dataset.matrixState='error';node.setAttribute('aria-busy','false');html(node,'<span class="ratings-mini-empty">Ratings unavailable</span>');}
       return false;
     });
-    if(retry.length)setTimeout(()=>{pending.push(...retry);pump();},body.pending.length?500:5000);
+    const tries=Math.min(...retry.map(node=>Number(node.dataset.matrixRetries)));
+    const delay=body.pending.length?Math.min(5000,500*2**Math.min(tries-1,4)):5000;
+    if(retry.length)setTimeout(()=>{for(const node of retry)if(!pending.includes(node))pending.push(node);pump();},delay);
   }).catch(()=>{
     for(const node of batch)if(node.dataset.matrixState!=='ready'){
       node.dataset.matrixState='error';html(node,'<span class="ratings-mini-empty">Ratings unavailable</span>');
@@ -58,11 +66,12 @@ const visible=new IntersectionObserver(entries=>{
     const node=entry.target;
     if(entry.isIntersecting&&matrix&&!node.dataset.matrixAsked){
       visible.unobserve(node);node.dataset.matrixAsked='true';
+      node.dataset.matrixStarted=String(Date.now());
       if(node.dataset.matrixState!=='ready')node.dataset.matrixState='queued';pending.push(node);
     }
   }
   clearTimeout(pumpTimer);pumpTimer=setTimeout(pump,30);
-},{rootMargin:'1800px 600px'});
+},{rootMargin:'600px 220px'});
 export const matrixPreference=()=>matrix;
 export function receiveMatrices(body){
   acceptMatrices(body);
@@ -97,6 +106,9 @@ function apply(){
   if(matrix){
     document.querySelectorAll('.ratings-card-matrix:not([data-matrix-asked])').forEach(node=>{if(!node.closest('[inert]'))visible.observe(node);});
     pump();
+  }else{
+    visible.disconnect();
+    for(const node of pending.splice(0))delete node.dataset.matrixAsked;
   }
 }
 preferences.querySelectorAll('[data-cards]').forEach(button=>button.onclick=()=>{
@@ -104,6 +116,12 @@ preferences.querySelectorAll('[data-cards]').forEach(button=>button.onclick=()=>
   apply();
 });
 apply();
+
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden)return;
+  for(const node of pending)node.dataset.matrixStarted=String(Date.now());
+  pump();
+});
 
 window.addEventListener('storage',event=>{if(event.key===KEY){matrix=event.newValue!=='standard';apply();}});
 window.addEventListener('couchside-network',event=>{

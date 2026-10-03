@@ -57,6 +57,7 @@ def source_document(unavailable=False, deferred_colours=False, search_payload=No
         searchShows:query=>{window.requestedSearches.push(query);return DEFERRED_SEARCH_FIXTURE
           ? new Promise(resolve=>window.pendingSearch.set(query,resolve)) : Promise.resolve(SEARCH_PAYLOAD_FIXTURE);},
         replaceURL:url=>history.replaceState({},'',url),
+        saveSnapshot:async model=>{window.snapshotModel=model;},
         openShow:id=>{window.openedShow=id;}
       });
     </script>'''.replace('SHOW_FIXTURE', json.dumps(shows)).replace('UNAVAILABLE_FIXTURE', json.dumps(unavailable)).replace('DEFERRED_COLOURS_FIXTURE', json.dumps(deferred_colours)).replace('DEFERRED_SEARCH_FIXTURE', json.dumps(deferred_search)).replace('SEARCH_PAYLOAD_FIXTURE', json.dumps(search_payload or {'shows': []})).replace('POSTER_METADATA_FIXTURE', json.dumps(poster_metadata or {})).replace('DEFERRED_METADATA_FIXTURE', json.dumps(list(deferred_metadata)))
@@ -98,7 +99,8 @@ class ComparisonCardLayout(unittest.TestCase):
 
         def serve(route):
             url = urlsplit(route.request.url)
-            if url.netloc != urlsplit(ORIGIN).netloc:
+            fixture_image = url.netloc == 'static.tvmaze.com' and url.path in image_responses
+            if url.netloc != urlsplit(ORIGIN).netloc and not fixture_image:
                 return route.fulfill(status=404, body='External networking is blocked.')
             if url.path == '/':
                 return route.fulfill(content_type='text/html', body=source_document(unavailable, deferred_colours, search_payload, deferred_search,
@@ -120,6 +122,7 @@ class ComparisonCardLayout(unittest.TestCase):
                     return
                 status = response.get('status', 200)
                 return route.fulfill(status=status, content_type='image/svg+xml' if status == 200 else 'text/plain',
+                                     headers={'Access-Control-Allow-Origin': '*'},
                                      body=response.get('body', POSTER_SVG) if status == 200 else 'Poster unavailable.')
             return route.fulfill(status=404, body='No offline fixture for this request.')
 
@@ -217,6 +220,36 @@ class ComparisonCardLayout(unittest.TestCase):
     def assert_no_broken_posters(self, page):
         self.assertEqual(page.locator('.compare-card-art img').evaluate_all(
             'images=>images.filter(image=>image.complete&&!image.naturalWidth).map(image=>image.src)'), [])
+
+    def test_provider_display_poster_skips_original_and_keeps_full_snapshot_source(self):
+        medium = '/uploads/images/medium_portrait/0/42184.jpg'
+        original = '/uploads/images/original_untouched/0/42184.jpg'
+        for width, missing in ((1280, False), (390, False), (1280, True), (390, True)):
+            with self.subTest(width=width, missing=missing):
+                responses = {medium: {'status': 404 if missing else 200}, original: {}}
+                requests = []
+                page, errors = self.open_fixture(width, poster_metadata={42184: {
+                    'poster': 'https://static.tvmaze.com' + medium,
+                    'art': 'https://static.tvmaze.com' + original}},
+                    image_responses=responses, image_requests=requests)
+                page.wait_for_function('''()=>{
+                    const image=document.querySelector('[data-show="42184"] .compare-poster-image');
+                    return image?.naturalWidth&&!image.classList.contains('is-loading');
+                }''')
+                self.assertEqual(requests.count(medium), 1)
+                self.assertEqual(requests.count(original), 1 if missing else 0,
+                                 'Full originals are loaded only if the provider display image fails')
+                self.remember_posters(page, [42184])
+                for view in ('grid', 'timeline'):
+                    self.set_view(page, view)
+                    self.assert_posters_retained(page)
+                page.locator('.compare-save').click()
+                self.assertEqual(page.evaluate('window.snapshotModel.shows.find(show=>show.id===42184).poster'),
+                                 'https://static.tvmaze.com' + original)
+                self.assertEqual(requests.count(original), 1 if missing else 0,
+                                 'Capturing snapshot data does not downgrade its image source')
+                self.assert_no_broken_posters(page)
+                self.assertFalse(errors, errors)
 
     def test_preview_survives_full_image_failure_and_every_comparison_redraw(self):
         for width, zoom in ((1280, 100), (390, 85)):

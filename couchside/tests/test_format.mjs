@@ -1,5 +1,5 @@
 import { tieText, leaning, leaningHeading } from '../client/format.js';
-import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere, longDate, airs,
+import { years, runtime, seasons, joinNames, parseRoute, needsHomeFeed, withShow, hue, premiere, longDate, airs,
   hostOf, sameService, watchLinks, whereToWatch, trailerSearch, searchNote } from '../client/format.js';
 import { SNIPPETS, snippet, revealLabel } from '../client/format.js';
 import { withPerson, isoDay, yearsBetween, bornOn, diedOn, selfName, selfHeading, creditLines, knownFor } from '../client/format.js';
@@ -33,6 +33,15 @@ check('several seasons are plural', seasons(5) === '5 Seasons');
 check('names join in plain English', joinNames(['A']) === 'A' && joinNames(['A', 'B']) === 'A and B'
   && joinNames(['A', 'B', 'C']) === 'A, B and C' && joinNames([]) === '');
 check('home route', same(parseRoute('/', ''), { page: 'home', q: '', genre: '', show: null, episode: null, person: null }));
+check('only visible recommendation views need the Home feed',
+  needsHomeFeed(parseRoute('/', '')) && needsHomeFeed(parseRoute('/new', ''))
+  && needsHomeFeed(parseRoute('/search', '?q=x'))
+  && ['/compare', '/browse', '/list', '/welcome'].every(path => !needsHomeFeed(parseRoute(path, '')))
+  && !needsHomeFeed(parseRoute('/search', '?q=Lost'))
+  && !needsHomeFeed(parseRoute('/', '?show=82'))
+  && !needsHomeFeed(parseRoute('/', '?person=1'))
+  && !needsHomeFeed(parseRoute('/', ''), {onboarded:false})
+  && !needsHomeFeed(parseRoute('/new', ''), {independentNew:true}));
 check('comparison is its own page and keeps an open title', parseRoute('/compare', '?compare=169,16149&show=169').page === 'compare'
   && parseRoute('/compare', '?compare=169,16149&show=169').show === 169);
 check('search route keeps its terms', same(parseRoute('/search', '?q=breaking%20bad'), { page: 'search', q: 'breaking bad', genre: '', show: null, episode: null, person: null }));
@@ -727,10 +736,10 @@ const realFetch = globalThis.fetch;
 const storedList = { version: 2, profile: [{ id: 169, weight: 1, name: 'Breaking Bad' }, { id: 82, weight: 0.7 }, { id: 82, weight: 1 },
   { id: -3, weight: 1 }, { id: 526, weight: 0.5 }], saved: [{ id: 2993, poster: 'https://elsewhere.test/x.jpg' }], settings: { known_min: 85 },
 onboarded: true };
-const starting = async (tag, { session = {}, list = storedList, remembered = null } = {}) => {
+const starting = async (tag, { session = {}, list = storedList, remembered = null, path = '/' } = {}) => {
   const asked = [];
   Object.assign(globalThis, {
-    document: {}, sessionStorage: storage(session),
+    document: {}, location: new URL(path, 'https://couchside.test'), sessionStorage: storage(session),
     localStorage: storage({ 'couchside-v1': JSON.stringify(list), ...(remembered ? { 'couchside-fresh': remembered } : {}) }),
     fetch: async (path, init) => { asked.push({ path, ...init }); return new Response(JSON.stringify({asked:asked.length})); },
   });
@@ -783,7 +792,13 @@ check('new lists default to well-known shows, while saved choices are preserved'
   && start.sanitize({ version: 1, settings: { known_min: 85 } }).settings.known_min === 85
   && start.sanitize({ version: 2, settings: { known_min: 60 } }).settings.known_min === 60
   && start.sanitize({ version: 2, settings: { known_min: 0 } }).settings.known_min === 0);
-for (const name of ['document', 'localStorage', 'sessionStorage']) delete globalThis[name];
+for (const path of ['/compare?compare=82,182', '/browse?genre=drama', '/list', '/?show=82', '/search?q=Lost']) {
+  const result = await starting('no-home-' + encodeURIComponent(path), {path});
+  check(`opening ${path} does not request hidden Home recommendations`, result.asked.length === 0);
+}
+const firstSetup = await starting('first-setup', {list: {profile:[], saved:[], onboarded:false}});
+check('first-time setup leaves Home loading until setup finishes', firstSetup.asked.length === 0);
+for (const name of ['document', 'location', 'localStorage', 'sessionStorage']) delete globalThis[name];
 globalThis.fetch = realFetch;
 
 // Every script the page loads parses as the browser parses it: its modules as modules and the

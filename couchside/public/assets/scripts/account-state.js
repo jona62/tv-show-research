@@ -129,7 +129,8 @@ export async function accountRequest(path, body, { csrf, owner, revision, fetche
     const response = await fetcher(`/api/account/${path}`, {
       method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store',
       signal: abort.signal,
-      headers: body === undefined ? owner ? { 'X-Account-Owner': owner, 'X-Account-Revision': String(revision || 0) } : {} : {
+      headers: body === undefined ? owner ? { 'X-Account-Owner': owner, 'X-Account-Revision': String(revision || 0),
+        'X-Account-Conditional': '1' } : {} : {
         'Content-Type': 'application/json', 'X-Account-Request': '1', ...(csrf ? { 'X-CSRF-Token': csrf } : {}),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -241,7 +242,7 @@ export class AccountSync {
 
   validSession(data) {
     const user = identity(data?.user);
-    if (!user || typeof data.csrf !== 'string' || !data.csrf || !data.state
+    if (!user || typeof data.csrf !== 'string' || !data.csrf || (!data.state && data.unchanged !== true)
       || !Number.isSafeInteger(data.revision) || data.revision < 0) {
       throw new AccountRequestError('The account service returned an incomplete session.');
     }
@@ -324,6 +325,21 @@ export class AccountSync {
 
   async acceptSession(data) {
     const user = this.validSession(data);
+    if (data.unchanged === true) {
+      // An unchanged response acknowledges only the base already held by this
+      // owner. Pending edits, metadata and removal intents stay on this device.
+      if (this.user?.id !== user.id || data.revision > this.revision) {
+        throw new AccountRequestError('The account service returned an incomplete session.');
+      }
+      // Another tab may have advanced our base during this request. The live
+      // session still verifies its owner; retain that newer base and revision.
+      this.user = user;
+      this.csrf = data.csrf;
+      this.connected = true;
+      this.report(this.blocked ? 'retry' : this.pending ? 'pending' : 'saved');
+      if (this.pending && !this.blocked) this.schedule();
+      return;
+    }
     const remote = this.sanitize(data.state);
     const cache = this.user?.id === user.id
       ? { base: this.base, local: this.local, revision: this.revision,

@@ -139,10 +139,14 @@ class AccountRoutes:
             origin, cookie, secure = self.context(handler)
             if handler.command == 'GET' and route == 'session':
                 revisions, owners = handler.headers.get_all('X-Account-Revision', []), handler.headers.get_all('X-Account-Owner', [])
+                conditional = handler.headers.get_all('X-Account-Conditional', [])
                 if len(revisions) > 1 or len(owners) > 1 or (revisions and not re.fullmatch(r'[0-9]{1,16}', revisions[0])):
                     raise AccountError(400, 'The list revision is invalid.')
+                if conditional and conditional != ['1']:
+                    raise AccountError(400, 'The account poll is invalid.')
                 since = int(revisions[0]) if revisions else 0
-                self.reply(handler, self.service().session(self.token(handler, cookie), since, owners[0] if owners else None))
+                self.reply(handler, self.service().session(self.token(handler, cookie), since,
+                           owners[0] if owners else None, conditional=bool(conditional)))
                 return True
             if handler.command != 'POST' or route not in POSTS:
                 raise AccountError(404, 'Not found.')

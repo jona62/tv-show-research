@@ -54,6 +54,14 @@ export function parseRoute(pathname, search) {
   };
 }
 
+// These views use recommendations; other routes can load their own data first.
+export function needsHomeFeed(route, { onboarded = true, independentNew = false } = {}) {
+  if (route.show || route.person) return false;
+  if (route.page === 'home') return onboarded;
+  if (route.page === 'new') return !independentNew;
+  return route.page === 'search' && route.q.trim().length < 2;
+}
+
 // A genre's name on its chip: "Crime TV shows" as "Crime", "Adventures" as it is.
 export const shortGenre = label => label.replace(/\s+(TV\s+)?shows$/i, '') || label;
 

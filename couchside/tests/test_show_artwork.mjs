@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { backdropURL, createBackdropPrefetcher, bindBackdropIntent } from '../client/show-artwork.js';
+import { backdropURL, displayPoster, comparisonPosterSources, createBackdropPrefetcher, bindBackdropIntent } from '../client/show-artwork.js';
 
 function clock() {
   let time = 0, next = 0;
@@ -30,6 +30,26 @@ test('backdrop addresses accept only catalogue-shaped numeric ids', () => {
   for (const id of [0, -1, 1.5, 1000000000, '82', NaN, null]) assert.equal(backdropURL(id), '');
 });
 
+test('small comparison posters use matching provider thumbnails, leaving originals for export or fallback', () => {
+  const original = 'https://static.tvmaze.com/uploads/images/original_untouched/0/82.jpg';
+  const medium = 'https://static.tvmaze.com/uploads/images/medium_portrait/0/82.jpg';
+  const show = { art: original, poster: medium };
+  assert.equal(displayPoster(original), medium);
+  assert.deepEqual(comparisonPosterSources(show), [medium, original]);
+  assert.deepEqual(comparisonPosterSources({ art: original, poster: '/alternate.jpg' }), [medium, '/alternate.jpg', original]);
+  assert.equal(show.art, original, 'Rendering must not alter the snapshot source');
+  for (const source of ['https://static.tvmaze.com.evil.test/uploads/images/original_untouched/0/82.jpg',
+    original + '?other=1', original.replace('.jpg', '.svg'), '/fixture/poster.svg']) assert.equal(displayPoster(source), source);
+  assert.deepEqual(comparisonPosterSources({ poster: '/preview.svg', art: '/full.svg' }), ['/preview.svg', '/full.svg']);
+});
+
+test('backdrop display widths are bounded, account for pixel density and retain exact request identity', () => {
+  assert.equal(backdropURL(82, { width: 390, scale: 1 }), '/api/backdrop?id=82&w=780');
+  assert.equal(backdropURL(82, { width: 390, scale: 3 }), '/api/backdrop?id=82&w=1280');
+  assert.equal(backdropURL(82, { width: 1280, scale: 1 }), '/api/backdrop?id=82&w=1280');
+  assert.equal(backdropURL(82, { width: 1920, scale: 3 }), '/api/backdrop?id=82&w=1280');
+});
+
 test('repeated intent shares a background request and finished image cache identity', () => {
   const { warm, images } = fixture();
   warm(82); warm(82);
@@ -39,6 +59,26 @@ test('repeated intent shares a background request and finished image cache ident
   assert.equal(images[0].fetchPriority, 'low');
   images[0].onload(); warm(82);
   assert.equal(images.length, 1);
+});
+
+test('an enlarged viewport can warm the larger variant without suppressing it as already cached', () => {
+  const originalWidth = Object.getOwnPropertyDescriptor(globalThis, 'innerWidth');
+  const originalScale = Object.getOwnPropertyDescriptor(globalThis, 'devicePixelRatio');
+  try {
+    Object.defineProperty(globalThis, 'innerWidth', { configurable: true, writable: true, value: 600 });
+    Object.defineProperty(globalThis, 'devicePixelRatio', { configurable: true, value: 1 });
+    const { warm, images } = fixture();
+    warm(82); images[0].onload();
+    assert.equal(images[0].src, '/api/backdrop?id=82&w=780');
+    globalThis.innerWidth = 1200;
+    warm(82);
+    assert.equal(images.length, 2);
+    assert.equal(images[1].src, backdropURL(82));
+    assert.equal(images[1].src, '/api/backdrop?id=82&w=1280');
+  } finally {
+    if (originalWidth) Object.defineProperty(globalThis, 'innerWidth', originalWidth); else delete globalThis.innerWidth;
+    if (originalScale) Object.defineProperty(globalThis, 'devicePixelRatio', originalScale); else delete globalThis.devicePixelRatio;
+  }
 });
 
 test('only two images run and the latest four waiting shows survive a long row sweep', () => {

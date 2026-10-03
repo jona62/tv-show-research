@@ -44,7 +44,7 @@ OWN = ('style.css', 'main.js', 'format.js', 'gestures.js', 'start.js', 'ratings.
        'episode-ratings.js', 'episode-timeline.js', 'show-cards.js', 'title-sections.js', 'filter-state.js', 'filters.js', 'network.js',
        'accounts.js', 'account-state.js', 'taste.js', 'list-transfer.js', 'compare.js',
        'comparison-timeline.js', 'compare-timeline-interactions.js', 'comparison-timeline-export.js', 'poster-colours.js', 'compare-posters.js', 'compare-viewport.js',
-       'rating-views.js', 'rating-snapshots.js', 'snapshot-images.js', 'app-updates.js', 'show-artwork.js')
+       'rating-views.js', 'rating-snapshots.js', 'snapshot-images.js', 'app-updates.js', 'show-artwork.js', 'metadata.js')
 SHARED = ('transfer.js', 'qr.js', 'fresh.js', 'starters.js')
 CLASSIC = (TOUCH_FORMS_SCRIPT,)
 # Shared packages are copied into backend/ so this app deploys by itself.
@@ -89,7 +89,7 @@ def manifest(description, versions):
                                  ('Browse', 'Browse', '/browse'), ('New & Popular', 'New', '/new'))
     ],
     }
-ROBOTS = 'User-agent: *\nDisallow: /api/\n'
+ROBOTS = 'User-agent: *\nDisallow: /api/\n\nSitemap: https://couchside-jlvf21do.rigbox.dev/sitemap.xml\n'
 # A module's imports of the others beside it: from './x.js', import './x.js' and import('./x.js').
 IMPORT = re.compile(r'''(\b(?:from|import)\s*\(?\s*['"])\./([\w.-]+\.js)(['"])''')
 # The page's own scripts, styles and icons, which it asks for by their versions.

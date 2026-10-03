@@ -7,14 +7,15 @@ import { mergeTransferredList } from './list-transfer.js';
 import { apiFetch } from './network.js';
 import { mountAccounts } from './accounts.js';
 import { startAppUpdates } from './app-updates.js';
-import { backdropURL, createBackdropPrefetcher, bindBackdropIntent } from './show-artwork.js';
+import { updateMetadata } from './metadata.js';
+import { backdropURL, displayPoster, createBackdropPrefetcher, bindBackdropIntent } from './show-artwork.js';
 import {filtersFor,filterKey,selectShows,setFilters} from './filter-state.js';
 import {filterBar} from './filters.js';
 import { cachedRatings, ratings, seasons as ratingSeasons } from './ratings.js';
 import { encode, decode, LIMITS, codeFrom } from './transfer.js';
 import { matrix, svgPath } from './qr.js';
 import { tieText, leaning } from './format.js';
-import { years, runtime, seasons, joinNames, parseRoute, withShow, hue, premiere, longDate, airs,
+import { years, runtime, seasons, joinNames, parseRoute, needsHomeFeed, withShow, hue, premiere, longDate, airs,
   whereToWatch, trailerSearch, searchNote } from './format.js';
 import { pageKey, ongoing, resumable, keptText, shownRows, withoutCard, viewedStore, noteViewed, recentlyViewed }
   from './format.js';
@@ -224,6 +225,8 @@ function redraw(holder, draw) {
 // its size and often held already, and fades in over it once it is here: on a slow
 // connection the poster is there in a moment and the full picture takes seconds.
 function artEl(c, src = c.poster, load = true) {
+  if (src === c.poster) src = displayPoster(src);
+  const previewSrc = displayPoster(c.poster);
   const kept = src && spare?.get(src);
   if (kept) {
     spare.delete(src);
@@ -238,11 +241,11 @@ function artEl(c, src = c.poster, load = true) {
     img.addEventListener('load', () => box.classList.add('loaded'), { once: true });
     img.addEventListener('error', () => img.remove(), { once: true });
     box.append(img);
-    if (c.poster && c.poster !== src) {
+    if (previewSrc && previewSrc !== src) {
       // After the picture, so the picture is what loadPoster starts and startPosters counts.
       const preview = picture(null, 'preview', () => box.classList.add('previewed'));
       preview.addEventListener('error', () => preview.remove(), { once: true });
-      box.dataset.preview = c.poster;
+      box.dataset.preview = previewSrc;
       box.append(preview);
     }
     if (load === 'ahead' && rowsNear) return box;
@@ -499,6 +502,7 @@ function route() {
     if (!$('person').open || personId !== person) showPerson(person, place.person);
   } else if ($('person').open) hidePerson();
   renewHome();
+  if (view !== 'home') loadHome();
 }
 
 function showView(name) {
@@ -516,7 +520,10 @@ function paintView(name) {
     if (a.dataset.page === current) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   }
-  if (!$('title').open) document.title = TITLES[name];
+  if (!$('title').open) {
+    if (!where().show) document.title = TITLES[name];
+    updateMetadata({page: where().page}, boot);
+  }
   window.scrollTo(0, 0);
   // A new view starts at the top with the dock whole at once, not easing back in, and the
   // button that stands in for it while the page scrolls shows the section it is now in.
@@ -601,6 +608,7 @@ edgeBack(() => !!titleId || !!personId || (view !== 'home' && !document.querySel
 // rating or a My List change merges into it rather than laying it out again.
 // Impressions are only written down, never a reason to re-render.
 let home = null, homeKey = '', homeReq = 0, homeAbort = null, homeTimer = 0, moreBusy = false;
+let homePendingKey = '', shownHome = null;
 // Why the page could not be had, if it could not, so the views drawn from it stop waiting.
 let homeFailed = '';
 const currentKey = () => pageKey(taste(), state.saved.map(s => s.id)) + filterKey('home');
@@ -635,14 +643,20 @@ window.addEventListener('pagehide', () => { keepPage(); keepMemory(true); leaveV
 // back, or else once a sheet over it has closed or the home tab is chosen (route). Until
 // then it goes on as it was, asking for more with what it was made with.
 function renewHome() {
-  if (!home || (home.day === visit.day && home.visit === visit.n) || view !== 'home' || titleId || personId
+  if (view !== 'home' || titleId || personId
       || document.querySelector('dialog[open]')) return;
-  home = null;
-  homeKey = '';
-  window.scrollTo(0, 0);
+  if (home && (home.day !== visit.day || home.visit !== visit.n)) {
+    home = null;
+    homeKey = '';
+    window.scrollTo(0, 0);
+  }
   loadHome();
 }
-for (const d of document.querySelectorAll('dialog')) d.addEventListener('close', renewHome);
+document.addEventListener('close', event => {
+  if (event.target.tagName !== 'DIALOG') return;
+  renewHome();
+  if (view !== 'home') loadHome();
+}, true);
 
 function rememberHome(data) {
   receiveMatrices(data.matrices);
@@ -662,24 +676,39 @@ function homeArrived() {
 }
 
 async function loadHome() {
+  if (!needsHomeFeed(where(), {
+    onboarded: state.onboarded || state.profile.length > 0,
+    independentNew: !!(filterKey('home') || filterKey('new')),
+  }) || view === 'welcome' || document.querySelector('dialog[open]')) return;
   const key = currentKey();
-  if (home && key === homeKey) return;
+  if (home && key === homeKey) {
+    if (homePendingKey && homePendingKey !== key) {
+      homeAbort?.abort();
+      ++homeReq;
+      homePendingKey = '';
+    }
+    presentHome();
+    return;
+  }
+  if (key === homePendingKey) return;
   const id = ++homeReq;
   homeAbort?.abort();
+  homePendingKey = '';
   homeAbort = new AbortController();
   const kept = keptPage(key);
   if (kept) {
     home = kept;
     homeKey = key;
     rememberHome(home);
-    renderHome();
+    presentHome();
     homeArrived();
     return;
   }
   if (!home) {
     homeFailed = '';
-    renderHomeLoading();
+    if (view === 'home') renderHomeLoading();
   }
+  homePendingKey = key;
   try {
     // The page belongs to the visit it was asked for in, and keeps what that visit asked
     // with for asking for more (moreBody).
@@ -689,11 +718,11 @@ async function loadHome() {
     // The same page asked for as the page started (start.js) is on its way already.
     const started = await take(packed(body));
     const data = await (started ? request('/api/home', {}, started) : post('/api/home', body, homeAbort.signal));
-    if (id !== homeReq) return;
+    if (id !== homeReq || key !== currentKey()) return;
     home = { ...data, day, visit: n, ask, tasteKey: key };
     homeKey = key;
     rememberHome(data);
-    redraw($('rows'), renderHome);
+    presentHome();
     keepPage();
     homeArrived();
   } catch (e) {
@@ -701,14 +730,23 @@ async function loadHome() {
     if (home) toast(e.message);
     else {
       homeFailed = e.message;
-      $('hero').classList.remove('loading');
-      $('hero').replaceChildren();
-      $('rows').replaceChildren(el('p', e.message, 'row-empty'));
-      const again = button('btn ghost retry', 'Try again', () => loadHome());
-      $('rows').append(again);
+      if (view === 'home') {
+        $('hero').classList.remove('loading');
+        $('hero').replaceChildren();
+        $('rows').replaceChildren(el('p', e.message, 'row-empty'));
+        $('rows').append(button('btn ghost retry', 'Try again', () => loadHome()));
+      }
       homeArrived();
     }
+  } finally {
+    if (id === homeReq) homePendingKey = '';
   }
+}
+
+function presentHome() {
+  if (view !== 'home' || !home || shownHome === home || document.querySelector('dialog[open]')) return;
+  redraw($('rows'), renderHome);
+  shownHome = home;
 }
 
 // What asking for more rows carries: what asking for the page does (homeBody), with the
@@ -728,7 +766,7 @@ function moreBody(count) {
 // on screen stay as they are.
 let moreFailures = 0, moreTimer = 0;
 async function loadMore() {
-  if (!home?.more || moreBusy) return;
+  if (view !== 'home' || document.hidden || !home?.more || moreBusy) return;
   moreBusy = true;
   const id = homeReq;
   const left = sentinel.getBoundingClientRect().top - innerHeight;
@@ -1019,7 +1057,7 @@ function featuredSlide(s, i, n, fits) {
   };
   // Blurred this much the small poster looks the same as the full picture, and it is there
   // in a moment, often held already as the poster's preview.
-  const glow = () => { if (blur && !blur.getAttribute('src')) blur.src = s.poster || s.art; };
+  const glow = () => { if (blur && !blur.getAttribute('src')) blur.src = displayPoster(s.poster || s.art); };
   return {
     node: slide, show: s, poster, rel: null, drawn: null, widen,
     // The small poster alone, for a slide beside the one shown that nothing has asked for
@@ -2199,6 +2237,7 @@ function hideTitle() {
   if ($('title').open) $('title').close();
   modalOpen();
   document.title = TITLES[view] || 'Couchside';
+  updateMetadata({page: where().page}, boot);
   if (view === 'home') updateRecentRow();
 }
 // The page beneath holds still while a title or a person is open over it.
@@ -2326,7 +2365,7 @@ function buildTitle(c) {
   const hero = el('div', '', 't-hero');
   const art = c.art || c.poster;
   // Blurred, the small poster looks as the full picture does, and it is here sooner.
-  if (art) hero.append(picture(c.poster || art, 't-blur'));
+  if (art) hero.append(picture(displayPoster(c.poster || art), 't-blur'));
   const backdrop = picture(null, 't-backdrop', () => hero.classList.add('has-backdrop'));
   backdrop.loading = 'lazy';
   backdrop.src = backdropURL(c.id);
@@ -2506,6 +2545,7 @@ function moreSkeleton() {
 function paintTitle() {
   if (!T) return;
   const s = { ...T.card, ...(T.data?.show || {}) };
+  updateMetadata({page: where().page, show: s, preserveTitle: !!personId}, boot);
   const live = T.live;
   T.ratingSnapshotReady?.(T.snapshotReady);
   // Until the title is here, what it will say stands in, in its own shape.
@@ -2523,7 +2563,7 @@ function paintTitle() {
     const shown = artEl(s, art, 'first');
     shown.classList.add('t-poster');
     poster.replaceWith(shown);
-    if (!T.hero.querySelector('.t-blur')) T.hero.prepend(picture(s.poster || art, 't-blur'));
+    if (!T.hero.querySelector('.t-blur')) T.hero.prepend(picture(displayPoster(s.poster || art), 't-blur'));
   } else if (!waiting) poster?.classList.remove('skel');
   // Once the title is here it says whether the show can be rated: not one newer than the
   // catalogue, while a page kept from before the nightly refresh may have taken a show it
@@ -3927,6 +3967,11 @@ function renderNew() {
   const feed=independent?newData:home;
   const holder = $('new-body');
   if (!feed) {
+    if (!independent) {
+      loadHome();
+      // A kept session feed is restored synchronously and redraws this view.
+      if (home) return;
+    }
     holder.replaceChildren(...(homeFailed ? [el('p', homeFailed, 'row-empty')]
       : [skelRow('section', { kind: 'top10', title: '9em' }), skelRow('section', { title: '12em' }),
         skelRow('section', { kind: 'soon', title: '7em' }), skelRow('section', { title: '9em' })]));
@@ -4061,6 +4106,7 @@ const SEARCHING = 12;
 // shape stand in; the first-visit posters the page carries stand in for good if it cannot
 // be had.
 function suggestions() {
+  if (!home) loadHome();
   resultsFor = '';
   $('search-note').textContent = 'Search by title. Until then, here is what people are watching.';
   const popular = home?.popular || [];
@@ -4858,6 +4904,7 @@ function applyAccountState(incoming, context) {
   // A cached personalised page belongs to the list that produced it.
   homeAbort?.abort();
   ++homeReq;
+  homePendingKey = '';
   home = null;
   homeKey = '';
   homeFailed = '';
@@ -4900,5 +4947,4 @@ renderHomeLoading();
 await accounts.ready();
 updateCounts();
 route();
-loadHome();
 readLink();

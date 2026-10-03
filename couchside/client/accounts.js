@@ -25,6 +25,61 @@ const button = (label, handler, className = 'btn ghost') => {
   return node;
 };
 
+export function watchAccount(sync, { doc = document, win = window, clock = Date.now,
+  setTimer = setTimeout, clearTimer = clearTimeout, interval = 60000 } = {}) {
+  let timer = null, flight = null, checked = -Infinity, failures = 0, stopped = false;
+  const visible = () => doc.visibilityState !== 'hidden';
+  const cancel = () => { clearTimer(timer); timer = null; };
+  function schedule() {
+    cancel();
+    if (stopped || !visible()) return;
+    timer = setTimer(() => {
+      timer = null;
+      // Guests have no remote list to poll. Sign-ins in another tab arrive
+      // through storage events; foreground and online checks still detect them.
+      if (sync.user && sync.status !== 'expired') void refresh();
+      else schedule();
+    }, Math.min(interval * 2 ** failures, 300000));
+  }
+  function refresh(force = false) {
+    if (stopped || !visible()) return;
+    if (flight) return flight;
+    // Safari/browser activation often sends both visibility and focus after
+    // the first request has completed. These describe one foreground check.
+    if (!force && clock() - checked < 5000) { schedule(); return; }
+    checked = clock();
+    cancel();
+    flight = Promise.resolve().then(() => sync.refresh()).catch(() => {}).finally(() => {
+      failures = sync.user && !sync.connected && sync.status !== 'expired'
+        ? Math.min(failures + 1, 3) : 0;
+      flight = null;
+      schedule();
+    });
+    return flight;
+  }
+  const focus = () => { void refresh(); };
+  const online = () => { void refresh(true); };
+  const visibility = () => { if (visible()) focus(); else cancel(); };
+  doc.addEventListener('visibilitychange', visibility);
+  win.addEventListener('focus', focus);
+  win.addEventListener('online', online);
+  // Initialize once; a focus event during startup shares that same request.
+  // Defer until mountAccounts has returned its handle to the app: restoring
+  // cached state may call the app's account integration during initialization.
+  flight = Promise.resolve().then(() => sync.ready()).catch(() => {}).finally(() => {
+    checked = clock();
+    flight = null;
+    schedule();
+  });
+  return () => {
+    stopped = true;
+    cancel();
+    doc.removeEventListener('visibilitychange', visibility);
+    win.removeEventListener('focus', focus);
+    win.removeEventListener('online', online);
+  };
+}
+
 export function mountAccounts({ getState, applyState, fresh, sanitize, toast = () => {}, onStatus = () => {} }) {
   const panel = document.getElementById('account-access');
   const dialog = document.getElementById('auth');
@@ -186,16 +241,10 @@ export function mountAccounts({ getState, applyState, fresh, sanitize, toast = (
   const closeForm = () => {
     if (!formBusy) body.querySelector('form')?.reset();
   };
-  const refresh = () => { if (document.visibilityState !== 'hidden') void sync.refresh(); };
-  const visibility = () => { if (document.visibilityState === 'visible') refresh(); };
   const otherTab = event => { void sync.storageChanged(event); };
   dialog.addEventListener('close', closeForm);
-  document.addEventListener('visibilitychange', visibility);
-  window.addEventListener('focus', refresh);
-  window.addEventListener('online', refresh);
   window.addEventListener('storage', otherTab);
-  // Visible devices see each other's changes even when their tab stays focused.
-  const poll = setInterval(refresh, 60000);
+  const stopWatching = watchAccount(sync);
   renderPanel();
 
   return {
@@ -205,11 +254,8 @@ export function mountAccounts({ getState, applyState, fresh, sanitize, toast = (
     sync: () => sync.flush(),
     destroy() {
       sync.destroy();
-      clearInterval(poll);
+      stopWatching();
       dialog.removeEventListener('close', closeForm);
-      document.removeEventListener('visibilitychange', visibility);
-      window.removeEventListener('focus', refresh);
-      window.removeEventListener('online', refresh);
       window.removeEventListener('storage', otherTab);
     },
   };

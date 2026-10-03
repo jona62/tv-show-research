@@ -1,3 +1,5 @@
+import { comparisonPosterSources, displayPoster } from './show-artwork.js?v=919c7a8ac41304f6';
+
 // Keep decoded posters through comparison redraws, as the app's title cards do.
 export function createComparisonPosters() {
   const kept = new Map();
@@ -11,8 +13,9 @@ export function createComparisonPosters() {
     const name = document.createElement('span');
     name.className = 'compare-poster-name'; name.setAttribute('aria-hidden', 'true');
     box.append(name); art.append(box);
-    const sources = [...new Set([show.poster, show.art].filter(Boolean))];
-    const entry = { art, box, name, sources, failed: new Set(), images: new Map(), stopped: false };
+    const sources = comparisonPosterSources(show);
+    const entry = { art, box, name, sources, limited: displayPoster(show.art) !== show.art,
+      failed: new Set(), images: new Map(), stopped: false };
     entry.load = url => {
       if (disposed || entry.stopped || entry.images.has(url)) return;
       const image = new Image();
@@ -23,6 +26,8 @@ export function createComparisonPosters() {
         image.onload = image.onerror = null; image.remove(); entry.images.delete(url);
         if (!entry.stopped) entry.failed.add(url);
         box.classList.toggle('has-image', [...entry.images.values()].some(img => !img.classList.contains('is-loading')));
+        const next = entry.sources.find(source => !entry.failed.has(source));
+        if (next && !entry.stopped) entry.load(next);
       };
       image.onerror = failed;
       image.onload = () => {
@@ -52,7 +57,7 @@ export function createComparisonPosters() {
       for (const show of shows) {
         const placeholder = content.querySelector(`[data-show="${show.id}"] .compare-card-art`);
         if (!placeholder) continue;
-        const sources = [...new Set([show.poster, show.art].filter(Boolean))];
+        const sources = comparisonPosterSources(show);
         let entry = kept.get(show.id);
         if (entry && (entry.sources.length !== sources.length || entry.sources.some((url, index) => url !== sources[index]))) {
           entry.stop(); kept.delete(show.id); entry = null;
@@ -61,8 +66,12 @@ export function createComparisonPosters() {
         entry.name.textContent = show.name;
         entry.box.setAttribute('aria-label', `${show.name} poster`);
         placeholder.replaceWith(entry.art);
-        // The lightweight matching poster stays visible while the original loads.
-        for (const url of entry.sources) if (!entry.failed.has(url)) entry.load(url);
+        // TVmaze's matching card image is sufficient here; its original is only
+        // a failure fallback. Other providers retain their existing preview.
+        if (entry.limited) {
+          const source = entry.sources.find(url => !entry.failed.has(url));
+          if (source) entry.load(source);
+        } else for (const source of entry.sources) if (!entry.failed.has(source)) entry.load(source);
       }
     },
     dispose() {

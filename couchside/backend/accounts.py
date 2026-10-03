@@ -164,7 +164,7 @@ class AccountService:
                                        (json.dumps(merged, separators=(',', ':'), allow_nan=False), row['id']))
             return self._new_session(connection, row['id'])
 
-    def session(self, token, since=0, owner=None):
+    def session(self, token, since=0, owner=None, conditional=False):
         since = validate_revision(since)
         if owner is not None and (not isinstance(owner, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', owner)):
             raise AccountError(400, 'The account owner is invalid.')
@@ -173,6 +173,12 @@ class AccountService:
             # while another device may be committing a save through WAL.
             connection.execute('BEGIN')
             row = self._session_row(connection, token)
+            if conditional and owner == row['id'] and since == row['revision']:
+                # Clients explicitly opt in so an older, cached app still gets
+                # the complete session it expects. Authenticate every poll;
+                # revisions are hints about state, never session credentials.
+                return {'user': {'id': row['id'], 'email': row['email']},
+                        'csrf': row['csrf'], 'revision': row['revision'], 'unchanged': True}
             return self._response(row, row['csrf'], self._removals(connection, row['id'], since if owner == row['id'] else 0))
 
     def save(self, token, csrf, state, revision, removed=None):

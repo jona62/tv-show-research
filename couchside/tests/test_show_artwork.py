@@ -74,10 +74,12 @@ class ArtworkFixture:
                     return self.send(fixture.ratings(int(parse_qs(parsed.query)['id'][0])))
                 if parsed.path == '/api/episode-matrices':
                     ids = parse_qs(parsed.query)['ids'][0].split(',')
+                    if getattr(fixture, 'matrix_pending', False):
+                        return self.send({'shows': [], 'pending': [int(show_id) for show_id in ids]})
                     return self.send({'shows': [fixture.ratings(int(show_id)) for show_id in ids], 'pending': []})
                 if parsed.path == '/fixture/poster.svg':
                     return self.send(POSTER, 'image/svg+xml', cache='public, max-age=86400')
-                if parsed.path in ('/', '/browse', '/new', '/list', '/compare'):
+                if parsed.path in ('/', '/browse', '/new', '/list', '/compare', '/search'):
                     return self.send(fixture.document, 'text/html')
                 path = (PUBLIC / parsed.path.lstrip('/')).resolve()
                 if path.is_relative_to(PUBLIC.resolve()) and path.is_file():
@@ -149,7 +151,7 @@ class ShowArtworkIntegration(unittest.TestCase):
         self.addCleanup(fixture.close)
         context = (browser or self.browser).new_context(viewport={'width': 390 if mobile else 1280, 'height': 844},
                                           has_touch=mobile, is_mobile=mobile,
-                                          reduced_motion='reduce', service_workers='block')
+                                          device_scale_factor=1, reduced_motion='reduce', service_workers='block')
         self.addCleanup(context.close)
         context.add_init_script('''localStorage.setItem('couchside-v1', JSON.stringify({
             version:3, profile:[], saved:[], settings:{known_min:85}, onboarded:true
@@ -169,6 +171,18 @@ class ShowArtworkIntegration(unittest.TestCase):
     def state(page):
         return page.evaluate("JSON.parse(localStorage.getItem('couchside-v1'))")
 
+    @staticmethod
+    def backdrop_path(page, show_id=82):
+        # These fixtures use 1x pixel density: desktop needs 1280, mobile 780.
+        width = 780 if page.viewport_size['width'] <= 780 else 1280
+        return f'/api/backdrop?id={show_id}&w={width}'
+
+    def wait_for_backdrop(self, page, show_id=82):
+        path = self.backdrop_path(page, show_id)
+        page.wait_for_function("path=>performance.getEntriesByType('resource').some(entry=>{"
+                               "const url=new URL(entry.name);return url.pathname+url.search===path;})", arg=path)
+        return path
+
     def test_home_browse_and_popular_card_intent_reuses_browser_cached_background_on_return(self):
         for route in ('/', '/browse?genre=drama', '/new'):
             with self.subTest(route=route):
@@ -180,7 +194,7 @@ class ShowArtworkIntegration(unittest.TestCase):
                 page.wait_for_timeout(220)
                 self.assertEqual(fixture.count('/api/backdrop', 82), 0, 'A short sweep must be cheap')
                 card.locator('.card-hit').hover(position={'x': 12, 'y': 12})
-                page.wait_for_function("performance.getEntriesByType('resource').some(e=>e.name.endsWith('/api/backdrop?id=82'))")
+                expected_backdrop = self.wait_for_backdrop(page)
                 page.wait_for_timeout(100)
                 self.assertEqual(fixture.count('/api/backdrop', 82), 1)
                 card.locator('.card-hit').focus()
@@ -192,7 +206,7 @@ class ShowArtworkIntegration(unittest.TestCase):
                     card.locator('.card-hit').click(position={'x': 12, 'y': 12})
                     page.locator('#title[open]').wait_for()
                     page.wait_for_function("(()=>{const img=document.querySelector('#title .t-backdrop');return img.complete&&img.naturalWidth>0;})()")
-                    self.assertEqual(page.locator('#title .t-backdrop').get_attribute('src'), '/api/backdrop?id=82')
+                    self.assertEqual(page.locator('#title .t-backdrop').get_attribute('src'), expected_backdrop)
                     page.wait_for_function("document.querySelector('#title .t-summary')?.textContent.startsWith('A fixture summary')")
                     self.assertEqual(page.locator('#title .t-summary').text_content(), fixture.shows[0]['summary'])
                     page.locator('#title .t-close').click()
@@ -242,7 +256,7 @@ class ShowArtworkIntegration(unittest.TestCase):
     def test_keyboard_focus_prefetch_and_list_rating_controls_remain_independent(self):
         page, card, fixture, errors = self.open_fixture('/browse?genre=drama')
         card.locator('.card-hit').focus()
-        page.wait_for_function("performance.getEntriesByType('resource').some(e=>e.name.endsWith('/api/backdrop?id=82'))")
+        self.wait_for_backdrop(page)
         self.assertEqual(fixture.count('/api/backdrop', 82), 1)
         card.get_by_role('button', name='My List: Game of Thrones', exact=True).click()
         page.wait_for_function("JSON.parse(localStorage.getItem('couchside-v1')).saved.length===1")
@@ -261,7 +275,7 @@ class ShowArtworkIntegration(unittest.TestCase):
     def test_missing_background_keeps_poster_and_details_usable_without_an_error_popup(self):
         page, card, fixture, errors = self.open_fixture(missing_image=True)
         card.locator('.card-hit').focus()
-        page.wait_for_function("performance.getEntriesByType('resource').some(e=>e.name.endsWith('/api/backdrop?id=82'))")
+        self.wait_for_backdrop(page)
         card.locator('.card-hit').click(position={'x': 12, 'y': 12})
         page.locator('#title[open]').wait_for()
         page.wait_for_function("document.querySelector('#title .t-summary')?.textContent.startsWith('A fixture summary')")

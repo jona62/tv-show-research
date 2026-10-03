@@ -6,7 +6,6 @@
 <script src="/assets/scripts/touch-forms.js?v=b396a8dd24140a5f"></script>
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#141414">
-<meta name="description" content="Rows of TV shows picked for your taste, across __CATALOG_COUNT__ series. Rate what you have seen and every row leans your way.">
 <meta name="application-name" content="Couchside">
 <meta name="apple-mobile-web-app-title" content="Couchside">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -19,6 +18,8 @@
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png?v=254694d687c482ab" sizes="180x180">
 <link rel="manifest" href="/manifest.webmanifest">
 <!--share: the server rewrites this block for each request, so a shared title shows its own poster-->
+<meta name="description" content="Rows of TV shows picked for your taste, with trailers, where to watch and My List.">
+<meta name="robots" content="index, follow, max-image-preview:large">
 <meta property="og:site_name" content="Couchside">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Couchside">
@@ -27,26 +28,27 @@
 <meta name="twitter:card" content="summary_large_image">
 <!--/share-->
 <!--start.js asks for the home page as soon as it arrives, while main.js is still on its way-->
-<script type="module" async src="/assets/scripts/start.js?v=dd8f0fc9dfb5b7ce" fetchpriority="high"></script>
+<script type="module" async src="/assets/scripts/start.js?v=94868a66c8ad1095" fetchpriority="high"></script>
 <link rel="preconnect" href="https://static.tvmaze.com" crossorigin>
 <link rel="stylesheet" href="/assets/styles/style.css?v=4275de4669d0197b">
-<script type="module" src="/assets/scripts/main.js?v=96a6e675e1b9f419"></script>
+<script type="module" src="/assets/scripts/main.js?v=496835fb0c5ceb51"></script>
 <link rel="modulepreload" href="/assets/scripts/episode-ratings.js?v=c4e6d874df401c35">
-<link rel="modulepreload" href="/assets/scripts/compare.js?v=1a777fa3674de7cf">
+<link rel="modulepreload" href="/assets/scripts/compare.js?v=de7e61929080a7ea">
 <link rel="modulepreload" href="/assets/scripts/title-sections.js?v=c735de07fc7f1d99">
-<link rel="modulepreload" href="/assets/scripts/show-cards.js?v=1e100102e3a68bf6">
-<link rel="modulepreload" href="/assets/scripts/taste.js?v=94c80891be4e9edb">
+<link rel="modulepreload" href="/assets/scripts/show-cards.js?v=37508516f7b2ec15">
+<link rel="modulepreload" href="/assets/scripts/taste.js?v=38f3f65aed9cad54">
 <link rel="modulepreload" href="/assets/scripts/list-transfer.js?v=bf96d9f9d5d965e6">
 <link rel="modulepreload" href="/assets/scripts/network.js?v=4038b4a1107593ef">
-<link rel="modulepreload" href="/assets/scripts/accounts.js?v=5eadc4519564f154">
+<link rel="modulepreload" href="/assets/scripts/accounts.js?v=829f2a48cb315d6e">
 <link rel="modulepreload" href="/assets/scripts/app-updates.js?v=6fd21e40c7dc0bdb">
-<link rel="modulepreload" href="/assets/scripts/show-artwork.js?v=fe019ec7b2af4628">
+<link rel="modulepreload" href="/assets/scripts/metadata.js?v=61237fd7da1aa410">
+<link rel="modulepreload" href="/assets/scripts/show-artwork.js?v=919c7a8ac41304f6">
 <link rel="modulepreload" href="/assets/scripts/filter-state.js?v=2a62eef7fd5aeeda">
 <link rel="modulepreload" href="/assets/scripts/filters.js?v=d657b07fba74e1f3">
 <link rel="modulepreload" href="/assets/scripts/ratings.js?v=2a0509d86dd759f5">
 <link rel="modulepreload" href="/assets/scripts/transfer.js?v=2bfd019beccdb78d">
 <link rel="modulepreload" href="/assets/scripts/qr.js?v=d7f92f94bb8911ea">
-<link rel="modulepreload" href="/assets/scripts/format.js?v=9c2dfc9440b436fa">
+<link rel="modulepreload" href="/assets/scripts/format.js?v=7ac003cc28be3a47">
 <link rel="modulepreload" href="/assets/scripts/gestures.js?v=c2173468ef22c30e">
 <link rel="modulepreload" href="/assets/scripts/fresh.js?v=afcc972f76479400">
 <link rel="modulepreload" href="/assets/scripts/starters.js?v=d559e3a61414a450">
@@ -56,15 +58,15 @@
 <link rel="modulepreload" href="/assets/scripts/comparison-timeline.js?v=0c0eea8d96bab16d">
 <link rel="modulepreload" href="/assets/scripts/compare-timeline-interactions.js?v=7e9cdad202dea29d">
 <link rel="modulepreload" href="/assets/scripts/poster-colours.js?v=0a5c074f14836db9">
-<link rel="modulepreload" href="/assets/scripts/compare-posters.js?v=2f489d7d10b368a3">
+<link rel="modulepreload" href="/assets/scripts/compare-posters.js?v=76b3da553b4dd4e8">
 <link rel="modulepreload" href="/assets/scripts/compare-viewport.js?v=40a2db0add024520">
-<link rel="modulepreload" href="/assets/scripts/account-state.js?v=b5fa40b4d244907c">
+<link rel="modulepreload" href="/assets/scripts/account-state.js?v=83959d112196f308">
 <link rel="modulepreload" href="/assets/scripts/snapshot-images.js?v=58ed772a708f7e6c">
 <link rel="modulepreload" href="/assets/scripts/comparison-timeline-export.js?v=ddd7ba5ccff0f9cb">
 </head>
 <body>
 <a class="skip" href="#page">Skip to content</a>
-<noscript><p class="noscript">Couchside needs JavaScript to pick shows for you. Turn it on and reload.</p></noscript>
+<!--seo-content--><noscript><p class="noscript">Couchside helps you find your next TV show, keep a watchlist, and compare episode ratings. Turn on JavaScript to explore it.</p></noscript><!--/seo-content-->
 
 <header class="nav" id="nav">
   <a class="brand" href="/" data-link aria-label="Couchside, home">Couchside</a>

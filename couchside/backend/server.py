@@ -32,7 +32,8 @@ from . import tmdb
 from .request_limits import Requests
 from .accounts import AccountService
 from .account_http import AccountRoutes
-from .backdrops import Backdrops, image_kind
+from .backdrops import Backdrops, image_kind, backdrop_width
+from .seo import SEO, bootstrap as seo_bootstrap
 
 HERE = Path(__file__).resolve().parents[1]
 PUBLIC = HERE / 'public'
@@ -100,13 +101,11 @@ IMAGE_KINDS = ('image/png', 'image/jpeg', 'image/x-icon', 'image/svg+xml')
 # Text shrinks to a quarter or less gzipped: the page, its scripts and styles, JSON, SVG and
 # the manifest. A body under SMALLEST goes as it is, since gzip's framing would eat most of
 # what it saves, and so does one that gzip barely shrinks.
-COMPRESSIBLE = re.compile(r'text/|application/(?:json|javascript|manifest\+json)|image/(?:svg\+xml|x-icon)')
+COMPRESSIBLE = re.compile(r'text/|application/(?:json|xml|javascript|manifest\+json)|image/(?:svg\+xml|x-icon)')
 SMALLEST = 1024
 # Answers are made for each request and gzipped at zlib's usual level, about a quarter of a
 # millisecond for a home page; files are gzipped once, at the most.
 LEVEL, FILE_LEVEL = 6, 9
-SHARE = re.compile(r'<!--share.*?<!--/share-->', re.S)
-HOST = re.compile(r'[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?(?::\d{1,5})?', re.I)
 HOLES = re.compile(r'__(BOOTSTRAP|CATALOG_COUNT|DATASET_DATE)__')
 CREDIT = re.compile(r'[ \t]*<!--tmdb\b.*?-->\n?(.*?)[ \t]*<!--/tmdb-->\n?', re.S)
 
@@ -203,7 +202,7 @@ class Built:
 
 
 class Pages:
-    """The page gzipped, by its tag: it differs only by the title a link opens and the host,
+    """The page gzipped, by its tag: it differs by its public page and title metadata,
     so a few hundred cover nearly every request, and the rest are packed again."""
 
     def __init__(self, most=256):
@@ -222,7 +221,8 @@ def fill(template, engine, library, credit):
     """The page with this model's count, date, newest show and first-visit posters, filled
     once at startup. TMDB's credit stays only when there is TMDB data to credit."""
     boot = {'date': engine.date, 'count': engine.n, 'newest': max(engine.by_id), 'starters': library.starters,
-            'genres': library.genres, 'languages': sorted(v for v in getattr(engine, 'metadata', {}).get('language', []) if v)}
+            'genres': library.genres, 'languages': sorted(v for v in getattr(engine, 'metadata', {}).get('language', []) if v),
+            'seo': seo_bootstrap()}
     # Every < in the data is escaped, so no show's name can close or confuse the script block.
     payload = json.dumps(boot, ensure_ascii=False, separators=(',', ':')).replace('<', '\\u003c')
     values = {'BOOTSTRAP': payload, 'CATALOG_COUNT': f'{engine.n:,}', 'DATASET_DATE': html.escape(engine.date)}
@@ -266,6 +266,7 @@ TVMAZE = Remote(calls=4)
 ADDED = Added(LIVE, NEWEST, NEWER_REACH)
 TEMPLATE = PUBLIC / 'index.html'
 PAGE = fill(TEMPLATE.read_text(), ENGINE, LIBRARY, bool(TMDB)) if TEMPLATE.exists() else ''
+PUBLIC_SEO = SEO(ENGINE, LIBRARY)
 # Every page says which build it is, read with the page at startup, so the service worker
 # keeps a page only beside files of the same build.
 BUILD = build_of(PUBLIC)
@@ -443,49 +444,8 @@ def search(q, filters=None):
     return found
 
 
-def origin(headers):
-    """This site's own address, for share tags, which need absolute URLs."""
-    host = headers.get('Host', '')
-    if not HOST.fullmatch(host):
-        return ''
-    # A public host is always served over https. The proxy in front of this server may
-    # report its own inner hop as http, so only a local run is taken at its word.
-    local = host.split(':')[0] in ('localhost', '127.0.0.1')
-    scheme = 'https' if not local or headers.get('X-Forwarded-Proto') == 'https' else 'http'
-    return f'{scheme}://{host}'
-
-
-def share_tags(site, show_id):
-    """What a link preview shows: the app itself, or the title a link opens."""
-    i = ENGINE.by_id.get(show_id) if show_id is not None else None
-    if i is None:
-        return 'Couchside', [
-            ('og:title', 'Couchside'), ('og:description', DESCRIPTION),
-            ('og:image', f'{site}/assets/images/og.jpg' if site else '/assets/images/og.jpg'), ('og:image:width', '1200'), ('og:image:height', '630'),
-            ('og:image:alt', 'The Couchside wordmark beside a wall of TV show posters'),
-            ('og:url', f'{site}/' if site else ''), ('twitter:card', 'summary_large_image')]
-    show = ENGINE.shows[i]
-    summary = show['summary'] or DESCRIPTION
-    if len(summary) > 200:
-        summary = summary[:200].rsplit(' ', 1)[0] + '…'
-    year = f" ({show['year']})" if show['year'] else ''
-    return f"{show['name']} · Couchside", [
-        ('og:title', f"{show['name']}{year} on Couchside"), ('og:description', summary),
-        ('og:image', LIBRARY.poster(i, 'original_untouched') or (f'{site}/assets/images/og.jpg' if site else '')),
-        ('og:image:alt', f"Poster for {show['name']}"),
-        ('og:url', f'{site}/?show={show_id}' if site else ''), ('twitter:card', 'summary')]
-
-
-def render_page(headers, query):
-    raw = query.get('show', [''])[0]
-    title, tags = share_tags(origin(headers), int(raw) if raw.isdigit() and len(raw) < 10 else None)
-    lines = ['<meta property="og:site_name" content="Couchside">', '<meta property="og:type" content="website">']
-    for key, value in tags:
-        if value:
-            kind = 'name' if key.startswith('twitter:') else 'property'
-            lines.append(f'<meta {kind}="{key}" content="{html.escape(value, quote=True)}">')
-    page = SHARE.sub(lambda _m: '<!--share-->\n' + '\n'.join(lines) + '\n<!--/share-->', PAGE, count=1)
-    return page.replace('<title>Couchside</title>', f'<title>{html.escape(title)}</title>', 1).encode()
+def render_page(headers, query, path='/'):
+    return PUBLIC_SEO.render(PAGE, path, query)
 
 
 def number(query, key, label):
@@ -581,7 +541,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def send_page(self, query, head=False):
         """The page for this address, gzipped once for each version of it (Pages)."""
-        body = render_page(self.headers, query)
+        body = render_page(self.headers, query, urlsplit(self.path).path)
         tag = etag(body)
         payload = self.answer(body, 'text/html; charset=utf-8', validate=True, tag=tag,
                               pack=lambda page: PACKED_PAGES.get(tag, page), extra=(('X-Build', BUILD),) if BUILD else ())
@@ -608,6 +568,8 @@ class Handler(SimpleHTTPRequestHandler):
         parts = urlsplit(self.path)
         if parts.path in PAGES:
             self.send_page(parse_qs(parts.query), head=True)
+        elif self.discovery_file(parts.path, head=True):
+            return
         elif parts.path == '/api/backdrop':
             if self.admitted():
                 self.backdrop(parse_qs(parts.query), head=True)
@@ -694,7 +656,23 @@ class Handler(SimpleHTTPRequestHandler):
         if path in PAGES:
             self.send_page(query)
             return
+        if self.discovery_file(path):
+            return
         super().do_GET()
+
+    def discovery_file(self, path, head=False):
+        if path == '/robots.txt':
+            body, kind = PUBLIC_SEO.robots(), 'text/plain; charset=utf-8'
+        elif path == '/sitemap.xml' or path.startswith('/sitemaps/'):
+            body, kind = PUBLIC_SEO.sitemap(path), 'application/xml; charset=utf-8'
+            if body is None:
+                self.send_body(LOST, 'text/html; charset=utf-8', 404, head=head)
+                return True
+        else:
+            return False
+        self.cache_control = 'public, max-age=3600'
+        self.send_body(body, kind, validate=True, head=head)
+        return True
 
     def live(self, path, query):
         try:
@@ -761,6 +739,7 @@ class Handler(SimpleHTTPRequestHandler):
             show_id = number(query, 'id', 'the show')
             if show_id not in ENGINE.by_id and not newer(show_id):
                 raise ValueError('That show is not in this catalog.')
+            width = backdrop_width(query)
         except ValueError as exc:
             self.send_json({'error': str(exc)}, 400, head=head)
             return
@@ -768,7 +747,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json({'error': 'Background images are loading. Try again in a moment.'}, 503, head=head)
             return
         try:
-            found = BACKDROPS.get(show_id)
+            found = BACKDROPS.get(show_id, width=width)
             if found is None:
                 self.cache_control = 'public, max-age=300'
                 self.send_body(b'{"error":"This show has no background image."}',

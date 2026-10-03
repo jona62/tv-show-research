@@ -4,7 +4,7 @@ import { compareMatrix, ratingTableHTML, seasonName } from './rating-views.js?v=
 import { comparisonOverlayHTML, comparisonOverlayPlan, comparisonShowColour } from './comparison-timeline.js?v=0c0eea8d96bab16d';
 import { bindComparisonMatrix, bindComparisonTimeline } from './compare-timeline-interactions.js?v=7e9cdad202dea29d';
 import { comparisonPosterColours, loadPosterColour, validPosterColour } from './poster-colours.js?v=0a5c074f14836db9';
-import { createComparisonPosters } from './compare-posters.js?v=2f489d7d10b368a3';
+import { createComparisonPosters } from './compare-posters.js?v=76b3da553b4dd4e8';
 import { createComparisonViewport } from './compare-viewport.js?v=40a2db0add024520';
 
 const STORAGE_KEY = 'couchside.comparison-v1', MAX_SHOWS = 40;
